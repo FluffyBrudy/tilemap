@@ -1,7 +1,12 @@
-from constants import DEFAULT_THEME, MAIN_PANEL_ID
+from typing import TYPE_CHECKING
+from constants import MAIN_PANEL_ID
 
 
-DEFAULT_THEME = {
+if TYPE_CHECKING:
+    from ttypes.ttheme import TTheme
+
+
+DEFAULT_THEME: "TTheme" = {
     "defaults": {
         "colours": {
             "normal_bg": "#ff0000",
@@ -13,5 +18,8 @@ DEFAULT_THEME = {
             "normal_border": "#DDDDDD",
         }
     },
-    MAIN_PANEL_ID: {},
+    MAIN_PANEL_ID: {
+        "colours": {"dark_bg": "rgb(50, 100, 50)"},
+        "misc": {"border_width": "0"},
+    },
 }
