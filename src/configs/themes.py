@@ -3,7 +3,7 @@ from constants import MAIN_PANEL_ID
 
 
 if TYPE_CHECKING:
-    from ttypes.ttheme import TTheme
+    from ttypes.theme import TTheme
 
 
 DEFAULT_THEME: "TTheme" = {
@@ -19,7 +19,7 @@ DEFAULT_THEME: "TTheme" = {
         }
     },
     MAIN_PANEL_ID: {
-        "colours": {"dark_bg": "rgb(50, 100, 50)"},
+        "colours": {"dark_bg": "rgb(100, 100, 50)"},
         "misc": {"border_width": "0"},
     },
 }

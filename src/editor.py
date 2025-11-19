@@ -2,8 +2,9 @@ import pygame
 import pygame_gui
 from pygame_gui.core import ObjectID
 
+from configs.themes import DEFAULT_THEME
 from tilemap import Tilemap
-from constants import DEFAULT_THEME, MAIN_PANEL_ID
+from constants import MAIN_PANEL_ID
 
 
 class GameApp:
