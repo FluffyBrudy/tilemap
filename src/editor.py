@@ -9,7 +9,7 @@ from widgets.mapsetup import MapSetup
 
 
 class Editor:
-    def __init__(self, width=800, height=600, fps=60):
+    def __init__(self, width=1920, height=1080, fps=60):
         pygame.init()
         pygame.display.set_caption("Pygame GUI Template")
 
@@ -30,7 +30,7 @@ class Editor:
             object_id=ObjectID(object_id=MAIN_PANEL_ID),
         )
 
-        self.widgets = {"mapsetup": MapSetup(self, (0, 0, 500, 500))}
+        MapSetup(self, (0, 0, 500, 524))
 
         self.tilemap = Tilemap()
 

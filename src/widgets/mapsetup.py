@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from pygame_gui.core.gui_type_hints import RectLike
 
 
+SAFE_UI_WINDOW_HEIGHT = 160
+
+
 class MapSetup(UIPanel):
     _editor_instance: "Editor" = None  # type: ignore
 
@@ -66,13 +69,21 @@ class MapSetup(UIPanel):
             editor = MapSetup._editor_instance
             map_size = tuple(event.form_values["Map Size"].values())
             tile_size = tuple(event.form_values["Tile Size"].values())
-            editor.tilemap.init_size(tile_size, map_size)
+            alert_size = (
+                int(self.relative_rect.width),
+                max(SAFE_UI_WINDOW_HEIGHT, int(self.relative_rect.height * 0.25)),
+            )
 
             map_value_error = map_size[0] < 1 or map_size[1] < 1
             tile_value_error = tile_size[0] < 1 or tile_size[1] < 1
+
             if map_value_error:
-                alert("map width and height must be non zero and positive")
+                alert("map width and height must be non zero and positive", alert_size)
             elif tile_value_error:
-                alert("map width and height must be non zero and positive")
+                alert("map width and height must be non zero and positive", alert_size)
+            else:
+                editor.tilemap.init_size(tile_size, map_size)
+                self.kill()
+
             return True
         return False
