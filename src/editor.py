@@ -5,9 +5,10 @@ from pygame_gui.core import ObjectID
 from configs.themes import DEFAULT_THEME
 from tilemap import Tilemap
 from constants import MAIN_PANEL_ID
+from widgets.mapsetup import MapSetup
 
 
-class GameApp:
+class Editor:
     def __init__(self, width=800, height=600, fps=60):
         pygame.init()
         pygame.display.set_caption("Pygame GUI Template")
@@ -22,11 +23,14 @@ class GameApp:
         self.manager = pygame_gui.UIManager(
             (self.width, self.height), DEFAULT_THEME, enable_live_theme_updates=True
         )
+
         self.background = pygame_gui.elements.UIPanel(
             relative_rect=(0, 0, self.screen.width, self.screen.height),
             manager=self.manager,
             object_id=ObjectID(object_id=MAIN_PANEL_ID),
         )
+
+        self.widgets = {"mapsetup": MapSetup(self, (0, 0, 500, 500))}
 
         self.tilemap = Tilemap()
 
@@ -56,7 +60,7 @@ class GameApp:
 
 
 def main():
-    game = GameApp()
+    game = Editor()
     game.run()
 
 

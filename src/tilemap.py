@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Sequence, Set, Tuple
 from pygame.typing import RectLike
 
@@ -10,7 +9,7 @@ from ttypes.tilemap import TOngridParsedTile, TypeTile
 from utils.load_utils import deserialize_point, serialize_point
 
 if TYPE_CHECKING:
-    from ttypes import TTile, TCoor
+    from src.ttypes import TTile, TCoor
 
 # fmt: off
 NEAREST_NEIGHBOUR_OFFSET = (
@@ -22,12 +21,19 @@ NEAREST_NEIGHBOUR_OFFSET = (
 
 
 class Tilemap:
+    """
+    Note: must call init_size before using tilemap
+    """
+
     def __init__(self):
         self.ongrid_tiles: TTile = {}
         self.offgrid_tiles: Set[TypeTile] = set()
-        self.tile_size = (1, 1)
 
-    def get_nearest_tiles(self, tile_location: TCoor) -> Tuple[TCoor]:
+    def init_size(self, tile_size: "TCoor", map_size: "TCoor"):
+        self.tile_size = tile_size
+        self.map_size = map_size
+
+    def get_nearest_tiles(self, tile_location: "TCoor") -> Tuple["TCoor"]:
         assert len(tile_location) == 2
 
         tiles_around = []
@@ -43,7 +49,7 @@ class Tilemap:
         return tuple(tiles_around)
 
     def collision_tiles_around(
-        self, tile_location: TCoor, collision_rect: RectLike
+        self, tile_location: "TCoor", collision_rect: RectLike
     ) -> Tuple[Rect]:
         assert len(tile_location) == 2
 
@@ -84,7 +90,7 @@ class Tilemap:
                 tile_copy["pos"] = deserialize_point(tile["pos"])  # type: ignore
                 self.offgrid_tiles.add(tile_copy)
 
-    def save_map(self, filename: str, tile_size: TCoor):
+    def save_map(self, filename: str, tile_size: "TCoor"):
         if ".." in filename or "/" in filename or "\\" in filename:
             raise ValueError("Invalid filename")
 

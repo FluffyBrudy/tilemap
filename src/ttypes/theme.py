@@ -1,4 +1,4 @@
-from typing import Dict, TypedDict, Union
+from typing import Dict, Literal, TypedDict, Union
 
 
 class ThemeColours(TypedDict, total=False):
@@ -26,6 +26,11 @@ class ThemeColours(TypedDict, total=False):
     filled_bar: str
     unfilled_bar: str
     text_cursor: str
+    normal_text_shadow: str
+    hovered_text_shadow: str
+    active_text_shadow: str
+    selected_text_shadow: str
+    disabled_text_shadow: str
 
 
 class ThemeMisc(TypedDict, total=False):
@@ -37,6 +42,12 @@ class ThemeMisc(TypedDict, total=False):
     text_horiz_alignment_padding: str
     enable_arrow_buttons: str
     sliding_button_width: str
+    text_horiz_alignment: Literal["center", "left", "right"]
+    text_horiz_alignment_padding: str
+    text_vert_alignment: Literal["center", "top", "bottom"]
+    text_vert_alignment_padding: str
+    text_shadow_size: str
+    text_shadow_offset: str
 
 
 class ThemeFont(TypedDict, total=False):
