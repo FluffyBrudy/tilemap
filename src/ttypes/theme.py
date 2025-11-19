@@ -77,11 +77,7 @@ class ThemeBlock(TypedDict, total=False):
     prototype: str
 
 
-class TThemeBase(TypedDict, total=False):
-    defaults: ThemeBlock
-
-
-TTheme = Union[Dict[str, ThemeBlock], TThemeBase]
+TTheme = Union[Dict[str, ThemeBlock], Dict[Literal["defaults"], ThemeBlock]]
 
 
 """
