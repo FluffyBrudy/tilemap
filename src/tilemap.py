@@ -5,6 +5,7 @@ from pygame import Rect, Surface
 from json import load as JSONLoad, dump as JSONDump
 
 from constants import BASE_PATH
+from ttypes import TOffset
 from ttypes.tilemap import TOngridParsedTile, TypeTile
 from utils.load_utils import deserialize_point, serialize_point
 
@@ -28,6 +29,7 @@ class Tilemap:
     def __init__(self):
         self.ongrid_tiles: TTile = {}
         self.offgrid_tiles: Set[TypeTile] = set()
+        self.initialized = False
 
     def init_size(self, tile_size: "TCoor", map_size: "TCoor"):
         self.tile_size = tile_size
@@ -120,5 +122,23 @@ class Tilemap:
     def update(self, dt: float):
         pass
 
-    def render(self, surface: Surface):
-        pass
+    def render(self, surface: Surface, offset: TOffset = (0, 0)):
+        if not self.initialized:
+            return
+        start_x = int(offset[0] // self.tile_size[0])
+        start_y = int(offset[1] // self.tile_size[1])
+        end_x = start_x + int(offset[0] // self.tile_size[0] + 2)
+        end_y = start_y + int(offset[1] // self.tile_size[1] + 2)
+
+        tile_w, tile_h = self.tile_size
+        for x in range(start_x, end_x):
+            for y in range(start_y, end_y):
+                location = (x, y)
+                if location in self.ongrid_tiles:
+                    tile = self.ongrid_tiles[location]
+                    tile_x, tile_y = tile["pos"]
+                    tile_pos = (
+                        tile_x * tile_w - offset[0],
+                        tile_y * tile_h - offset[1],
+                    )
+                    pass
