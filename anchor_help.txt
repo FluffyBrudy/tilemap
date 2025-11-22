@@ -1,0 +1,110 @@
+=================================================================  
+PYGAME_GUI ANCHOR POSITIONING FORMULAS  
+=================================================================  
+  
+CASE 1: Fixed Height at Top  
+---------------------------  
+Anchors: {"top": "top", "bottom": "top"}  
+  
+Formulas:  
+  top    = container.top + relative_rect.y  
+  bottom = container.top + relative_rect.bottom  
+         = container.top + (relative_rect.y + height)  
+  
+Behavior:  
+  - Element maintains fixed height  
+  - Anchored to container's top edge  
+  - Moves with container's top edge when resized  
+  
+Example (y=0, height=30px, container_height=300px):  
+  top    = 0 + 0 = 0  
+  bottom = 0 + 30 = 30  
+  Result: Element at y=0 to y=30  
+  
+  
+CASE 2: Fixed Height at Bottom  
+-------------------------------  
+Anchors: {"top": "bottom", "bottom": "bottom"}  
+  
+Formulas:  
+  top    = container.bottom + relative_rect.y  
+  bottom = container.bottom - relative_bottom_margin  
+  
+Where:  
+  relative_bottom_margin = container.bottom - (top + height)  
+  
+Behavior:  
+  - Element maintains fixed height  
+  - Anchored to container's bottom edge  
+  - Moves with container's bottom edge when resized  
+  - Use NEGATIVE y-position to offset upward from bottom  
+  
+Example (y=-30, height=30px, container_height=300px):  
+  top    = 300 + (-30) = 270  
+  bottom = 300 - 0 = 300  
+  relative_bottom_margin = 300 - (270 + 30) = 0  
+  Result: Element at y=270 to y=300  
+  
+  
+CASE 3: Stretching (Dynamic Height)  
+------------------------------------  
+Anchors: {"top": "top", "bottom": "bottom"}  
+  
+Formulas:  
+  top    = container.top + relative_rect.y  
+  bottom = container.bottom - relative_bottom_margin  
+  
+Behavior:  
+  - Element height is DYNAMIC  
+  - Top edge tracks container's top  
+  - Bottom edge tracks container's bottom  
+  - Element stretches/shrinks with container resize  
+  
+Example (y=30, container_height=300px):  
+  top    = 0 + 30 = 30  
+  bottom = 300 - relative_bottom_margin  
+  Result: Element stretches from y=30 to near y=300  
+  
+  
+CASE 4: Invalid Configuration  
+------------------------------  
+Anchors: {"top": "bottom", "bottom": "top"}  
+  
+Status: INVALID - Will trigger UserWarning  
+  
+Reason:  
+  - Creates inverted/undefined layout  
+  - Top edge would be below bottom edge  
+  - Pygame_gui explicitly rejects this combination  
+  
+Error Message:  
+  "Supplied vertical anchors are invalid, defaulting to top"  
+  
+  
+=================================================================  
+GENERAL RULES  
+=================================================================  
+  
+Position Formula:  
+  Position = Anchor_Point + Offset  
+  
+Where:  
+  - Anchor_Point = Container edge ("top"=0, "bottom"=container_height)  
+  - Offset = Value from relative_rect (can be positive or negative)  
+  
+Sign Convention:  
+  - Positive offset = Move away from origin (down from top, right from left)  
+  - Negative offset = Move toward origin (up from bottom, left from right)  
+  
+Default Anchors (if not specified):  
+  - "top": "top"  
+  - "bottom": "top"  
+  - "left": "left"  
+  - "right": "left"  
+  
+Horizontal Anchors:  
+  - Same logic applies with "left"/"right" instead of "top"/"bottom"  
+  - x-position instead of y-position  
+  - container.width instead of container.height  
+  
+=================================================================  
