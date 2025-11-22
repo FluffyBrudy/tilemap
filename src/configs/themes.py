@@ -81,4 +81,5 @@ DEFAULT_THEME: "TTheme" = {
             "normal_text": "#ffffff",
         }
     },
+    "#tileset_btm_toolbar": {},
 }

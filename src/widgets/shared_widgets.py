@@ -1,11 +1,16 @@
 from pygame import display, Surface
-from typing import TYPE_CHECKING, Tuple, cast
-import pygame
-from pygame_gui.core import ObjectID
+from typing import TYPE_CHECKING, Dict, cast
+from pygame_gui.core import IContainerLikeInterface, ObjectID, UIElement
+from pygame_gui.core.gui_type_hints import RectLike
+from pygame_gui.core.interfaces import IUIContainerInterface, IUIElementInterface
+from pygame_gui.elements import UITabContainer
 from pygame_gui.windows import UIMessageWindow
+
+from ttypes import UIAnchor
 
 
 if TYPE_CHECKING:
+    from editor import Editor
     from ttypes import TCoor
 
 

@@ -4,6 +4,7 @@ from pygame_gui import UI_FORM_SUBMITTED
 from pygame_gui.elements import UIForm, UILabel, UIPanel
 
 from widgets.shared_widgets import alert
+from widgets.tileset_widget import TilesetContainer
 
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ class MapSetup(UIPanel):
         relative_rect: "RectLike",
         starting_height: int = 1,
         visible: int = 1,
+        post_action=lambda _: None,
     ):
         super().__init__(
             relative_rect=relative_rect,
@@ -31,6 +33,9 @@ class MapSetup(UIPanel):
             visible=visible,
             anchors={"center": "center"},
         )
+
+        self.post_action = post_action
+
         questionnaire = {
             "Map Size": {"width": "integer", "height": "integer"},
             "Tile Size": {"width": "integer", "height": "integer"},
@@ -83,6 +88,7 @@ class MapSetup(UIPanel):
                 alert("map width and height must be non zero and positive", alert_size)
             else:
                 editor.tilemap.init_size(tile_size, map_size)
+                self.post_action()
                 self.kill()
 
             return True

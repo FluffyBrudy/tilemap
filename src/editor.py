@@ -7,6 +7,7 @@ from event_map import EventMap
 from tilemap import Tilemap
 from constants import MAIN_PANEL_ID
 from widgets.mapsetup import MapSetup
+from widgets.tileset_widget import TilesetContainer
 
 
 class Editor:
@@ -31,7 +32,7 @@ class Editor:
             object_id=ObjectID(object_id=MAIN_PANEL_ID),
         )
 
-        MapSetup(self, (0, 0, 500, 524))
+        MapSetup(self, (0, 0, 500, 524), post_action=self.post_map_setup)
 
         self.tilemap = Tilemap()
         self.event_map = EventMap(self)
@@ -43,6 +44,14 @@ class Editor:
             "right": False,
         }
         self.map_scroll = pygame.Vector2(0, 0)
+
+    def post_map_setup(self):
+        w, h = self.width * 0.25, self.height * 0.9
+        self.editor_widgets = {
+            "tileset_widget": TilesetContainer(
+                editor=self, rect=(self.width - w, 0, w, h)
+            )
+        }
 
     def handle_events(self):
         for event in pygame.event.get():
