@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 from pathlib import Path
+from filemanager import openfilemanager
 import pygame
 from pygame_gui import UI_BUTTON_PRESSED
 from pygame_gui.core import ObjectID
@@ -108,6 +109,8 @@ class TilesetContainer(UIWindow):
 
         if event.type == UI_BUTTON_PRESSED:
             if event.ui_element == self.add_button:
+                filepath = openfilemanager()
+                self.add_tileset(filepath)
                 consumed = True
             elif event.ui_element == self.remove_button:
                 consumed = True
