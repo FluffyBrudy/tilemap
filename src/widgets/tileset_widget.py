@@ -90,7 +90,7 @@ class TilesetContainer(UIWindow):
         if not path.exists():
             alert("tileset doesnt exists")
             return
-        filename = path.suffix + path.stem
+        filename = path.stem + path.suffix
 
         surface = pygame.image.load(path).convert_alpha()
         container = self.tileset_tabs_container
