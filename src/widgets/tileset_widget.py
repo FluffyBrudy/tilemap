@@ -9,11 +9,11 @@ from pygame_gui.elements import (
     UIButton,
     UIImage,
     UIPanel,
-    UIScrollingContainer,
     UITabContainer,
     UIWindow,
 )
 
+from utils.validation import is_png_image
 from widgets.shared_widgets import alert
 
 if TYPE_CHECKING:
@@ -85,11 +85,10 @@ class TilesetContainer(UIWindow):
         )
 
     def add_tileset(self, path: Path | str):
-        if not isinstance(path, Path):
-            path = Path(path)
-        if not path.exists():
-            alert("tileset doesnt exists")
+        if not is_png_image(path):
+            alert(message="only png files are allowed")
             return
+        path = Path(path)
         filename = path.stem + path.suffix
 
         surface = pygame.image.load(path).convert_alpha()
