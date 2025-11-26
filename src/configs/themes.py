@@ -81,5 +81,6 @@ DEFAULT_THEME: "TTheme" = {
             "normal_text": "#ffffff",
         }
     },
+    "#tile_grid": {"colours": {"normal_bg": "#ff0000", "dark_bg": "#ff0000"}},
     "#tileset_btm_toolbar": {},
 }
