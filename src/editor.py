@@ -113,8 +113,6 @@ class Editor:
 
             if self.tile_grid_widget:
                 self.tile_grid_widget.draw(self.screen)
-            elif self.tilemap.initialized:
-                self.tilemap.render(self.screen, offset=(0, 0))
 
             if self.tileset_widget:
                 self.tileset_widget.draw(self.screen)
