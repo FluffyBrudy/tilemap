@@ -132,48 +132,74 @@ class TileSelector:
         return self.tilesets[self.active_idx]
 
     def draw(self, screen: pygame.Surface):
+        self.draw_background(screen)
+        self.draw_view_area(screen)
+        self.draw_buttons(screen)
+        self.draw_tabs(screen)
+
+    def draw_background(self, screen: pygame.Surface):
         pygame.draw.rect(screen, (40, 40, 40), self.rect)
         pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
 
+    def draw_view_area(self, screen: pygame.Surface):
         pygame.draw.rect(screen, (20, 20, 20), self.view_rect)
-        if self.active_idx != -1:
-            ts = self.tilesets[self.active_idx]
-            clip = screen.get_clip()
-            screen.set_clip(self.view_rect)
 
-            img_x = self.view_rect.x + ts.offset[0]
-            img_y = self.view_rect.y + ts.offset[1]
-            screen.blit(ts.surface, (img_x, img_y))
+        if self.active_idx == -1:
+            return
 
-            mx, my = pygame.mouse.get_pos()
+        ts = self.tilesets[self.active_idx]
 
-            if self.view_rect.collidepoint((mx, my)) and not self.editor.file_manager:
-                rel_x = mx - img_x
-                rel_y = my - img_y
-                if (
-                    0 <= rel_x < ts.surface.get_width()
-                    and 0 <= rel_y < ts.surface.get_height()
-                ):
-                    tw, th = self.editor.tilemap.tile_size
-                    col = int(rel_x // tw)
-                    row = int(rel_y // th)
-                    self.hover_pos = (col, row)
+        clip = screen.get_clip()
+        screen.set_clip(self.view_rect)
 
-                    hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
-                    pygame.draw.rect(screen, (255, 255, 0), hover_rect, 2)
-                else:
-                    self.hover_pos = None
+        img_x = self.view_rect.x + ts.offset[0]
+        img_y = self.view_rect.y + ts.offset[1]
 
-            if self.selected_tile:
-                sx, sy, sw, sh = self.selected_tile
-                sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
-                pygame.draw.rect(screen, (0, 255, 0), sel_rect, 2)
+        self.draw_tileset_image(screen, ts, img_x, img_y)
+        self.draw_hover(screen, ts, img_x, img_y)
+        self.draw_selection(screen, img_x, img_y)
 
-            screen.set_clip(clip)
+        screen.set_clip(clip)
 
-            name_surf = self.font.render(f"{ts.name}", True, (200, 200, 200))
-            screen.blit(name_surf, (self.rect.x + 5, self.rect.bottom - 30))
+        self.draw_tileset_name(screen, ts)
 
+    def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int):
+        screen.blit(ts.surface, (img_x, img_y))
+
+    def draw_hover(self, screen, ts: TilesetData, img_x: int, img_y: int):
+        mx, my = pygame.mouse.get_pos()
+        if not self.view_rect.collidepoint((mx, my)):
+            self.hover_pos = None
+            return
+        if self.editor.file_manager:
+            self.hover_pos = None
+            return
+
+        rel_x = mx - img_x
+        rel_y = my - img_y
+        if 0 <= rel_x < ts.surface.get_width() and 0 <= rel_y < ts.surface.get_height():
+            tw, th = self.editor.tilemap.tile_size
+            col = int(rel_x // tw)
+            row = int(rel_y // th)
+            self.hover_pos = (col, row)
+
+            hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
+            pygame.draw.rect(screen, (255, 255, 0), hover_rect, 2)
+        else:
+            self.hover_pos = None
+
+    def draw_selection(self, screen, img_x: int, img_y: int):
+        if not self.selected_tile:
+            return
+        sx, sy, sw, sh = self.selected_tile
+        sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
+        pygame.draw.rect(screen, (0, 255, 0), sel_rect, 2)
+
+    def draw_tileset_name(self, screen, ts: TilesetData):
+        name_surf = self.font.render(f"{ts.name}", True, (200, 200, 200))
+        screen.blit(name_surf, (self.rect.x + 5, self.rect.bottom - 30))
+
+    def draw_buttons(self, screen):
         pygame.draw.rect(screen, (60, 60, 60), self.btn_add)
         pygame.draw.rect(screen, (60, 60, 60), self.btn_rem)
         screen.blit(
@@ -184,8 +210,6 @@ class TileSelector:
             self.font.render("-", True, (255, 255, 255)),
             (self.btn_rem.x + 10, self.btn_rem.y + 5),
         )
-
-        self.draw_tabs(screen)
 
     def draw_tabs(self, screen: Surface):
         if not self.tilesets:
