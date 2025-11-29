@@ -7,11 +7,11 @@ class TypeTile(TypedDict, total=True):
     variant: int
 
 
-class TypeTileJsonParsed(TypedDict, total=True):
+class TypeTileSerealized(TypedDict, total=True):
     pos: str
     ttype: str
     variant: int
 
 
 TTile = Dict[Tuple[int, int], TypeTile]
-TOngridParsedTile = Dict[str, TypeTileJsonParsed]
+TOngridParsedTile = Dict[str, TypeTileSerealized]

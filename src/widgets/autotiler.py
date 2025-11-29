@@ -32,6 +32,17 @@ class AutotileRule:
         self.variant_ids = variant_ids
         self.preview_surf = surface_subsurface
 
+    @staticmethod
+    def from_dict(data: dict):
+        neighbors = {tuple(n) for n in data["neighbors"]}
+        return AutotileRule(
+            name=data["name"],
+            neighbors=neighbors,
+            tileset_path=data["tileset_path"],
+            variant_ids=data.get("variant_ids", [data.get("variant_id", 0)]),
+            surface_subsurface=None,
+        )
+
     def to_dict(self):
         return {
             "name": self.name,

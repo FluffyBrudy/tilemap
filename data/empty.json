@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "tile_size": "32;32",
+    "map_size": "30;20",
+    "version": "1.0"
+  },
+  "resources": {
+    "tilesets": []
+  },
+  "project_state": {
+    "rules": []
+  },
+  "data": {
+    "ongrid": {},
+    "offgrid": []
+  }
+}

@@ -1,0 +1,631 @@
+{
+  "meta": {
+    "tile_size": "32;32",
+    "map_size": "30;20",
+    "version": "1.0"
+  },
+  "resources": {
+    "tilesets": [
+      "/home/rudy/Downloads/Final/Tiles.png"
+    ]
+  },
+  "project_state": {
+    "rules": [
+      {
+        "name": "Rule 1 (3 vars)",
+        "neighbors": [],
+        "tileset_path": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant_ids": [
+          61,
+          62,
+          63
+        ]
+      }
+    ]
+  },
+  "data": {
+    "ongrid": {
+      "2;5": {
+        "pos": "2;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 83
+      },
+      "3;5": {
+        "pos": "3;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 84
+      },
+      "4;5": {
+        "pos": "4;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 127
+      },
+      "5;5": {
+        "pos": "5;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 128
+      },
+      "6;5": {
+        "pos": "6;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 129
+      },
+      "2;6": {
+        "pos": "2;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 94
+      },
+      "3;6": {
+        "pos": "3;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 95
+      },
+      "4;6": {
+        "pos": "4;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 96
+      },
+      "5;6": {
+        "pos": "5;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 97
+      },
+      "6;6": {
+        "pos": "6;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 98
+      },
+      "2;7": {
+        "pos": "2;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 105
+      },
+      "3;7": {
+        "pos": "3;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 106
+      },
+      "4;7": {
+        "pos": "4;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 107
+      },
+      "5;7": {
+        "pos": "5;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 108
+      },
+      "6;7": {
+        "pos": "6;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 109
+      },
+      "2;8": {
+        "pos": "2;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 116
+      },
+      "3;8": {
+        "pos": "3;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 117
+      },
+      "4;8": {
+        "pos": "4;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 118
+      },
+      "5;8": {
+        "pos": "5;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 119
+      },
+      "6;8": {
+        "pos": "6;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 120
+      },
+      "2;9": {
+        "pos": "2;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 127
+      },
+      "3;9": {
+        "pos": "3;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 128
+      },
+      "4;9": {
+        "pos": "4;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 129
+      },
+      "5;9": {
+        "pos": "5;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 83
+      },
+      "6;9": {
+        "pos": "6;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 84
+      },
+      "7;5": {
+        "pos": "7;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 130
+      },
+      "8;5": {
+        "pos": "8;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 131
+      },
+      "9;5": {
+        "pos": "9;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 85
+      },
+      "10;5": {
+        "pos": "10;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 86
+      },
+      "11;5": {
+        "pos": "11;5",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 87
+      },
+      "7;6": {
+        "pos": "7;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 94
+      },
+      "8;6": {
+        "pos": "8;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 95
+      },
+      "9;6": {
+        "pos": "9;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 96
+      },
+      "10;6": {
+        "pos": "10;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 97
+      },
+      "11;6": {
+        "pos": "11;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 98
+      },
+      "7;7": {
+        "pos": "7;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 105
+      },
+      "8;7": {
+        "pos": "8;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 106
+      },
+      "9;7": {
+        "pos": "9;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 107
+      },
+      "10;7": {
+        "pos": "10;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 108
+      },
+      "11;7": {
+        "pos": "11;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 109
+      },
+      "7;8": {
+        "pos": "7;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 116
+      },
+      "8;8": {
+        "pos": "8;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 117
+      },
+      "9;8": {
+        "pos": "9;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 118
+      },
+      "10;8": {
+        "pos": "10;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 119
+      },
+      "11;8": {
+        "pos": "11;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 120
+      },
+      "7;9": {
+        "pos": "7;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 85
+      },
+      "8;9": {
+        "pos": "8;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 86
+      },
+      "9;9": {
+        "pos": "9;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 87
+      },
+      "10;9": {
+        "pos": "10;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 130
+      },
+      "11;9": {
+        "pos": "11;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 131
+      },
+      "5;10": {
+        "pos": "5;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 94
+      },
+      "6;10": {
+        "pos": "6;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 95
+      },
+      "7;10": {
+        "pos": "7;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 96
+      },
+      "8;10": {
+        "pos": "8;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 97
+      },
+      "9;10": {
+        "pos": "9;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 98
+      },
+      "5;11": {
+        "pos": "5;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 105
+      },
+      "6;11": {
+        "pos": "6;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 106
+      },
+      "7;11": {
+        "pos": "7;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 107
+      },
+      "8;11": {
+        "pos": "8;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 108
+      },
+      "9;11": {
+        "pos": "9;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 109
+      },
+      "5;12": {
+        "pos": "5;12",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 116
+      },
+      "6;12": {
+        "pos": "6;12",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 117
+      },
+      "7;12": {
+        "pos": "7;12",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 118
+      },
+      "8;12": {
+        "pos": "8;12",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 119
+      },
+      "9;12": {
+        "pos": "9;12",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 120
+      },
+      "5;13": {
+        "pos": "5;13",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 127
+      },
+      "6;13": {
+        "pos": "6;13",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 128
+      },
+      "7;13": {
+        "pos": "7;13",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 129
+      },
+      "8;13": {
+        "pos": "8;13",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 130
+      },
+      "9;13": {
+        "pos": "9;13",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 131
+      },
+      "4;1": {
+        "pos": "4;1",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 83
+      },
+      "5;1": {
+        "pos": "5;1",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 84
+      },
+      "6;1": {
+        "pos": "6;1",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 85
+      },
+      "7;1": {
+        "pos": "7;1",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 86
+      },
+      "8;1": {
+        "pos": "8;1",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 87
+      },
+      "4;2": {
+        "pos": "4;2",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 94
+      },
+      "5;2": {
+        "pos": "5;2",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 95
+      },
+      "6;2": {
+        "pos": "6;2",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 96
+      },
+      "7;2": {
+        "pos": "7;2",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 97
+      },
+      "8;2": {
+        "pos": "8;2",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 98
+      },
+      "4;3": {
+        "pos": "4;3",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 105
+      },
+      "5;3": {
+        "pos": "5;3",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 106
+      },
+      "6;3": {
+        "pos": "6;3",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 107
+      },
+      "7;3": {
+        "pos": "7;3",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 108
+      },
+      "8;3": {
+        "pos": "8;3",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 109
+      },
+      "4;4": {
+        "pos": "4;4",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 116
+      },
+      "5;4": {
+        "pos": "5;4",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 117
+      },
+      "6;4": {
+        "pos": "6;4",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 118
+      },
+      "7;4": {
+        "pos": "7;4",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 119
+      },
+      "8;4": {
+        "pos": "8;4",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 120
+      },
+      "18;6": {
+        "pos": "18;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 49
+      },
+      "19;6": {
+        "pos": "19;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 50
+      },
+      "20;6": {
+        "pos": "20;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 51
+      },
+      "21;6": {
+        "pos": "21;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 52
+      },
+      "22;6": {
+        "pos": "22;6",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 53
+      },
+      "18;7": {
+        "pos": "18;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 60
+      },
+      "19;7": {
+        "pos": "19;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 61
+      },
+      "20;7": {
+        "pos": "20;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 62
+      },
+      "21;7": {
+        "pos": "21;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 63
+      },
+      "22;7": {
+        "pos": "22;7",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 64
+      },
+      "18;8": {
+        "pos": "18;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 71
+      },
+      "19;8": {
+        "pos": "19;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 72
+      },
+      "20;8": {
+        "pos": "20;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 73
+      },
+      "21;8": {
+        "pos": "21;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 74
+      },
+      "22;8": {
+        "pos": "22;8",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 75
+      },
+      "18;9": {
+        "pos": "18;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 49
+      },
+      "19;9": {
+        "pos": "19;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 50
+      },
+      "20;9": {
+        "pos": "20;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 51
+      },
+      "21;9": {
+        "pos": "21;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 52
+      },
+      "22;9": {
+        "pos": "22;9",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 53
+      },
+      "18;10": {
+        "pos": "18;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 60
+      },
+      "19;10": {
+        "pos": "19;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 61
+      },
+      "20;10": {
+        "pos": "20;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 62
+      },
+      "21;10": {
+        "pos": "21;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 63
+      },
+      "22;10": {
+        "pos": "22;10",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 64
+      },
+      "18;11": {
+        "pos": "18;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 71
+      },
+      "19;11": {
+        "pos": "19;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 72
+      },
+      "20;11": {
+        "pos": "20;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 73
+      },
+      "21;11": {
+        "pos": "21;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 74
+      },
+      "22;11": {
+        "pos": "22;11",
+        "ttype": "/home/rudy/Downloads/Final/Tiles.png",
+        "variant": 75
+      }
+    },
+    "offgrid": []
+  }
+}

@@ -41,7 +41,8 @@ class TileGrid:
         return int(wx // tile_w), int(wy // tile_h)
 
     def update(self):
-        if self.rect.collidepoint(pygame.mouse.get_pos()):
+        event_blocked = not self.editor.save_input.active
+        if self.rect.collidepoint(pygame.mouse.get_pos()) and event_blocked:
             keys = pygame.key.get_pressed()
 
             if keys[K_LEFT]:
