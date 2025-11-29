@@ -1,5 +1,5 @@
 import pygame
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Set
 from pathlib import Path
 from pygame import Rect, Surface
 
@@ -39,13 +39,17 @@ class TileSelector:
         self.is_selecting = False
         self.selection_start_grid: Optional[Tuple[int, int]] = None
         self.hover_pos: Optional[Tuple[int, int]] = None
-
         self.selected_tile: Optional[Tuple[int, int, int, int]] = None
+
+        self.rule_hints: Set[int] = set()
 
         btn_y = y + h - 35
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
         self.font = pygame.font.SysFont("Arial", 16)
+
+    def set_rule_hints(self, hints: Set[int]):
+        self.rule_hints = hints
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse_pos = pygame.mouse.get_pos()
@@ -121,24 +125,21 @@ class TileSelector:
         return False
 
     def update_selection_rect(self, current_grid: Tuple[int, int]):
-        """Calculates the rectangle based on start click and current drag pos."""
         if not self.selection_start_grid:
             return
-
         start_col, start_row = self.selection_start_grid
         curr_col, curr_row = current_grid
 
-        min_col = min(start_col, curr_col)
-        max_col = max(start_col, curr_col)
-        min_row = min(start_row, curr_row)
-        max_row = max(start_row, curr_row)
-
+        min_col, max_col = min(start_col, curr_col), max(start_col, curr_col)
+        min_row, max_row = min(start_row, curr_row), max(start_row, curr_row)
         tw, th = self.editor.tilemap.tile_size
 
-        w = (max_col - min_col + 1) * tw
-        h = (max_row - min_row + 1) * th
-
-        self.selected_tile = (min_col * tw, min_row * th, w, h)
+        self.selected_tile = (
+            min_col * tw,
+            min_row * th,
+            (max_col - min_col + 1) * tw,
+            (max_row - min_row + 1) * th,
+        )
 
     def request_add_tileset(self):
         self.editor.open_file_manager(
@@ -157,18 +158,20 @@ class TileSelector:
                     self.active_idx = len(self.tilesets) - 1
                     self.tileset_map[str(path)] = tileset_data
                 else:
-                    raise ValueError("Tileset isnt multiple of tile size")
+                    print("Tileset isnt multiple of tile size")
             except Exception as e:
                 print(f"Error loading image: {e}")
 
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):
             data = self.tilesets.pop(self.active_idx)
-            self.tileset_map.pop(str(data.path))
+            if str(data.path) in self.tileset_map:
+                self.tileset_map.pop(str(data.path))
             self.active_idx = max(0, len(self.tilesets) - 1)
             if not self.tilesets:
                 self.active_idx = -1
             self.selected_tile = None
+            self.rule_hints.clear()
 
     def check_tab_click(self, pos):
         if not self.tilesets:
@@ -178,6 +181,8 @@ class TileSelector:
         if 0 <= idx < len(self.tilesets):
             self.active_idx = int(idx)
             self.selected_tile = None
+
+            self.rule_hints.clear()
 
     def get_active_tile(self):
         if self.active_idx == -1:
@@ -196,12 +201,10 @@ class TileSelector:
 
     def draw_view_area(self, screen: pygame.Surface):
         pygame.draw.rect(screen, (20, 20, 20), self.view_rect)
-
         if self.active_idx == -1:
             return
 
         ts = self.tilesets[self.active_idx]
-
         clip = screen.get_clip()
         screen.set_clip(self.view_rect)
 
@@ -209,12 +212,42 @@ class TileSelector:
         img_y = self.view_rect.y + ts.offset[1]
 
         self.draw_tileset_image(screen, ts, img_x, img_y)
+
+        self._draw_rule_hints(screen, ts, img_x, img_y)
+
         self.draw_hover(screen, ts, img_x, img_y)
         self.draw_selection(screen, img_x, img_y)
 
         screen.set_clip(clip)
-
         self.draw_tileset_name(screen, ts)
+
+    def _draw_rule_hints(self, screen, ts, img_x, img_y):
+        if not self.rule_hints:
+            return
+
+        tw, th = self.editor.tilemap.tile_size
+        sheet_w = ts.surface.get_width()
+        cols = sheet_w // tw
+
+        for vid in self.rule_hints:
+            col = vid % cols
+            row = vid // cols
+
+            x = img_x + col * tw
+            y = img_y + row * th
+
+            if (
+                x > self.view_rect.right
+                or x + tw < self.view_rect.x
+                or y > self.view_rect.bottom
+                or y + th < self.view_rect.y
+            ):
+                continue
+
+            points = [(x, y), (x + 10, y), (x, y + 10)]
+            pygame.draw.polygon(screen, (0, 255, 255), points)
+
+            pygame.draw.rect(screen, (0, 255, 255), Rect(x, y, tw, th), 1)
 
     def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int):
         screen.blit(ts.surface, (img_x, img_y))
@@ -222,7 +255,6 @@ class TileSelector:
     def draw_hover(self, screen, ts: TilesetData, img_x: int, img_y: int):
         if self.hover_pos is None:
             return
-
         tw, th = self.editor.tilemap.tile_size
         col, row = self.hover_pos
         hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
@@ -260,6 +292,5 @@ class TileSelector:
             col = (60, 60, 80) if i == self.active_idx else (40, 40, 40)
             pygame.draw.rect(screen, col, r)
             pygame.draw.rect(screen, (100, 100, 100), r, 1)
-
             t = ts.name[:8] + ".." if len(ts.name) > 10 else ts.name
             screen.blit(self.font.render(t, True, (200, 200, 200)), (r.x + 5, r.y + 5))

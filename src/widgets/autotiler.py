@@ -118,6 +118,30 @@ class AutotileRuleDesigner:
         self.visible = False
         self.is_dragging = False
 
+        if hasattr(self.editor, "tileset_widget"):
+            assert self.editor.tileset_widget is not None
+            self.editor.tileset_widget.set_rule_hints(set())
+
+    def _push_hints_to_selector(self):
+        selector = getattr(self.editor, "tileset_widget", None)
+        if not selector:
+            return
+
+        active_ts = selector.get_active_tile()
+        if not active_ts:
+            selector.set_rule_hints(set())
+            return
+
+        current_path = str(active_ts.path)
+
+        hints = set()
+        for rule in self.rules:
+            if rule.tileset_path == current_path:
+                for vid in rule.variant_ids:
+                    hints.add(vid)
+
+        selector.set_rule_hints(hints)
+
     def handle_event(self, event) -> bool:
         if not self.visible:
             return False
@@ -184,9 +208,6 @@ class AutotileRuleDesigner:
                 )
 
     def _update_preview_from_selector(self):
-        """
-        Calculates all variant IDs inside the selection rectangle.
-        """
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if tile_selector and tile_selector.selected_tile:
             ts = tile_selector.get_active_tile()
@@ -329,6 +350,8 @@ class AutotileRuleDesigner:
     def draw(self, screen: Surface):
         if not self.visible:
             return
+
+        self._push_hints_to_selector()
 
         pygame.draw.rect(screen, WINDOW_BG, self.rect)
         pygame.draw.rect(screen, BORDER_COLOR, self.rect, 1)
