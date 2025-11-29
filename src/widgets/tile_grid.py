@@ -121,20 +121,31 @@ class TileGrid:
 
         sheet_width = tileset_data.surface.get_width()
         tile_w, tile_h = self.tile_size
-        columns = sheet_width // tile_w
+        sheet_cols = sheet_width // tile_w
 
-        sel_col = src_rect[0] // tile_w
-        sel_row = src_rect[1] // tile_h
-        variant_id = (sel_row * columns) + sel_col
+        sel_w_tiles = src_rect[2] // tile_w
+        sel_h_tiles = src_rect[3] // tile_h
 
-        tile_data: TypeTile = {
-            "pos": self.hover_cell,
-            "ttype": str(tileset_data.path),
-            "variant": variant_id,
-        }
+        start_sx = src_rect[0] // tile_w
+        start_sy = src_rect[1] // tile_h
 
-        self.editor.tilemap.ongrid_tiles[self.hover_cell] = tile_data
-        print(tile_data)
+        for y_off in range(sel_h_tiles):
+            for x_off in range(sel_w_tiles):
+                curr_sx = start_sx + x_off
+                curr_sy = start_sy + y_off
+                variant_id = (curr_sy * sheet_cols) + curr_sx
+
+                map_x = self.hover_cell[0] + x_off
+                map_y = self.hover_cell[1] + y_off
+                target_pos = (map_x, map_y)
+
+                tile_data: TypeTile = {
+                    "pos": target_pos,
+                    "ttype": str(tileset_data.path),
+                    "variant": variant_id,
+                }
+
+                self.editor.tilemap.ongrid_tiles[target_pos] = tile_data
 
     def remove_tile(self):
         if self.hover_cell and self.hover_cell in self.editor.tilemap.ongrid_tiles:
@@ -162,23 +173,37 @@ class TileGrid:
             return
 
         tileset_data, src_rect = self.get_selected_brush()
+        if not tileset_data or not src_rect:
+            return
 
         tile_w, tile_h = self.tile_size
-        col, row = self.hover_cell
-        screen_x = self.rect.x - self.scroll_x + (col * tile_w)
-        screen_y = self.rect.y - self.scroll_y + (row * tile_h)
 
-        dest_rect = Rect(screen_x, screen_y, tile_w, tile_h)
+        sel_w_tiles = src_rect[2] // tile_w
+        sel_h_tiles = src_rect[3] // tile_h
 
-        pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
+        for y_off in range(sel_h_tiles):
+            for x_off in range(sel_w_tiles):
+                col = self.hover_cell[0] + x_off
+                row = self.hover_cell[1] + y_off
 
-        if tileset_data and src_rect:
-            try:
-                tile_surf = tileset_data.surface.subsurface(Rect(*src_rect))
-                tile_surf.set_alpha(128)
-                screen.blit(tile_surf, dest_rect)
-            except ValueError:
-                pass
+                screen_x = self.rect.x - self.scroll_x + (col * tile_w)
+                screen_y = self.rect.y - self.scroll_y + (row * tile_h)
+
+                dest_rect = Rect(screen_x, screen_y, tile_w, tile_h)
+
+                pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
+
+                try:
+                    tex_x = src_rect[0] + (x_off * tile_w)
+                    tex_y = src_rect[1] + (y_off * tile_h)
+
+                    sub_r = Rect(tex_x, tex_y, tile_w, tile_h)
+
+                    tile_surf = tileset_data.surface.subsurface(sub_r)
+                    tile_surf.set_alpha(128)
+                    screen.blit(tile_surf, dest_rect)
+                except ValueError:
+                    pass
 
     def _draw_grid(self, screen):
         tile_w, tile_h = self.tile_size
@@ -221,7 +246,7 @@ class TileGrid:
         start_row = int(self.scroll_y // tile_h)
         end_row = start_row + (self.rect.height // tile_h) + 2
 
-        tileset_map = self.editor.tileset_widget.tileset_map  # type: ignore
+        tileset_map = self.editor.tileset_widget.tileset_map
 
         for x in range(start_col, end_col):
             for y in range(start_row, end_row):

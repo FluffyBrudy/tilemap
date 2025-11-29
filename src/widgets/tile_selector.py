@@ -35,7 +35,11 @@ class TileSelector:
         self.is_panning = False
         self.pan_start = (0, 0)
         self.pan_start_offset = (0, 0)
+
+        self.is_selecting = False
+        self.selection_start_grid: Optional[Tuple[int, int]] = None
         self.hover_pos: Optional[Tuple[int, int]] = None
+
         self.selected_tile: Optional[Tuple[int, int, int, int]] = None
 
         btn_y = y + h - 35
@@ -81,10 +85,60 @@ class TileSelector:
 
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 if self.hover_pos:
-                    self.select_tile(self.hover_pos)
+                    self.is_selecting = True
+                    self.selection_start_grid = self.hover_pos
+                    self.update_selection_rect(self.hover_pos)
                 return True
 
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.is_selecting:
+                self.is_selecting = False
+                return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
+                ts = self.tilesets[self.active_idx]
+                img_x = self.view_rect.x + ts.offset[0]
+                img_y = self.view_rect.y + ts.offset[1]
+
+                rel_x = mouse_pos[0] - img_x
+                rel_y = mouse_pos[1] - img_y
+
+                if (
+                    0 <= rel_x < ts.surface.get_width()
+                    and 0 <= rel_y < ts.surface.get_height()
+                ):
+                    tw, th = self.editor.tilemap.tile_size
+                    col = int(rel_x // tw)
+                    row = int(rel_y // th)
+                    self.hover_pos = (col, row)
+
+                    if self.is_selecting and self.selection_start_grid:
+                        self.update_selection_rect(self.hover_pos)
+                else:
+                    self.hover_pos = None
+
         return False
+
+    def update_selection_rect(self, current_grid: Tuple[int, int]):
+        """Calculates the rectangle based on start click and current drag pos."""
+        if not self.selection_start_grid:
+            return
+
+        start_col, start_row = self.selection_start_grid
+        curr_col, curr_row = current_grid
+
+        min_col = min(start_col, curr_col)
+        max_col = max(start_col, curr_col)
+        min_row = min(start_row, curr_row)
+        max_row = max(start_row, curr_row)
+
+        tw, th = self.editor.tilemap.tile_size
+
+        w = (max_col - min_col + 1) * tw
+        h = (max_row - min_row + 1) * th
+
+        self.selected_tile = (min_col * tw, min_row * th, w, h)
 
     def request_add_tileset(self):
         self.editor.open_file_manager(
@@ -114,6 +168,7 @@ class TileSelector:
             self.active_idx = max(0, len(self.tilesets) - 1)
             if not self.tilesets:
                 self.active_idx = -1
+            self.selected_tile = None
 
     def check_tab_click(self, pos):
         if not self.tilesets:
@@ -122,13 +177,11 @@ class TileSelector:
         idx = (pos[0] - self.rect.x) // tab_w
         if 0 <= idx < len(self.tilesets):
             self.active_idx = int(idx)
-
-    def select_tile(self, grid_pos):
-        tw, th = self.editor.tilemap.tile_size
-        col, row = grid_pos
-        self.selected_tile = (col * tw, row * th, tw, th)
+            self.selected_tile = None
 
     def get_active_tile(self):
+        if self.active_idx == -1:
+            return None
         return self.tilesets[self.active_idx]
 
     def draw(self, screen: pygame.Surface):
@@ -167,26 +220,13 @@ class TileSelector:
         screen.blit(ts.surface, (img_x, img_y))
 
     def draw_hover(self, screen, ts: TilesetData, img_x: int, img_y: int):
-        mx, my = pygame.mouse.get_pos()
-        if not self.view_rect.collidepoint((mx, my)):
-            self.hover_pos = None
-            return
-        if self.editor.file_manager:
-            self.hover_pos = None
+        if self.hover_pos is None:
             return
 
-        rel_x = mx - img_x
-        rel_y = my - img_y
-        if 0 <= rel_x < ts.surface.get_width() and 0 <= rel_y < ts.surface.get_height():
-            tw, th = self.editor.tilemap.tile_size
-            col = int(rel_x // tw)
-            row = int(rel_y // th)
-            self.hover_pos = (col, row)
-
-            hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
-            pygame.draw.rect(screen, (255, 255, 0), hover_rect, 2)
-        else:
-            self.hover_pos = None
+        tw, th = self.editor.tilemap.tile_size
+        col, row = self.hover_pos
+        hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
+        pygame.draw.rect(screen, (255, 255, 0), hover_rect, 2)
 
     def draw_selection(self, screen, img_x: int, img_y: int):
         if not self.selected_tile:

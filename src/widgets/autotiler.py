@@ -1,12 +1,10 @@
 import pygame
 from pygame import Surface, Rect, Color
-from typing import TYPE_CHECKING, List, Tuple, Set, Optional, cast
-from json import dumps as JSONDumps
+from typing import TYPE_CHECKING, List, Tuple, Set, Optional
+import time
 
 if TYPE_CHECKING:
     from editor import Editor
-    from tile_selector import TileSelector
-
 
 WINDOW_BG = (40, 44, 52)
 PANEL_BG = (33, 37, 43)
@@ -25,13 +23,13 @@ class AutotileRule:
         name: str,
         neighbors: Set[Tuple[int, int]],
         tileset_path: str,
-        variant_id: int,
+        variant_ids: List[int],
         surface_subsurface: Surface = None,
     ):
         self.name = name
         self.neighbors = neighbors
         self.tileset_path = tileset_path
-        self.variant_id = variant_id
+        self.variant_ids = variant_ids
         self.preview_surf = surface_subsurface
 
     def to_dict(self):
@@ -39,7 +37,7 @@ class AutotileRule:
             "name": self.name,
             "neighbors": [list(p) for p in self.neighbors],
             "tileset_path": self.tileset_path,
-            "variant_id": self.variant_id,
+            "variant_ids": self.variant_ids,
         }
 
 
@@ -57,9 +55,17 @@ class AutotileRuleDesigner:
         self.selected_rule_index: int = -1
 
         self.current_neighbors: Set[Tuple[int, int]] = set()
-        self.current_variant_id: int = 0
+
+        self.current_variant_ids: List[int] = []
+
         self.current_tileset_path: str = ""
-        self.current_preview_surf: Optional[Surface] = None
+
+        self.current_preview_surfs: List[Surface] = []
+
+        self._last_editor_selection: Tuple[Optional[str], Tuple[int, int, int, int]] = (
+            None,
+            (0, 0, 0, 0),
+        )
 
         self.grid_cols = 3
         self.grid_rows = 3
@@ -96,20 +102,17 @@ class AutotileRuleDesigner:
         )
 
     def _get_grid_start_pos(self):
-        """Helper to ensure Drawing and Clicking use the exact same coordinates."""
         center_x = self.edit_area.centerx
-
         center_y = self.edit_area.y + 150
-
         total_w = self.grid_cols * self.cell_size
         total_h = self.grid_rows * self.cell_size
-
         start_x = center_x - total_w // 2
         start_y = center_y - total_h // 2
         return start_x, start_y
 
     def show(self):
         self.visible = True
+        self._sync_last_editor_state()
 
     def hide(self):
         self.visible = False
@@ -120,7 +123,6 @@ class AutotileRuleDesigner:
             return False
 
         mouse_pos = pygame.mouse.get_pos()
-
         self._update_preview_from_selector()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -171,41 +173,72 @@ class AutotileRuleDesigner:
 
         return True
 
-    def _update_preview_from_selector(self):
-        """Polls the editor's tile selector to see if we should update the 'Result' tile."""
+    def _sync_last_editor_state(self):
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if tile_selector and tile_selector.selected_tile:
             ts = tile_selector.get_active_tile()
             if ts:
-                sx, sy, sw, sh = tile_selector.selected_tile
+                self._last_editor_selection = (
+                    str(ts.path),
+                    tile_selector.selected_tile,
+                )
 
-                cols = ts.surface.get_width() // sw
-                rid = (sy // sh) * cols + (sx // sw)
+    def _update_preview_from_selector(self):
+        """
+        Calculates all variant IDs inside the selection rectangle.
+        """
+        tile_selector = getattr(self.editor, "tileset_widget", None)
+        if tile_selector and tile_selector.selected_tile:
+            ts = tile_selector.get_active_tile()
+            if ts:
+                current_rect = tile_selector.selected_tile
+                current_path = str(ts.path)
 
-                if (
-                    rid != self.current_variant_id
-                    or str(ts.path) != self.current_tileset_path
-                    or self.current_preview_surf is None
-                ):
-                    self.current_tileset_path = str(ts.path)
-                    self.current_variant_id = rid
-                    self.current_preview_surf = ts.surface.subsurface(
-                        tile_selector.selected_tile
-                    ).copy()
+                current_state = (current_path, current_rect)
+                if current_state != self._last_editor_selection:
+                    self._last_editor_selection = current_state
+
+                    self.current_tileset_path = current_path
+                    self.current_variant_ids = []
+                    self.current_preview_surfs = []
+
+                    tile_w, tile_h = self.editor.tilemap.tile_size
+                    sheet_cols = ts.surface.get_width() // tile_w
+
+                    rx, ry, rw, rh = current_rect
+
+                    cols_sel = rw // tile_w
+                    rows_sel = rh // tile_h
+
+                    start_cx = rx // tile_w
+                    start_cy = ry // tile_h
+
+                    for r in range(rows_sel):
+                        for c in range(cols_sel):
+                            abs_c = start_cx + c
+                            abs_r = start_cy + r
+                            vid = (abs_r * sheet_cols) + abs_c
+                            self.current_variant_ids.append(vid)
+
+                            sub_rect = Rect(
+                                abs_c * tile_w, abs_r * tile_h, tile_w, tile_h
+                            )
+                            try:
+                                sub = ts.surface.subsurface(sub_rect).copy()
+                                self.current_preview_surfs.append(sub)
+                            except:
+                                pass
 
     def _handle_grid_click(self, mouse_pos):
         start_x, start_y = self._get_grid_start_pos()
-
         rel_x = mouse_pos[0] - start_x
         rel_y = mouse_pos[1] - start_y
-
         total_w = self.grid_cols * self.cell_size
         total_h = self.grid_rows * self.cell_size
 
         if 0 <= rel_x < total_w and 0 <= rel_y < total_h:
             col = rel_x // self.cell_size
             row = rel_y // self.cell_size
-
             center_c = self.grid_cols // 2
             center_r = self.grid_rows // 2
             ox = col - center_c
@@ -225,6 +258,7 @@ class AutotileRuleDesigner:
         if self.new_btn_rect.collidepoint(mouse_pos):
             self._reset_selection()
             return
+
         start_y = self.list_area.y + 10
         item_h = 25
         for i, rule in enumerate(self.rules):
@@ -241,37 +275,49 @@ class AutotileRuleDesigner:
 
     def _load_rule_to_editor(self, rule: AutotileRule):
         self.current_neighbors = set(rule.neighbors)
-        self.current_variant_id = rule.variant_id
+        self.current_variant_ids = rule.variant_ids
         self.current_tileset_path = rule.tileset_path
-        self.current_preview_surf = rule.preview_surf
+
+        self.current_preview_surfs = []
+
+        if rule.preview_surf:
+            self.current_preview_surfs.append(rule.preview_surf)
+
+        self._sync_last_editor_state()
 
     def _reset_selection(self):
         self.selected_rule_index = -1
         self.current_neighbors = set()
+        self._sync_last_editor_state()
 
     def _save_current_rule(self):
-        if not self.current_tileset_path:
+        if not self.current_tileset_path or not self.current_variant_ids:
             return
-        assert self.current_preview_surf is not None
-        name = f"Rule {len(self.rules) + 1}"
-        if self.selected_rule_index >= 0:
-            name = self.rules[self.selected_rule_index].name
 
+        preview = self.current_preview_surfs[0] if self.current_preview_surfs else None
+
+        name = f"Rule {len(self.rules) + 1}"
+
+        if len(self.current_variant_ids) > 1:
+            name += f" ({len(self.current_variant_ids)} vars)"
+
+        if self.selected_rule_index >= 0:
             r = self.rules[self.selected_rule_index]
             r.neighbors = set(self.current_neighbors)
-            r.variant_id = self.current_variant_id
+            r.variant_ids = list(self.current_variant_ids)
             r.tileset_path = self.current_tileset_path
-            r.preview_surf = self.current_preview_surf
+            r.preview_surf = preview
         else:
             new_rule = AutotileRule(
                 name,
                 set(self.current_neighbors),
                 self.current_tileset_path,
-                self.current_variant_id,
-                self.current_preview_surf,
+                list(self.current_variant_ids),
+                preview,
             )
             self.rules.append(new_rule)
             self.selected_rule_index = len(self.rules) - 1
+
         for rule in self.rules:
             print(rule.to_dict())
 
@@ -294,7 +340,10 @@ class AutotileRuleDesigner:
         )
         title = self.title_font.render("Autotile Designer", True, Color("white"))
         screen.blit(title, (self.rect.x + 10, self.rect.y + 5))
+
         pygame.draw.rect(screen, (200, 60, 60), self.close_btn_rect)
+        x_lbl = self.title_font.render("X", True, Color("white"))
+        screen.blit(x_lbl, (self.close_btn_rect.x + 10, self.close_btn_rect.y + 5))
 
         pygame.draw.rect(screen, PANEL_BG, self.list_area)
 
@@ -322,19 +371,29 @@ class AutotileRuleDesigner:
             )
             if i == self.selected_rule_index:
                 pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
-            screen.blit(
-                self.font.render(rule.name, True, TEXT_COLOR), (r.x + 5, r.y + 5)
-            )
+
+            d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
+            screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
     def _draw_grid_editor(self, screen):
         center_x = self.edit_area.centerx
 
-        if self.current_preview_surf:
-            scaled = pygame.transform.scale(self.current_preview_surf, (64, 64))
+        if self.current_preview_surfs:
+            idx = 0
+            if len(self.current_preview_surfs) > 1:
+                idx = int(time.time() * 2) % len(self.current_preview_surfs)
+
+            p_surf = self.current_preview_surfs[idx]
+            scaled = pygame.transform.scale(p_surf, (64, 64))
             screen.blit(scaled, (center_x - 32, self.edit_area.y + 40))
 
-        start_x, start_y = self._get_grid_start_pos()
+            if len(self.current_preview_surfs) > 1:
+                count_txt = self.font.render(
+                    f"x{len(self.current_preview_surfs)}", True, (255, 255, 0)
+                )
+                screen.blit(count_txt, (center_x + 35, self.edit_area.y + 85))
 
+        start_x, start_y = self._get_grid_start_pos()
         center_c = self.grid_cols // 2
         center_r = self.grid_rows // 2
 
