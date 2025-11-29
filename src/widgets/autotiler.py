@@ -24,7 +24,7 @@ class AutotileRule:
         neighbors: Set[Tuple[int, int]],
         tileset_path: str,
         variant_ids: List[int],
-        surface_subsurface: Surface = None,
+        surface_subsurface: Surface = None,  # type: ignore
     ):
         self.name = name
         self.neighbors = neighbors
@@ -40,7 +40,7 @@ class AutotileRule:
             neighbors=neighbors,
             tileset_path=data["tileset_path"],
             variant_ids=data.get("variant_ids", [data.get("variant_id", 0)]),
-            surface_subsurface=None,
+            surface_subsurface=None,  # type: ignore
         )
 
     def to_dict(self):
@@ -333,6 +333,7 @@ class AutotileRuleDesigner:
         if len(self.current_variant_ids) > 1:
             name += f" ({len(self.current_variant_ids)} vars)"
 
+        assert preview is not None
         if self.selected_rule_index >= 0:
             r = self.rules[self.selected_rule_index]
             r.neighbors = set(self.current_neighbors)
