@@ -3,8 +3,8 @@ from typing import Optional, List, Callable
 from pathlib import Path
 from pygame import Rect
 
-from event_map import EventMap
 from tilemap import Tilemap
+from widgets.autotiler import AutotileRuleDesigner
 from widgets.filemanager import FileManager
 from widgets.mapsetup import MapSetup
 from widgets.tile_selector import TileSelector
@@ -25,7 +25,6 @@ class Editor:
         self.clock = pygame.time.Clock()
 
         self.tilemap = Tilemap(self)
-        self.event_map = EventMap(self)
 
         self.map_setup_widget: Optional[MapSetup] = None
         self.tileset_widget: Optional[TileSelector] = None
@@ -36,6 +35,8 @@ class Editor:
         center_x = (self.width - 400) // 2
         center_y = (self.height - 400) // 2
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
+
+        self.autotiler = AutotileRuleDesigner(self, 100, 100)
 
     def open_file_manager(
         self,
@@ -74,30 +75,32 @@ class Editor:
 
     def handle_events(self):
         for event in pygame.event.get():
-            handler = self.event_map.get_event(
-                (event.type, getattr(event, "key", None))
-            )
-            if handler:
-                handler(event)
-                if not self.running:
-                    return
+            if event.type == pygame.QUIT:
+                self.running = False
 
             consumed = False
 
             if self.file_manager:
                 self.file_manager.handle_event(event)
                 consumed = True
-
-            if not consumed and self.map_setup_widget and self.map_setup_widget.visible:
-                self.map_setup_widget.handle_event(event)
-                consumed = True
-
-            if not consumed and self.tileset_widget:
-                if self.tileset_widget.handle_event(event):
-                    consumed = True
-
-            if not consumed and self.tile_grid_widget:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                self.autotiler.show()
+            if self.autotiler.visible:
+                self.autotiler.handle_event(event)
+            elif self.tile_grid_widget:
                 self.tile_grid_widget.handle_event(event)
+
+            if consumed:
+                return
+
+            consumeable_obj = (
+                self.map_setup_widget,
+                self.tileset_widget,
+            )
+
+            for obj in consumeable_obj:
+                if obj and obj.handle_event(event):
+                    break
 
     def run(self):
         self.running = True
@@ -131,6 +134,7 @@ class Editor:
                     self.file_manager.draw(self.screen)
             if self.tileset_widget:
                 self.tileset_widget.draw(self.screen)
+            self.autotiler.draw(self.screen)
             pygame.display.update()
 
         pygame.quit()
@@ -139,3 +143,23 @@ class Editor:
 if __name__ == "__main__":
     editor = Editor()
     editor.run()
+
+"""
+# 1. Initialize
+rule_designer = AutotileRuleDesigner(editor, 100, 100)
+
+# 2. In Event Loop
+if rule_designer.visible:
+    # Pass the main tile_selector so the designer can see what you clicked
+    rule_designer.handle_event(event, editor.tile_selector) 
+else:
+    # Standard editor events...
+    pass
+
+# 3. Toggle visibility (e.g., press 'R')
+if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+    rule_designer.show()
+
+# 4. Draw
+rule_designer.draw(screen)
+"""
