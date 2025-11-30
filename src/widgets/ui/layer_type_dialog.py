@@ -16,11 +16,10 @@ class LayerTypeDialog:
         self.rect.center = editor_rect.center
 
         self.active = False
-        self.selected_type: Optional[str] = None  # "tile" or "object"
+        self.selected_type: Optional[str] = None
         self.on_confirm: Optional[Callable[[str], None]] = None
         self.on_cancel: Optional[Callable[[], None]] = None
 
-        # Colors
         self.bg_color = (40, 40, 40)
         self.border_color = (100, 100, 100)
         self.text_color = (255, 255, 255)
@@ -28,7 +27,6 @@ class LayerTypeDialog:
         self.button_color = (60, 100, 180)
         self.button_hover_color = (80, 120, 200)
 
-        # Radio buttons
         radio_y = self.rect.y + 60
         radio_x = self.rect.x + 40
         self.radio_tile_rect = Rect(radio_x, radio_y, 20, 20)
@@ -37,7 +35,6 @@ class LayerTypeDialog:
         self.radio_tile_label_rect = Rect(radio_x + 35, radio_y - 5, 200, 30)
         self.radio_object_label_rect = Rect(radio_x + 35, radio_y + 45, 200, 30)
 
-        # Buttons
         btn_y = self.rect.y + 160
         btn_w, btn_h = 80, 30
         self.btn_ok = Rect(self.rect.x + 100, btn_y, btn_w, btn_h)
@@ -52,7 +49,7 @@ class LayerTypeDialog:
     def show(self, on_confirm: Callable[[str], None], on_cancel: Callable[[], None]):
         """Show the dialog."""
         self.active = True
-        self.selected_type = "tile"  # Default to tile
+        self.selected_type = "tile"
         self.on_confirm = on_confirm
         self.on_cancel = on_cancel
         self.btn_ok_hover = False
@@ -70,7 +67,7 @@ class LayerTypeDialog:
         mouse_pos = pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Check radio buttons
+
             if self.radio_tile_rect.collidepoint(mouse_pos):
                 self.selected_type = "tile"
                 return True
@@ -78,7 +75,6 @@ class LayerTypeDialog:
                 self.selected_type = "object"
                 return True
 
-            # Check buttons
             if self.btn_ok.collidepoint(mouse_pos):
                 if self.on_confirm and self.selected_type:
                     self.on_confirm(self.selected_type)
@@ -113,16 +109,13 @@ class LayerTypeDialog:
         if not self.active:
             return
 
-        # Draw background
         pygame.draw.rect(surface, self.bg_color, self.rect)
         pygame.draw.rect(surface, self.border_color, self.rect, 2)
 
-        # Draw title
         title = self.font_title.render("Layer Type", True, self.text_color)
         title_rect = title.get_rect(topleft=(self.rect.x + 20, self.rect.y + 15))
         surface.blit(title, title_rect)
 
-        # Draw radio button for Tile Layer
         self._draw_radio(
             surface,
             self.radio_tile_rect,
@@ -131,7 +124,6 @@ class LayerTypeDialog:
             self.radio_tile_label_rect,
         )
 
-        # Draw radio button for Object Layer
         self._draw_radio(
             surface,
             self.radio_object_rect,
@@ -140,7 +132,6 @@ class LayerTypeDialog:
             self.radio_object_label_rect,
         )
 
-        # Draw buttons
         ok_color = self.button_hover_color if self.btn_ok_hover else self.button_color
         cancel_color = (
             self.button_hover_color if self.btn_cancel_hover else self.button_color
@@ -167,16 +158,15 @@ class LayerTypeDialog:
         label_rect: Rect,
     ):
         """Draw a radio button with label."""
-        # Draw radio button circle
+
         center = (radio_rect.centerx, radio_rect.centery)
         radius = radio_rect.width // 2
 
         pygame.draw.circle(surface, self.border_color, center, radius, 2)
 
         if is_selected:
-            # Draw inner filled circle
+
             pygame.draw.circle(surface, self.radio_color, center, radius - 4)
 
-        # Draw label
         label_surf = self.font_text.render(label, True, self.text_color)
         surface.blit(label_surf, label_rect)

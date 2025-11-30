@@ -23,10 +23,10 @@ class TypeObject(TypedDict, total=True):
     For tiled regions: area defines the total region, variant defines top-left tile
     """
 
-    area: TypeArea  # Bounding box: x, y, w, h in pixels
-    ttype: int  # Tileset index (which tileset this came from)
-    tileset_type: str  # "tile" or "object" - type of tileset used
-    variant: int  # Which sprite in tileset (or top-left tile for multi-tile objects)
+    area: TypeArea
+    ttype: int
+    tileset_type: str
+    variant: int
 
 
 class TypeTileSerealized(TypedDict, total=True):
@@ -36,13 +36,13 @@ class TypeTileSerealized(TypedDict, total=True):
 
 
 class TypeObjectSerialized(TypedDict, total=True):
-    area: TypeArea  # area dict is already serializable
-    ttype: int  # Tileset index
-    tileset_type: str  # "tile" or "object"
+    area: TypeArea
+    ttype: int
+    tileset_type: str
     variant: int
 
 
 TTile = Dict[Tuple[int, int], TypeTile]
-TObject = Dict[int, TypeObject]  # object_id -> TypeObject
+TObject = Dict[int, TypeObject]
 TOngridParsedTile = Dict[str, TypeTileSerealized]
 TOngridParsedObject = Dict[str, TypeObjectSerialized]

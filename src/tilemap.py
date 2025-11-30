@@ -69,7 +69,6 @@ class Tilemap:
         assert len(tile_location) == 2
         tiles_around = []
 
-        # Check all visible layers for occupied tiles
         active_layer = self.layer_manager.get_active_layer()
         if not active_layer or tile_location not in active_layer.tiles:
             return tuple(tiles_around)
@@ -77,13 +76,13 @@ class Tilemap:
         x, y = tile_location
         for nx, ny in NEAREST_NEIGHBOUR_OFFSET:
             check_loc = (x + nx, y + ny)
-            # Check if position is empty in active layer
+
             if check_loc not in active_layer.tiles:
                 tiles_around.append(check_loc)
         return tuple(tiles_around)
 
     def save_map(self, relative_path: Optional[str] = None):
-        target_path: Path = None  # type: ignore
+        target_path: Path = None
 
         if relative_path:
             if not relative_path.endswith(".json"):
@@ -102,13 +101,13 @@ class Tilemap:
             "meta": {
                 "tile_size": serialize_point(self.tile_size),
                 "map_size": serialize_point(self.map_size),
-                "version": "1.1",  # Updated version for layer support
+                "version": "1.1",
             },
             "resources": {"tilesets": []},
             "project_state": {"rules": []},
             "data": {
-                "ongrid": {},  # Legacy format - populated from first layer
-                "layers": [],  # New format
+                "ongrid": {},
+                "layers": [],
                 "offgrid": [],
             },
         }
@@ -121,7 +120,6 @@ class Tilemap:
                 except ValueError:
                     path_str = str(ts.path)
 
-                # Store both path and type so we can restore without asking user
                 save_data["resources"]["tilesets"].append(
                     {"path": path_str, "type": ts.tileset_type}
                 )
@@ -130,7 +128,6 @@ class Tilemap:
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(rule.to_dict())
 
-        # Save all layers in new format
         for layer in self.layer_manager.layers:
             layer_data = {
                 "name": layer.name,
@@ -142,7 +139,6 @@ class Tilemap:
                 "tiles": {},
             }
 
-            # Save tiles
             for loc, tile in layer.tiles.items():
                 key = serialize_point(loc)
                 tile_data: Dict[str, Any] = {
@@ -152,7 +148,6 @@ class Tilemap:
                 }
                 layer_data["tiles"][key] = tile_data
 
-            # Save objects (for object layers)
             if layer.layer_type == "object":
                 layer_data["objects"] = {}
                 for obj_id, obj in layer.objects.items():
@@ -163,12 +158,11 @@ class Tilemap:
                         "variant": obj["variant"],
                     }
                     layer_data["objects"][str(obj_id)] = obj_data
-                # Store next_object_id for proper restoration
+
                 layer_data["next_object_id"] = layer.next_object_id
 
             save_data["data"]["layers"].append(layer_data)
 
-        # Also save first layer to legacy ongrid format for backward compatibility
         first_layer = self.layer_manager.get_layer(0)
         if first_layer:
             for loc, tile in first_layer.tiles.items():
@@ -201,7 +195,6 @@ class Tilemap:
         with open(path, "r") as f:
             payload = JSONLoad(f)
 
-        # Clear existing data
         self.layer_manager.clear_all_layers()
         self.offgrid_tiles.clear()
         self.active_project_path = path
@@ -214,13 +207,13 @@ class Tilemap:
             self.editor.tileset_widget.tileset_map.clear()
 
             for ts_entry in payload["resources"]["tilesets"]:
-                # Handle both old format (string) and new format (dict with path and type)
+
                 if isinstance(ts_entry, str):
-                    # Legacy format: just a path string, default to "tile" type
+
                     path_str = ts_entry
                     tileset_type = "tile"
                 else:
-                    # New format: dict with path and type
+
                     path_str = ts_entry.get("path", "")
                     tileset_type = ts_entry.get("type", "tile")
 
@@ -228,8 +221,6 @@ class Tilemap:
                 if not p.is_absolute():
                     p = BASE_PATH / p
 
-                # Load tileset silently without showing the type dialog
-                # (we already know the type from the saved map file)
                 self.editor.tileset_widget.load_tileset_from_path(p, tileset_type)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
@@ -280,26 +271,24 @@ class Tilemap:
                     except Exception as e:
                         print(f"Failed to load rule '{rule_dict.get('name')}': {e}")
 
-        # Load layers - check for new format first, fall back to legacy format
         data_section = payload.get("data", {})
 
         if "layers" in data_section and data_section["layers"]:
-            # New layer format
+
             self.layer_manager.layers.clear()
             for layer_data in data_section["layers"]:
                 layer = self._load_layer_from_dict(layer_data)
                 self.layer_manager.layers.append(layer)
 
-            # Ensure at least one layer exists
             if not self.layer_manager.layers:
                 self.layer_manager.create_layer("Default")
 
             self.layer_manager.active_layer_idx = 0
         else:
-            # Legacy format - load ongrid into first layer
+
             raw_ongrid = data_section.get("ongrid", {})
             if raw_ongrid:
-                # Clear default layers and create single layer
+
                 self.layer_manager.layers.clear()
                 self.layer_manager.create_layer("Terrain")
                 active_layer = self.layer_manager.get_active_layer()
@@ -311,7 +300,6 @@ class Tilemap:
                     if active_layer:
                         active_layer.tiles[pos] = tile_data
 
-        # Load offgrid tiles
         for tile_data in data_section.get("offgrid", []):
             tile_copy = tile_data.copy()
             tile_copy["pos"] = deserialize_point(tile_data["pos"])
@@ -335,7 +323,6 @@ class Tilemap:
             opacity=layer_data.get("opacity", 1.0),
         )
 
-        # Load tiles
         for loc_str, tile_data in layer_data.get("tiles", {}).items():
             pos = deserialize_point(loc_str)
             tile_copy = tile_data.copy()
@@ -343,12 +330,11 @@ class Tilemap:
             self._normalize_ttype(tile_copy)
             layer.tiles[pos] = tile_copy
 
-        # Load objects (for object layers)
         if layer.layer_type == "object":
             for obj_id_str, obj_data in layer_data.get("objects", {}).items():
                 try:
                     obj_id = int(obj_id_str)
-                    # Create object with the new area structure
+
                     obj_copy: TypeObject = {
                         "area": obj_data.get(
                             "area", {"x": 0, "y": 0, "w": 32, "h": 32}
@@ -358,13 +344,12 @@ class Tilemap:
                         "variant": obj_data.get("variant", 0),
                     }
                     layer.objects[obj_id] = obj_copy
-                    # Keep track of highest ID for next_object_id
+
                     if obj_id >= layer.next_object_id:
                         layer.next_object_id = obj_id + 1
                 except (ValueError, TypeError, KeyError):
                     pass
 
-            # Restore next_object_id if present
             if "next_object_id" in layer_data:
                 layer.next_object_id = layer_data["next_object_id"]
 
@@ -376,7 +361,6 @@ class Tilemap:
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
             ts_widget = self.editor.tileset_widget
 
-            # If ttype is a string path, try to convert to index
             if isinstance(ttype, str):
                 matched_idx = None
                 for idx, ts in enumerate(ts_widget.tilesets):

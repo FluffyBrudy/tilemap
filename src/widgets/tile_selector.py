@@ -16,7 +16,7 @@ class TilesetData:
         self.name = name
         self.path = path
         self.surface = surface
-        self.tileset_type = tileset_type  # "tile" or "object"
+        self.tileset_type = tileset_type
         self.offset = [0, 0]
 
 
@@ -156,7 +156,7 @@ class TileSelector:
             try:
                 surf = pygame.image.load(path).convert_alpha()
                 if is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
-                    # Store the path temporarily and show dialog
+
                     self._pending_tileset_path = path
                     self._pending_tileset_surf = surf
                     self.editor.tileset_type_dialog.show(
@@ -179,7 +179,7 @@ class TileSelector:
             try:
                 surf = pygame.image.load(path).convert_alpha()
                 if is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
-                    # Create and add tileset directly without dialog
+
                     tileset_data = TilesetData(
                         path.name, path, surf, tileset_type=tileset_type
                     )
@@ -204,7 +204,6 @@ class TileSelector:
         self.active_idx = len(self.tilesets) - 1
         self.tileset_map[self.active_idx] = tileset_data
 
-        # Clean up
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
 

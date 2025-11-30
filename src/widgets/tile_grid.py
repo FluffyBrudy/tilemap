@@ -109,7 +109,7 @@ class TileGrid:
             return None, None, None
 
         tileset_index = ts_widget.active_idx
-        # Defensive bounds check - can happen during file load transitions
+
         if tileset_index < 0 or tileset_index >= len(ts_widget.tilesets):
             return None, None, None
 
@@ -126,7 +126,6 @@ class TileGrid:
         if tileset_index is None or not tileset_data or not src_rect:
             return
 
-        # Get active layer
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
         if not active_layer:
             return
@@ -135,10 +134,8 @@ class TileGrid:
         tile_w, tile_h = self.tile_size
         sheet_cols = sheet_width // tile_w
 
-        # Check if this is an object layer - ALL placements on object layers are free-positioned
         if active_layer.layer_type == "object":
-            # Free-positioned object placement (doesn't snap to grid)
-            # This applies to both object tilesets AND tile tilesets on object layers
+
             self._place_object_free(
                 active_layer,
                 tileset_index,
@@ -150,8 +147,7 @@ class TileGrid:
                 tileset_data.tileset_type,
             )
         else:
-            # Grid-aligned tile placement on tile layers
-            # These need hover_cell for grid positioning
+
             if not self.hover_cell:
                 return
 
@@ -185,15 +181,13 @@ class TileGrid:
         start_sx = src_rect[0] // tile_w
         start_sy = src_rect[1] // tile_h
 
-        # If on object layer, create a SINGLE object representing the bulk area
         if active_layer.layer_type == "object":
-            # Calculate pixel position and dimensions for the entire selection
+
             pixel_x = self.hover_cell[0] * tile_w
             pixel_y = self.hover_cell[1] * tile_h
             pixel_w = sel_w_tiles * tile_w
             pixel_h = sel_h_tiles * tile_h
 
-            # Variant ID is the top-left tile in the selection
             variant_id = (start_sy * sheet_cols) + start_sx
 
             obj_data: TypeObject = {
@@ -204,13 +198,13 @@ class TileGrid:
                     "h": pixel_h,
                 },
                 "ttype": int(tileset_index),
-                "tileset_type": "tile",  # Came from a tile tileset
+                "tileset_type": "tile",
                 "variant": variant_id,
             }
 
             active_layer.add_object((pixel_x, pixel_y), obj_data)
         else:
-            # Standard tile layer placement
+
             for y_off in range(sel_h_tiles):
                 for x_off in range(sel_w_tiles):
                     curr_sx = start_sx + x_off
@@ -249,16 +243,12 @@ class TileGrid:
         mouse_pos = pygame.mouse.get_pos()
         world_pos = self.screen_to_world(mouse_pos)
 
-        # Get the selected area dimensions
-        sel_width = src_rect[2]  # Width of selection in pixels
-        sel_height = src_rect[3]  # Height of selection in pixels
+        sel_width = src_rect[2]
+        sel_height = src_rect[3]
 
-        # Start position in tileset
-        start_sx = src_rect[0]  # Pixel X in tileset
-        start_sy = src_rect[1]  # Pixel Y in tileset
+        start_sx = src_rect[0]
+        start_sy = src_rect[1]
 
-        # Create a SINGLE object from the entire selection
-        # Variant ID is based on top-left of selection
         variant_id = ((start_sy // tile_h) * sheet_cols) + (start_sx // tile_w)
 
         obj_data: TypeObject = {
@@ -269,7 +259,7 @@ class TileGrid:
                 "h": sel_height,
             },
             "ttype": int(tileset_index),
-            "tileset_type": tileset_type,  # "object" or "tile"
+            "tileset_type": tileset_type,
             "variant": variant_id,
         }
 
@@ -285,17 +275,15 @@ class TileGrid:
             return
 
         if active_layer.layer_type == "object":
-            # For object layers, we need to check for objects near the position
+
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
 
-            # Find object at this pixel position (within a tolerance)
             for obj_id, obj in list(active_layer.get_all_objects().items()):
                 area = obj["area"]
                 obj_x, obj_y = area["x"], area["y"]
                 obj_w, obj_h = area["w"], area["h"]
 
-                # Check if mouse is within object bounds
                 if (
                     obj_x <= world_pos[0] <= obj_x + obj_w
                     and obj_y <= world_pos[1] <= obj_y + obj_h
@@ -303,7 +291,7 @@ class TileGrid:
                     active_layer.remove_object(obj_id)
                     break
         else:
-            # Standard tile layer removal
+
             active_layer.remove_tile(self.hover_cell)
 
     def draw(self, screen: Surface):
@@ -337,12 +325,10 @@ class TileGrid:
 
         tile_w, tile_h = self.tile_size
 
-        # For object layers with free placement, show the object at exact mouse position
         if active_layer.layer_type == "object":
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
 
-            # Show the entire selection at the exact mouse position
             sel_width = src_rect[2]
             sel_height = src_rect[3]
 
@@ -350,12 +336,10 @@ class TileGrid:
             screen_y = mouse_pos[1]
 
             dest_rect = Rect(screen_x, screen_y, sel_width, sel_height)
-            pygame.draw.rect(
-                screen, (255, 255, 0), dest_rect, 2
-            )  # Yellow outline for preview
+            pygame.draw.rect(screen, (255, 255, 0), dest_rect, 2)
 
             try:
-                # Draw a preview of the selection at this position
+
                 sub_r = Rect(src_rect[0], src_rect[1], sel_width, sel_height)
                 tile_surf = tileset_data.surface.subsurface(sub_r)
                 tile_surf.set_alpha(128)
@@ -363,7 +347,7 @@ class TileGrid:
             except ValueError:
                 pass
         else:
-            # For tile layers, show grid-aligned preview
+
             if not self.hover_cell:
                 return
 
@@ -438,10 +422,8 @@ class TileGrid:
         assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
 
-        # Get active layer
         active_layer = tilemap.layer_manager.get_active_layer()
 
-        # Render tiles from active layer (if it's a tile layer)
         if active_layer and active_layer.layer_type == "tile":
             for x in range(start_col, end_col):
                 for y in range(start_row, end_row):
@@ -473,7 +455,6 @@ class TileGrid:
 
                     surface.blit(base_surf, (dest_x, dest_y), area=src_rect)
 
-        # Render objects from active layer (if it's an object layer)
         if active_layer and active_layer.layer_type == "object":
             for obj_id, obj in active_layer.get_all_objects().items():
                 ttype = obj["ttype"]
@@ -489,18 +470,14 @@ class TileGrid:
                 obj_x, obj_y = area["x"], area["y"]
                 obj_w, obj_h = area["w"], area["h"]
 
-                # Calculate position in tileset
                 sheet_w = base_surf.get_width()
                 sheet_cols = sheet_w // tile_w
 
                 src_x = (variant_id % sheet_cols) * tile_w
                 src_y = (variant_id // sheet_cols) * tile_h
 
-                # Use the actual object area dimensions for the subsurface
-                # This ensures we get the full object region, not just a single tile
                 src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
-                # Object position is in pixel coordinates from area
                 dest_x = obj_x - self.scroll_x + self.rect.x
                 dest_y = obj_y - self.scroll_y + self.rect.y
 

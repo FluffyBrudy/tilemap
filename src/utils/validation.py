@@ -7,7 +7,7 @@ from pygame.typing import IntPoint
 def is_png_image(path: Path | str | Any):
     if not isinstance(path, (str, Path)):
         raise ValueError("path must be string or pathlib.Path instance")
-    image_path: "Path" = path  # type: ignore
+    image_path: "Path" = path
     if isinstance(path, str):
         image_path = Path(path)
     if not image_path.exists():

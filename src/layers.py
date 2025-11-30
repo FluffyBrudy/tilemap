@@ -24,20 +24,16 @@ class Layer:
         opacity: float = 1.0,
     ):
         self.name = name
-        self.layer_type = layer_type  # "tile" or "object"
+        self.layer_type = layer_type
         self.z_index = z_index
         self.visible = visible
         self.locked = locked
         self.opacity = max(0.0, min(1.0, opacity))
 
-        # Tile data: grid position -> tile mapping (for tile layers)
         self.tiles: Dict[Tuple[int, int], TypeTile] = {}
 
-        # Object data: object_id -> object mapping (for object layers)
         self.objects: Dict[int, TypeObject] = {}
-        self.next_object_id: int = 1  # Auto-incrementing object ID
-
-    # ===== TILE OPERATIONS =====
+        self.next_object_id: int = 1
 
     def set_tile(self, pos: Tuple[int, int], tile: TypeTile) -> None:
         """Set a tile at the given grid position."""
@@ -58,8 +54,6 @@ class Layer:
     def get_all_tiles(self) -> Dict[Tuple[int, int], TypeTile]:
         """Return a copy of all tiles in this layer."""
         return dict(self.tiles)
-
-    # ===== OBJECT OPERATIONS =====
 
     def add_object(self, pos: Tuple[int, int], obj: TypeObject) -> int:
         """Add an object at the given pixel position. Returns the object ID."""
@@ -88,21 +82,17 @@ class Layer:
     def move_object(self, obj_id: int, new_pos: Tuple[int, int]) -> bool:
         """Move an object to a new position. Returns True if successful."""
         if not self.locked and obj_id in self.objects:
-            # Update the area position (area.x, area.y)
+
             self.objects[obj_id]["area"]["x"] = new_pos[0]
             self.objects[obj_id]["area"]["y"] = new_pos[1]
             return True
         return False
-
-    # ===== LAYER OPERATIONS =====
 
     def clear(self) -> None:
         """Clear all tiles and objects from this layer."""
         if not self.locked:
             self.tiles.clear()
             self.objects.clear()
-
-    # ===== SERIALIZATION =====
 
     def to_dict(self) -> dict:
         """Serialize layer to dictionary."""
@@ -115,19 +105,16 @@ class Layer:
             "opacity": self.opacity,
         }
 
-        # Serialize tiles (grid-based)
         if self.tiles:
             data["tiles"] = {str(k): v for k, v in self.tiles.items()}
         else:
             data["tiles"] = {}
 
-        # Serialize objects (pixel-based)
         if self.objects:
             data["objects"] = {str(obj_id): obj for obj_id, obj in self.objects.items()}
         else:
             data["objects"] = {}
 
-        # Store next object ID for proper restoration
         data["next_object_id"] = self.next_object_id
 
         return data
@@ -144,10 +131,9 @@ class Layer:
             opacity=data.get("opacity", 1.0),
         )
 
-        # Restore tiles
         if "tiles" in data:
             for pos_str, tile_data in data["tiles"].items():
-                # Parse position string back to tuple
+
                 pos_parts = pos_str.strip("()").split(",")
                 if len(pos_parts) == 2:
                     try:
@@ -156,19 +142,17 @@ class Layer:
                     except (ValueError, IndexError):
                         pass
 
-        # Restore objects
         if "objects" in data:
             for obj_id_str, obj_data in data["objects"].items():
                 try:
                     obj_id = int(obj_id_str)
                     layer.objects[obj_id] = obj_data
-                    # Keep track of highest ID for next_object_id
+
                     if obj_id >= layer.next_object_id:
                         layer.next_object_id = obj_id + 1
                 except (ValueError, TypeError):
                     pass
 
-        # Restore next_object_id if present
         if "next_object_id" in data:
             layer.next_object_id = data["next_object_id"]
 
@@ -212,7 +196,6 @@ class LayerManager:
         self.layers.pop(index)
         self._update_z_indices()
 
-        # Adjust active layer index if needed
         if self.active_layer_idx >= len(self.layers):
             self.active_layer_idx = len(self.layers) - 1
 
@@ -242,7 +225,6 @@ class LayerManager:
             self.layers.insert(to_index, layer)
             self._update_z_indices()
 
-            # Update active layer index if it was moved
             if self.active_layer_idx == from_index:
                 self.active_layer_idx = to_index
 
@@ -281,11 +263,9 @@ class LayerManager:
             layer = Layer.from_dict(layer_data)
             manager.layers.append(layer)
 
-        # Ensure at least one layer exists
         if not manager.layers:
             manager.create_layer("Default")
 
-        # Validate active layer index
         if manager.active_layer_idx < 0 or manager.active_layer_idx >= len(
             manager.layers
         ):
@@ -302,7 +282,6 @@ class LayerManager:
         return len(self.layers) > 0
 
 
-# Convenience function for creating an empty layer manager
 def create_default_layer_manager() -> LayerManager:
     """Create an empty layer manager with no layers."""
     manager = LayerManager()

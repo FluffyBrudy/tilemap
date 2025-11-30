@@ -25,33 +25,28 @@ DEFAULT_THEME: "TTheme" = {
         "colours": {"normal_text": "#f0f0f0"},
     },
     "#submit_button": {
-        # fmt: off
         "colours": {
             "normal_bg": "#2b2e34",
             "hovered_bg": "#3c4048",
             "active_bg": "#2b2e34",
             "selected_bg": "#1a5276",
             "disabled_bg": "#1f2227",
-            
             "normal_text": "#e0e0e0",
             "hovered_text": "#ffffff",
             "active_text": "#e0e0e0",
             "selected_text": "#ffffff",
             "disabled_text": "#808080",
-            
             "normal_text_shadow": "#2b2e34",
             "hovered_text_shadow": "#3c4048",
             "active_text_shadow": "#2b2e34",
             "selected_text_shadow": "#1a5276",
             "disabled_text_shadow": "#1f2227",
-            
             "normal_border": "#2b2e34",
             "hovered_border": "#2a2e40",
             "active_border": "#2b2e34",
             "selected_border": "#1a5276",
             "disabled_border": "#1f2227",
         },
-        # fmt: on
         "misc": {
             "border_width": "10",
             "shape_corner_radius": "2",

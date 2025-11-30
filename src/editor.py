@@ -32,8 +32,8 @@ class Editor:
         self.tilemap = Tilemap(self)
 
         self.selector_w = 300
-        self.tileset_h = 300  # Height of tileset selector
-        self.layer_h = 150  # Height of layer selector
+        self.tileset_h = 300
+        self.layer_h = 150
         self.map_setup_widget: Optional[MapSetup] = None
         self.tileset_widget: Optional[TileSelector] = None
         self.layer_widget: Optional[LayerSelector] = None
