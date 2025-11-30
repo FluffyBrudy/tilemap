@@ -1,11 +1,16 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Optional
 from pygame import Rect
 from json import load as JSONLoad, dump as JSONDump
 from pathlib import Path
 
 from constants import BASE_PATH
-from utils.serialization import deserialize_point, serialize_point
-from ttypes.tilemap import TypeTile, TypeTileSerealized
+from utils.serialization import (
+    deserialize_point,
+    serialize_point,
+    copy_object,
+    serialize_object,
+)
+from ttypes.tilemap import TypeObject, TypeTile, TypeTileSerealized
 from layers import LayerManager, create_default_layer_manager
 
 if TYPE_CHECKING:
@@ -112,9 +117,14 @@ class Tilemap:
             for ts in self.editor.tileset_widget.tilesets:
                 try:
                     rel = ts.path.relative_to(BASE_PATH)
-                    save_data["resources"]["tilesets"].append(str(rel))
+                    path_str = str(rel)
                 except ValueError:
-                    save_data["resources"]["tilesets"].append(str(ts.path))
+                    path_str = str(ts.path)
+
+                # Store both path and type so we can restore without asking user
+                save_data["resources"]["tilesets"].append(
+                    {"path": path_str, "type": ts.tileset_type}
+                )
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             for rule in self.editor.autotiler.rules:
@@ -132,11 +142,29 @@ class Tilemap:
                 "tiles": {},
             }
 
+            # Save tiles
             for loc, tile in layer.tiles.items():
                 key = serialize_point(loc)
-                tile_copy = cast(TypeTileSerealized, tile.copy())
-                tile_copy["pos"] = serialize_point(tile["pos"])
-                layer_data["tiles"][key] = tile_copy
+                tile_data: Dict[str, Any] = {
+                    "pos": serialize_point(tile["pos"]),
+                    "ttype": tile["ttype"],
+                    "variant": tile["variant"],
+                }
+                layer_data["tiles"][key] = tile_data
+
+            # Save objects (for object layers)
+            if layer.layer_type == "object":
+                layer_data["objects"] = {}
+                for obj_id, obj in layer.objects.items():
+                    obj_data: Dict[str, Any] = {
+                        "area": obj["area"],
+                        "ttype": obj["ttype"],
+                        "tileset_type": obj["tileset_type"],
+                        "variant": obj["variant"],
+                    }
+                    layer_data["objects"][str(obj_id)] = obj_data
+                # Store next_object_id for proper restoration
+                layer_data["next_object_id"] = layer.next_object_id
 
             save_data["data"]["layers"].append(layer_data)
 
@@ -145,14 +173,20 @@ class Tilemap:
         if first_layer:
             for loc, tile in first_layer.tiles.items():
                 key = serialize_point(loc)
-                tile_copy = cast(TypeTileSerealized, tile.copy())
-                tile_copy["pos"] = serialize_point(tile["pos"])
-                save_data["data"]["ongrid"][key] = tile_copy
+                tile_data: Dict[str, Any] = {
+                    "pos": serialize_point(tile["pos"]),
+                    "ttype": tile["ttype"],
+                    "variant": tile["variant"],
+                }
+                save_data["data"]["ongrid"][key] = tile_data
 
         for tile in self.offgrid_tiles:
-            tile_copy = cast(TypeTileSerealized, tile.copy())
-            tile_copy["pos"] = serialize_point(tile["pos"])
-            save_data["data"]["offgrid"].append(tile_copy)
+            tile_data: Dict[str, Any] = {
+                "pos": serialize_point(tile["pos"]),
+                "ttype": tile["ttype"],
+                "variant": tile["variant"],
+            }
+            save_data["data"]["offgrid"].append(tile_data)
 
         with open(target_path, "w") as f:
             JSONDump(save_data, f, indent=2)
@@ -179,11 +213,24 @@ class Tilemap:
             self.editor.tileset_widget.tilesets.clear()
             self.editor.tileset_widget.tileset_map.clear()
 
-            for path_str in payload["resources"]["tilesets"]:
+            for ts_entry in payload["resources"]["tilesets"]:
+                # Handle both old format (string) and new format (dict with path and type)
+                if isinstance(ts_entry, str):
+                    # Legacy format: just a path string, default to "tile" type
+                    path_str = ts_entry
+                    tileset_type = "tile"
+                else:
+                    # New format: dict with path and type
+                    path_str = ts_entry.get("path", "")
+                    tileset_type = ts_entry.get("type", "tile")
+
                 p = Path(path_str)
                 if not p.is_absolute():
                     p = BASE_PATH / p
-                self.editor.tileset_widget.on_file_selected(p)
+
+                # Load tileset silently without showing the type dialog
+                # (we already know the type from the saved map file)
+                self.editor.tileset_widget.load_tileset_from_path(p, tileset_type)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             designer = self.editor.autotiler
@@ -295,6 +342,31 @@ class Tilemap:
             tile_copy["pos"] = pos
             self._normalize_ttype(tile_copy)
             layer.tiles[pos] = tile_copy
+
+        # Load objects (for object layers)
+        if layer.layer_type == "object":
+            for obj_id_str, obj_data in layer_data.get("objects", {}).items():
+                try:
+                    obj_id = int(obj_id_str)
+                    # Create object with the new area structure
+                    obj_copy: TypeObject = {
+                        "area": obj_data.get(
+                            "area", {"x": 0, "y": 0, "w": 32, "h": 32}
+                        ),
+                        "ttype": obj_data.get("ttype", 0),
+                        "tileset_type": obj_data.get("tileset_type", "object"),
+                        "variant": obj_data.get("variant", 0),
+                    }
+                    layer.objects[obj_id] = obj_copy
+                    # Keep track of highest ID for next_object_id
+                    if obj_id >= layer.next_object_id:
+                        layer.next_object_id = obj_id + 1
+                except (ValueError, TypeError, KeyError):
+                    pass
+
+            # Restore next_object_id if present
+            if "next_object_id" in layer_data:
+                layer.next_object_id = layer_data["next_object_id"]
 
         return layer
 

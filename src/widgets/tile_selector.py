@@ -10,10 +10,13 @@ if TYPE_CHECKING:
 
 
 class TilesetData:
-    def __init__(self, name: str, path: Path, surface: pygame.Surface):
+    def __init__(
+        self, name: str, path: Path, surface: pygame.Surface, tileset_type: str = "tile"
+    ):
         self.name = name
         self.path = path
         self.surface = surface
+        self.tileset_type = tileset_type  # "tile" or "object"
         self.offset = [0, 0]
 
 
@@ -153,15 +156,57 @@ class TileSelector:
             try:
                 surf = pygame.image.load(path).convert_alpha()
                 if is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
-                    tileset_data = TilesetData(path.name, path, surf)
+                    # Store the path temporarily and show dialog
+                    self._pending_tileset_path = path
+                    self._pending_tileset_surf = surf
+                    self.editor.tileset_type_dialog.show(
+                        on_confirm=self._on_tileset_type_selected,
+                        on_cancel=lambda: None,
+                    )
+                else:
+                    print("Tileset isnt multiple of tile size")
+            except Exception as e:
+                print(f"Error loading image: {e}")
+
+    def load_tileset_from_path(self, path: Path, tileset_type: str):
+        """Load tileset from path without showing dialog (used when loading maps).
+
+        Args:
+            path: Path to the tileset image file
+            tileset_type: Type of tileset ("tile" or "object") - already known from saved map
+        """
+        if path.exists():
+            try:
+                surf = pygame.image.load(path).convert_alpha()
+                if is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
+                    # Create and add tileset directly without dialog
+                    tileset_data = TilesetData(
+                        path.name, path, surf, tileset_type=tileset_type
+                    )
                     self.tilesets.append(tileset_data)
                     self.active_idx = len(self.tilesets) - 1
-
                     self.tileset_map[self.active_idx] = tileset_data
                 else:
                     print("Tileset isnt multiple of tile size")
             except Exception as e:
                 print(f"Error loading image: {e}")
+
+    def _on_tileset_type_selected(self, tileset_type: str):
+        """Callback when user selects tileset type from dialog."""
+        if not hasattr(self, "_pending_tileset_path"):
+            return
+
+        path = self._pending_tileset_path
+        surf = self._pending_tileset_surf
+
+        tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
+        self.tilesets.append(tileset_data)
+        self.active_idx = len(self.tilesets) - 1
+        self.tileset_map[self.active_idx] = tileset_data
+
+        # Clean up
+        delattr(self, "_pending_tileset_path")
+        delattr(self, "_pending_tileset_surf")
 
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):
@@ -204,7 +249,7 @@ class TileSelector:
 
     def draw_view_area(self, screen: pygame.Surface):
         pygame.draw.rect(screen, (20, 20, 20), self.view_rect)
-        if self.active_idx == -1:
+        if self.active_idx == -1 or self.active_idx >= len(self.tilesets):
             return
 
         ts = self.tilesets[self.active_idx]

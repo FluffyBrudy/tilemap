@@ -1,14 +1,18 @@
 """
 Layer management system for tilemap editor.
-Supports multiple layers with independent tile data.
+Supports multiple layers with independent tile and object data.
 """
 
 from typing import Dict, List, Optional, Tuple
-from ttypes.tilemap import TypeTile
+from ttypes.tilemap import TypeTile, TypeObject
 
 
 class Layer:
-    """Represents a single layer in the tilemap."""
+    """Represents a single layer in the tilemap.
+
+    Tile layers: store tiles at grid coordinates (grid_x, grid_y)
+    Object layers: store objects at pixel coordinates (pixel_x, pixel_y) with unique IDs
+    """
 
     def __init__(
         self,
@@ -26,45 +30,107 @@ class Layer:
         self.locked = locked
         self.opacity = max(0.0, min(1.0, opacity))
 
-        # Tile data: position -> tile mapping
+        # Tile data: grid position -> tile mapping (for tile layers)
         self.tiles: Dict[Tuple[int, int], TypeTile] = {}
 
+        # Object data: object_id -> object mapping (for object layers)
+        self.objects: Dict[int, TypeObject] = {}
+        self.next_object_id: int = 1  # Auto-incrementing object ID
+
+    # ===== TILE OPERATIONS =====
+
     def set_tile(self, pos: Tuple[int, int], tile: TypeTile) -> None:
-        """Set a tile at the given position."""
+        """Set a tile at the given grid position."""
         if not self.locked:
             self.tiles[pos] = tile
 
     def get_tile(self, pos: Tuple[int, int]) -> Optional[TypeTile]:
-        """Get a tile at the given position."""
+        """Get a tile at the given grid position."""
         return self.tiles.get(pos)
 
     def remove_tile(self, pos: Tuple[int, int]) -> bool:
-        """Remove a tile at the given position. Returns True if tile existed."""
+        """Remove a tile at the given grid position. Returns True if tile existed."""
         if not self.locked and pos in self.tiles:
             del self.tiles[pos]
             return True
         return False
 
-    def clear(self) -> None:
-        """Clear all tiles from this layer."""
-        if not self.locked:
-            self.tiles.clear()
-
     def get_all_tiles(self) -> Dict[Tuple[int, int], TypeTile]:
         """Return a copy of all tiles in this layer."""
         return dict(self.tiles)
 
+    # ===== OBJECT OPERATIONS =====
+
+    def add_object(self, pos: Tuple[int, int], obj: TypeObject) -> int:
+        """Add an object at the given pixel position. Returns the object ID."""
+        if not self.locked:
+            obj_id = self.next_object_id
+            self.next_object_id += 1
+            self.objects[obj_id] = obj
+            return obj_id
+        return -1
+
+    def get_object(self, obj_id: int) -> Optional[TypeObject]:
+        """Get an object by ID."""
+        return self.objects.get(obj_id)
+
+    def remove_object(self, obj_id: int) -> bool:
+        """Remove an object by ID. Returns True if object existed."""
+        if not self.locked and obj_id in self.objects:
+            del self.objects[obj_id]
+            return True
+        return False
+
+    def get_all_objects(self) -> Dict[int, TypeObject]:
+        """Return a copy of all objects in this layer."""
+        return dict(self.objects)
+
+    def move_object(self, obj_id: int, new_pos: Tuple[int, int]) -> bool:
+        """Move an object to a new position. Returns True if successful."""
+        if not self.locked and obj_id in self.objects:
+            # Update the area position (area.x, area.y)
+            self.objects[obj_id]["area"]["x"] = new_pos[0]
+            self.objects[obj_id]["area"]["y"] = new_pos[1]
+            return True
+        return False
+
+    # ===== LAYER OPERATIONS =====
+
+    def clear(self) -> None:
+        """Clear all tiles and objects from this layer."""
+        if not self.locked:
+            self.tiles.clear()
+            self.objects.clear()
+
+    # ===== SERIALIZATION =====
+
     def to_dict(self) -> dict:
         """Serialize layer to dictionary."""
-        return {
+        data = {
             "name": self.name,
             "type": self.layer_type,
             "z_index": self.z_index,
             "visible": self.visible,
             "locked": self.locked,
             "opacity": self.opacity,
-            "tiles": {str(k): v for k, v in self.tiles.items()},
         }
+
+        # Serialize tiles (grid-based)
+        if self.tiles:
+            data["tiles"] = {str(k): v for k, v in self.tiles.items()}
+        else:
+            data["tiles"] = {}
+
+        # Serialize objects (pixel-based)
+        if self.objects:
+            data["objects"] = {str(obj_id): obj for obj_id, obj in self.objects.items()}
+        else:
+            data["objects"] = {}
+
+        # Store next object ID for proper restoration
+        data["next_object_id"] = self.next_object_id
+
+        return data
 
     @staticmethod
     def from_dict(data: dict) -> "Layer":
@@ -89,6 +155,22 @@ class Layer:
                         layer.tiles[pos] = tile_data
                     except (ValueError, IndexError):
                         pass
+
+        # Restore objects
+        if "objects" in data:
+            for obj_id_str, obj_data in data["objects"].items():
+                try:
+                    obj_id = int(obj_id_str)
+                    layer.objects[obj_id] = obj_data
+                    # Keep track of highest ID for next_object_id
+                    if obj_id >= layer.next_object_id:
+                        layer.next_object_id = obj_id + 1
+                except (ValueError, TypeError):
+                    pass
+
+        # Restore next_object_id if present
+        if "next_object_id" in data:
+            layer.next_object_id = data["next_object_id"]
 
         return layer
 
@@ -220,10 +302,8 @@ class LayerManager:
         return len(self.layers) > 0
 
 
-# Convenience function for creating a default manager with one layer
+# Convenience function for creating an empty layer manager
 def create_default_layer_manager() -> LayerManager:
-    """Create a layer manager with a single 'Default' layer."""
+    """Create an empty layer manager with no layers."""
     manager = LayerManager()
-    manager.create_layer("Terrain", "tile")
-    manager.create_layer("Objects", "tile")
     return manager

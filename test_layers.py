@@ -13,13 +13,29 @@ from typing import Tuple
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from layers import Layer, LayerManager, create_default_layer_manager
-from ttypes.tilemap import TypeTile
+from ttypes.tilemap import TypeTile, TypeObject
 from tilemap import Tilemap
 
 
 def create_test_tile(ttype: str = "0", variant: int = 0) -> TypeTile:
     """Create a test tile."""
     return TypeTile(pos=(0, 0), ttype=ttype, variant=variant)
+
+
+def create_test_object(
+    pos: Tuple[int, int] = (50, 20),
+    ttype: int = 1,
+    variant: int = 3,
+    width: int = 64,
+    height: int = 48,
+) -> TypeObject:
+    """Create a test object with area-based structure."""
+    return TypeObject(
+        area={"x": pos[0], "y": pos[1], "w": width, "h": height},
+        ttype=ttype,
+        tileset_type="tile",
+        variant=variant,
+    )
 
 
 class LayerTests:
@@ -97,6 +113,62 @@ class LayerTests:
         assert layer2.layer_type == layer.layer_type
         assert len(layer2.tiles) == 2
         print("✓ Layer serialization works")
+
+    def test_add_remove_object(self):
+        """Test adding and removing objects."""
+        layer = Layer("Objects", "object")
+        obj = create_test_object()
+
+        # Add object
+        obj_id = layer.add_object((50, 20), obj)
+        assert obj_id >= 1
+        assert layer.get_object(obj_id) is not None
+
+        # Remove object
+        removed = layer.remove_object(obj_id)
+        assert removed is True
+        assert layer.get_object(obj_id) is None
+        print("✓ Add/remove object works")
+
+    def test_move_object(self):
+        """Test moving objects."""
+        layer = Layer("Objects", "object")
+        obj = create_test_object((50, 20))
+
+        obj_id = layer.add_object((50, 20), obj)
+        assert layer.get_object(obj_id)["area"]["x"] == 50
+        assert layer.get_object(obj_id)["area"]["y"] == 20
+
+        # Move object
+        moved = layer.move_object(obj_id, (100, 30))
+        assert moved is True
+        assert layer.get_object(obj_id)["area"]["x"] == 100
+        assert layer.get_object(obj_id)["area"]["y"] == 30
+        print("✓ Move object works")
+
+    def test_object_layer_serialization(self):
+        """Test serializing object layer with objects."""
+        layer = Layer("Decorations", "object")
+
+        # Add objects
+        obj1 = create_test_object((50, 20), 1, 3, 64, 48)
+        obj2 = create_test_object((150, 30), 1, 5, 64, 48)
+
+        id1 = layer.add_object((50, 20), obj1)
+        id2 = layer.add_object((150, 30), obj2)
+
+        # Serialize
+        data = layer.to_dict()
+        assert data["type"] == "object"
+        assert len(data["objects"]) == 2
+        assert data["next_object_id"] == 3
+
+        # Deserialize
+        layer2 = Layer.from_dict(data)
+        assert layer2.layer_type == "object"
+        assert len(layer2.objects) == 2
+        assert layer2.next_object_id == 3
+        print("✓ Object layer serialization works")
 
 
 class LayerManagerTests:

@@ -40,6 +40,11 @@ class LayerSelector:
         self.drag_offset_y: int = 0  # Offset from layer top when dragging
         self.hover_idx: Optional[int] = None
 
+        # Rename mode
+        self.renaming_layer_idx: Optional[int] = None
+        self.rename_text: str = ""
+        self.rename_original_name: str = ""
+
         # Buttons
         btn_h = 25
         btn_w = 25
@@ -128,6 +133,32 @@ class LayerSelector:
                 return True
 
         elif event.type == pygame.KEYDOWN:
+            # F2 to rename focused layer
+            if event.key == pygame.K_F2:
+                active_idx = self.editor.tilemap.layer_manager.active_layer_idx
+                if active_idx >= 0:
+                    self._start_rename(active_idx)
+                    return True
+
+            # Handle rename mode input
+            if self.renaming_layer_idx is not None:
+                if event.key == pygame.K_RETURN:
+                    # Confirm rename
+                    self._confirm_rename()
+                    return True
+                elif event.key == pygame.K_ESCAPE:
+                    # Cancel rename
+                    self._cancel_rename()
+                    return True
+                elif event.key == pygame.K_BACKSPACE:
+                    self.rename_text = self.rename_text[:-1]
+                    return True
+                else:
+                    # Add character if printable
+                    if event.unicode.isprintable():
+                        self.rename_text += event.unicode
+                    return True
+
             # Arrow keys for scrolling
             if event.key == pygame.K_UP:
                 if self.list_rect.collidepoint(pygame.mouse.get_pos()):
@@ -162,15 +193,65 @@ class LayerSelector:
         self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
     def _add_layer(self) -> None:
-        """Add a new layer."""
+        """Add a new layer - show dialog to select type."""
+        self.editor.layer_type_dialog.show(
+            on_confirm=self._on_layer_type_selected,
+            on_cancel=lambda: None,
+        )
+
+    def _on_layer_type_selected(self, layer_type: str) -> None:
+        """Callback when user selects layer type from dialog."""
         count = self.editor.tilemap.layer_manager.get_layer_count()
         name = f"Layer {count + 1}"
-        self.editor.tilemap.layer_manager.create_layer(name)
+        self.editor.tilemap.layer_manager.create_layer(name, layer_type=layer_type)
 
     def _remove_layer(self) -> None:
         """Remove the currently active layer."""
         active_idx = self.editor.tilemap.layer_manager.active_layer_idx
         self.editor.tilemap.layer_manager.delete_layer(active_idx)
+
+    def _start_rename(self, layer_idx: int) -> None:
+        """Start renaming a layer."""
+        layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
+        if layer:
+            self.renaming_layer_idx = layer_idx
+            self.rename_text = layer.name
+            self.rename_original_name = layer.name
+
+    def _confirm_rename(self) -> None:
+        """Confirm and apply the rename."""
+        if self.renaming_layer_idx is None:
+            return
+
+        # Validate: name must be alphanumeric + spaces, or empty reverts to original
+        import string
+
+        valid_chars = set(string.ascii_letters + string.digits + " ")
+
+        if not self.rename_text:
+            # Empty name reverts to original
+            self._cancel_rename()
+            return
+
+        if all(c in valid_chars for c in self.rename_text):
+            # Valid name - apply it
+            layer = self.editor.tilemap.layer_manager.get_layer(self.renaming_layer_idx)
+            if layer:
+                layer.name = self.rename_text
+        else:
+            # Invalid characters - revert
+            self._cancel_rename()
+            return
+
+        self.renaming_layer_idx = None
+        self.rename_text = ""
+        self.rename_original_name = ""
+
+    def _cancel_rename(self) -> None:
+        """Cancel rename and revert to original name."""
+        self.renaming_layer_idx = None
+        self.rename_text = ""
+        self.rename_original_name = ""
 
     def draw(self, screen: Surface) -> None:
         """Draw the layer selector widget."""
@@ -233,8 +314,20 @@ class LayerSelector:
             pygame.draw.rect(screen, (50, 50, 50), item_rect, 1)
 
             # Draw layer name
-            name_txt = self.font_layer.render(layer.name, True, self.text_color)
-            screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
+            if i == self.renaming_layer_idx:
+                # Show editable text field for rename mode
+                pygame.draw.rect(
+                    screen,
+                    (80, 100, 150),
+                    Rect(item_rect.x + 4, item_rect.y + 4, 100, 20),
+                )
+                name_txt = self.font_layer.render(
+                    self.rename_text + "|", True, self.text_color
+                )
+                screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
+            else:
+                name_txt = self.font_layer.render(layer.name, True, self.text_color)
+                screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
 
             # Draw visibility icon (eye)
             eye_x = item_rect.right - 25

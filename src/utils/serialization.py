@@ -1,7 +1,10 @@
 import string
 import re
-from typing import Sequence
+from typing import Sequence, TYPE_CHECKING
 from pygame.typing import IntPoint
+
+if TYPE_CHECKING:
+    from ttypes.tilemap import TypeObject, TypeArea
 
 
 def serialize_point(point: IntPoint, sep=";"):
@@ -21,3 +24,29 @@ def deserialize_point(point_str: str):
 
     x, y = matched_str.groups()
     return int(x), int(y)
+
+
+def copy_object(obj: "TypeObject") -> "TypeObject":
+    """Create a deep copy of a TypeObject, copying the area dict as well."""
+    from ttypes.tilemap import TypeObject, TypeArea
+
+    area_copy: TypeArea = {
+        "x": obj["area"]["x"],
+        "y": obj["area"]["y"],
+        "w": obj["area"]["w"],
+        "h": obj["area"]["h"],
+    }
+
+    obj_copy: TypeObject = {
+        "area": area_copy,
+        "ttype": obj["ttype"],
+        "tileset_type": obj["tileset_type"],
+        "variant": obj["variant"],
+    }
+
+    return obj_copy
+
+
+def serialize_object(obj: "TypeObject") -> "TypeObject":
+    """Prepare a TypeObject for JSON serialization (copy the object structure)."""
+    return copy_object(obj)

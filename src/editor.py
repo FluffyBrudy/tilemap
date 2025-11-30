@@ -12,6 +12,8 @@ from widgets.tile_selector import TileSelector
 from widgets.tile_grid import TileGrid
 from widgets.layer_selector import LayerSelector
 from widgets.ui.fileinput import FilenameInput
+from widgets.ui.tileset_type_dialog import TilesetTypeDialog
+from widgets.ui.layer_type_dialog import LayerTypeDialog
 
 
 class Editor:
@@ -47,6 +49,8 @@ class Editor:
             on_confirm=self.do_save_as,
             on_cancel=lambda: None,
         )
+        self.tileset_type_dialog = TilesetTypeDialog(editor_rect)
+        self.layer_type_dialog = LayerTypeDialog(editor_rect)
 
         center_x = (self.width - 400) // 2
         center_y = (self.height - 400) // 2
@@ -138,6 +142,14 @@ class Editor:
                 self.file_manager.handle_event(event)
                 continue
 
+            if self.tileset_type_dialog.active:
+                self.tileset_type_dialog.handle_event(event)
+                continue
+
+            if self.layer_type_dialog.active:
+                self.layer_type_dialog.handle_event(event)
+                continue
+
             if self.save_input.active:
                 self.save_input.handle_event(event)
                 continue
@@ -198,6 +210,7 @@ class Editor:
                 overlay.fill((0, 0, 0, 150))
                 self.screen.blit(overlay, (0, 0))
                 self.map_setup_widget.draw(self.screen)
+
             if self.file_manager:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 150))
@@ -205,6 +218,16 @@ class Editor:
                 self.file_manager.draw(self.screen)
             if self.save_input.active:
                 self.save_input.draw(self.screen)
+            if self.tileset_type_dialog.active:
+                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.screen.blit(overlay, (0, 0))
+                self.tileset_type_dialog.draw(self.screen)
+            if self.layer_type_dialog.active:
+                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.screen.blit(overlay, (0, 0))
+                self.layer_type_dialog.draw(self.screen)
 
             pygame.display.update()
             self.clock.tick(self.fps)
