@@ -175,7 +175,7 @@ class Editor:
 
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
-                if event.key == pygame.K_r:
+                if event.key == pygame.K_r and (mods & pygame.KMOD_LCTRL):
                     if self.autotiler.visible:
                         self.autotiler.hide()
                     else:

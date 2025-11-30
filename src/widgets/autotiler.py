@@ -130,7 +130,8 @@ class AutotileRuleDesigner:
 
     def show(self):
         self.visible = True
-        self._sync_last_editor_state()
+        self._last_editor_selection = (None, (0, 0, 0, 0))
+        self._update_preview_from_selector()
 
     def hide(self):
         self.visible = False
