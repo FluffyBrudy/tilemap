@@ -35,7 +35,6 @@ class Tilemap:
     def __init__(self, editor: "Editor"):
         self.editor = editor
         self.layer_manager = create_default_layer_manager()
-        self.offgrid_tiles: Set[TypeTile] = set()
 
         self.tile_size = (32, 32)
         self.map_size = (50, 50)
@@ -82,7 +81,7 @@ class Tilemap:
         return tuple(tiles_around)
 
     def save_map(self, relative_path: Optional[str] = None):
-        target_path: Path = None
+        target_path: Path = None  # type: ignore
 
         if relative_path:
             if not relative_path.endswith(".json"):
@@ -108,7 +107,6 @@ class Tilemap:
             "data": {
                 "ongrid": {},
                 "layers": [],
-                "offgrid": [],
             },
         }
 
@@ -174,14 +172,6 @@ class Tilemap:
                 }
                 save_data["data"]["ongrid"][key] = tile_data
 
-        for tile in self.offgrid_tiles:
-            tile_data: Dict[str, Any] = {
-                "pos": serialize_point(tile["pos"]),
-                "ttype": tile["ttype"],
-                "variant": tile["variant"],
-            }
-            save_data["data"]["offgrid"].append(tile_data)
-
         with open(target_path, "w") as f:
             JSONDump(save_data, f, indent=2)
 
@@ -196,7 +186,6 @@ class Tilemap:
             payload = JSONLoad(f)
 
         self.layer_manager.clear_all_layers()
-        self.offgrid_tiles.clear()
         self.active_project_path = path
 
         self.tile_size = deserialize_point(payload["meta"]["tile_size"])
@@ -299,11 +288,6 @@ class Tilemap:
                     self._normalize_ttype(tile_data)
                     if active_layer:
                         active_layer.tiles[pos] = tile_data
-
-        for tile_data in data_section.get("offgrid", []):
-            tile_copy = tile_data.copy()
-            tile_copy["pos"] = deserialize_point(tile_data["pos"])
-            self.offgrid_tiles.add(tile_copy)
 
         self.initialized = True
         print(
