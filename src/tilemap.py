@@ -97,7 +97,9 @@ class Tilemap:
         for loc, tile in self.ongrid_tiles.items():
             key = serialize_point(loc)
             tile_copy = cast(TypeTileSerealized, tile.copy())
+
             tile_copy["pos"] = serialize_point(tile["pos"])
+
             save_data["data"]["ongrid"][key] = tile_copy
 
         for tile in self.offgrid_tiles:
@@ -139,26 +141,47 @@ class Tilemap:
             designer = self.editor.autotiler
             designer.rules.clear()
 
+            ts_widget = self.editor.tileset_widget
+            assert ts_widget is not None
+
             if "project_state" in payload:
                 for rule_dict in payload["project_state"]["rules"]:
                     try:
                         rule = AutotileRule.from_dict(rule_dict)
 
-                        ts_widget = self.editor.tileset_widget
+                        resolved_ts = None
+                        if rule.tileset_index is not None:
 
-                        if rule.tileset_path in ts_widget.tileset_map:
-                            ts_data = ts_widget.tileset_map[rule.tileset_path]
+                            idx = rule.tileset_index
+                            if 0 <= idx < len(ts_widget.tilesets):
+                                resolved_ts = ts_widget.tilesets[idx]
+                        elif rule.tileset_path:
 
-                            if rule.variant_ids:
-                                vid = rule.variant_ids[0]
-                                cols = ts_data.surface.get_width() // self.tile_size[0]
+                            for idx, ts in enumerate(ts_widget.tilesets):
+                                try:
+                                    if str(Path(rule.tileset_path)) == str(ts.path):
+                                        rule.tileset_index = idx
+                                        resolved_ts = ts
+                                        break
+                                    if str(Path(rule.tileset_path)) == str(
+                                        ts.path.relative_to(BASE_PATH)
+                                    ):
+                                        rule.tileset_index = idx
+                                        resolved_ts = ts
+                                        break
+                                except Exception:
+                                    continue
 
-                                tx = (vid % cols) * self.tile_size[0]
-                                ty = (vid // cols) * self.tile_size[1]
+                        if resolved_ts and rule.variant_ids:
+                            vid = rule.variant_ids[0]
+                            cols = resolved_ts.surface.get_width() // self.tile_size[0]
 
-                                rule.preview_surf = ts_data.surface.subsurface(
-                                    Rect(tx, ty, *self.tile_size)
-                                ).copy()
+                            tx = (vid % cols) * self.tile_size[0]
+                            ty = (vid // cols) * self.tile_size[1]
+
+                            rule.preview_surf = resolved_ts.surface.subsurface(
+                                Rect(tx, ty, *self.tile_size)
+                            ).copy()
 
                         designer.rules.append(rule)
                     except Exception as e:
@@ -168,6 +191,28 @@ class Tilemap:
         for loc_str, tile_data in raw_ongrid.items():
             pos = deserialize_point(loc_str)
             tile_data["pos"] = pos
+
+            ttype = tile_data.get("ttype")
+            if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
+                ts_widget = self.editor.tileset_widget
+
+                if isinstance(ttype, str):
+
+                    matched_idx = None
+                    for idx, ts in enumerate(ts_widget.tilesets):
+                        try:
+
+                            if str(Path(ttype)) == str(ts.path):
+                                matched_idx = idx
+                                break
+                            if str(Path(ttype)) == str(ts.path.relative_to(BASE_PATH)):
+                                matched_idx = idx
+                                break
+                        except Exception:
+                            continue
+                    if matched_idx is not None:
+                        tile_data["ttype"] = matched_idx
+
             self.ongrid_tiles[pos] = tile_data
 
         for tile_data in payload["data"]["offgrid"]:

@@ -21,9 +21,9 @@ class TileSelector:
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int):
         self.editor = editor
         self.rect = Rect(x, y, w, h)
-
         self.tilesets: List[TilesetData] = []
-        self.tileset_map: Dict[str, TilesetData] = {}
+
+        self.tileset_map: Dict[int, TilesetData] = {}
         self.active_idx = -1
 
         self.top_bar_h = 30
@@ -156,7 +156,8 @@ class TileSelector:
                     tileset_data = TilesetData(path.name, path, surf)
                     self.tilesets.append(tileset_data)
                     self.active_idx = len(self.tilesets) - 1
-                    self.tileset_map[str(path)] = tileset_data
+
+                    self.tileset_map[self.active_idx] = tileset_data
                 else:
                     print("Tileset isnt multiple of tile size")
             except Exception as e:
@@ -165,8 +166,10 @@ class TileSelector:
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):
             data = self.tilesets.pop(self.active_idx)
-            if str(data.path) in self.tileset_map:
-                self.tileset_map.pop(str(data.path))
+
+            self.tileset_map.clear()
+            for i, ts in enumerate(self.tilesets):
+                self.tileset_map[i] = ts
             self.active_idx = max(0, len(self.tilesets) - 1)
             if not self.tilesets:
                 self.active_idx = -1

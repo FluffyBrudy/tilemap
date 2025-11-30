@@ -1,5 +1,5 @@
 import pygame
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, cast
 from pygame import KEYDOWN, Rect, Surface, K_UP, K_DOWN, K_LEFT, K_RIGHT
 
 from ttypes import TOffset
@@ -106,18 +106,23 @@ class TileGrid:
     def get_selected_brush(self):
         ts_widget = self.editor.tileset_widget
         if not ts_widget or ts_widget.active_idx == -1 or not ts_widget.selected_tile:
-            return None, None
+            return None, None, None
 
-        tileset_data = ts_widget.tilesets[ts_widget.active_idx]
+        tileset_index = ts_widget.active_idx
+        tileset_data = ts_widget.tilesets[tileset_index]
         tile_rect = ts_widget.selected_tile
-        return tileset_data, tile_rect
+        return tileset_index, tileset_data, tile_rect
 
     def place_tile(self):
         if not self.hover_cell:
             return
 
-        tileset_data, src_rect = self.get_selected_brush()
-        if not tileset_data or not src_rect:
+        res = self.get_selected_brush()
+        if not res:
+            return
+
+        tileset_index, tileset_data, src_rect = res
+        if tileset_index is None or not tileset_data or not src_rect:
             return
 
         sheet_width = tileset_data.surface.get_width()
@@ -140,13 +145,13 @@ class TileGrid:
                 map_y = self.hover_cell[1] + y_off
                 target_pos = (map_x, map_y)
 
-                tile_data: TypeTile = {
+                tile_data = {
                     "pos": target_pos,
-                    "ttype": str(tileset_data.path),
+                    "ttype": int(tileset_index),
                     "variant": variant_id,
                 }
 
-                self.editor.tilemap.ongrid_tiles[target_pos] = tile_data
+                self.editor.tilemap.ongrid_tiles[target_pos] = cast(TypeTile, tile_data)
 
     def remove_tile(self):
         if self.hover_cell and self.hover_cell in self.editor.tilemap.ongrid_tiles:
@@ -173,7 +178,10 @@ class TileGrid:
         if not self.hover_cell:
             return
 
-        tileset_data, src_rect = self.get_selected_brush()
+        res = self.get_selected_brush()
+        if not res:
+            return
+        _, tileset_data, src_rect = res
         if not tileset_data or not src_rect:
             return
 
@@ -247,6 +255,7 @@ class TileGrid:
         start_row = int(self.scroll_y // tile_h)
         end_row = start_row + (self.rect.height // tile_h) + 2
 
+        assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
 
         for x in range(start_col, end_col):
@@ -255,11 +264,12 @@ class TileGrid:
 
                 if location in tilemap.ongrid_tiles:
                     tile = tilemap.ongrid_tiles[location]
+                    ttype = tile["ttype"]
 
-                    if tile["ttype"] not in tileset_map:
+                    if ttype not in tileset_map:
                         continue
 
-                    tileset_data = tileset_map[tile["ttype"]]
+                    tileset_data = tileset_map[ttype]
                     base_surf = tileset_data.surface
 
                     variant_id = tile["variant"]

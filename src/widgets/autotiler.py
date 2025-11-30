@@ -22,15 +22,19 @@ class AutotileRule:
         self,
         name: str,
         neighbors: Set[Tuple[int, int]],
-        tileset_path: str,
-        variant_ids: List[int],
-        surface_subsurface: Surface = None,  # type: ignore
+        tileset_path: str = "",
+        variant_ids: Optional[List[int]] = None,
+        surface_subsurface: Optional[Surface] = None,
+        tileset_index: Optional[int] = None,
     ):
         self.name = name
         self.neighbors = neighbors
+
         self.tileset_path = tileset_path
-        self.variant_ids = variant_ids
-        self.preview_surf = surface_subsurface
+
+        self.tileset_index = tileset_index
+        self.variant_ids = variant_ids or []
+        self.preview_surf: Optional[Surface] = surface_subsurface
 
     @staticmethod
     def from_dict(data: dict):
@@ -38,9 +42,10 @@ class AutotileRule:
         return AutotileRule(
             name=data["name"],
             neighbors=neighbors,
-            tileset_path=data["tileset_path"],
+            tileset_path=data.get("tileset_path", ""),
             variant_ids=data.get("variant_ids", [data.get("variant_id", 0)]),
-            surface_subsurface=None,  # type: ignore
+            surface_subsurface=None,
+            tileset_index=data.get("tileset_index", None),
         )
 
     def to_dict(self):
@@ -48,6 +53,7 @@ class AutotileRule:
             "name": self.name,
             "neighbors": [list(p) for p in self.neighbors],
             "tileset_path": self.tileset_path,
+            "tileset_index": self.tileset_index,
             "variant_ids": self.variant_ids,
         }
 
@@ -70,6 +76,7 @@ class AutotileRuleDesigner:
         self.current_variant_ids: List[int] = []
 
         self.current_tileset_path: str = ""
+        self.current_tileset_index: Optional[int] = None
 
         self.current_preview_surfs: List[Surface] = []
 
@@ -142,14 +149,20 @@ class AutotileRuleDesigner:
         if not active_ts:
             selector.set_rule_hints(set())
             return
-
         current_path = str(active_ts.path)
+        current_index = selector.active_idx
 
         hints = set()
         for rule in self.rules:
-            if rule.tileset_path == current_path:
-                for vid in rule.variant_ids:
-                    hints.add(vid)
+
+            if rule.tileset_index is not None:
+                if rule.tileset_index == current_index:
+                    for vid in rule.variant_ids:
+                        hints.add(vid)
+            else:
+                if rule.tileset_path == current_path:
+                    for vid in rule.variant_ids:
+                        hints.add(vid)
 
         selector.set_rule_hints(hints)
 
@@ -218,6 +231,8 @@ class AutotileRuleDesigner:
                     tile_selector.selected_tile,
                 )
 
+                self.current_tileset_index = tile_selector.active_idx
+
     def _update_preview_from_selector(self):
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if tile_selector and tile_selector.selected_tile:
@@ -228,9 +243,13 @@ class AutotileRuleDesigner:
 
                 current_state = (current_path, current_rect)
                 if current_state != self._last_editor_selection:
+                    print(
+                        f"DEBUG: Preview updated - path={current_path}, active_idx={tile_selector.active_idx}"
+                    )
                     self._last_editor_selection = current_state
 
                     self.current_tileset_path = current_path
+                    self.current_tileset_index = tile_selector.active_idx
                     self.current_variant_ids = []
                     self.current_preview_surfs = []
 
@@ -260,6 +279,7 @@ class AutotileRuleDesigner:
                                 self.current_preview_surfs.append(sub)
                             except:
                                 pass
+                    print(f"DEBUG: Variants loaded: {self.current_variant_ids}")
 
     def _handle_grid_click(self, mouse_pos):
         start_x, start_y = self._get_grid_start_pos()
@@ -307,12 +327,31 @@ class AutotileRuleDesigner:
 
     def _load_rule_to_editor(self, rule: AutotileRule):
         self.current_neighbors = set(rule.neighbors)
-        self.current_variant_ids = rule.variant_ids
+        self.current_variant_ids = list(rule.variant_ids)
+
         self.current_tileset_path = rule.tileset_path
+        self.current_tileset_index = rule.tileset_index
 
         self.current_preview_surfs = []
 
-        if rule.preview_surf:
+        if rule.variant_ids and self.current_tileset_index is not None:
+            ts_widget = getattr(self.editor, "tileset_widget", None)
+            if ts_widget and 0 <= self.current_tileset_index < len(ts_widget.tilesets):
+                ts = ts_widget.tilesets[self.current_tileset_index]
+                tile_w, tile_h = self.editor.tilemap.tile_size
+                sheet_cols = ts.surface.get_width() // tile_w
+
+                for vid in rule.variant_ids:
+                    tx = (vid % sheet_cols) * tile_w
+                    ty = (vid // sheet_cols) * tile_h
+                    try:
+                        sub_rect = Rect(tx, ty, tile_w, tile_h)
+                        sub = ts.surface.subsurface(sub_rect).copy()
+                        self.current_preview_surfs.append(sub)
+                    except:
+                        pass
+
+        elif rule.preview_surf:
             self.current_preview_surfs.append(rule.preview_surf)
 
         self._sync_last_editor_state()
@@ -320,10 +359,44 @@ class AutotileRuleDesigner:
     def _reset_selection(self):
         self.selected_rule_index = -1
         self.current_neighbors = set()
+        self.current_variant_ids = []
+        self.current_preview_surfs = []
+
+        self._last_editor_selection = (None, (0, 0, 0, 0))
+
         self._sync_last_editor_state()
 
+        self._update_preview_from_selector()
+
     def _save_current_rule(self):
+
+        self._update_preview_from_selector()
+
+        print(f"\nDEBUG: _save_current_rule called")
+        print(f"  current_tileset_path: {self.current_tileset_path}")
+        print(f"  current_tileset_index: {self.current_tileset_index}")
+        print(f"  current_variant_ids: {self.current_variant_ids}")
+        print(f"  current_neighbors: {self.current_neighbors}")
+
+        tile_selector = getattr(self.editor, "tileset_widget", None)
+        if (
+            not self.current_tileset_path or self.current_tileset_index is None
+        ) and tile_selector:
+            ts = tile_selector.get_active_tile()
+            if ts:
+                self.current_tileset_path = str(ts.path)
+                self.current_tileset_index = tile_selector.active_idx
+                print(f"  Fallback: got path and index from selector")
+
         if not self.current_tileset_path or not self.current_variant_ids:
+
+            print(f"DEBUG: Can't save rule")
+            print(f"  - tileset_path empty: {not self.current_tileset_path}")
+            print(f"  - variant_ids empty: {not self.current_variant_ids}")
+            if not self.current_tileset_path:
+                print(f"  -> Please select a tileset and tile(s) to autotile")
+            if not self.current_variant_ids:
+                print(f"  -> Please select at least one tile in the tileset editor")
             return
 
         preview = self.current_preview_surfs[0] if self.current_preview_surfs else None
@@ -333,12 +406,12 @@ class AutotileRuleDesigner:
         if len(self.current_variant_ids) > 1:
             name += f" ({len(self.current_variant_ids)} vars)"
 
-        assert preview is not None
         if self.selected_rule_index >= 0:
             r = self.rules[self.selected_rule_index]
             r.neighbors = set(self.current_neighbors)
             r.variant_ids = list(self.current_variant_ids)
             r.tileset_path = self.current_tileset_path
+            r.tileset_index = getattr(self, "current_tileset_index", None)
             r.preview_surf = preview
         else:
             new_rule = AutotileRule(
@@ -347,12 +420,17 @@ class AutotileRuleDesigner:
                 self.current_tileset_path,
                 list(self.current_variant_ids),
                 preview,
+                tileset_index=getattr(self, "current_tileset_index", None),
             )
             self.rules.append(new_rule)
             self.selected_rule_index = len(self.rules) - 1
 
+        print(f"Rule saved: {self.rules[self.selected_rule_index].to_dict()}")
+        print(f"Total rules: {len(self.rules)}")
         for rule in self.rules:
-            print(rule.to_dict())
+            print(
+                f"  - {rule.name}: neighbors={rule.neighbors}, variants={rule.variant_ids}"
+            )
 
     def _delete_current_rule(self):
         if 0 <= self.selected_rule_index < len(self.rules):
