@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Optional, Tuple
 import json
 
 from layers import Layer
@@ -135,10 +135,8 @@ class TilemapParser:
             "z_index": layer.z_index,
         }
 
-        # Tiles
         layer_data["tiles"] = TileLayerParser.serialize_tiles(layer.tiles)
 
-        # Objects
         if layer.layer_type == "object":
             layer_data["objects"] = ObjectLayerParser.serialize_objects(layer.objects)
             layer_data["next_object_id"] = layer.next_object_id
@@ -146,8 +144,6 @@ class TilemapParser:
         return layer_data
 
     def load_layer(self, data: dict) -> Layer:
-        from layers import Layer  # delayed import to avoid circular issues
-
         layer = Layer(
             name=data.get("name", "Unnamed"),
             layer_type=data.get("type", "tile"),
