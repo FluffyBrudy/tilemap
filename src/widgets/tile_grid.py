@@ -422,18 +422,52 @@ class TileGrid:
         assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
 
-        active_layer = tilemap.layer_manager.get_active_layer()
+        rendered_layers = tilemap.layer_manager.get_rendered_layers()
 
-        if active_layer and active_layer.layer_type == "tile":
-            for x in range(start_col, end_col):
-                for y in range(start_row, end_row):
-                    location = (x, y)
+        for layer in rendered_layers:
 
-                    tile = active_layer.get_tile(location)
-                    if not tile:
-                        continue
+            if layer.opacity < 1.0:
 
-                    ttype = int(tile["ttype"])
+                layer_surf = pygame.Surface((self.rect.width, self.rect.height))
+                layer_surf.fill((20, 20, 20))
+                layer_surf.set_colorkey((20, 20, 20))
+            else:
+                layer_surf = surface
+
+            if layer.layer_type == "tile":
+                for x in range(start_col, end_col):
+                    for y in range(start_row, end_row):
+                        location = (x, y)
+
+                        tile = layer.get_tile(location)
+                        if not tile:
+                            continue
+
+                        ttype = int(tile["ttype"])
+
+                        if ttype not in tileset_map:
+                            continue
+
+                        tileset_data = tileset_map[ttype]
+                        base_surf = tileset_data.surface
+
+                        variant_id = tile["variant"]
+                        sheet_w = base_surf.get_width()
+
+                        sheet_cols = sheet_w // tile_w
+
+                        src_x = (variant_id % sheet_cols) * tile_w
+                        src_y = (variant_id // sheet_cols) * tile_h
+                        src_rect = Rect(src_x, src_y, tile_w, tile_h)
+
+                        dest_x = (x * tile_w) - self.scroll_x + self.rect.x
+                        dest_y = (y * tile_h) - self.scroll_y + self.rect.y
+
+                        layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
+
+            elif layer.layer_type == "object":
+                for obj_id, obj in layer.get_all_objects().items():
+                    ttype = obj["ttype"]
 
                     if ttype not in tileset_map:
                         continue
@@ -441,44 +475,24 @@ class TileGrid:
                     tileset_data = tileset_map[ttype]
                     base_surf = tileset_data.surface
 
-                    variant_id = tile["variant"]
-                    sheet_w = base_surf.get_width()
+                    variant_id = obj["variant"]
+                    area = obj["area"]
+                    obj_x, obj_y = area["x"], area["y"]
+                    obj_w, obj_h = area["w"], area["h"]
 
+                    sheet_w = base_surf.get_width()
                     sheet_cols = sheet_w // tile_w
 
                     src_x = (variant_id % sheet_cols) * tile_w
                     src_y = (variant_id // sheet_cols) * tile_h
-                    src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
-                    dest_x = (x * tile_w) - self.scroll_x + self.rect.x
-                    dest_y = (y * tile_h) - self.scroll_y + self.rect.y
+                    src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
-                    surface.blit(base_surf, (dest_x, dest_y), area=src_rect)
+                    dest_x = obj_x - self.scroll_x + self.rect.x
+                    dest_y = obj_y - self.scroll_y + self.rect.y
 
-        if active_layer and active_layer.layer_type == "object":
-            for obj_id, obj in active_layer.get_all_objects().items():
-                ttype = obj["ttype"]
+                    layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
 
-                if ttype not in tileset_map:
-                    continue
-
-                tileset_data = tileset_map[ttype]
-                base_surf = tileset_data.surface
-
-                variant_id = obj["variant"]
-                area = obj["area"]
-                obj_x, obj_y = area["x"], area["y"]
-                obj_w, obj_h = area["w"], area["h"]
-
-                sheet_w = base_surf.get_width()
-                sheet_cols = sheet_w // tile_w
-
-                src_x = (variant_id % sheet_cols) * tile_w
-                src_y = (variant_id // sheet_cols) * tile_h
-
-                src_rect = Rect(src_x, src_y, obj_w, obj_h)
-
-                dest_x = obj_x - self.scroll_x + self.rect.x
-                dest_y = obj_y - self.scroll_y + self.rect.y
-
-                surface.blit(base_surf, (dest_x, dest_y), area=src_rect)
+            if layer.opacity < 1.0:
+                layer_surf.set_alpha(int(layer.opacity * 255))
+                surface.blit(layer_surf, (self.rect.x, self.rect.y))

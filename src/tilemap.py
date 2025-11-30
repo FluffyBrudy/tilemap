@@ -81,7 +81,7 @@ class Tilemap:
         return tuple(tiles_around)
 
     def save_map(self, relative_path: Optional[str] = None):
-        target_path: Path = None  # type: ignore
+        target_path: Path = None
 
         if relative_path:
             if not relative_path.endswith(".json"):

@@ -6,11 +6,76 @@
   },
   "resources": {
     "tilesets": [
-      "/home/rudy/Downloads/Final/Tiles.png"
+      {
+        "path": "/home/rudy/Downloads/Final/Tiles.png",
+        "type": "tile"
+      }
     ]
   },
   "project_state": {
-    "rules": []
+    "rules": [
+      {
+        "name": "Rule 1 (4 vars)",
+        "neighbors": [],
+        "tileset_path": "/home/rudy/Downloads/Final/Tiles.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          24,
+          35,
+          46,
+          57
+        ]
+      },
+      {
+        "name": "Rule 2 (2 vars)",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Downloads/Final/Tiles.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          39,
+          40
+        ]
+      },
+      {
+        "name": "Rule 3",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Downloads/Final/Tiles.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          14
+        ]
+      }
+    ]
   },
   "data": {
     "ongrid": {},
@@ -24,195 +89,19 @@
         "z_index": 0,
         "tiles": {},
         "objects": {
-          "1": {
+          "231": {
             "area": {
-              "x": 423,
-              "y": 224,
-              "w": 128,
+              "x": 652,
+              "y": 87,
+              "w": 160,
               "h": 96
             },
             "ttype": 0,
-            "tileset_type": "object",
-            "variant": 0
-          },
-          "63": {
-            "area": {
-              "x": 690,
-              "y": 360,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
             "tileset_type": "tile",
-            "variant": 13
-          },
-          "106": {
-            "area": {
-              "x": 0,
-              "y": 345,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "107": {
-            "area": {
-              "x": 0,
-              "y": 345,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "108": {
-            "area": {
-              "x": 0,
-              "y": 343,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "109": {
-            "area": {
-              "x": 0,
-              "y": 343,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "110": {
-            "area": {
-              "x": 0,
-              "y": 339,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "111": {
-            "area": {
-              "x": 0,
-              "y": 339,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "112": {
-            "area": {
-              "x": 0,
-              "y": 337,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "113": {
-            "area": {
-              "x": 0,
-              "y": 330,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "114": {
-            "area": {
-              "x": 0,
-              "y": 330,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "115": {
-            "area": {
-              "x": 0,
-              "y": 323,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "116": {
-            "area": {
-              "x": 0,
-              "y": 323,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "117": {
-            "area": {
-              "x": 0,
-              "y": 315,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "118": {
-            "area": {
-              "x": 0,
-              "y": 315,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "142": {
-            "area": {
-              "x": 138,
-              "y": 194,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
-          },
-          "143": {
-            "area": {
-              "x": 138,
-              "y": 194,
-              "w": 96,
-              "h": 64
-            },
-            "ttype": 0,
-            "tileset_type": "tile",
-            "variant": 13
+            "variant": 49
           }
         },
-        "next_object_id": 176
+        "next_object_id": 232
       },
       {
         "name": "Layer 2",
@@ -222,240 +111,10 @@
         "opacity": 1.0,
         "z_index": 1,
         "tiles": {
-          "13;14": {
-            "pos": "13;14",
-            "ttype": "0",
-            "variant": 12
-          },
-          "13;13": {
-            "pos": "13;13",
-            "ttype": "0",
-            "variant": 12
-          },
-          "13;12": {
-            "pos": "13;12",
-            "ttype": "0",
-            "variant": 12
-          },
-          "13;11": {
-            "pos": "13;11",
-            "ttype": "0",
-            "variant": 12
-          },
-          "14;11": {
-            "pos": "14;11",
-            "ttype": "0",
-            "variant": 12
-          },
-          "14;10": {
-            "pos": "14;10",
-            "ttype": "0",
-            "variant": 12
-          },
-          "15;10": {
-            "pos": "15;10",
-            "ttype": "0",
-            "variant": 12
-          },
-          "16;10": {
-            "pos": "16;10",
-            "ttype": "0",
-            "variant": 12
-          },
-          "17;10": {
-            "pos": "17;10",
-            "ttype": "0",
-            "variant": 12
-          },
-          "17;11": {
-            "pos": "17;11",
-            "ttype": "0",
-            "variant": 12
-          },
-          "17;12": {
-            "pos": "17;12",
-            "ttype": "0",
-            "variant": 12
-          },
-          "17;13": {
-            "pos": "17;13",
-            "ttype": "0",
-            "variant": 12
-          },
-          "18;13": {
-            "pos": "18;13",
-            "ttype": "0",
-            "variant": 12
-          },
-          "18;14": {
-            "pos": "18;14",
-            "ttype": "0",
-            "variant": 12
-          },
-          "18;15": {
-            "pos": "18;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "17;15": {
-            "pos": "17;15",
-            "ttype": "0",
-            "variant": 14
-          },
-          "17;16": {
-            "pos": "17;16",
-            "ttype": "0",
-            "variant": 25
-          },
-          "16;16": {
-            "pos": "16;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "15;16": {
-            "pos": "15;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "14;16": {
-            "pos": "14;16",
-            "ttype": "0",
-            "variant": 25
-          },
-          "13;16": {
-            "pos": "13;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "12;16": {
-            "pos": "12;16",
-            "ttype": "0",
-            "variant": 25
-          },
-          "11;16": {
-            "pos": "11;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "10;15": {
-            "pos": "10;15",
-            "ttype": "0",
-            "variant": 14
-          },
-          "9;15": {
-            "pos": "9;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "9;14": {
-            "pos": "9;14",
-            "ttype": "0",
-            "variant": 12
-          },
-          "8;14": {
-            "pos": "8;14",
-            "ttype": "0",
-            "variant": 15
-          },
-          "8;13": {
-            "pos": "8;13",
-            "ttype": "0",
-            "variant": 12
-          },
-          "7;12": {
-            "pos": "7;12",
-            "ttype": "0",
-            "variant": 12
-          },
-          "7;11": {
-            "pos": "7;11",
-            "ttype": "0",
-            "variant": 12
-          },
-          "7;10": {
-            "pos": "7;10",
-            "ttype": "0",
-            "variant": 12
-          },
-          "7;9": {
-            "pos": "7;9",
-            "ttype": "0",
-            "variant": 12
-          },
           "7;8": {
             "pos": "7;8",
             "ttype": "0",
             "variant": 24
-          },
-          "7;7": {
-            "pos": "7;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "8;7": {
-            "pos": "8;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "8;6": {
-            "pos": "8;6",
-            "ttype": "0",
-            "variant": 12
-          },
-          "9;5": {
-            "pos": "9;5",
-            "ttype": "0",
-            "variant": 12
-          },
-          "10;5": {
-            "pos": "10;5",
-            "ttype": "0",
-            "variant": 12
-          },
-          "10;4": {
-            "pos": "10;4",
-            "ttype": "0",
-            "variant": 12
-          },
-          "11;4": {
-            "pos": "11;4",
-            "ttype": "0",
-            "variant": 12
-          },
-          "13;5": {
-            "pos": "13;5",
-            "ttype": "0",
-            "variant": 12
-          },
-          "14;5": {
-            "pos": "14;5",
-            "ttype": "0",
-            "variant": 12
-          },
-          "15;5": {
-            "pos": "15;5",
-            "ttype": "0",
-            "variant": 12
-          },
-          "16;6": {
-            "pos": "16;6",
-            "ttype": "0",
-            "variant": 12
-          },
-          "17;6": {
-            "pos": "17;6",
-            "ttype": "0",
-            "variant": 12
-          },
-          "18;7": {
-            "pos": "18;7",
-            "ttype": "0",
-            "variant": 14
-          },
-          "19;7": {
-            "pos": "19;7",
-            "ttype": "0",
-            "variant": 13
           },
           "20;8": {
             "pos": "20;8",
@@ -467,438 +126,18 @@
             "ttype": "0",
             "variant": 24
           },
-          "23;10": {
-            "pos": "23;10",
-            "ttype": "0",
-            "variant": 12
-          },
-          "24;11": {
-            "pos": "24;11",
-            "ttype": "0",
-            "variant": 12
-          },
-          "24;13": {
-            "pos": "24;13",
-            "ttype": "0",
-            "variant": 12
-          },
-          "25;13": {
-            "pos": "25;13",
-            "ttype": "0",
-            "variant": 13
-          },
-          "25;14": {
-            "pos": "25;14",
-            "ttype": "0",
-            "variant": 14
-          },
-          "26;15": {
-            "pos": "26;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "26;16": {
-            "pos": "26;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "26;17": {
-            "pos": "26;17",
-            "ttype": "0",
-            "variant": 12
-          },
-          "26;18": {
-            "pos": "26;18",
-            "ttype": "0",
-            "variant": 12
-          },
-          "26;19": {
-            "pos": "26;19",
-            "ttype": "0",
-            "variant": 12
-          },
-          "21;5": {
-            "pos": "21;5",
-            "ttype": "0",
-            "variant": 26
-          },
-          "22;5": {
-            "pos": "22;5",
-            "ttype": "0",
-            "variant": 26
-          },
-          "23;5": {
-            "pos": "23;5",
-            "ttype": "0",
-            "variant": 26
-          },
           "21;6": {
             "pos": "21;6",
             "ttype": "0",
             "variant": 24
-          },
-          "22;6": {
-            "pos": "22;6",
-            "ttype": "0",
-            "variant": 25
-          },
-          "23;6": {
-            "pos": "23;6",
-            "ttype": "0",
-            "variant": 26
-          },
-          "21;4": {
-            "pos": "21;4",
-            "ttype": "0",
-            "variant": 15
-          },
-          "22;4": {
-            "pos": "22;4",
-            "ttype": "0",
-            "variant": 15
-          },
-          "23;4": {
-            "pos": "23;4",
-            "ttype": "0",
-            "variant": 15
-          },
-          "20;4": {
-            "pos": "20;4",
-            "ttype": "0",
-            "variant": 15
-          },
-          "20;5": {
-            "pos": "20;5",
-            "ttype": "0",
-            "variant": 26
-          },
-          "19;4": {
-            "pos": "19;4",
-            "ttype": "0",
-            "variant": 26
-          },
-          "19;5": {
-            "pos": "19;5",
-            "ttype": "0",
-            "variant": 25
-          },
-          "18;4": {
-            "pos": "18;4",
-            "ttype": "0",
-            "variant": 26
-          },
-          "18;5": {
-            "pos": "18;5",
-            "ttype": "0",
-            "variant": 24
-          },
-          "17;3": {
-            "pos": "17;3",
-            "ttype": "0",
-            "variant": 15
-          },
-          "18;3": {
-            "pos": "18;3",
-            "ttype": "0",
-            "variant": 15
-          },
-          "19;3": {
-            "pos": "19;3",
-            "ttype": "0",
-            "variant": 15
-          },
-          "17;4": {
-            "pos": "17;4",
-            "ttype": "0",
-            "variant": 26
-          },
-          "16;3": {
-            "pos": "16;3",
-            "ttype": "0",
-            "variant": 15
-          },
-          "16;4": {
-            "pos": "16;4",
-            "ttype": "0",
-            "variant": 26
-          },
-          "15;3": {
-            "pos": "15;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "15;4": {
-            "pos": "15;4",
-            "ttype": "0",
-            "variant": 26
-          },
-          "14;3": {
-            "pos": "14;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "14;4": {
-            "pos": "14;4",
-            "ttype": "0",
-            "variant": 25
-          },
-          "13;3": {
-            "pos": "13;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "13;4": {
-            "pos": "13;4",
-            "ttype": "0",
-            "variant": 24
-          },
-          "13;2": {
-            "pos": "13;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "14;2": {
-            "pos": "14;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "15;2": {
-            "pos": "15;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "12;2": {
-            "pos": "12;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "12;3": {
-            "pos": "12;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "11;2": {
-            "pos": "11;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "11;3": {
-            "pos": "11;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "10;2": {
-            "pos": "10;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "10;3": {
-            "pos": "10;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "9;2": {
-            "pos": "9;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "9;3": {
-            "pos": "9;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "8;2": {
-            "pos": "8;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "8;3": {
-            "pos": "8;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "7;2": {
-            "pos": "7;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "7;3": {
-            "pos": "7;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "6;2": {
-            "pos": "6;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "6;3": {
-            "pos": "6;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "5;2": {
-            "pos": "5;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "5;3": {
-            "pos": "5;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "4;2": {
-            "pos": "4;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "4;3": {
-            "pos": "4;3",
-            "ttype": "0",
-            "variant": 26
-          },
-          "3;2": {
-            "pos": "3;2",
-            "ttype": "0",
-            "variant": 15
-          },
-          "3;3": {
-            "pos": "3;3",
-            "ttype": "0",
-            "variant": 15
-          },
-          "2;2": {
-            "pos": "2;2",
-            "ttype": "0",
-            "variant": 14
-          },
-          "2;3": {
-            "pos": "2;3",
-            "ttype": "0",
-            "variant": 15
-          },
-          "1;2": {
-            "pos": "1;2",
-            "ttype": "0",
-            "variant": 13
-          },
-          "1;3": {
-            "pos": "1;3",
-            "ttype": "0",
-            "variant": 14
-          },
-          "1;4": {
-            "pos": "1;4",
-            "ttype": "0",
-            "variant": 14
-          },
-          "2;4": {
-            "pos": "2;4",
-            "ttype": "0",
-            "variant": 15
-          },
-          "3;4": {
-            "pos": "3;4",
-            "ttype": "0",
-            "variant": 26
-          },
-          "0;3": {
-            "pos": "0;3",
-            "ttype": "0",
-            "variant": 13
-          },
-          "0;4": {
-            "pos": "0;4",
-            "ttype": "0",
-            "variant": 13
-          },
-          "0;5": {
-            "pos": "0;5",
-            "ttype": "0",
-            "variant": 13
-          },
-          "1;5": {
-            "pos": "1;5",
-            "ttype": "0",
-            "variant": 14
-          },
-          "2;5": {
-            "pos": "2;5",
-            "ttype": "0",
-            "variant": 15
           },
           "0;6": {
             "pos": "0;6",
             "ttype": "0",
             "variant": 24
           },
-          "1;6": {
-            "pos": "1;6",
-            "ttype": "0",
-            "variant": 13
-          },
-          "2;6": {
-            "pos": "2;6",
-            "ttype": "0",
-            "variant": 13
-          },
-          "3;6": {
-            "pos": "3;6",
-            "ttype": "0",
-            "variant": 14
-          },
           "1;7": {
             "pos": "1;7",
-            "ttype": "0",
-            "variant": 24
-          },
-          "2;7": {
-            "pos": "2;7",
-            "ttype": "0",
-            "variant": 24
-          },
-          "3;7": {
-            "pos": "3;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "4;6": {
-            "pos": "4;6",
-            "ttype": "0",
-            "variant": 15
-          },
-          "4;7": {
-            "pos": "4;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "5;7": {
-            "pos": "5;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "3;8": {
-            "pos": "3;8",
-            "ttype": "0",
-            "variant": 24
-          },
-          "4;8": {
-            "pos": "4;8",
-            "ttype": "0",
-            "variant": 24
-          },
-          "5;8": {
-            "pos": "5;8",
-            "ttype": "0",
-            "variant": 24
-          },
-          "6;7": {
-            "pos": "6;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "6;8": {
-            "pos": "6;8",
             "ttype": "0",
             "variant": 24
           },
@@ -907,93 +146,33 @@
             "ttype": "0",
             "variant": 24
           },
-          "9;7": {
-            "pos": "9;7",
-            "ttype": "0",
-            "variant": 13
-          },
           "9;8": {
             "pos": "9;8",
             "ttype": "0",
             "variant": 24
-          },
-          "10;7": {
-            "pos": "10;7",
-            "ttype": "0",
-            "variant": 13
           },
           "10;8": {
             "pos": "10;8",
             "ttype": "0",
             "variant": 24
           },
-          "11;7": {
-            "pos": "11;7",
-            "ttype": "0",
-            "variant": 13
-          },
           "11;8": {
             "pos": "11;8",
             "ttype": "0",
             "variant": 24
-          },
-          "12;7": {
-            "pos": "12;7",
-            "ttype": "0",
-            "variant": 13
           },
           "12;8": {
             "pos": "12;8",
             "ttype": "0",
             "variant": 24
           },
-          "13;7": {
-            "pos": "13;7",
-            "ttype": "0",
-            "variant": 14
-          },
           "13;8": {
             "pos": "13;8",
             "ttype": "0",
             "variant": 25
           },
-          "14;7": {
-            "pos": "14;7",
-            "ttype": "0",
-            "variant": 13
-          },
           "14;8": {
             "pos": "14;8",
-            "ttype": "0",
-            "variant": 24
-          },
-          "15;7": {
-            "pos": "15;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "16;7": {
-            "pos": "16;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "15;8": {
-            "pos": "15;8",
-            "ttype": "0",
-            "variant": 24
-          },
-          "16;8": {
-            "pos": "16;8",
-            "ttype": "0",
-            "variant": 24
-          },
-          "17;7": {
-            "pos": "17;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "17;8": {
-            "pos": "17;8",
             "ttype": "0",
             "variant": 24
           },
@@ -1007,280 +186,10 @@
             "ttype": "0",
             "variant": 24
           },
-          "20;7": {
-            "pos": "20;7",
-            "ttype": "0",
-            "variant": 13
-          },
-          "21;7": {
-            "pos": "21;7",
-            "ttype": "0",
-            "variant": 14
-          },
-          "21;8": {
-            "pos": "21;8",
-            "ttype": "0",
-            "variant": 13
-          },
-          "22;7": {
-            "pos": "22;7",
-            "ttype": "0",
-            "variant": 15
-          },
-          "22;8": {
-            "pos": "22;8",
-            "ttype": "0",
-            "variant": 13
-          },
-          "23;8": {
-            "pos": "23;8",
-            "ttype": "0",
-            "variant": 13
-          },
           "22;9": {
             "pos": "22;9",
             "ttype": "0",
             "variant": 24
-          },
-          "23;9": {
-            "pos": "23;9",
-            "ttype": "0",
-            "variant": 24
-          },
-          "24;8": {
-            "pos": "24;8",
-            "ttype": "0",
-            "variant": 13
-          },
-          "24;9": {
-            "pos": "24;9",
-            "ttype": "0",
-            "variant": 13
-          },
-          "25;8": {
-            "pos": "25;8",
-            "ttype": "0",
-            "variant": 14
-          },
-          "25;9": {
-            "pos": "25;9",
-            "ttype": "0",
-            "variant": 13
-          },
-          "26;8": {
-            "pos": "26;8",
-            "ttype": "0",
-            "variant": 15
-          },
-          "26;9": {
-            "pos": "26;9",
-            "ttype": "0",
-            "variant": 14
-          },
-          "24;10": {
-            "pos": "24;10",
-            "ttype": "0",
-            "variant": 24
-          },
-          "25;10": {
-            "pos": "25;10",
-            "ttype": "0",
-            "variant": 13
-          },
-          "26;10": {
-            "pos": "26;10",
-            "ttype": "0",
-            "variant": 14
-          },
-          "27;9": {
-            "pos": "27;9",
-            "ttype": "0",
-            "variant": 15
-          },
-          "27;10": {
-            "pos": "27;10",
-            "ttype": "0",
-            "variant": 15
-          },
-          "25;11": {
-            "pos": "25;11",
-            "ttype": "0",
-            "variant": 13
-          },
-          "26;11": {
-            "pos": "26;11",
-            "ttype": "0",
-            "variant": 14
-          },
-          "27;11": {
-            "pos": "27;11",
-            "ttype": "0",
-            "variant": 15
-          },
-          "25;12": {
-            "pos": "25;12",
-            "ttype": "0",
-            "variant": 13
-          },
-          "26;12": {
-            "pos": "26;12",
-            "ttype": "0",
-            "variant": 14
-          },
-          "27;12": {
-            "pos": "27;12",
-            "ttype": "0",
-            "variant": 15
-          },
-          "26;13": {
-            "pos": "26;13",
-            "ttype": "0",
-            "variant": 14
-          },
-          "27;13": {
-            "pos": "27;13",
-            "ttype": "0",
-            "variant": 15
-          },
-          "26;14": {
-            "pos": "26;14",
-            "ttype": "0",
-            "variant": 15
-          },
-          "27;14": {
-            "pos": "27;14",
-            "ttype": "0",
-            "variant": 26
-          },
-          "24;14": {
-            "pos": "24;14",
-            "ttype": "0",
-            "variant": 13
-          },
-          "24;15": {
-            "pos": "24;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "25;15": {
-            "pos": "25;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "24;16": {
-            "pos": "24;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "25;16": {
-            "pos": "25;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "23;15": {
-            "pos": "23;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "23;16": {
-            "pos": "23;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "22;15": {
-            "pos": "22;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "22;16": {
-            "pos": "22;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "21;15": {
-            "pos": "21;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "21;16": {
-            "pos": "21;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "20;15": {
-            "pos": "20;15",
-            "ttype": "0",
-            "variant": 14
-          },
-          "20;16": {
-            "pos": "20;16",
-            "ttype": "0",
-            "variant": 25
-          },
-          "19;15": {
-            "pos": "19;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "19;16": {
-            "pos": "19;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "18;16": {
-            "pos": "18;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "16;15": {
-            "pos": "16;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "14;15": {
-            "pos": "14;15",
-            "ttype": "0",
-            "variant": 14
-          },
-          "15;15": {
-            "pos": "15;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "13;15": {
-            "pos": "13;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "11;15": {
-            "pos": "11;15",
-            "ttype": "0",
-            "variant": 15
-          },
-          "12;15": {
-            "pos": "12;15",
-            "ttype": "0",
-            "variant": 14
-          },
-          "9;16": {
-            "pos": "9;16",
-            "ttype": "0",
-            "variant": 26
-          },
-          "10;16": {
-            "pos": "10;16",
-            "ttype": "0",
-            "variant": 25
-          },
-          "7;15": {
-            "pos": "7;15",
-            "ttype": "0",
-            "variant": 25
-          },
-          "8;15": {
-            "pos": "8;15",
-            "ttype": "0",
-            "variant": 26
           },
           "7;16": {
             "pos": "7;16",
@@ -1292,74 +201,48 @@
             "ttype": "0",
             "variant": 25
           },
-          "6;14": {
-            "pos": "6;14",
-            "ttype": "0",
-            "variant": 15
-          },
-          "7;14": {
-            "pos": "7;14",
-            "ttype": "0",
-            "variant": 14
-          },
-          "6;15": {
-            "pos": "6;15",
-            "ttype": "0",
-            "variant": 26
-          },
-          "4;14": {
-            "pos": "4;14",
-            "ttype": "0",
-            "variant": 15
-          },
-          "5;14": {
-            "pos": "5;14",
-            "ttype": "0",
-            "variant": 15
-          },
-          "4;15": {
-            "pos": "4;15",
-            "ttype": "0",
-            "variant": 26
-          },
-          "5;15": {
-            "pos": "5;15",
-            "ttype": "0",
-            "variant": 26
-          },
-          "3;14": {
-            "pos": "3;14",
-            "ttype": "0",
-            "variant": 15
-          },
-          "3;15": {
-            "pos": "3;15",
-            "ttype": "0",
-            "variant": 26
-          },
-          "2;14": {
-            "pos": "2;14",
-            "ttype": "0",
-            "variant": 14
-          },
-          "2;15": {
-            "pos": "2;15",
-            "ttype": "0",
-            "variant": 25
-          },
-          "1;14": {
-            "pos": "1;14",
+          "12;5": {
+            "pos": "12;5",
             "ttype": "0",
             "variant": 13
           },
-          "1;15": {
-            "pos": "1;15",
+          "13;5": {
+            "pos": "13;5",
             "ttype": "0",
-            "variant": 24
+            "variant": 13
+          },
+          "14;5": {
+            "pos": "14;5",
+            "ttype": "0",
+            "variant": 13
+          },
+          "15;5": {
+            "pos": "15;5",
+            "ttype": "0",
+            "variant": 13
+          },
+          "16;5": {
+            "pos": "16;5",
+            "ttype": "0",
+            "variant": 13
+          },
+          "17;5": {
+            "pos": "17;5",
+            "ttype": "0",
+            "variant": 13
+          },
+          "18;5": {
+            "pos": "18;5",
+            "ttype": "0",
+            "variant": 13
+          },
+          "19;5": {
+            "pos": "19;5",
+            "ttype": "0",
+            "variant": 13
           }
         }
       }
-    ],
-    "offgrid": []
+    ]
   }
 }

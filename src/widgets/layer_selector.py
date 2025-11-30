@@ -77,6 +77,25 @@ class LayerSelector:
                 if self.list_rect.collidepoint(mouse_pos):
                     layer_idx = self._get_layer_at_pos(mouse_pos)
                     if layer_idx is not None:
+
+                        eye_rect = self._get_eye_icon_rect(layer_idx, mouse_pos)
+                        if eye_rect and eye_rect.collidepoint(mouse_pos):
+                            layer = self.editor.tilemap.layer_manager.get_layer(
+                                layer_idx
+                            )
+                            if layer:
+                                layer.visible = not layer.visible
+                                return True
+
+                        lock_rect = self._get_lock_icon_rect(layer_idx, mouse_pos)
+                        if lock_rect and lock_rect.collidepoint(mouse_pos):
+                            layer = self.editor.tilemap.layer_manager.get_layer(
+                                layer_idx
+                            )
+                            if layer:
+                                layer.locked = not layer.locked
+                                return True
+
                         self.dragging_layer_idx = layer_idx
                         self.drag_start_y = mouse_pos[1]
 
@@ -172,6 +191,48 @@ class LayerSelector:
             return idx
 
         return None
+
+    def _get_eye_icon_rect(self, layer_idx: int, mouse_pos) -> Optional[Rect]:
+        """Get the clickable rect for the eye icon of a layer."""
+        if layer_idx is None:
+            return None
+
+        item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
+
+        if item_y + self.item_h < self.list_rect.y or item_y > self.list_rect.bottom:
+            return None
+
+        item_rect = Rect(
+            self.list_rect.x,
+            item_y,
+            self.list_rect.width,
+            self.item_h,
+        )
+
+        eye_x = item_rect.right - 25
+        eye_y = item_rect.y + 7
+        return Rect(eye_x - 5, eye_y - 5, 10, 10)
+
+    def _get_lock_icon_rect(self, layer_idx: int, mouse_pos) -> Optional[Rect]:
+        """Get the clickable rect for the lock icon of a layer."""
+        if layer_idx is None:
+            return None
+
+        item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
+
+        if item_y + self.item_h < self.list_rect.y or item_y > self.list_rect.bottom:
+            return None
+
+        item_rect = Rect(
+            self.list_rect.x,
+            item_y,
+            self.list_rect.width,
+            self.item_h,
+        )
+
+        lock_x = item_rect.right - 10
+        lock_y = item_rect.y + 7
+        return Rect(lock_x - 5, lock_y - 5, 10, 10)
 
     def _scroll(self, delta: int) -> None:
         """Scroll the layer list. Positive delta scrolls down."""
@@ -313,19 +374,39 @@ class LayerSelector:
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
             if layer.visible:
-                pygame.draw.circle(screen, (100, 200, 100), (eye_x, eye_y), 3)
+
+                pygame.draw.circle(screen, (100, 200, 100), (eye_x, eye_y), 4)
+                pygame.draw.circle(screen, (60, 150, 60), (eye_x, eye_y), 4, 1)
+                pygame.draw.circle(screen, (200, 255, 100), (eye_x - 1, eye_y - 1), 1)
             else:
-                pygame.draw.circle(screen, (100, 100, 100), (eye_x, eye_y), 3)
+
+                pygame.draw.line(
+                    screen,
+                    (100, 100, 100),
+                    (eye_x - 4, eye_y - 4),
+                    (eye_x + 4, eye_y + 4),
+                    2,
+                )
+                pygame.draw.line(
+                    screen,
+                    (100, 100, 100),
+                    (eye_x + 4, eye_y - 4),
+                    (eye_x - 4, eye_y + 4),
+                    2,
+                )
 
             lock_x = item_rect.right - 10
             lock_y = item_rect.y + 7
             if layer.locked:
+
                 pygame.draw.rect(
-                    screen, (200, 100, 100), Rect(lock_x - 3, lock_y - 3, 6, 6)
+                    screen, (200, 100, 100), Rect(lock_x - 4, lock_y - 4, 8, 8)
                 )
+                pygame.draw.circle(screen, (150, 50, 50), (lock_x, lock_y - 2), 1)
             else:
+
                 pygame.draw.rect(
-                    screen, (100, 100, 100), Rect(lock_x - 3, lock_y - 3, 6, 6), 1
+                    screen, (100, 100, 100), Rect(lock_x - 4, lock_y - 4, 8, 8), 1
                 )
 
         if self.dragging_layer_idx is not None:
