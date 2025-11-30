@@ -10,6 +10,7 @@ from widgets.filemanager import FileManager
 from widgets.mapsetup import MapSetup
 from widgets.tile_selector import TileSelector
 from widgets.tile_grid import TileGrid
+from widgets.layer_selector import LayerSelector
 from widgets.ui.fileinput import FilenameInput
 
 
@@ -29,8 +30,11 @@ class Editor:
         self.tilemap = Tilemap(self)
 
         self.selector_w = 300
+        self.tileset_h = 300  # Height of tileset selector
+        self.layer_h = 150  # Height of layer selector
         self.map_setup_widget: Optional[MapSetup] = None
         self.tileset_widget: Optional[TileSelector] = None
+        self.layer_widget: Optional[LayerSelector] = None
         self.tile_grid_widget: Optional[TileGrid] = None
 
         self.file_manager: Optional[FileManager] = None
@@ -112,7 +116,14 @@ class Editor:
     def post_map_setup(self):
         self.map_setup_widget = None
         self.tileset_widget = TileSelector(
-            self, self.width - self.selector_w, 0, self.selector_w, self.height
+            self, self.width - self.selector_w, 0, self.selector_w, self.tileset_h
+        )
+        self.layer_widget = LayerSelector(
+            self,
+            self.width - self.selector_w,
+            self.tileset_h,
+            self.selector_w,
+            self.layer_h,
         )
         self.tile_grid_widget = TileGrid(
             self, Rect(0, 0, self.width - self.selector_w, self.height)
@@ -140,6 +151,12 @@ class Editor:
             else:
                 consumed = False
                 if self.tileset_widget and self.tileset_widget.handle_event(event):
+                    consumed = True
+                if (
+                    not consumed
+                    and self.layer_widget
+                    and self.layer_widget.handle_event(event)
+                ):
                     consumed = True
                 if not consumed and self.tile_grid_widget:
                     self.tile_grid_widget.handle_event(event)
@@ -172,6 +189,8 @@ class Editor:
                 self.tile_grid_widget.draw(self.screen)
             if self.tileset_widget:
                 self.tileset_widget.draw(self.screen)
+            if self.layer_widget:
+                self.layer_widget.draw(self.screen)
             if self.autotiler:
                 self.autotiler.draw(self.screen)
             if self.map_setup_widget and self.map_setup_widget.visible:

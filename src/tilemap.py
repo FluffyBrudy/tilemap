@@ -6,6 +6,7 @@ from pathlib import Path
 from constants import BASE_PATH
 from utils.serialization import deserialize_point, serialize_point
 from ttypes.tilemap import TypeTile, TypeTileSerealized
+from layers import LayerManager, create_default_layer_manager
 
 if TYPE_CHECKING:
     from src.ttypes import TTile, TCoor
@@ -28,7 +29,7 @@ from widgets.autotiler import AutotileRule
 class Tilemap:
     def __init__(self, editor: "Editor"):
         self.editor = editor
-        self.ongrid_tiles: TTile = {}
+        self.layer_manager = create_default_layer_manager()
         self.offgrid_tiles: Set[TypeTile] = set()
 
         self.tile_size = (32, 32)
@@ -37,6 +38,21 @@ class Tilemap:
 
         self.active_project_path: Optional[Path] = None
 
+    @property
+    def ongrid_tiles(self) -> "TTile":
+        """Backward compatibility property. Returns tiles from active layer."""
+        active_layer = self.layer_manager.get_active_layer()
+        if active_layer:
+            return active_layer.tiles
+        return {}
+
+    @ongrid_tiles.setter
+    def ongrid_tiles(self, value: "TTile") -> None:
+        """Backward compatibility setter. Sets tiles in active layer."""
+        active_layer = self.layer_manager.get_active_layer()
+        if active_layer:
+            active_layer.tiles = value
+
     def init_size(self, tile_size: "TCoor", map_size: "TCoor"):
         self.tile_size = tile_size
         self.map_size = map_size
@@ -44,14 +60,20 @@ class Tilemap:
         self.active_project_path = None
 
     def get_nearest_tiles(self, tile_location: "TCoor") -> Tuple["TCoor"]:
+        """Get empty neighboring tile positions for the given location."""
         assert len(tile_location) == 2
         tiles_around = []
-        if tile_location not in self.ongrid_tiles:
+
+        # Check all visible layers for occupied tiles
+        active_layer = self.layer_manager.get_active_layer()
+        if not active_layer or tile_location not in active_layer.tiles:
             return tuple(tiles_around)
+
         x, y = tile_location
         for nx, ny in NEAREST_NEIGHBOUR_OFFSET:
             check_loc = (x + nx, y + ny)
-            if check_loc not in self.ongrid_tiles:
+            # Check if position is empty in active layer
+            if check_loc not in active_layer.tiles:
                 tiles_around.append(check_loc)
         return tuple(tiles_around)
 
@@ -75,11 +97,15 @@ class Tilemap:
             "meta": {
                 "tile_size": serialize_point(self.tile_size),
                 "map_size": serialize_point(self.map_size),
-                "version": "1.0",
+                "version": "1.1",  # Updated version for layer support
             },
             "resources": {"tilesets": []},
             "project_state": {"rules": []},
-            "data": {"ongrid": {}, "offgrid": []},
+            "data": {
+                "ongrid": {},  # Legacy format - populated from first layer
+                "layers": [],  # New format
+                "offgrid": [],
+            },
         }
 
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
@@ -94,13 +120,34 @@ class Tilemap:
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(rule.to_dict())
 
-        for loc, tile in self.ongrid_tiles.items():
-            key = serialize_point(loc)
-            tile_copy = cast(TypeTileSerealized, tile.copy())
+        # Save all layers in new format
+        for layer in self.layer_manager.layers:
+            layer_data = {
+                "name": layer.name,
+                "type": layer.layer_type,
+                "visible": layer.visible,
+                "locked": layer.locked,
+                "opacity": layer.opacity,
+                "z_index": layer.z_index,
+                "tiles": {},
+            }
 
-            tile_copy["pos"] = serialize_point(tile["pos"])
+            for loc, tile in layer.tiles.items():
+                key = serialize_point(loc)
+                tile_copy = cast(TypeTileSerealized, tile.copy())
+                tile_copy["pos"] = serialize_point(tile["pos"])
+                layer_data["tiles"][key] = tile_copy
 
-            save_data["data"]["ongrid"][key] = tile_copy
+            save_data["data"]["layers"].append(layer_data)
+
+        # Also save first layer to legacy ongrid format for backward compatibility
+        first_layer = self.layer_manager.get_layer(0)
+        if first_layer:
+            for loc, tile in first_layer.tiles.items():
+                key = serialize_point(loc)
+                tile_copy = cast(TypeTileSerealized, tile.copy())
+                tile_copy["pos"] = serialize_point(tile["pos"])
+                save_data["data"]["ongrid"][key] = tile_copy
 
         for tile in self.offgrid_tiles:
             tile_copy = cast(TypeTileSerealized, tile.copy())
@@ -120,7 +167,8 @@ class Tilemap:
         with open(path, "r") as f:
             payload = JSONLoad(f)
 
-        self.ongrid_tiles.clear()
+        # Clear existing data
+        self.layer_manager.clear_all_layers()
         self.offgrid_tiles.clear()
         self.active_project_path = path
 
@@ -151,12 +199,10 @@ class Tilemap:
 
                         resolved_ts = None
                         if rule.tileset_index is not None:
-
                             idx = rule.tileset_index
                             if 0 <= idx < len(ts_widget.tilesets):
                                 resolved_ts = ts_widget.tilesets[idx]
                         elif rule.tileset_path:
-
                             for idx, ts in enumerate(ts_widget.tilesets):
                                 try:
                                     if str(Path(rule.tileset_path)) == str(ts.path):
@@ -187,38 +233,89 @@ class Tilemap:
                     except Exception as e:
                         print(f"Failed to load rule '{rule_dict.get('name')}': {e}")
 
-        raw_ongrid = payload["data"]["ongrid"]
-        for loc_str, tile_data in raw_ongrid.items():
-            pos = deserialize_point(loc_str)
-            tile_data["pos"] = pos
+        # Load layers - check for new format first, fall back to legacy format
+        data_section = payload.get("data", {})
 
-            ttype = tile_data.get("ttype")
-            if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
-                ts_widget = self.editor.tileset_widget
+        if "layers" in data_section and data_section["layers"]:
+            # New layer format
+            self.layer_manager.layers.clear()
+            for layer_data in data_section["layers"]:
+                layer = self._load_layer_from_dict(layer_data)
+                self.layer_manager.layers.append(layer)
 
-                if isinstance(ttype, str):
+            # Ensure at least one layer exists
+            if not self.layer_manager.layers:
+                self.layer_manager.create_layer("Default")
 
-                    matched_idx = None
-                    for idx, ts in enumerate(ts_widget.tilesets):
-                        try:
+            self.layer_manager.active_layer_idx = 0
+        else:
+            # Legacy format - load ongrid into first layer
+            raw_ongrid = data_section.get("ongrid", {})
+            if raw_ongrid:
+                # Clear default layers and create single layer
+                self.layer_manager.layers.clear()
+                self.layer_manager.create_layer("Terrain")
+                active_layer = self.layer_manager.get_active_layer()
 
-                            if str(Path(ttype)) == str(ts.path):
-                                matched_idx = idx
-                                break
-                            if str(Path(ttype)) == str(ts.path.relative_to(BASE_PATH)):
-                                matched_idx = idx
-                                break
-                        except Exception:
-                            continue
-                    if matched_idx is not None:
-                        tile_data["ttype"] = matched_idx
+                for loc_str, tile_data in raw_ongrid.items():
+                    pos = deserialize_point(loc_str)
+                    tile_data["pos"] = pos
+                    self._normalize_ttype(tile_data)
+                    if active_layer:
+                        active_layer.tiles[pos] = tile_data
 
-            self.ongrid_tiles[pos] = tile_data
-
-        for tile_data in payload["data"]["offgrid"]:
+        # Load offgrid tiles
+        for tile_data in data_section.get("offgrid", []):
             tile_copy = tile_data.copy()
             tile_copy["pos"] = deserialize_point(tile_data["pos"])
             self.offgrid_tiles.add(tile_copy)
 
         self.initialized = True
-        print(f"Map Loaded: {path.name}")
+        print(
+            f"Map Loaded: {path.name} (Layers: {self.layer_manager.get_layer_count()})"
+        )
+
+    def _load_layer_from_dict(self, layer_data: dict):
+        """Load a layer from dictionary format."""
+        from layers import Layer
+
+        layer = Layer(
+            name=layer_data.get("name", "Unnamed"),
+            layer_type=layer_data.get("type", "tile"),
+            z_index=layer_data.get("z_index", 0),
+            visible=layer_data.get("visible", True),
+            locked=layer_data.get("locked", False),
+            opacity=layer_data.get("opacity", 1.0),
+        )
+
+        # Load tiles
+        for loc_str, tile_data in layer_data.get("tiles", {}).items():
+            pos = deserialize_point(loc_str)
+            tile_copy = tile_data.copy()
+            tile_copy["pos"] = pos
+            self._normalize_ttype(tile_copy)
+            layer.tiles[pos] = tile_copy
+
+        return layer
+
+    def _normalize_ttype(self, tile_data: dict) -> None:
+        """Normalize ttype field - convert path strings to indices if needed."""
+        ttype = tile_data.get("ttype")
+        if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
+            ts_widget = self.editor.tileset_widget
+
+            # If ttype is a string path, try to convert to index
+            if isinstance(ttype, str):
+                matched_idx = None
+                for idx, ts in enumerate(ts_widget.tilesets):
+                    try:
+                        if str(Path(ttype)) == str(ts.path):
+                            matched_idx = idx
+                            break
+                        if str(Path(ttype)) == str(ts.path.relative_to(BASE_PATH)):
+                            matched_idx = idx
+                            break
+                    except Exception:
+                        continue
+                if matched_idx is not None:
+                    tile_data["ttype"] = matched_idx
