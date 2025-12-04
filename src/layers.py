@@ -3,8 +3,12 @@ Layer management system for tilemap editor.
 Supports multiple layers with independent tile and object data.
 """
 
-from typing import Dict, List, Optional, Tuple
+import random
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from ttypes.tilemap import TypeTile, TypeObject
+
+if TYPE_CHECKING:
+    from widgets.autotiler import AutotileRule
 
 
 class Layer:
@@ -43,6 +47,47 @@ class Layer:
     def get_tile(self, pos: Tuple[int, int]) -> Optional[TypeTile]:
         """Get a tile at the given grid position."""
         return self.tiles.get(pos)
+
+    def autotile_layer(self, rules: List["AutotileRule"]) -> None:
+        """
+        Update all tiles in this layer according to autotile rules.
+        Each rule has a `neighbors` set and a list of `variant_ids`.
+        """
+        if self.locked or self.layer_type != "tile":
+            return
+
+        # Make a copy to avoid mutating while iterating
+        tile_positions = list(self.tiles.keys())
+        rules_sorted = sorted(rules, key=lambda r: len(r.neighbors), reverse=True)
+
+        for pos in tile_positions:
+            tile = self.tiles[pos]
+            ttype = tile["ttype"]
+
+            # Detect neighbors with the same ttype
+            neighbor_offsets = []
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # left, right, up, down
+                npos = (pos[0] + dx, pos[1] + dy)
+                if npos in self.tiles and self.tiles[npos]["ttype"] == ttype:
+                    neighbor_offsets.append((dx, dy))
+
+            neighbor_offsets_set = set(neighbor_offsets)
+
+            # Find first rule that matches neighbors
+            matched_rule: Optional["AutotileRule"] = None
+            for rule in rules_sorted:
+                if (
+                    rule.neighbors == neighbor_offsets_set
+                    and ttype == rule.tileset_index
+                ):
+                    matched_rule = rule
+                    break
+                print(ttype, rule.tileset_index)
+
+            if matched_rule and matched_rule.variant_ids:
+                # Pick a variant randomly if multiple options
+                tile["variant"] = random.choice(matched_rule.variant_ids)
+                self.tiles[pos] = tile
 
     def remove_tile(self, pos: Tuple[int, int]) -> bool:
         """Remove a tile at the given grid position. Returns True if tile existed."""

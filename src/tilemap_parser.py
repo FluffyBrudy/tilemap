@@ -42,7 +42,7 @@ class TileLayerParser:
     def deserialize_tile(data: TypeTileSerealized) -> TypeTile:
         return TypeTile(
             pos=deserialize_point(data["pos"]),
-            ttype=data["ttype"],
+            ttype=int(data["ttype"]),
             variant=data["variant"],
         )
 

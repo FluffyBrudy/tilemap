@@ -3,7 +3,7 @@ from typing import Dict, Tuple, TypedDict
 
 class TypeTile(TypedDict, total=True):
     pos: Tuple[int, int]
-    ttype: str
+    ttype: int
     variant: int
 
 

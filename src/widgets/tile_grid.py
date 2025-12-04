@@ -58,6 +58,16 @@ class TileGrid:
         mouse_pos = pygame.mouse.get_pos()
         is_hovering = self.rect.collidepoint(mouse_pos)
 
+        if event.type == pygame.KEYDOWN:
+            mods = pygame.key.get_mods()
+            if event.key == pygame.K_a and (mods & pygame.KMOD_LCTRL):
+                active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+                if active_layer and hasattr(self.editor, "autotiler"):
+                    rules = getattr(self.editor.autotiler, "rules", [])
+                    active_layer.autotile_layer(rules)
+                    print(f"Autotiling layer: {active_layer.name}")
+                return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 2:
                 if is_hovering:
@@ -217,7 +227,7 @@ class TileGrid:
 
                     tile_data: TypeTile = {
                         "pos": target_pos,
-                        "ttype": str(tileset_index),
+                        "ttype": (tileset_index),
                         "variant": variant_id,
                     }
 
