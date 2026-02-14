@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import json
 
 from layers import Layer
@@ -25,11 +25,14 @@ class TileLayerParser:
 
     @staticmethod
     def serialize_tile(tile: TypeTile) -> TypeTileSerealized:
-        return TypeTileSerealized(
+        data = TypeTileSerealized(
             pos=serialize_point(tile["pos"]),
             ttype=str(tile["ttype"]),
             variant=tile["variant"],
         )
+        if "properties" in tile:
+            data["properties"] = tile["properties"]
+        return data
 
     @staticmethod
     def deserialize_tiles(data: Dict[str, TypeTileSerealized]) -> TTile:
@@ -40,11 +43,14 @@ class TileLayerParser:
 
     @staticmethod
     def deserialize_tile(data: TypeTileSerealized) -> TypeTile:
-        return TypeTile(
+        tile = TypeTile(
             pos=deserialize_point(data["pos"]),
             ttype=int(data["ttype"]),
             variant=data["variant"],
         )
+        if "properties" in data:
+            tile["properties"] = data["properties"]
+        return tile
 
 
 class ObjectLayerParser:
@@ -57,12 +63,15 @@ class ObjectLayerParser:
 
     @staticmethod
     def serialize_object(obj: TypeObject) -> TypeObjectSerialized:
-        return TypeObjectSerialized(
+        data = TypeObjectSerialized(
             area=obj["area"],
             ttype=obj["ttype"],
             tileset_type=obj["tileset_type"],
             variant=obj["variant"],
         )
+        if "properties" in obj:
+            data["properties"] = obj["properties"]
+        return data
 
     @staticmethod
     def deserialize_objects(data: Dict[str, TypeObjectSerialized]) -> TObject:
@@ -73,12 +82,15 @@ class ObjectLayerParser:
 
     @staticmethod
     def deserialize_object(data: TypeObjectSerialized) -> TypeObject:
-        return TypeObject(
+        obj = TypeObject(
             area=data["area"],
             ttype=data["ttype"],
             tileset_type=data["tileset_type"],
             variant=data["variant"],
         )
+        if "properties" in data:
+            obj["properties"] = data["properties"]
+        return obj
 
 
 class AutotileParser:
@@ -124,6 +136,9 @@ class TilemapParser:
     ):
         self.tile_size = tile_size
         self.map_size = map_size
+        self.initial_map_size = map_size
+        self.zoom_level = 1.0
+        self.scroll = (0, 0)
 
     def save_layer(self, layer: Layer) -> dict:
         layer_data = {
@@ -133,9 +148,9 @@ class TilemapParser:
             "locked": layer.locked,
             "opacity": layer.opacity,
             "z_index": layer.z_index,
+            "tiles": TileLayerParser.serialize_tiles(layer.tiles),
+            "properties": getattr(layer, "properties", {})
         }
-
-        layer_data["tiles"] = TileLayerParser.serialize_tiles(layer.tiles)
 
         if layer.layer_type == "object":
             layer_data["objects"] = ObjectLayerParser.serialize_objects(layer.objects)
@@ -153,6 +168,7 @@ class TilemapParser:
             z_index=data.get("z_index", 0),
         )
 
+        layer.properties = data.get("properties", {})
         layer.tiles = TileLayerParser.deserialize_tiles(data.get("tiles", {}))
 
         if layer.layer_type == "object":
@@ -168,35 +184,58 @@ class TilemapParser:
         layers: List[Layer],
         autotile_rules: Optional[List[AutotileRule]],
         path: Path,
+        **kwargs
     ) -> None:
+        """
+        Save the tilemap to a JSON file.
+        Accepts optional kwargs for metadata like zoom_level, scroll, etc.
+        """
         payload = {
             "meta": {
                 "tile_size": serialize_point(self.tile_size),
                 "map_size": serialize_point(self.map_size),
+                "initial_map_size": serialize_point(kwargs.get("initial_map_size", self.initial_map_size)),
+                "zoom_level": kwargs.get("zoom_level", self.zoom_level),
+                "scroll": serialize_point(kwargs.get("scroll", self.scroll)),
                 "version": "1.1",
             },
             "project_state": {
                 "rules": AutotileParser.serialize_rules(autotile_rules or [])
             },
             "data": {"layers": [self.save_layer(layer) for layer in layers]},
+            "resources": kwargs.get("resources", {"tilesets": []})
         }
+        
+        # Support for groups if provided in kwargs
+        if "groups" in kwargs:
+             payload["project_state"]["groups"] = kwargs["groups"]
+
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             json.dump(payload, f, indent=2)
 
-    def load_tilemap(self, path: Path) -> Tuple[List[Layer], List[AutotileRule]]:
+    def load_tilemap(self, path: Path) -> Tuple[List[Layer], List[AutotileRule], dict]:
+        """
+        Load a tilemap and return layers, rules, and additional metadata.
+        """
         if not path.exists():
             raise FileNotFoundError(f"{path} does not exist")
         with open(path, "r") as f:
             payload = json.load(f)
 
-        self.tile_size = deserialize_point(payload["meta"]["tile_size"])
-        self.map_size = deserialize_point(payload["meta"]["map_size"])
+        meta = payload.get("meta", {})
+        self.tile_size = deserialize_point(meta.get("tile_size", "32;32"))
+        self.map_size = deserialize_point(meta.get("map_size", "50;50"))
+        self.initial_map_size = deserialize_point(meta.get("initial_map_size", serialize_point(self.map_size)))
+        self.zoom_level = meta.get("zoom_level", 1.0)
+        self.scroll = deserialize_point(meta.get("scroll", "0;0"))
 
         layers_data = payload.get("data", {}).get("layers", [])
         layers = [self.load_layer(ld) for ld in layers_data]
 
-        rules_data = payload.get("project_state", {}).get("rules", [])
+        project_state = payload.get("project_state", {})
+        rules_data = project_state.get("rules", [])
         rules = AutotileParser.deserialize_rules(rules_data)
-
-        return layers, rules
+        
+        # Also return the full payload or specific extra data if needed
+        return layers, rules, payload

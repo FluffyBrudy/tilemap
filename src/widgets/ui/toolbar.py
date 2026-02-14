@@ -17,16 +17,25 @@ class Toolbar:
         self.font = pygame.font.SysFont("Arial", 12)
         
         # Define the pan toggle button
-        self.pan_btn_rect = Rect(x + 10, y + 7, 60, 20)
-        self.checkbox_rect = Rect(x + 10, y + 10, 14, 14)
+        self.pan_btn_rect = Rect(x + 10, y + 7, 120, 20)
+        self.pan_checkbox_rect = Rect(x + 10, y + 10, 14, 14)
+
+        self.auto_btn_rect = Rect(x + 150, y + 7, 120, 20)
+        self.auto_checkbox_rect = Rect(x + 150, y + 10, 14, 14)
 
     def resize(self, width: int):
         self.rect.width = width
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.pan_btn_rect.collidepoint(event.pos) or self.checkbox_rect.inflate(10, 10).collidepoint(event.pos):
+            if self.pan_checkbox_rect.inflate(10, 10).collidepoint(event.pos) or \
+               Rect(self.pan_checkbox_rect.right, self.rect.y, 100, self.rect.height).collidepoint(event.pos):
                 self.editor.pan_mode = not self.editor.pan_mode
+                return True
+            
+            if self.auto_checkbox_rect.inflate(10, 10).collidepoint(event.pos) or \
+               Rect(self.auto_checkbox_rect.right, self.rect.y, 100, self.rect.height).collidepoint(event.pos):
+                self.editor.toggle_auto_autotile()
                 return True
         return False
 
@@ -34,21 +43,22 @@ class Toolbar:
         pygame.draw.rect(screen, self.bg_color, self.rect)
         pygame.draw.line(screen, self.border_color, (self.rect.x, self.rect.bottom - 1), (self.rect.right, self.rect.bottom - 1))
         
-        # Draw Pan Mode Toggle
+        # 1. Pan Mode
         is_pan = getattr(self.editor, "pan_mode", False)
-        
-        # Checkbox
-        pygame.draw.rect(screen, (30, 30, 35), self.checkbox_rect)
-        pygame.draw.rect(screen, self.border_color, self.checkbox_rect, 1)
+        pygame.draw.rect(screen, (30, 30, 35), self.pan_checkbox_rect)
+        pygame.draw.rect(screen, self.border_color, self.pan_checkbox_rect, 1)
         if is_pan:
-            # Draw a square check
-            inner = self.checkbox_rect.inflate(-6, -6)
-            pygame.draw.rect(screen, self.accent_color, inner)
-            
-        # Label
-        label_surf = self.font.render("Pan Mode (Space)", True, self.text_color)
-        screen.blit(label_surf, (self.checkbox_rect.right + 8, self.rect.y + 10))
+            pygame.draw.rect(screen, self.accent_color, self.pan_checkbox_rect.inflate(-6, -6))
         
-        # Tooltip-like background if hovering
-        if self.pan_btn_rect.inflate(20, 0).collidepoint(pygame.mouse.get_pos()):
-            pygame.draw.rect(screen, (255, 255, 255, 20), self.pan_btn_rect.inflate(40, 5), border_radius=3)
+        label_pan = self.font.render("Pan Mode (Space)", True, self.text_color)
+        screen.blit(label_pan, (self.pan_checkbox_rect.right + 8, self.rect.y + 10))
+
+        # 2. Autotile Mode
+        is_auto = getattr(self.editor, "autotile_mode", False)
+        pygame.draw.rect(screen, (30, 30, 35), self.auto_checkbox_rect)
+        pygame.draw.rect(screen, self.border_color, self.auto_checkbox_rect, 1)
+        if is_auto:
+            pygame.draw.rect(screen, self.accent_color, self.auto_checkbox_rect.inflate(-6, -6))
+        
+        label_auto = self.font.render("Autotile Mode", True, self.text_color)
+        screen.blit(label_auto, (self.auto_checkbox_rect.right + 8, self.rect.y + 10))

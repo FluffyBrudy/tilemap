@@ -7,6 +7,7 @@ import pygame
 from pygame import Rect, Surface, Color
 from typing import TYPE_CHECKING, Optional, List
 from layers import Layer
+from widgets.ui.property_editor import PropertyEditor
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -118,6 +119,21 @@ class LayerSelector:
                         )
 
                         self.editor.tilemap.layer_manager.set_active_layer(layer_idx)
+                        return True
+
+            elif event.button == 3: # Right click
+                if self.list_rect.collidepoint(mouse_pos):
+                    layer_idx = self._get_layer_at_pos(mouse_pos)
+                    if layer_idx is not None:
+                        layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
+                        if layer:
+                            self.editor.property_editor = PropertyEditor(
+                                self.editor,
+                                f"Layer Properties: {layer.name}",
+                                layer.properties,
+                                on_save=lambda props: self._save_layer_properties(layer, props),
+                                on_close=lambda: None
+                            )
                         return True
 
             elif event.button == 4:
@@ -313,6 +329,10 @@ class LayerSelector:
         self.renaming_layer_idx = None
         self.rename_text = ""
         self.rename_original_name = ""
+
+    def _save_layer_properties(self, layer: Layer, props: dict):
+        layer.properties = props
+        print(f"Saved properties for layer: {layer.name}")
 
     def draw(self, screen: Surface) -> None:
         """Draw the layer selector widget."""

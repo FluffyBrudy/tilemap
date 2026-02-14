@@ -17,6 +17,7 @@ from widgets.ui.layer_type_dialog import LayerTypeDialog
 from widgets.ui.menubar import MenuBar
 from widgets.ui.toolbar import Toolbar
 from widgets.ui.notification import NotificationManager
+from widgets.ui.property_editor import PropertyEditor
 
 
 class Editor:
@@ -27,6 +28,7 @@ class Editor:
         self.fps = fps
         self.running = False
         self.pan_mode = False
+        self.autotile_mode = False
 
         if isinstance(size, tuple) and len(size) == 2:
             self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
@@ -51,6 +53,7 @@ class Editor:
         self.file_manager: Optional[FileManager] = None
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.notifications = NotificationManager(self)
+        self.property_editor: Optional[PropertyEditor] = None
 
         editor_rect = self.screen.get_rect()
         editor_rect.center = ((width - 300) // 2, height // 2)
@@ -176,16 +179,16 @@ class Editor:
             )
 
         if hasattr(self, "layer_widget") and self.layer_widget:
-            # Let layer widget take up the remaining vertical space
-            layer_y = menu_h + toolbar_h + self.tileset_h
-            layer_h = max(100, height - layer_y - 25) # 25 for status bar
             self.layer_widget.resize(
-                width - self.selector_w, layer_y, self.selector_w, layer_h
+                width - self.selector_w,
+                menu_h + toolbar_h + self.tileset_h,
+                self.selector_w,
+                height - (menu_h + toolbar_h + self.tileset_h),
             )
 
         if hasattr(self, "tile_grid_widget") and self.tile_grid_widget:
             self.tile_grid_widget.rect = Rect(
-                0, menu_h + toolbar_h, width - self.selector_w, height - menu_h - toolbar_h - 25
+                0, menu_h + toolbar_h, width - self.selector_w, height - (menu_h + toolbar_h)
             )
 
         # Update modal dialogs
@@ -201,6 +204,12 @@ class Editor:
             center_x = (width - 400) // 2
             center_y = (height - 400) // 2
             self.map_setup_widget.resize(Rect(center_x, center_y, 400, 400))
+
+    def toggle_auto_autotile(self):
+        self.autotile_mode = not self.autotile_mode
+        status = "Enabled" if self.autotile_mode else "Disabled"
+        self.notifications.notify(f"Autotile Mode {status}")
+        self.menubar._layout_menus()
 
     def open_map_setup(self):
         self.map_setup_widget.visible = True
@@ -266,6 +275,10 @@ class Editor:
 
             if self.map_setup_widget and self.map_setup_widget.visible:
                 if self.map_setup_widget.handle_event(event):
+                    continue
+
+            if self.property_editor and self.property_editor.active:
+                if self.property_editor.handle_event(event):
                     continue
 
             # 2. Handle Menu Bar (blocks widgets, but we fixed it to not block shortcuts)
@@ -381,6 +394,9 @@ class Editor:
                 overlay.fill((0, 0, 0, 150))
                 self.screen.blit(overlay, (0, 0))
                 self.layer_type_dialog.draw(self.screen)
+
+            if self.property_editor and self.property_editor.active:
+                self.property_editor.draw(self.screen)
 
             self.menubar.draw(self.screen)
             if self.toolbar:

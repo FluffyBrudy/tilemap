@@ -326,8 +326,18 @@ class TileGrid:
                         "ttype": (tileset_index),
                         "variant": variant_id,
                     }
+                    
+                    # Copy properties from tileset variant if they exist
+                    if variant_id in tileset_data.tile_properties:
+                        tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
 
                     active_layer.set_tile(target_pos, tile_data)
+
+                    # Localized autotile if mode is enabled
+                    if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
+                        rules = self.editor.autotiler.rules
+                        if rules:
+                            active_layer.autotile_at_pos(target_pos, rules)
 
     def _place_object_free(
         self,
@@ -402,24 +412,46 @@ class TileGrid:
                 for dx in range(self.eraser_size):
                     pos = (self.hover_cell[0] + dx, self.hover_cell[1] + dy)
                     active_layer.remove_tile(pos)
+                    if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
+                        rules = self.editor.autotiler.rules
+                        if rules:
+                            active_layer.autotile_at_pos(pos, rules)
         
         self.editor.tilemap.update_map_size()
 
     def draw(self, screen: Surface):
+        # 1. Background for the whole widget area
         pygame.draw.rect(screen, (20, 20, 20), self.rect)
 
-        clip_rect = self.rect.clip(screen.get_rect())
+        # 2. Main clipping (full widget area)
+        widget_clip = self.rect.clip(screen.get_rect())
         prev_clip = screen.get_clip()
-        screen.set_clip(clip_rect)
+        
+        # 3. Map bounds clipping (intersect widget area with map screen rect)
+        map_w, map_h = self.editor.tilemap.map_size
+        tile_w, tile_h = self.tile_size
+        map_screen_x = (0 - self.scroll_x) * self.zoom_level + self.rect.x
+        map_screen_y = (0 - self.scroll_y) * self.zoom_level + self.rect.y
+        map_display_w = map_w * tile_w * self.zoom_level
+        map_display_h = map_h * tile_h * self.zoom_level
+        
+        map_rect = Rect(map_screen_x, map_screen_y, map_display_w, map_display_h)
+        map_clip = widget_clip.clip(map_rect)
 
-        self.render(screen)
-
+        # 4. Draw map and grid (clipped to map bounds)
+        screen.set_clip(map_clip)
+        self.render_map(screen)
         if self.show_grid:
             self._draw_grid(screen)
 
+        # 5. Draw overlays (clipped to full widget area)
+        screen.set_clip(widget_clip)
         self._draw_preview(screen)
+        
+        # 6. Restore global clip and draw widget-level decorations
         screen.set_clip(prev_clip)
         self._draw_eraser_overlay(screen)
+        self._draw_status_bar(screen) # Now outside any specific clipping
         pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
 
     def _draw_preview(self, screen):
@@ -519,28 +551,49 @@ class TileGrid:
         tile_w, tile_h = self.tile_size
         map_w, map_h = self.editor.tilemap.map_size
 
+        # World coordinates of map boundaries
+        map_world_w = map_w * tile_w
+        map_world_h = map_h * tile_h
+
+        # Screen coordinates of map top-left
+        map_screen_x = (0 - self.scroll_x) * self.zoom_level + self.rect.x
+        map_screen_y = (0 - self.scroll_y) * self.zoom_level + self.rect.y
+        
+        # Screen size of the map
+        map_display_w = map_world_w * self.zoom_level
+        map_display_h = map_world_h * self.zoom_level
+
+        # Calculate visible range in grid units
+        # We divide widget dimensions by zoom to find world distance, then divide by tile size
+        visible_world_w = self.rect.width / self.zoom_level
+        visible_world_h = self.rect.height / self.zoom_level
+
         start_col = max(0, int(self.scroll_x // tile_w))
-        end_col = min(map_w, int((self.scroll_x + self.rect.width) // tile_w) + 1)
+        end_col = min(map_w, int((self.scroll_x + visible_world_w) // tile_w) + 1)
 
         start_row = max(0, int(self.scroll_y // tile_h))
-        end_row = min(map_h, int((self.scroll_y + self.rect.height) // tile_h) + 1)
+        end_row = min(map_h, int((self.scroll_y + visible_world_h) // tile_h) + 1)
 
-        for col in range(start_col, end_col):
+        # Draw vertical lines (at column positions)
+        for col in range(start_col, end_col + 1):
             x = (col * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
+            # Line goes from top of map to bottom of map (clipping handled by surface clip)
             pygame.draw.line(
                 screen,
                 self.grid_color,
-                (x, self.rect.y),
-                (x, self.rect.y + map_h * tile_h * self.zoom_level),
+                (x, map_screen_y),
+                (x, map_screen_y + map_display_h),
             )
 
-        for row in range(start_row, end_row):
+        # Draw horizontal lines (at row positions)
+        for row in range(start_row, end_row + 1):
             y = (row * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
+            # Line goes from left of map to right of map
             pygame.draw.line(
                 screen,
                 self.grid_color,
-                (self.rect.x, y),
-                (self.rect.x + map_w * tile_w * self.zoom_level, y),
+                (map_screen_x, y),
+                (map_screen_x + map_display_w, y),
             )
 
     def _draw_status_bar(self, screen):
@@ -569,18 +622,23 @@ class TileGrid:
         txt = self.font_status.render(status_text, True, (200, 200, 200))
         screen.blit(txt, (10, bar_rect.y + 5))
 
-    def render(self, surface: Surface):
+    def render_map(self, surface: Surface):
         tilemap = self.editor.tilemap
         if not tilemap.initialized:
             return
 
         tile_w, tile_h = self.tile_size
+        map_w, map_h = tilemap.map_size
 
-        start_col = int(self.scroll_x // tile_w)
-        end_col = start_col + (self.rect.width // tile_w) + 2
+        # visible world bounds
+        visible_world_w = self.rect.width / self.zoom_level
+        visible_world_h = self.rect.height / self.zoom_level
 
-        start_row = int(self.scroll_y // tile_h)
-        end_row = start_row + (self.rect.height // tile_h) + 2
+        start_col = max(0, int(self.scroll_x // tile_w))
+        end_col = min(map_w, int((self.scroll_x + visible_world_w) // tile_w) + 1)
+
+        start_row = max(0, int(self.scroll_y // tile_h))
+        end_row = min(map_h, int((self.scroll_y + visible_world_h) // tile_h) + 1)
 
         assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
@@ -674,14 +732,12 @@ class TileGrid:
                             scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
                             layer_surf.blit(scaled_sub, (dest_x, dest_y))
                     else:
-                        if base_surf.get_rect().contains(src_rect):
-                            layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
+                            if base_surf.get_rect().contains(src_rect):
+                                layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
 
             if layer.opacity < 1.0:
                 layer_surf.set_alpha(int(layer.opacity * 255))
                 surface.blit(layer_surf, (self.rect.x, self.rect.y))
-        
-        self._draw_status_bar(surface)
 
     def _draw_eraser_overlay(self, screen):
         if self.eraser_overlay_timer <= 0:

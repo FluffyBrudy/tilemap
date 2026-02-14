@@ -1,10 +1,11 @@
-from typing import Dict, Tuple, TypedDict
+from typing import Dict, Tuple, TypedDict, Any, List, NotRequired
 
 
 class TypeTile(TypedDict, total=True):
     pos: Tuple[int, int]
     ttype: int
     variant: int
+    properties: NotRequired[Dict[str, Any]]
 
 
 class TypeArea(TypedDict, total=True):
@@ -27,12 +28,14 @@ class TypeObject(TypedDict, total=True):
     ttype: int
     tileset_type: str
     variant: int
+    properties: NotRequired[Dict[str, Any]]
 
 
 class TypeTileSerealized(TypedDict, total=True):
     pos: str
     ttype: str
     variant: int
+    properties: NotRequired[Dict[str, Any]]
 
 
 class TypeObjectSerialized(TypedDict, total=True):
@@ -40,6 +43,27 @@ class TypeObjectSerialized(TypedDict, total=True):
     ttype: int
     tileset_type: str
     variant: int
+    properties: NotRequired[Dict[str, Any]]
+
+
+class TypeLayerSerialized(TypedDict, total=True):
+    name: str
+    type: str
+    visible: bool
+    locked: bool
+    opacity: float
+    z_index: int
+    tiles: Dict[str, TypeTileSerealized]
+    objects: NotRequired[Dict[str, TypeObjectSerialized]]
+    next_object_id: NotRequired[int]
+    properties: NotRequired[Dict[str, Any]]
+
+
+class TypeTilesetSerialized(TypedDict, total=True):
+    path: str
+    type: str
+    properties: NotRequired[Dict[str, Any]]
+    tile_properties: NotRequired[Dict[str, Dict[str, Any]]]  # variant_id string -> properties
 
 
 TTile = Dict[Tuple[int, int], TypeTile]

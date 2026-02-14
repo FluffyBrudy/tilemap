@@ -151,7 +151,6 @@ class Tilemap:
                     max_h = max(max_h, int(grid_b) + 1)
 
         self.map_size = (max_w, max_h)
-        print(f"Map size updated: {self.map_size}")
 
     def _apply_history_state(self, state):
         from layers import Layer
@@ -236,9 +235,14 @@ class Tilemap:
                 except ValueError:
                     path_str = str(ts.path)
 
-                save_data["resources"]["tilesets"].append(
-                    {"path": path_str, "type": ts.tileset_type}
-                )
+                ts_data: Dict[str, Any] = {"path": path_str, "type": ts.tileset_type}
+                if ts.properties:
+                    ts_data["properties"] = ts.properties
+                if ts.tile_properties:
+                    # Convert int keys to str for JSON
+                    ts_data["tile_properties"] = {str(k): v for k, v in ts.tile_properties.items()}
+                
+                save_data["resources"]["tilesets"].append(ts_data)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             if not hasattr(save_data["project_state"], "groups"):
@@ -270,6 +274,8 @@ class Tilemap:
                     "ttype": tile["ttype"],
                     "variant": tile["variant"],
                 }
+                if "properties" in tile:
+                    tile_data["properties"] = tile["properties"]
                 layer_data["tiles"][key] = tile_data
 
             if layer.layer_type == "object":
@@ -281,10 +287,13 @@ class Tilemap:
                         "tileset_type": obj["tileset_type"],
                         "variant": obj["variant"],
                     }
+                    if "properties" in obj:
+                        obj_data["properties"] = obj["properties"]
                     layer_data["objects"][str(obj_id)] = obj_data
 
                 layer_data["next_object_id"] = layer.next_object_id
 
+            layer_data["properties"] = getattr(layer, "properties", {})
             save_data["data"]["layers"].append(layer_data)
 
         first_layer = self.layer_manager.get_layer(0)
@@ -404,7 +413,12 @@ class Tilemap:
                 if not p.is_absolute():
                     p = BASE_PATH / p
 
-                self.editor.tileset_widget.load_tileset_from_path(p, tileset_type)
+                self.editor.tileset_widget.load_tileset_from_path(
+                    p, 
+                    tileset_type, 
+                    properties=ts_entry.get("properties", {}),
+                    tile_properties=ts_entry.get("tile_properties", {})
+                )
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             from widgets.autotiler import AutotileGroup, AutotileRule
@@ -486,11 +500,14 @@ class Tilemap:
             locked=layer_data.get("locked", False),
             opacity=layer_data.get("opacity", 1.0),
         )
+        layer.properties = layer_data.get("properties", {})
 
         for loc_str, tile_data in layer_data.get("tiles", {}).items():
             pos = deserialize_point(loc_str)
             tile_copy = tile_data.copy()
             tile_copy["pos"] = pos
+            if "properties" in tile_data:
+                tile_copy["properties"] = tile_data["properties"]
             self._normalize_ttype(tile_copy)
             layer.tiles[pos] = tile_copy
 
@@ -506,6 +523,7 @@ class Tilemap:
                         "ttype": obj_data.get("ttype", 0),
                         "tileset_type": obj_data.get("tileset_type", "object"),
                         "variant": obj_data.get("variant", 0),
+                        "properties": obj_data.get("properties", {}),
                     }
                     layer.objects[obj_id] = obj_copy
 

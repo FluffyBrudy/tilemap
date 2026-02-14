@@ -4,6 +4,7 @@ from pathlib import Path
 from pygame import Rect, Surface
 
 from utils.validation import is_image_multipleof
+from widgets.ui.property_editor import PropertyEditor
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -18,6 +19,9 @@ class TilesetData:
         self.surface = surface
         self.tileset_type = tileset_type
         self.offset = [0, 0]
+        self.properties: Dict[str, Any] = {}
+        # Map of variant_id (int) to property dict
+        self.tile_properties: Dict[int, Dict[str, Any]] = {}
 
 
 class TileSelector:
@@ -68,10 +72,47 @@ class TileSelector:
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
+                # Check if right click on selected tile to open properties
+                if self.selected_tile:
+                    sx, sy, sw, sh = self.selected_tile
+                    ts = self.tilesets[self.active_idx]
+                    img_x = self.view_rect.x + ts.offset[0]
+                    img_y = self.view_rect.y + ts.offset[1]
+                    sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
+                    
+                    if sel_rect.collidepoint(mouse_pos):
+                        tw, th = self.editor.tilemap.tile_size
+                        cols = ts.surface.get_width() // tw
+                        # Use top-left tile of selection as reference for properties if multi-tile
+                        variant_id = (sy // th * cols) + (sx // tw)
+                        
+                        self.editor.property_editor = PropertyEditor(
+                            self.editor,
+                            f"Tile Properties: {ts.name} (ID: {variant_id})",
+                            ts.tile_properties.get(variant_id, {}),
+                            on_save=lambda props: self._save_tile_properties(ts, variant_id, props),
+                            on_close=lambda: None
+                        )
+                        return True
+
                 self.is_panning = True
                 self.pan_start = mouse_pos
                 self.pan_start_offset = tuple(self.tilesets[self.active_idx].offset)
                 return True
+            
+            # Check for right-click on tabs for tileset properties
+            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
+                tab_idx = self._get_tab_at_pos(mouse_pos)
+                if tab_idx is not None:
+                    ts = self.tilesets[tab_idx]
+                    self.editor.property_editor = PropertyEditor(
+                        self.editor,
+                        f"Tileset Properties: {ts.name}",
+                        ts.properties,
+                        on_save=lambda props: self._save_tileset_properties(ts, props),
+                        on_close=lambda: None
+                    )
+                    return True
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
             self.is_panning = False
             return True
@@ -177,12 +218,14 @@ class TileSelector:
             except Exception as e:
                 print(f"Error loading image: {e}")
 
-    def load_tileset_from_path(self, path: Path, tileset_type: str):
+    def load_tileset_from_path(self, path: Path, tileset_type: str, properties: dict = {}, tile_properties: dict = {}):
         """Load tileset from path without showing dialog (used when loading maps).
 
         Args:
             path: Path to the tileset image file
             tileset_type: Type of tileset ("tile" or "object") - already known from saved map
+            properties: Custom properties for the tileset
+            tile_properties: Custom properties for individual tiles in the tileset (variant_id str -> dict)
         """
         if path.exists():
             try:
@@ -192,6 +235,10 @@ class TileSelector:
                     tileset_data = TilesetData(
                         path.name, path, surf, tileset_type=tileset_type
                     )
+                    tileset_data.properties = properties
+                    # Convert string keys back to int if necessary
+                    tileset_data.tile_properties = {int(k): v for k, v in tile_properties.items()}
+                    
                     self.tilesets.append(tileset_data)
                     self.active_idx = len(self.tilesets) - 1
                     self.tileset_map[self.active_idx] = tileset_data
@@ -230,15 +277,28 @@ class TileSelector:
             self.rule_hints.clear()
 
     def check_tab_click(self, pos):
+        idx = self._get_tab_at_pos(pos)
+        if idx is not None:
+            self.active_idx = int(idx)
+            self.selected_tile = None
+            self.rule_hints.clear()
+
+    def _get_tab_at_pos(self, pos) -> Optional[int]:
         if not self.tilesets:
-            return
+            return None
         tab_w = min(100, self.rect.width // len(self.tilesets))
         idx = (pos[0] - self.rect.x) // tab_w
         if 0 <= idx < len(self.tilesets):
-            self.active_idx = int(idx)
-            self.selected_tile = None
+            return int(idx)
+        return None
 
-            self.rule_hints.clear()
+    def _save_tileset_properties(self, ts: TilesetData, props: dict):
+        ts.properties = props
+        print(f"Saved properties for tileset: {ts.name}")
+
+    def _save_tile_properties(self, ts: TilesetData, variant_id: int, props: dict):
+        ts.tile_properties[variant_id] = props
+        print(f"Saved properties for tile {variant_id} in tileset: {ts.name}")
 
     def get_active_tile(self):
         if self.active_idx == -1:

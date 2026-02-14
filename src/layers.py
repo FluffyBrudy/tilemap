@@ -33,6 +33,7 @@ class Layer:
         self.visible = visible
         self.locked = locked
         self.opacity = max(0.0, min(1.0, opacity))
+        self.properties: Dict[str, Any] = {}
 
         self.tiles: Dict[Tuple[int, int], TypeTile] = {}
 
@@ -48,20 +49,35 @@ class Layer:
         """Get a tile at the given grid position."""
         return self.tiles.get(pos)
 
-    def autotile_layer(self, rules: List["AutotileRule"]) -> None:
+    def autotile_layer(self, rules: List["AutotileRule"]) -> int:
+        """Update all tiles in this layer according to autotile rules."""
+        return self._autotile_tiles(rules, list(self.tiles.keys()))
+
+    def autotile_at_pos(self, pos: Tuple[int, int], rules: List["AutotileRule"]) -> int:
+        """Update the tile at pos and its 8 neighbors according to autotile rules."""
+        positions = [pos]
+        for dx, dy in [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0),          (1, 0),
+            (-1, 1),  (0, 1),  (1, 1)
+        ]:
+            positions.append((pos[0] + dx, pos[1] + dy))
+        
+        # Only process tiles that actually exist
+        existing_positions = [p for p in positions if p in self.tiles]
+        return self._autotile_tiles(rules, existing_positions)
+
+    def _autotile_tiles(self, rules: List["AutotileRule"], positions: List[Tuple[int, int]]) -> int:
         """
-        Update all tiles in this layer according to autotile rules.
-        Each rule has a `neighbors` set and a list of `variant_ids`.
-        Rules are now group-aware: a tile only connects to neighbors in its same group.
+        Internal helper to update specific tiles according to autotile rules.
         """
         if self.locked or self.layer_type != "tile":
-            return
+            return 0
 
-        if not rules:
-            return
+        if not rules or not positions:
+            return 0
 
         # 1. Build dictionary for O(1) variant+tileset -> group_id lookup
-        # Also group rules by their group_id for efficient matching
         variant_to_group = {}
         rules_by_group: Dict[str, List["AutotileRule"]] = {}
         
@@ -84,10 +100,12 @@ class Layer:
         for rule in rules:
             significant_offsets.update(rule.neighbors)
             
-        tile_positions = list(self.tiles.keys())
         changes_count = 0
         
-        for pos in tile_positions:
+        for pos in positions:
+            if pos not in self.tiles:
+                continue
+                
             tile = self.tiles[pos]
             ttype = tile["ttype"]
             current_variant = tile["variant"]
@@ -95,7 +113,6 @@ class Layer:
             # 3. Identify the group of the CURRENT tile
             target_group_id = variant_to_group.get((ttype, current_variant))
             if not target_group_id:
-                # If tile isn't in any group, we can't autotile it reliably
                 continue
                 
             # 4. Detect neighbors (8-way) that belong to the SAME group
@@ -135,8 +152,6 @@ class Layer:
                 tile["variant"] = new_variant
                 changes_count += 1
 
-        if changes_count > 0:
-            print(f"Autotile complete: {changes_count} tiles updated in layer '{self.name}'.")
         return changes_count
 
     def remove_tile(self, pos: Tuple[int, int]) -> bool:
