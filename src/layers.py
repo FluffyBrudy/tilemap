@@ -40,6 +40,14 @@ class Layer:
         self.objects: Dict[int, TypeObject] = {}
         self.next_object_id: int = 1
 
+        # Caching for autotile rules
+        self._autotile_cache = {
+            "rules_hash": None,
+            "variant_to_group": {},
+            "rules_by_group": {},
+            "significant_offsets": set()
+        }
+
     def set_tile(self, pos: Tuple[int, int], tile: TypeTile) -> None:
         """Set a tile at the given grid position."""
         if not self.locked:
@@ -77,29 +85,42 @@ class Layer:
         if not rules or not positions:
             return 0
 
-        # 1. Build dictionary for O(1) variant+tileset -> group_id lookup
-        variant_to_group = {}
-        rules_by_group: Dict[str, List["AutotileRule"]] = {}
+        # 1. Check cache or build dictionary for O(1) lookup
+        # Simple hash based on rule count and tileset indices
+        rules_hash = hash(tuple((r.group_id, r.tileset_index, tuple(sorted(r.variant_ids))) for r in rules))
         
-        for rule in rules:
-            gid = rule.group_id
-            if gid not in rules_by_group:
-                rules_by_group[gid] = []
-            rules_by_group[gid].append(rule)
+        if self._autotile_cache["rules_hash"] != rules_hash:
+            variant_to_group = {}
+            rules_by_group: Dict[str, List["AutotileRule"]] = {}
+            significant_offsets = set()
             
-            ts_idx = rule.tileset_index
-            for vid in rule.variant_ids:
-                variant_to_group[(ts_idx, vid)] = gid
+            for rule in rules:
+                gid = rule.group_id
+                if gid not in rules_by_group:
+                    rules_by_group[gid] = []
+                rules_by_group[gid].append(rule)
+                
+                ts_idx = rule.tileset_index
+                for vid in rule.variant_ids:
+                    variant_to_group[(ts_idx, vid)] = gid
+                
+                significant_offsets.update(rule.neighbors)
 
-        # Sort rules in each group by neighbor count for best-match priority
-        for gid in rules_by_group:
-            rules_by_group[gid].sort(key=lambda r: len(r.neighbors), reverse=True)
+            # Sort rules in each group by neighbor count for best-match priority
+            for gid in rules_by_group:
+                rules_by_group[gid].sort(key=lambda r: len(r.neighbors), reverse=True)
+                
+            self._autotile_cache.update({
+                "rules_hash": rules_hash,
+                "variant_to_group": variant_to_group,
+                "rules_by_group": rules_by_group,
+                "significant_offsets": significant_offsets
+            })
+        else:
+            variant_to_group = self._autotile_cache["variant_to_group"]
+            rules_by_group = self._autotile_cache["rules_by_group"]
+            significant_offsets = self._autotile_cache["significant_offsets"]
 
-        # 2. Identify all significant offsets across ALL rules
-        significant_offsets = set()
-        for rule in rules:
-            significant_offsets.update(rule.neighbors)
-            
         changes_count = 0
         
         for pos in positions:
@@ -439,6 +460,9 @@ class LayerManager:
 
 
 def create_default_layer_manager() -> LayerManager:
-    """Create an empty layer manager with no layers."""
+    """Create a default layer manager with Terrain and Objects layers."""
     manager = LayerManager()
+    manager.create_layer("Terrain", "tile")
+    manager.create_layer("Objects", "object")
+    manager.set_active_layer(0)
     return manager

@@ -126,22 +126,19 @@ class Tilemap:
             self._apply_history_state(next_state)
 
     def update_map_size(self):
-        """Dynamic map resizing based on tile boundaries."""
+        """Full scan to recalculate map size based on all layers."""
         if not self.initialized:
             return
 
         max_w = self.initial_map_size[0]
         max_h = self.initial_map_size[1]
 
-        # Scan all layers for content
         for layer in self.layer_manager.layers:
-            # Check tiles (grid coords)
             if layer.tiles:
                 for pos in layer.tiles.keys():
                     max_w = max(max_w, pos[0] + 1)
                     max_h = max(max_h, pos[1] + 1)
             
-            # Check objects (pixel coords)
             if layer.objects:
                 for obj in layer.objects.values():
                     area = obj["area"]
@@ -151,6 +148,26 @@ class Tilemap:
                     max_h = max(max_h, int(grid_b) + 1)
 
         self.map_size = (max_w, max_h)
+
+    def incremental_update_map_size(self, pos: Tuple[int, int], is_pixel: bool = False, size: Optional[Tuple[int, int]] = None):
+        """Update map size based on a single point or area without full scan."""
+        if not self.initialized:
+            return
+
+        if is_pixel:
+            # For objects/pixel positions
+            w, h = size if size else self.tile_size
+            grid_r = int((pos[0] + w) / self.tile_size[0]) + 1
+            grid_b = int((pos[1] + h) / self.tile_size[1]) + 1
+            new_w = max(self.map_size[0], grid_r)
+            new_h = max(self.map_size[1], grid_b)
+        else:
+            # For grid positions
+            new_w = max(self.map_size[0], pos[0] + 1)
+            new_h = max(self.map_size[1], pos[1] + 1)
+        
+        if (new_w, new_h) != self.map_size:
+            self.map_size = (new_w, new_h)
 
     def _apply_history_state(self, state):
         from layers import Layer

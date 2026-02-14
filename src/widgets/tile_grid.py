@@ -239,7 +239,6 @@ class TileGrid:
         sheet_cols = sheet_width // tile_w
 
         if active_layer.layer_type == "object":
-
             self._place_object_free(
                 active_layer,
                 tileset_index,
@@ -250,8 +249,11 @@ class TileGrid:
                 sheet_cols,
                 tileset_data.tileset_type,
             )
+            # Incremental update for objects
+            mouse_pos = pygame.mouse.get_pos()
+            world_pos = self.screen_to_world(mouse_pos)
+            self.editor.tilemap.incremental_update_map_size(world_pos, is_pixel=True, size=(src_rect[2], src_rect[3]))
         else:
-
             if not self.hover_cell:
                 return
 
@@ -264,8 +266,11 @@ class TileGrid:
                 tile_h,
                 sheet_cols,
             )
-            
-        self.editor.tilemap.update_map_size()
+            # Incremental update for tile selection size
+            sel_w_tiles = src_rect[2] // tile_w
+            sel_h_tiles = src_rect[3] // tile_h
+            last_tile_pos = (self.hover_cell[0] + sel_w_tiles - 1, self.hover_cell[1] + sel_h_tiles - 1)
+            self.editor.tilemap.incremental_update_map_size(last_tile_pos)
 
     def _place_tile_grid(
         self,
@@ -406,18 +411,30 @@ class TileGrid:
 
                 if erase_rect.colliderect(obj_rect):
                     active_layer.remove_object(obj_id)
+                    # For performance, we only full-scan on removal if the removal MIGHT shrink the map
+                    # Simplified: only full scan if map is large enough to potentially shrink
+                    if self.editor.tilemap.map_size[0] > self.editor.tilemap.initial_map_size[0] or \
+                       self.editor.tilemap.map_size[1] > self.editor.tilemap.initial_map_size[1]:
+                        self.editor.tilemap.update_map_size()
         else:
             # Tile layer removal: loop over NxN area based on eraser_size
+            must_rescan = False
             for dy in range(self.eraser_size):
                 for dx in range(self.eraser_size):
                     pos = (self.hover_cell[0] + dx, self.hover_cell[1] + dy)
-                    active_layer.remove_tile(pos)
+                    if active_layer.remove_tile(pos):
+                        # If we removed a tile that was at the boundary, we need to rescan
+                        if pos[0] >= self.editor.tilemap.map_size[0] - 1 or \
+                           pos[1] >= self.editor.tilemap.map_size[1] - 1:
+                            must_rescan = True
+                            
                     if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
                         rules = self.editor.autotiler.rules
                         if rules:
                             active_layer.autotile_at_pos(pos, rules)
-        
-        self.editor.tilemap.update_map_size()
+            
+            if must_rescan:
+                self.editor.tilemap.update_map_size()
 
     def draw(self, screen: Surface):
         # 1. Background for the whole widget area
@@ -427,31 +444,26 @@ class TileGrid:
         widget_clip = self.rect.clip(screen.get_rect())
         prev_clip = screen.get_clip()
         
-        # 3. Map bounds clipping (intersect widget area with map screen rect)
-        map_w, map_h = self.editor.tilemap.map_size
-        tile_w, tile_h = self.tile_size
-        map_screen_x = (0 - self.scroll_x) * self.zoom_level + self.rect.x
-        map_screen_y = (0 - self.scroll_y) * self.zoom_level + self.rect.y
-        map_display_w = map_w * tile_w * self.zoom_level
-        map_display_h = map_h * tile_h * self.zoom_level
-        
-        map_rect = Rect(map_screen_x, map_screen_y, map_display_w, map_display_h)
-        map_clip = widget_clip.clip(map_rect)
-
-        # 4. Draw map and grid (clipped to map bounds)
-        screen.set_clip(map_clip)
-        self.render_map(screen)
-        if self.show_grid:
-            self._draw_grid(screen)
-
-        # 5. Draw overlays (clipped to full widget area)
+        # 3. Apply widget-level clip
         screen.set_clip(widget_clip)
+        
+        tilemap = self.editor.tilemap
+        if tilemap.initialized:
+            self.render_map(screen)
+            if self.show_grid:
+                self._draw_grid(screen)
+        else:
+            # Only print once to avoid console flooding
+            if not hasattr(self, "_last_init_warn") or pygame.time.get_ticks() - self._last_init_warn > 5000:
+                print(f"DEBUG: Tilemap not initialized, skipping render")
+                self._last_init_warn = pygame.time.get_ticks()
+
         self._draw_preview(screen)
         
-        # 6. Restore global clip and draw widget-level decorations
+        # 4. Restore global clip and draw widget-level decorations
         screen.set_clip(prev_clip)
         self._draw_eraser_overlay(screen)
-        self._draw_status_bar(screen) # Now outside any specific clipping
+        self._draw_status_bar(screen)
         pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
 
     def _draw_preview(self, screen):
@@ -639,6 +651,9 @@ class TileGrid:
 
         start_row = max(0, int(self.scroll_y // tile_h))
         end_row = min(map_h, int((self.scroll_y + visible_world_h) // tile_h) + 1)
+        
+        # Debug boundaries
+        # print(f"DEBUG: Rendering rows {start_row}-{end_row}, cols {start_col}-{end_col} | Scroll: ({self.scroll_x}, {self.scroll_y}) | Zoom: {self.zoom_level}")
 
         assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
@@ -648,12 +663,15 @@ class TileGrid:
         for layer in rendered_layers:
 
             if layer.opacity < 1.0:
-
-                layer_surf = pygame.Surface((self.rect.width, self.rect.height))
-                layer_surf.fill((20, 20, 20))
-                layer_surf.set_colorkey((20, 20, 20))
+                # Create a temporary surface for the layer to handle opacity properly
+                layer_surf = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
+                # Use a coordinate system relative to the widget for blitting inside the layer_surf
+                draw_offset_x = -self.rect.x
+                draw_offset_y = -self.rect.y
             else:
                 layer_surf = surface
+                draw_offset_x = 0
+                draw_offset_y = 0
 
             if layer.layer_type == "tile":
                 for x in range(start_col, end_col):
@@ -681,8 +699,8 @@ class TileGrid:
                         src_y = (variant_id // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
-                        dest_x = (x * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
-                        dest_y = (y * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
+                        dest_x = (x * tile_w - self.scroll_x) * self.zoom_level + self.rect.x + draw_offset_x
+                        dest_y = (y * tile_h - self.scroll_y) * self.zoom_level + self.rect.y + draw_offset_y
 
                         # Scale if zooming
                         if self.zoom_level != 1.0:
@@ -721,8 +739,8 @@ class TileGrid:
 
                     src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
-                    dest_x = (obj_x - self.scroll_x) * self.zoom_level + self.rect.x
-                    dest_y = (obj_y - self.scroll_y) * self.zoom_level + self.rect.y
+                    dest_x = (obj_x - self.scroll_x) * self.zoom_level + self.rect.x + draw_offset_x
+                    dest_y = (obj_y - self.scroll_y) * self.zoom_level + self.rect.y + draw_offset_y
 
                     if self.zoom_level != 1.0:
                         scaled_w = int(obj_w * self.zoom_level)

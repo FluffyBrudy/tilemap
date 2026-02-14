@@ -319,7 +319,7 @@ class Editor:
                 elif event.key == pygame.K_SPACE:
                     self.pan_mode = not self.pan_mode
                     continue
-                elif event.key == pygame.K_g:
+                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
                     self.toggle_grid()
                     continue
                 elif pygame.K_1 <= event.key <= pygame.K_9:
