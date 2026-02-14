@@ -59,6 +59,18 @@ class LayerSelector:
         self.text_color = (220, 220, 220)
         self.text_muted = (140, 140, 140)
 
+    def resize(self, x: int, y: int, w: int, h: int):
+        self.rect = Rect(x, y, w, h)
+        self.header_rect = Rect(x, y, w, self.header_h)
+        self.list_rect = Rect(
+            x, y + self.header_h, w, h - self.header_h - self.footer_h
+        )
+        self.footer_rect = Rect(x, y + h - self.footer_h, w, self.footer_h)
+        
+        btn_y = self.footer_rect.y + 5
+        self.btn_add = Rect(x + 5, btn_y, 25, 25)
+        self.btn_remove = Rect(x + 35, btn_y, 25, 25)
+
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle pygame events. Returns True if event was consumed."""
         mouse_pos = pygame.mouse.get_pos()

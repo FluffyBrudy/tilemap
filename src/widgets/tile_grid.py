@@ -27,15 +27,27 @@ class TileGrid:
         self.show_grid = True
         
         self.eraser_size = 1  # For tiles: in grid units. For objects: in pixels.
+        self.zoom_level = 1.0
+        self.min_zoom = 0.1
+        self.max_zoom = 5.0
+        
+        self.font_status = pygame.font.SysFont("Arial", 12)
+        self.font_overlay = pygame.font.SysFont("Arial", 24, bold=True)
+        self._last_history_capture = 0
+        
+        # Continuous adjustment and visual feedback
+        self.last_eraser_adj_time = 0
+        self.eraser_overlay_timer = 0
+        self.adj_delay = 100 # ms between adjustments
 
     @property
     def tile_size(self):
         return self.editor.tilemap.tile_size
 
     def screen_to_world(self, pos: Tuple[int, int]) -> Tuple[int, int]:
-        wx = pos[0] - self.rect.x + self.scroll_x
-        wy = pos[1] - self.rect.y + self.scroll_y
-        return wx, wy
+        wx = (pos[0] - self.rect.x) / self.zoom_level + self.scroll_x
+        wy = (pos[1] - self.rect.y) / self.zoom_level + self.scroll_y
+        return int(wx), int(wy)
 
     def get_grid_pos(self, pos: Tuple[int, int]) -> Tuple[int, int]:
         wx, wy = self.screen_to_world(pos)
@@ -53,45 +65,77 @@ class TileGrid:
                 self.scroll_x += self.scroll_speed
             if keys[K_UP]:
                 self.scroll_y -= self.scroll_speed
-            if keys[K_DOWN]:
+            if keys[pygame.K_DOWN]:
                 self.scroll_y += self.scroll_speed
+
+            # Continuous Eraser Size Adjustment
+            mods = pygame.key.get_mods()
+            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+            
+            if ctrl_held or meta_held:
+                current_time = pygame.time.get_ticks()
+                if current_time - self.last_eraser_adj_time > self.adj_delay:
+                    adj = 0
+                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+                    step = 5 if active_layer and active_layer.layer_type == "object" else 1
+                    
+                    if keys[pygame.K_EQUALS] or keys[pygame.K_PLUS] or keys[pygame.K_KP_PLUS]:
+                        adj = step
+                    elif keys[pygame.K_MINUS] or keys[pygame.K_KP_MINUS]:
+                        adj = -step
+                        
+                    if adj != 0:
+                        self.eraser_size = max(1, min(100, self.eraser_size + adj))
+                        self.last_eraser_adj_time = current_time
+                        self.eraser_overlay_timer = 1500 # Show for 1.5 seconds
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse_pos = pygame.mouse.get_pos()
         is_hovering = self.rect.collidepoint(mouse_pos)
-
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             
             # Ctrl + A: Autotile
-            if event.key == pygame.K_a and (mods & pygame.KMOD_LCTRL):
+            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+            
+            if event.key == pygame.K_a and (ctrl_held or meta_held):
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                 if active_layer and hasattr(self.editor, "autotiler"):
                     rules = getattr(self.editor.autotiler, "rules", [])
                     active_layer.autotile_layer(rules)
+                    self.editor.tilemap.update_map_size()
                     print(f"Autotiling layer: {active_layer.name}")
                 return True
             
-            # Eraser size adjustments
-            if mods & pygame.KMOD_LCTRL:
-                if event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
-                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
-                    if active_layer and active_layer.layer_type == "object":
-                        self.eraser_size += 5
-                    else:
-                        self.eraser_size += 1
-                    self.eraser_size = min(self.eraser_size, 100)
-                    return True
-                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
-                    if active_layer and active_layer.layer_type == "object":
-                        self.eraser_size = max(1, self.eraser_size - 5)
-                    else:
-                        self.eraser_size = max(1, self.eraser_size - 1)
-                    return True
+            if event.key == pygame.K_f:
+                if is_hovering and self.hover_cell:
+                    res = self.get_selected_brush()
+                    if res:
+                        self.editor.tilemap.capture_history("Flood Fill")
+                        tileset_index, tileset_data, src_rect = res
+                        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+                        if active_layer and active_layer.layer_type == "tile":
+                            # Only fill with the first tile of selection
+                            tile_w, tile_h = self.tile_size
+                            sheet_cols = tileset_data.surface.get_width() // tile_w
+                            variant_id = (src_rect[1] // tile_h * sheet_cols) + (src_rect[0] // tile_w)
+                            
+                            new_data = {
+                                "ttype": tileset_index,
+                                "variant": variant_id
+                            }
+                            active_layer.flood_fill(self.hover_cell, new_data, self.editor.tilemap.map_size)
+                            self.editor.tilemap.update_map_size()
+                return True
+
+            if event.key == pygame.K_g:
+                self.show_grid = not self.show_grid
+                return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 2:
+            if event.button == 2 or (event.button == 1 and self.editor.pan_mode):
                 if is_hovering:
                     self.is_panning = True
                     self.pan_start_pos = mouse_pos
@@ -99,14 +143,14 @@ class TileGrid:
                     return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 2:
+            if event.button == 2 or (event.button == 1 and self.editor.pan_mode):
                 self.is_panning = False
                 return True
 
         elif event.type == pygame.MOUSEMOTION:
             if self.is_panning:
-                dx = mouse_pos[0] - self.pan_start_pos[0]
-                dy = mouse_pos[1] - self.pan_start_pos[1]
+                dx = (mouse_pos[0] - self.pan_start_pos[0]) / self.zoom_level
+                dy = (mouse_pos[1] - self.pan_start_pos[1]) / self.zoom_level
 
                 self.scroll_x = self.pan_start_scroll[0] - dx
                 self.scroll_y = self.pan_start_scroll[1] - dy
@@ -117,19 +161,30 @@ class TileGrid:
             else:
                 self.hover_cell = None
 
+        elif event.type == pygame.MOUSEWHEEL:
+            if is_hovering:
+                old_zoom = self.zoom_level
+                self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level + event.y * 0.1))
+                # Optional: Zoom towards mouse pos
+                return True
+
         buttons = pygame.mouse.get_pressed()
 
-        if (buttons[0] and is_hovering) or (
+        if not self.editor.pan_mode and ((buttons[0] and is_hovering) or (
             event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and is_hovering
-        ):
+        )):
             if not self.is_panning:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    self.editor.tilemap.capture_history("Place Tile")
                 self.place_tile()
                 return True
 
-        if (buttons[2] and is_hovering) or (
+        if not self.editor.pan_mode and ((buttons[2] and is_hovering) or (
             event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and is_hovering
-        ):
+        )):
             if not self.is_panning:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    self.editor.tilemap.capture_history("Remove Tile")
                 self.remove_tile()
                 return True
 
@@ -192,6 +247,8 @@ class TileGrid:
                 tile_h,
                 sheet_cols,
             )
+            
+        self.editor.tilemap.update_map_size()
 
     def _place_tile_grid(
         self,
@@ -328,6 +385,8 @@ class TileGrid:
                 for dx in range(self.eraser_size):
                     pos = (self.hover_cell[0] + dx, self.hover_cell[1] + dy)
                     active_layer.remove_tile(pos)
+        
+        self.editor.tilemap.update_map_size()
 
     def draw(self, screen: Surface):
         pygame.draw.rect(screen, (20, 20, 20), self.rect)
@@ -342,8 +401,8 @@ class TileGrid:
             self._draw_grid(screen)
 
         self._draw_preview(screen)
-
         screen.set_clip(prev_clip)
+        self._draw_eraser_overlay(screen)
         pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
 
     def _draw_preview(self, screen):
@@ -370,13 +429,14 @@ class TileGrid:
                 # Eraser preview for objects: show a red box based on eraser_size
                 screen_x = mouse_pos[0]
                 screen_y = mouse_pos[1]
-                half_size = self.eraser_size // 2
-                dest_rect = Rect(screen_x - half_size, screen_y - half_size, self.eraser_size, self.eraser_size)
+                half_size = int(self.eraser_size * self.zoom_level) // 2
+                size = int(self.eraser_size * self.zoom_level)
+                dest_rect = Rect(screen_x - half_size, screen_y - half_size, size, size)
                 pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
                 return
 
-            sel_width = src_rect[2]
-            sel_height = src_rect[3]
+            sel_width = int(src_rect[2] * self.zoom_level)
+            sel_height = int(src_rect[3] * self.zoom_level)
 
             screen_x = mouse_pos[0]
             screen_y = mouse_pos[1]
@@ -385,9 +445,10 @@ class TileGrid:
             pygame.draw.rect(screen, (255, 255, 0), dest_rect, 2)
 
             try:
-
-                sub_r = Rect(src_rect[0], src_rect[1], sel_width, sel_height)
+                sub_r = Rect(src_rect[0], src_rect[1], src_rect[2], src_rect[3])
                 tile_surf = tileset_data.surface.subsurface(sub_r)
+                if self.zoom_level != 1.0:
+                    tile_surf = pygame.transform.scale(tile_surf, (sel_width, sel_height))
                 tile_surf.set_alpha(128)
                 screen.blit(tile_surf, (screen_x, screen_y))
             except ValueError:
@@ -398,9 +459,11 @@ class TileGrid:
 
             if is_erasing:
                 # Eraser preview for tiles: show a red box based on eraser_size
-                screen_x = self.rect.x - self.scroll_x + (self.hover_cell[0] * tile_w)
-                screen_y = self.rect.y - self.scroll_y + (self.hover_cell[1] * tile_h)
-                dest_rect = Rect(screen_x, screen_y, tile_w * self.eraser_size, tile_h * self.eraser_size)
+                screen_x = (self.hover_cell[0] * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
+                screen_y = (self.hover_cell[1] * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
+                size_w = int(tile_w * self.eraser_size * self.zoom_level)
+                size_h = int(tile_h * self.eraser_size * self.zoom_level)
+                dest_rect = Rect(screen_x, screen_y, size_w, size_h)
                 pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
                 return
 
@@ -412,10 +475,12 @@ class TileGrid:
                     col = self.hover_cell[0] + x_off
                     row = self.hover_cell[1] + y_off
 
-                    screen_x = self.rect.x - self.scroll_x + (col * tile_w)
-                    screen_y = self.rect.y - self.scroll_y + (row * tile_h)
+                    screen_x = (col * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
+                    screen_y = (row * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
 
-                    dest_rect = Rect(screen_x, screen_y, tile_w, tile_h)
+                    dest_w = int(tile_w * self.zoom_level)
+                    dest_h = int(tile_h * self.zoom_level)
+                    dest_rect = Rect(screen_x, screen_y, dest_w, dest_h)
 
                     pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
 
@@ -426,6 +491,8 @@ class TileGrid:
                         sub_r = Rect(tex_x, tex_y, tile_w, tile_h)
 
                         tile_surf = tileset_data.surface.subsurface(sub_r)
+                        if self.zoom_level != 1.0:
+                            tile_surf = pygame.transform.scale(tile_surf, (dest_w, dest_h))
                         tile_surf.set_alpha(128)
                         screen.blit(tile_surf, dest_rect)
                     except ValueError:
@@ -442,22 +509,48 @@ class TileGrid:
         end_row = min(map_h, int((self.scroll_y + self.rect.height) // tile_h) + 1)
 
         for col in range(start_col, end_col):
-            x = self.rect.x - self.scroll_x + col * tile_w
+            x = (col * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
             pygame.draw.line(
                 screen,
                 self.grid_color,
                 (x, self.rect.y),
-                (x, self.rect.y + map_h * tile_h),
+                (x, self.rect.y + map_h * tile_h * self.zoom_level),
             )
 
         for row in range(start_row, end_row):
-            y = self.rect.y - self.scroll_y + row * tile_h
+            y = (row * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
             pygame.draw.line(
                 screen,
                 self.grid_color,
                 (self.rect.x, y),
-                (self.rect.x + map_w * tile_w, y),
+                (self.rect.x + map_w * tile_w * self.zoom_level, y),
             )
+
+    def _draw_status_bar(self, screen):
+        bar_h = 25
+        bar_rect = Rect(0, self.editor.height - bar_h, self.editor.width, bar_h)
+        pygame.draw.rect(screen, (40, 44, 52), bar_rect)
+        pygame.draw.line(screen, (60, 64, 72), (0, bar_rect.y), (self.editor.width, bar_rect.y))
+        
+        font = pygame.font.SysFont("Arial", 12)
+        
+        mouse_pos = pygame.mouse.get_pos()
+        world_pos = self.screen_to_world(mouse_pos)
+        grid_pos = self.get_grid_pos(mouse_pos)
+        
+        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+        layer_name = active_layer.name if active_layer else "None"
+        
+        status_text = f"World: {world_pos} | Grid: {grid_pos} | Zoom: {self.zoom_level:.1f}x | Layer: {layer_name}"
+        if self.eraser_size > 1:
+            status_text += f" | Eraser Size: {self.eraser_size}"
+        
+        can_undo = self.editor.tilemap.history.can_undo
+        can_redo = self.editor.tilemap.history.can_redo
+        status_text += f" | Undo: {'Y' if can_undo else 'N'} | Redo: {'Y' if can_redo else 'N'}"
+            
+        txt = self.font_status.render(status_text, True, (200, 200, 200))
+        screen.blit(txt, (10, bar_rect.y + 5))
 
     def render(self, surface: Surface):
         tilemap = self.editor.tilemap
@@ -513,10 +606,22 @@ class TileGrid:
                         src_y = (variant_id // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
-                        dest_x = (x * tile_w) - self.scroll_x + self.rect.x
-                        dest_y = (y * tile_h) - self.scroll_y + self.rect.y
+                        dest_x = (x * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
+                        dest_y = (y * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
 
-                        layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
+                        # Scale if zooming
+                        if self.zoom_level != 1.0:
+                            scaled_w = int(tile_w * self.zoom_level)
+                            scaled_h = int(tile_h * self.zoom_level)
+                            
+                            # Bounds check
+                            if base_surf.get_rect().contains(src_rect):
+                                sub = base_surf.subsurface(src_rect)
+                                scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
+                                layer_surf.blit(scaled_sub, (dest_x, dest_y))
+                        else:
+                            if base_surf.get_rect().contains(src_rect):
+                                layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
 
             elif layer.layer_type == "object":
                 for obj_id, obj in layer.get_all_objects().items():
@@ -541,11 +646,45 @@ class TileGrid:
 
                     src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
-                    dest_x = obj_x - self.scroll_x + self.rect.x
-                    dest_y = obj_y - self.scroll_y + self.rect.y
+                    dest_x = (obj_x - self.scroll_x) * self.zoom_level + self.rect.x
+                    dest_y = (obj_y - self.scroll_y) * self.zoom_level + self.rect.y
 
-                    layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
+                    if self.zoom_level != 1.0:
+                        scaled_w = int(obj_w * self.zoom_level)
+                        scaled_h = int(obj_h * self.zoom_level)
+                        if base_surf.get_rect().contains(src_rect):
+                            sub = base_surf.subsurface(src_rect)
+                            scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
+                            layer_surf.blit(scaled_sub, (dest_x, dest_y))
+                    else:
+                        if base_surf.get_rect().contains(src_rect):
+                            layer_surf.blit(base_surf, (dest_x, dest_y), area=src_rect)
 
             if layer.opacity < 1.0:
                 layer_surf.set_alpha(int(layer.opacity * 255))
                 surface.blit(layer_surf, (self.rect.x, self.rect.y))
+        
+        self._draw_status_bar(surface)
+
+    def _draw_eraser_overlay(self, screen):
+        if self.eraser_overlay_timer <= 0:
+            return
+            
+        dt = self.editor.clock.get_time()
+        self.eraser_overlay_timer -= dt
+        
+        alpha = min(255, self.eraser_overlay_timer // 2)
+        if alpha <= 0: return
+        
+        text = f"Eraser Size: {self.eraser_size}"
+        surf = self.font_overlay.render(text, True, (255, 255, 255))
+        surf.set_alpha(alpha)
+        
+        # Draw background bubble
+        rect = surf.get_rect(center=(self.rect.centerx, self.rect.bottom - 100))
+        bg_rect = rect.inflate(20, 10)
+        bg = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(bg, (0, 0, 0, alpha // 2), bg.get_rect(), border_radius=10)
+        
+        screen.blit(bg, bg_rect)
+        screen.blit(surf, rect)

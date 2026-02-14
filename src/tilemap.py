@@ -12,6 +12,7 @@ from utils.serialization import (
 )
 from ttypes.tilemap import TypeObject, TypeTile, TypeTileSerealized
 from layers import LayerManager, create_default_layer_manager
+from utils.history import HistoryManager
 
 if TYPE_CHECKING:
     from src.ttypes import TTile, TCoor
@@ -38,9 +39,11 @@ class Tilemap:
 
         self.tile_size = (32, 32)
         self.map_size = (50, 50)
+        self.initial_map_size = (50, 50)
         self.initialized = False
 
         self.active_project_path: Optional[Path] = None
+        self.history = HistoryManager()
 
     @property
     def ongrid_tiles(self) -> "TTile":
@@ -60,8 +63,90 @@ class Tilemap:
     def init_size(self, tile_size: "TCoor", map_size: "TCoor"):
         self.tile_size = tile_size
         self.map_size = map_size
+        self.initial_map_size = map_size # Store what user initially setup
         self.initialized = True
         self.active_project_path = None
+        
+        # Clear and create default layer
+        self.layer_manager.layers.clear()
+        self.layer_manager.create_layer("Layer 1", "tile")
+        self.layer_manager.set_active_layer(0)
+
+    def capture_history(self, description: str = "State Change"):
+        # Capture current full state
+        state = {
+            "layers": [L.to_dict() for L in self.layer_manager.layers],
+            "rules": [rule.to_dict() for rule in getattr(self.editor.autotiler, "rules", [])],
+            "active_layer_idx": self.layer_manager.active_layer_idx,
+            "tile_size": self.tile_size,
+            "map_size": self.map_size
+        }
+        self.history.save_state(state, description)
+
+    def undo(self):
+        current_state = {
+            "layers": [L.to_dict() for L in self.layer_manager.layers],
+            "rules": [rule.to_dict() for rule in getattr(self.editor.autotiler, "rules", [])],
+            "active_layer_idx": self.layer_manager.active_layer_idx,
+            "tile_size": self.tile_size,
+            "map_size": self.map_size
+        }
+        prev_state = self.history.undo(current_state)
+        if prev_state:
+            self._apply_history_state(prev_state)
+
+    def redo(self):
+        current_state = {
+            "layers": [L.to_dict() for L in self.layer_manager.layers],
+            "rules": [rule.to_dict() for rule in getattr(self.editor.autotiler, "rules", [])],
+            "active_layer_idx": self.layer_manager.active_layer_idx,
+            "tile_size": self.tile_size,
+            "map_size": self.map_size
+        }
+        next_state = self.history.redo(current_state)
+        if next_state:
+            self._apply_history_state(next_state)
+
+    def update_map_size(self):
+        """Dynamic map resizing based on tile boundaries."""
+        if not self.initialized:
+            return
+
+        max_w = self.initial_map_size[0]
+        max_h = self.initial_map_size[1]
+
+        # Scan all layers for content
+        for layer in self.layer_manager.layers:
+            # Check tiles (grid coords)
+            if layer.tiles:
+                for pos in layer.tiles.keys():
+                    max_w = max(max_w, pos[0] + 1)
+                    max_h = max(max_h, pos[1] + 1)
+            
+            # Check objects (pixel coords)
+            if layer.objects:
+                for obj in layer.objects.values():
+                    area = obj["area"]
+                    grid_r = (area["x"] + area["w"]) / self.tile_size[0]
+                    grid_b = (area["y"] + area["h"]) / self.tile_size[1]
+                    max_w = max(max_w, int(grid_r) + 1)
+                    max_h = max(max_h, int(grid_b) + 1)
+
+        self.map_size = (max_w, max_h)
+        print(f"Map size updated: {self.map_size}")
+
+    def _apply_history_state(self, state):
+        from layers import Layer
+        from widgets.autotiler import AutotileRule
+        
+        self.layer_manager.layers = [Layer.from_dict(L) for L in state["layers"]]
+        self.layer_manager.active_layer_idx = state["active_layer_idx"]
+        self.tile_size = state["tile_size"]
+        self.map_size = state["map_size"]
+        
+        if hasattr(self.editor, "autotiler"):
+            self.editor.autotiler.rules = [AutotileRule.from_dict(R) for R in state["rules"]]
+            self.editor.autotiler.selected_rule_index = -1
 
     def get_nearest_tiles(self, tile_location: "TCoor") -> Tuple["TCoor"]:
         """Get empty neighboring tile positions for the given location."""
@@ -100,6 +185,12 @@ class Tilemap:
             "meta": {
                 "tile_size": serialize_point(self.tile_size),
                 "map_size": serialize_point(self.map_size),
+                "zoom_level": getattr(self.editor.tile_grid_widget, "zoom_level", 1.0) if self.editor.tile_grid_widget else 1.0,
+                "scroll": serialize_point((
+                    getattr(self.editor.tile_grid_widget, "scroll_x", 0) if self.editor.tile_grid_widget else 0,
+                    getattr(self.editor.tile_grid_widget, "scroll_y", 0) if self.editor.tile_grid_widget else 0
+                )),
+                "initial_map_size": serialize_point(self.initial_map_size),
                 "version": "1.1",
             },
             "resources": {"tilesets": []},
@@ -182,20 +273,59 @@ class Tilemap:
             print(f"Error: {path} does not exist")
             return
 
-        with open(path, "r") as f:
-            payload = JSONLoad(f)
+        if path.suffix.lower() != ".json":
+            print(f"Error loading map: {path.name} is not a JSON file")
+            return
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = JSONLoad(f)
+        except Exception as e:
+            print(f"Error loading map: {e}")
+            return
+
+        if not isinstance(payload, dict) or "meta" not in payload:
+            print(f"Error loading map: Invalid project format")
+            return
 
         self.layer_manager.clear_all_layers()
         self.active_project_path = path
 
-        self.tile_size = deserialize_point(payload["meta"]["tile_size"])
-        self.map_size = deserialize_point(payload["meta"].get("map_size", "50;50"))
+        try:
+            self.tile_size = deserialize_point(payload["meta"]["tile_size"])
+            self.map_size = deserialize_point(payload["meta"].get("map_size", "50;50"))
+            # If the file tells us the map is large, we assume that was intended
+            # But the 'initial' setup might be in meta or we use map_size as base
+            self.initial_map_size = payload["meta"].get("initial_map_size")
+            if self.initial_map_size:
+                self.initial_map_size = deserialize_point(self.initial_map_size)
+            else:
+                self.initial_map_size = self.map_size
+        except (KeyError, ValueError) as e:
+            print(f"Error loading map metadata: {e}")
+            return
+        
+        # Restore view state
+        if self.editor.tile_grid_widget:
+            if "zoom_level" in payload["meta"]:
+                self.editor.tile_grid_widget.zoom_level = payload["meta"]["zoom_level"]
+            if "scroll" in payload["meta"]:
+                scroll = deserialize_point(payload["meta"]["scroll"])
+                self.editor.tile_grid_widget.scroll_x = scroll[0]
+                self.editor.tile_grid_widget.scroll_y = scroll[1]
+
+        resources = payload.get("resources", {})
+        tilesets = []
+        if isinstance(resources, list):
+            tilesets = resources
+        elif isinstance(resources, dict):
+            tilesets = resources.get("tilesets", [])
 
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
             self.editor.tileset_widget.tilesets.clear()
             self.editor.tileset_widget.tileset_map.clear()
 
-            for ts_entry in payload["resources"]["tilesets"]:
+            for ts_entry in tilesets:
 
                 if isinstance(ts_entry, str):
 
@@ -251,10 +381,10 @@ class Tilemap:
 
                             tx = (vid % cols) * self.tile_size[0]
                             ty = (vid // cols) * self.tile_size[1]
-
-                            rule.preview_surf = resolved_ts.surface.subsurface(
-                                Rect(tx, ty, *self.tile_size)
-                            ).copy()
+                            
+                            pr_rect = Rect(tx, ty, *self.tile_size)
+                            if resolved_ts.surface.get_rect().contains(pr_rect):
+                                rule.preview_surf = resolved_ts.surface.subsurface(pr_rect).copy()
 
                         designer.rules.append(rule)
                     except Exception as e:

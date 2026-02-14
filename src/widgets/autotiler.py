@@ -1,4 +1,6 @@
 import pygame
+import os
+import json
 from pygame import Surface, Rect, Color
 from typing import TYPE_CHECKING, List, Tuple, Set, Optional
 import time
@@ -118,6 +120,12 @@ class AutotileRuleDesigner:
             self.list_area.width - 20,
             30,
         )
+        self.external_btn_rect = Rect(
+            self.edit_area.right - 100,
+            self.edit_area.y + 5,
+            90,
+            25,
+        )
 
     def _get_grid_start_pos(self):
         center_x = self.edit_area.centerx
@@ -205,6 +213,9 @@ class AutotileRuleDesigner:
                     return True
                 if self.delete_btn_rect.collidepoint(mouse_pos):
                     self._delete_current_rule()
+                    return True
+                if self.external_btn_rect.collidepoint(mouse_pos):
+                    self._launch_external_viewer()
                     return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
@@ -401,39 +412,82 @@ class AutotileRuleDesigner:
 
         preview = self.current_preview_surfs[0] if self.current_preview_surfs else None
 
-        # Determine the name
+        # If index is >= 0, we update existing. Otherwise we create new.
         if self.selected_rule_index >= 0:
-            current_rule = self.rules[self.selected_rule_index]
-            new_name = self._get_next_rule_name(current_rule.name)
+            rule = self.rules[self.selected_rule_index]
+            rule.neighbors = set(self.current_neighbors)
+            rule.variant_ids = list(self.current_variant_ids)
+            rule.preview_surf = preview
+            rule.tileset_path = self.current_tileset_path
+            rule.tileset_index = getattr(self, "current_tileset_index", None)
+            print(f"Rule updated: {rule.name}")
         else:
+            # Determine unique name
             base_name = f"Rule {len(self.rules) + 1}"
-            # Ensure name is unique
             while any(r.name == base_name for r in self.rules):
                 base_name = self._get_next_rule_name(base_name)
-            new_name = base_name
-
-        new_rule = AutotileRule(
-            new_name,
-            set(self.current_neighbors),
-            self.current_tileset_path,
-            list(self.current_variant_ids),
-            preview,
-            tileset_index=getattr(self, "current_tileset_index", None),
-        )
-        self.rules.append(new_rule)
-        self.selected_rule_index = len(self.rules) - 1
-
-        print(f"Rule saved: {self.rules[self.selected_rule_index].to_dict()}")
-        print(f"Total rules: {len(self.rules)}")
-        for rule in self.rules:
-            print(
-                f"  - {rule.name}: neighbors={rule.neighbors}, variants={rule.variant_ids}"
+            
+            new_rule = AutotileRule(
+                base_name,
+                set(self.current_neighbors),
+                self.current_tileset_path,
+                list(self.current_variant_ids),
+                preview,
+                tileset_index=getattr(self, "current_tileset_index", None),
             )
+            self.rules.append(new_rule)
+            print(f"New rule created: {new_rule.name}")
+
+        # After saving, always reset to ready-state for a new rule
+        self._reset_selection()
+
+        print(f"Total rules now: {len(self.rules)}")
+        for r in self.rules:
+            print(f"  - {r.name}: neighbors={r.neighbors}, variants={r.variant_ids}")
 
     def _delete_current_rule(self):
         if 0 <= self.selected_rule_index < len(self.rules):
             self.rules.pop(self.selected_rule_index)
             self._reset_selection()
+
+    def _launch_external_viewer(self):
+        import subprocess
+        import sys
+        
+        from constants import BASE_PATH
+        
+        # Determine path to the standalone script
+        script_path = os.path.join(os.path.dirname(__file__), "..", "standalone_automap.py")
+        
+        # Determine which project file to tell the viewer to look at
+        project_path = self.editor.tilemap.active_project_path
+        
+        # If no project is active or it hasn't been saved yet, 
+        # save a temporary snapshot so the viewer can read current rules
+        if not project_path:
+            temp_dir = BASE_PATH / "data" / "cache"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            project_path = temp_dir / "current_session.json"
+            try:
+                self.editor.tilemap.save_map(str(project_path.relative_to(BASE_PATH / "data")))
+            except Exception as e:
+                # Fallback if relative path calculation fails
+                self.editor.tilemap.active_project_path = project_path
+                self.editor.tilemap.save_map()
+        else:
+            # Even if we have a project path, we should save current changes 
+            # so the external viewer sees the latest rules
+            try:
+                self.editor.tilemap.save_map()
+            except Exception as e:
+                print(f"Warning: Could not auto-save project for viewer: {e}")
+                
+        try:
+            # Popen spawns it as a separate independent process
+            subprocess.Popen([sys.executable, script_path, str(project_path)])
+            print(f"Launched external automap viewer linked to: {project_path.name}")
+        except Exception as e:
+            print(f"Failed to launch external viewer: {e}")
 
     def draw(self, screen: Surface):
         if not self.visible:
@@ -538,3 +592,8 @@ class AutotileRuleDesigner:
             screen.blit(
                 d_lbl, (self.delete_btn_rect.x + 25, self.delete_btn_rect.y + 8)
             )
+
+        # External button
+        pygame.draw.rect(screen, (100, 100, 150), self.external_btn_rect, border_radius=4)
+        ext_lbl = self.font.render("External View", True, Color("white"))
+        screen.blit(ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5))

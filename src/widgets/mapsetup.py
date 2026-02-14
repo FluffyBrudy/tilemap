@@ -87,6 +87,22 @@ class MapSetup:
         self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
         self.font = pygame.font.SysFont("Arial", 20, bold=True)
 
+    def resize(self, center_rect: Rect):
+        self.rect = center_rect
+        cols = 2
+        cell_w = (self.rect.width - 40) // cols
+        cell_h = 70
+        start_x = self.rect.x + 20
+        start_y = self.rect.y + 60
+
+        for i, inp in enumerate(self.inputs):
+            row, col = divmod(i, cols)
+            r = Rect(start_x + col * cell_w, start_y + row * cell_h, cell_w - 10, 60)
+            inp.rect_area = r
+            inp.rect_input = Rect(r.x, r.y + 20, r.width, 30)
+
+        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
+
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
             return False

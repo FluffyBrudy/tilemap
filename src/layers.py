@@ -56,24 +56,43 @@ class Layer:
         if self.locked or self.layer_type != "tile":
             return
 
-        # Make a copy to avoid mutating while iterating
-        tile_positions = list(self.tiles.keys())
-        rules_sorted = sorted(rules, key=lambda r: len(r.neighbors), reverse=True)
+        if not rules:
+            print("Autotiling skipped: No rules defined.")
+            return
 
+        # 1. Identify all 'significant' directions across the current rule set
+        # This allows 4-way rule sets to ignore diagonals on the map.
+        significant_offsets = set()
+        for rule in rules:
+            significant_offsets.update(rule.neighbors)
+        
+        # 2. Prepare rules for matching
+        rules_sorted = sorted(rules, key=lambda r: len(r.neighbors), reverse=True)
+        tile_positions = list(self.tiles.keys())
+        
+        changes_count = 0
         for pos in tile_positions:
             tile = self.tiles[pos]
             ttype = tile["ttype"]
 
-            # Detect neighbors with the same ttype
-            neighbor_offsets = []
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:  # left, right, up, down
+            # 3. Detect neighbors with the same ttype (8-way)
+            actual_neighbors = []
+            for dx, dy in [
+                (-1, -1), (0, -1), (1, -1),
+                (-1, 0),          (1, 0),
+                (-1, 1),  (0, 1),  (1, 1)
+            ]:
                 npos = (pos[0] + dx, pos[1] + dy)
-                if npos in self.tiles and self.tiles[npos]["ttype"] == ttype:
-                    neighbor_offsets.append((dx, dy))
+                if npos in self.tiles:
+                    n_tile = self.tiles[npos]
+                    # Same ttype matching
+                    if n_tile["ttype"] == ttype:
+                        actual_neighbors.append((dx, dy))
 
-            neighbor_offsets_set = set(neighbor_offsets)
+            # 4. Filter actual neighbors to only include directions defined in the ruleset
+            neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
 
-            # Find first rule that matches neighbors
+            # 5. Find first rule that matches neighbors
             matched_rule: Optional["AutotileRule"] = None
             for rule in rules_sorted:
                 if (
@@ -84,9 +103,13 @@ class Layer:
                     break
 
             if matched_rule and matched_rule.variant_ids:
-                # Pick a variant randomly if multiple options
-                tile["variant"] = random.choice(matched_rule.variant_ids)
-                self.tiles[pos] = tile
+                new_variant = random.choice(matched_rule.variant_ids)
+                if tile["variant"] != new_variant:
+                    tile["variant"] = new_variant
+                    self.tiles[pos] = tile
+                    changes_count += 1
+
+        print(f"Autotile complete: {changes_count} tiles updated in layer '{self.name}'.")
 
     def remove_tile(self, pos: Tuple[int, int]) -> bool:
         """Remove a tile at the given grid position. Returns True if tile existed."""
@@ -94,6 +117,49 @@ class Layer:
             del self.tiles[pos]
             return True
         return False
+
+    def flood_fill(self, start_pos: Tuple[int, int], new_tile_data: TypeTile, map_size: Tuple[int, int]) -> None:
+        """Replace contiguous tiles of the same type starting from start_pos."""
+        if self.locked or self.layer_type != "tile":
+            return
+
+        target_tile = self.tiles.get(start_pos)
+        target_ttype = target_tile["ttype"] if target_tile else None
+        target_variant = target_tile["variant"] if target_tile else None
+
+        new_ttype = new_tile_data["ttype"]
+        new_variant = new_tile_data["variant"]
+
+        if target_ttype == new_ttype and target_variant == new_variant:
+            return
+
+        queue = [start_pos]
+        seen = {start_pos}
+
+        while queue:
+            curr = queue.pop(0)
+            
+            # Bounds check if necessary, though dict sparse storage handles it
+            if curr[0] < 0 or curr[0] >= map_size[0] or curr[1] < 0 or curr[1] >= map_size[1]:
+                continue
+
+            # Check if current tile matches target
+            curr_tile = self.tiles.get(curr)
+            curr_ttype = curr_tile["ttype"] if curr_tile else None
+            curr_variant = curr_tile["variant"] if curr_tile else None
+
+            if curr_ttype == target_ttype and curr_variant == target_variant:
+                # Update tile
+                td = new_tile_data.copy()
+                td["pos"] = curr
+                self.tiles[curr] = td
+
+                # Add neighbors
+                for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    next_pos = (curr[0] + dx, curr[1] + dy)
+                    if next_pos not in seen:
+                        seen.add(next_pos)
+                        queue.append(next_pos)
 
     def get_all_tiles(self) -> Dict[Tuple[int, int], TypeTile]:
         """Return a copy of all tiles in this layer."""
@@ -160,6 +226,9 @@ class Layer:
             data["objects"] = {}
 
         data["next_object_id"] = self.next_object_id
+        
+        # Metadata storage
+        data["metadata"] = getattr(self, "metadata", {})
 
         return data
 

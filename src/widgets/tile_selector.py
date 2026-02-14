@@ -51,6 +51,15 @@ class TileSelector:
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
         self.font = pygame.font.SysFont("Arial", 16)
 
+    def resize(self, x: int, y: int, w: int, h: int):
+        self.rect = Rect(x, y, w, h)
+        self.view_rect = Rect(
+            x, y + self.top_bar_h, w, h - self.top_bar_h - self.btm_bar_h
+        )
+        btn_y = y + h - 35
+        self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
+        self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
+
     def set_rule_hints(self, hints: Set[int]):
         self.rule_hints = hints
 
