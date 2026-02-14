@@ -1,9 +1,9 @@
 {
   "meta": {
     "tile_size": "32;32",
-    "map_size": "34;20",
+    "map_size": "30;20",
     "zoom_level": 1.0,
-    "scroll": "152;0",
+    "scroll": "0;0",
     "initial_map_size": "30;20",
     "version": "1.1"
   },
@@ -18,19 +18,11 @@
   "project_state": {
     "rules": [
       {
-        "name": "Rule 1",
+        "name": "32x32.png_17_0_0_0",
         "neighbors": [
-          [
-            -1,
-            0
-          ],
           [
             1,
             0
-          ],
-          [
-            0,
-            -1
           ],
           [
             0,
@@ -40,11 +32,12 @@
         "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
         "tileset_index": 0,
         "variant_ids": [
-          44
-        ]
+          17
+        ],
+        "group_id": "32x32.png_17_0"
       },
       {
-        "name": "Rule 2",
+        "name": "32x32.png_17_0_1_0",
         "neighbors": [
           [
             -1,
@@ -63,10 +56,122 @@
         "tileset_index": 0,
         "variant_ids": [
           18
-        ]
+        ],
+        "group_id": "32x32.png_17_0"
       },
       {
-        "name": "Rule 3",
+        "name": "32x32.png_17_0_2_0",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          19
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "32x32.png_17_0_0_1",
+        "neighbors": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          43
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "32x32.png_17_0_1_1",
+        "neighbors": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          44
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "32x32.png_17_0_2_1",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          45
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "32x32.png_17_0_0_2",
+        "neighbors": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          69
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "32x32.png_17_0_1_2",
         "neighbors": [
           [
             -1,
@@ -85,108 +190,11 @@
         "tileset_index": 0,
         "variant_ids": [
           70
-        ]
-      },
-      {
-        "name": "Rule 4",
-        "neighbors": [
-          [
-            0,
-            1
-          ],
-          [
-            1,
-            0
-          ],
-          [
-            0,
-            -1
-          ]
         ],
-        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
-        "tileset_index": 0,
-        "variant_ids": [
-          43
-        ]
+        "group_id": "32x32.png_17_0"
       },
       {
-        "name": "Rule 5",
-        "neighbors": [
-          [
-            1,
-            0
-          ],
-          [
-            0,
-            1
-          ]
-        ],
-        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
-        "tileset_index": 0,
-        "variant_ids": [
-          17
-        ]
-      },
-      {
-        "name": "Rule 6",
-        "neighbors": [
-          [
-            1,
-            0
-          ],
-          [
-            0,
-            -1
-          ]
-        ],
-        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
-        "tileset_index": 0,
-        "variant_ids": [
-          69
-        ]
-      },
-      {
-        "name": "Rule 7",
-        "neighbors": [
-          [
-            -1,
-            0
-          ],
-          [
-            0,
-            1
-          ]
-        ],
-        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
-        "tileset_index": 0,
-        "variant_ids": [
-          19
-        ]
-      },
-      {
-        "name": "Rule 8",
-        "neighbors": [
-          [
-            0,
-            1
-          ],
-          [
-            -1,
-            0
-          ],
-          [
-            0,
-            -1
-          ]
-        ],
-        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
-        "tileset_index": 0,
-        "variant_ids": [
-          45
-        ]
-      },
-      {
-        "name": "Rule 9",
+        "name": "32x32.png_17_0_2_2",
         "neighbors": [
           [
             -1,
@@ -201,956 +209,1150 @@
         "tileset_index": 0,
         "variant_ids": [
           71
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "Rule 10",
+        "neighbors": [],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          17,
+          18,
+          19,
+          43,
+          44,
+          45,
+          69,
+          70,
+          71
+        ],
+        "group_id": "32x32.png_17_0"
+      },
+      {
+        "name": "32x32.png_23_0_0_0",
+        "neighbors": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          23
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_1_0",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          24
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_2_0",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          25
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_0_1",
+        "neighbors": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          49
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_1_1",
+        "neighbors": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          50
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_2_1",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          51
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_0_2",
+        "neighbors": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          75
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_1_2",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          76
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "32x32.png_23_0_2_2",
+        "neighbors": [
+          [
+            -1,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          77
+        ],
+        "group_id": "32x32.png_23_0"
+      },
+      {
+        "name": "Rule 10",
+        "neighbors": [],
+        "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+        "tileset_index": 0,
+        "variant_ids": [
+          23,
+          24,
+          25,
+          49,
+          50,
+          51,
+          75,
+          76,
+          77
+        ],
+        "group_id": "32x32.png_23_0"
+      }
+    ],
+    "groups": [
+      {
+        "name": "Default",
+        "rules": []
+      },
+      {
+        "name": "32x32.png_17_0",
+        "rules": [
+          {
+            "name": "32x32.png_17_0_0_0",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              17
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_1_0",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              18
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_2_0",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              19
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_0_1",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              43
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_1_1",
+            "neighbors": [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              44
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_2_1",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              45
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_0_2",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              69
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_1_2",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              70
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "32x32.png_17_0_2_2",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              71
+            ],
+            "group_id": "32x32.png_17_0"
+          },
+          {
+            "name": "Rule 10",
+            "neighbors": [],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              17,
+              18,
+              19,
+              43,
+              44,
+              45,
+              69,
+              70,
+              71
+            ],
+            "group_id": "32x32.png_17_0"
+          }
+        ]
+      },
+      {
+        "name": "32x32.png_23_0",
+        "rules": [
+          {
+            "name": "32x32.png_23_0_0_0",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              23
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_1_0",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              24
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_2_0",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              25
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_0_1",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              49
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_1_1",
+            "neighbors": [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              50
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_2_1",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              51
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_0_2",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              75
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_1_2",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              76
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "32x32.png_23_0_2_2",
+            "neighbors": [
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ]
+            ],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              77
+            ],
+            "group_id": "32x32.png_23_0"
+          },
+          {
+            "name": "Rule 10",
+            "neighbors": [],
+            "tileset_path": "/home/rudy/Documents/games/rpg/assets/32x32.png",
+            "tileset_index": 0,
+            "variant_ids": [
+              23,
+              24,
+              25,
+              49,
+              50,
+              51,
+              75,
+              76,
+              77
+            ],
+            "group_id": "32x32.png_23_0"
+          }
         ]
       }
     ]
   },
   "data": {
     "ongrid": {
-      "13;8": {
-        "pos": "13;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;9": {
-        "pos": "13;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;10": {
-        "pos": "13;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;11": {
-        "pos": "13;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;12": {
-        "pos": "13;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;13": {
-        "pos": "13;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "14;13": {
-        "pos": "14;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "15;13": {
-        "pos": "15;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "16;13": {
-        "pos": "16;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "17;13": {
-        "pos": "17;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "17;12": {
-        "pos": "17;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "17;11": {
-        "pos": "17;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "17;10": {
-        "pos": "17;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "17;9": {
-        "pos": "17;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "17;8": {
-        "pos": "17;8",
-        "ttype": 0,
-        "variant": 19
-      },
-      "16;8": {
-        "pos": "16;8",
-        "ttype": 0,
-        "variant": 18
-      },
-      "15;8": {
-        "pos": "15;8",
-        "ttype": 0,
-        "variant": 18
-      },
-      "14;8": {
-        "pos": "14;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "14;9": {
-        "pos": "14;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "14;10": {
-        "pos": "14;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "14;11": {
-        "pos": "14;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "14;12": {
-        "pos": "14;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "15;12": {
-        "pos": "15;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "16;11": {
-        "pos": "16;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "16;10": {
-        "pos": "16;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "16;9": {
-        "pos": "16;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "16;12": {
-        "pos": "16;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "15;11": {
-        "pos": "15;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "15;10": {
-        "pos": "15;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "15;9": {
-        "pos": "15;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "18;11": {
-        "pos": "18;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "19;11": {
-        "pos": "19;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "21;11": {
-        "pos": "21;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "22;11": {
-        "pos": "22;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "23;11": {
-        "pos": "23;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "24;11": {
-        "pos": "24;11",
-        "ttype": 0,
-        "variant": 18
-      },
-      "25;11": {
-        "pos": "25;11",
-        "ttype": 0,
-        "variant": 18
-      },
-      "26;11": {
-        "pos": "26;11",
-        "ttype": 0,
-        "variant": 18
-      },
-      "27;11": {
-        "pos": "27;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "28;11": {
-        "pos": "28;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "26;12": {
-        "pos": "26;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "27;12": {
-        "pos": "27;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "28;12": {
-        "pos": "28;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "28;13": {
-        "pos": "28;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "27;13": {
-        "pos": "27;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "26;13": {
-        "pos": "26;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "25;13": {
-        "pos": "25;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "24;13": {
-        "pos": "24;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "23;13": {
-        "pos": "23;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "22;13": {
-        "pos": "22;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "21;13": {
-        "pos": "21;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "20;13": {
-        "pos": "20;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "19;13": {
-        "pos": "19;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "18;13": {
-        "pos": "18;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "18;12": {
-        "pos": "18;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "19;12": {
-        "pos": "19;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "20;12": {
-        "pos": "20;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "21;12": {
-        "pos": "21;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "22;12": {
-        "pos": "22;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "23;12": {
-        "pos": "23;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "24;12": {
-        "pos": "24;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "25;12": {
-        "pos": "25;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "20;11": {
-        "pos": "20;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "14;7": {
-        "pos": "14;7",
-        "ttype": 0,
-        "variant": 45
-      },
-      "14;6": {
-        "pos": "14;6",
-        "ttype": 0,
-        "variant": 19
-      },
-      "13;6": {
-        "pos": "13;6",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;5": {
-        "pos": "13;5",
-        "ttype": 0,
-        "variant": 45
-      },
-      "13;4": {
-        "pos": "13;4",
-        "ttype": 0,
-        "variant": 45
-      },
-      "13;3": {
-        "pos": "13;3",
-        "ttype": 0,
-        "variant": 45
-      },
-      "13;2": {
-        "pos": "13;2",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;3": {
-        "pos": "12;3",
-        "ttype": 0,
-        "variant": 18
-      },
-      "11;3": {
-        "pos": "11;3",
-        "ttype": 0,
-        "variant": 18
-      },
-      "10;3": {
-        "pos": "10;3",
-        "ttype": 0,
-        "variant": 17
-      },
-      "10;4": {
-        "pos": "10;4",
-        "ttype": 0,
-        "variant": 70
-      },
       "9;4": {
         "pos": "9;4",
         "ttype": 0,
         "variant": 18
+      },
+      "10;4": {
+        "pos": "10;4",
+        "ttype": 0,
+        "variant": 18
+      },
+      "10;5": {
+        "pos": "10;5",
+        "ttype": 0,
+        "variant": 70
+      },
+      "10;6": {
+        "pos": "10;6",
+        "ttype": 0,
+        "variant": 25
+      },
+      "10;7": {
+        "pos": "10;7",
+        "ttype": 0,
+        "variant": 50
+      },
+      "9;7": {
+        "pos": "9;7",
+        "ttype": 0,
+        "variant": 76
+      },
+      "9;6": {
+        "pos": "9;6",
+        "ttype": 0,
+        "variant": 24
+      },
+      "9;5": {
+        "pos": "9;5",
+        "ttype": 0,
+        "variant": 70
+      },
+      "8;5": {
+        "pos": "8;5",
+        "ttype": 0,
+        "variant": 69
       },
       "8;4": {
         "pos": "8;4",
         "ttype": 0,
         "variant": 17
       },
-      "8;5": {
-        "pos": "8;5",
-        "ttype": 0,
-        "variant": 43
-      },
       "8;6": {
         "pos": "8;6",
         "ttype": 0,
-        "variant": 43
+        "variant": 23
       },
       "8;7": {
         "pos": "8;7",
         "ttype": 0,
-        "variant": 43
-      },
-      "8;8": {
-        "pos": "8;8",
-        "ttype": 0,
-        "variant": 43
-      },
-      "8;9": {
-        "pos": "8;9",
-        "ttype": 0,
-        "variant": 43
-      },
-      "8;10": {
-        "pos": "8;10",
-        "ttype": 0,
-        "variant": 43
-      },
-      "9;10": {
-        "pos": "9;10",
-        "ttype": 0,
-        "variant": 45
-      },
-      "9;11": {
-        "pos": "9;11",
-        "ttype": 0,
-        "variant": 45
-      },
-      "9;12": {
-        "pos": "9;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "9;13": {
-        "pos": "9;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "10;13": {
-        "pos": "10;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "11;13": {
-        "pos": "11;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "12;13": {
-        "pos": "12;13",
-        "ttype": 0,
-        "variant": 70
-      },
-      "12;12": {
-        "pos": "12;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;11": {
-        "pos": "12;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "11;11": {
-        "pos": "11;11",
-        "ttype": 0,
-        "variant": 43
-      },
-      "11;10": {
-        "pos": "11;10",
-        "ttype": 0,
-        "variant": 43
-      },
-      "11;9": {
-        "pos": "11;9",
-        "ttype": 0,
-        "variant": 43
-      },
-      "11;8": {
-        "pos": "11;8",
-        "ttype": 0,
-        "variant": 43
+        "variant": 75
       },
       "11;7": {
         "pos": "11;7",
         "ttype": 0,
-        "variant": 43
+        "variant": 25
       },
       "11;6": {
         "pos": "11;6",
         "ttype": 0,
-        "variant": 43
+        "variant": 45
       },
       "11;5": {
         "pos": "11;5",
         "ttype": 0,
-        "variant": 43
+        "variant": 45
       },
       "11;4": {
         "pos": "11;4",
         "ttype": 0,
-        "variant": 44
-      },
-      "12;7": {
-        "pos": "12;7",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;8": {
-        "pos": "12;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;9": {
-        "pos": "12;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;10": {
-        "pos": "12;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;6": {
-        "pos": "12;6",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;5": {
-        "pos": "12;5",
-        "ttype": 0,
-        "variant": 44
-      },
-      "12;4": {
-        "pos": "12;4",
-        "ttype": 0,
-        "variant": 44
-      },
-      "13;7": {
-        "pos": "13;7",
-        "ttype": 0,
-        "variant": 44
-      },
-      "18;9": {
-        "pos": "18;9",
-        "ttype": 0,
-        "variant": 18
-      },
-      "20;9": {
-        "pos": "20;9",
-        "ttype": 0,
         "variant": 19
       },
-      "19;10": {
-        "pos": "19;10",
+      "17;7": {
+        "pos": "17;7",
         "ttype": 0,
-        "variant": 44
+        "variant": 17
       },
-      "18;10": {
-        "pos": "18;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "19;9": {
-        "pos": "19;9",
+      "18;7": {
+        "pos": "18;7",
         "ttype": 0,
         "variant": 18
       },
-      "20;10": {
-        "pos": "20;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "28;14": {
-        "pos": "28;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "27;14": {
-        "pos": "27;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "26;14": {
-        "pos": "26;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "21;14": {
-        "pos": "21;14",
-        "ttype": 0,
-        "variant": 69
-      },
-      "22;14": {
-        "pos": "22;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "23;14": {
-        "pos": "23;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "24;14": {
-        "pos": "24;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "25;14": {
-        "pos": "25;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "29;14": {
-        "pos": "29;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "30;14": {
-        "pos": "30;14",
-        "ttype": 0,
-        "variant": 70
-      },
-      "29;10": {
-        "pos": "29;10",
-        "ttype": 0,
-        "variant": 45
-      },
-      "29;11": {
-        "pos": "29;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "29;12": {
-        "pos": "29;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "29;13": {
-        "pos": "29;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "30;13": {
-        "pos": "30;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "30;12": {
-        "pos": "30;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "30;11": {
-        "pos": "30;11",
+      "19;7": {
+        "pos": "19;7",
         "ttype": 0,
         "variant": 18
       },
-      "29;9": {
-        "pos": "29;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "22;10": {
-        "pos": "22;10",
+      "20;7": {
+        "pos": "20;7",
         "ttype": 0,
         "variant": 18
       },
-      "23;10": {
-        "pos": "23;10",
+      "21;7": {
+        "pos": "21;7",
         "ttype": 0,
-        "variant": 19
+        "variant": 18
+      },
+      "21;8": {
+        "pos": "21;8",
+        "ttype": 0,
+        "variant": 70
+      },
+      "22;8": {
+        "pos": "22;8",
+        "ttype": 0,
+        "variant": 71
+      },
+      "21;9": {
+        "pos": "21;9",
+        "ttype": 0,
+        "variant": 23
+      },
+      "22;9": {
+        "pos": "22;9",
+        "ttype": 0,
+        "variant": 25
       },
       "21;10": {
         "pos": "21;10",
         "ttype": 0,
-        "variant": 18
+        "variant": 49
       },
-      "9;5": {
-        "pos": "9;5",
+      "22;10": {
+        "pos": "22;10",
         "ttype": 0,
-        "variant": 45
+        "variant": 51
       },
-      "9;6": {
-        "pos": "9;6",
+      "21;11": {
+        "pos": "21;11",
         "ttype": 0,
-        "variant": 45
+        "variant": 50
       },
-      "9;7": {
-        "pos": "9;7",
+      "22;11": {
+        "pos": "22;11",
         "ttype": 0,
-        "variant": 45
+        "variant": 77
       },
-      "9;8": {
-        "pos": "9;8",
+      "20;11": {
+        "pos": "20;11",
         "ttype": 0,
-        "variant": 45
+        "variant": 24
       },
-      "9;9": {
-        "pos": "9;9",
+      "19;11": {
+        "pos": "19;11",
         "ttype": 0,
-        "variant": 45
+        "variant": 50
       },
-      "8;11": {
-        "pos": "8;11",
+      "19;10": {
+        "pos": "19;10",
         "ttype": 0,
-        "variant": 43
+        "variant": 25
       },
-      "8;12": {
-        "pos": "8;12",
-        "ttype": 0,
-        "variant": 43
-      },
-      "8;13": {
-        "pos": "8;13",
-        "ttype": 0,
-        "variant": 69
-      },
-      "10;12": {
-        "pos": "10;12",
-        "ttype": 0,
-        "variant": 18
-      },
-      "11;12": {
-        "pos": "11;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "29;8": {
-        "pos": "29;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "28;8": {
-        "pos": "28;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "28;9": {
-        "pos": "28;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "27;9": {
-        "pos": "27;9",
-        "ttype": 0,
-        "variant": 43
-      },
-      "27;10": {
-        "pos": "27;10",
-        "ttype": 0,
-        "variant": 43
-      },
-      "28;10": {
-        "pos": "28;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "31;11": {
-        "pos": "31;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "31;12": {
-        "pos": "31;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "31;13": {
-        "pos": "31;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "31;14": {
-        "pos": "31;14",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;12": {
-        "pos": "32;12",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;13": {
-        "pos": "32;13",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;14": {
-        "pos": "32;14",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;15": {
-        "pos": "32;15",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;16": {
-        "pos": "32;16",
-        "ttype": 0,
-        "variant": 70
-      },
-      "31;16": {
-        "pos": "31;16",
-        "ttype": 0,
-        "variant": 69
-      },
-      "31;15": {
-        "pos": "31;15",
-        "ttype": 0,
-        "variant": 43
-      },
-      "31;10": {
-        "pos": "31;10",
-        "ttype": 0,
-        "variant": 43
-      },
-      "31;9": {
-        "pos": "31;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;9": {
-        "pos": "32;9",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;10": {
-        "pos": "32;10",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;11": {
-        "pos": "32;11",
-        "ttype": 0,
-        "variant": 44
-      },
-      "32;8": {
-        "pos": "32;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "30;9": {
-        "pos": "30;9",
-        "ttype": 0,
-        "variant": 70
-      },
-      "30;8": {
-        "pos": "30;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "30;7": {
-        "pos": "30;7",
-        "ttype": 0,
-        "variant": 18
-      },
-      "31;8": {
-        "pos": "31;8",
-        "ttype": 0,
-        "variant": 44
-      },
-      "31;7": {
-        "pos": "31;7",
-        "ttype": 0,
-        "variant": 18
-      },
-      "32;7": {
-        "pos": "32;7",
-        "ttype": 0,
-        "variant": 44
-      },
-      "29;7": {
-        "pos": "29;7",
-        "ttype": 0,
-        "variant": 18
-      },
-      "28;7": {
-        "pos": "28;7",
-        "ttype": 0,
-        "variant": 18
-      },
-      "27;7": {
-        "pos": "27;7",
-        "ttype": 0,
-        "variant": 17
-      },
-      "27;8": {
-        "pos": "27;8",
-        "ttype": 0,
-        "variant": 43
-      },
-      "33;7": {
-        "pos": "33;7",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;8": {
-        "pos": "33;8",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;9": {
-        "pos": "33;9",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;10": {
-        "pos": "33;10",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;11": {
-        "pos": "33;11",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;12": {
-        "pos": "33;12",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;13": {
-        "pos": "33;13",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;14": {
-        "pos": "33;14",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;15": {
-        "pos": "33;15",
-        "ttype": 0,
-        "variant": 45
-      },
-      "33;16": {
-        "pos": "33;16",
+      "20;10": {
+        "pos": "20;10",
         "ttype": 0,
         "variant": 71
       },
-      "32;6": {
-        "pos": "32;6",
+      "18;10": {
+        "pos": "18;10",
         "ttype": 0,
-        "variant": 17
+        "variant": 24
       },
-      "33;6": {
-        "pos": "33;6",
+      "18;9": {
+        "pos": "18;9",
+        "ttype": 0,
+        "variant": 70
+      },
+      "19;9": {
+        "pos": "19;9",
+        "ttype": 0,
+        "variant": 70
+      },
+      "17;9": {
+        "pos": "17;9",
+        "ttype": 0,
+        "variant": 69
+      },
+      "17;8": {
+        "pos": "17;8",
+        "ttype": 0,
+        "variant": 43
+      },
+      "18;8": {
+        "pos": "18;8",
+        "ttype": 0,
+        "variant": 44
+      },
+      "19;8": {
+        "pos": "19;8",
+        "ttype": 0,
+        "variant": 44
+      },
+      "20;8": {
+        "pos": "20;8",
+        "ttype": 0,
+        "variant": 44
+      },
+      "20;9": {
+        "pos": "20;9",
+        "ttype": 0,
+        "variant": 45
+      },
+      "18;11": {
+        "pos": "18;11",
+        "ttype": 0,
+        "variant": 50
+      },
+      "17;11": {
+        "pos": "17;11",
+        "ttype": 0,
+        "variant": 50
+      },
+      "17;10": {
+        "pos": "17;10",
+        "ttype": 0,
+        "variant": 24
+      },
+      "22;7": {
+        "pos": "22;7",
         "ttype": 0,
         "variant": 19
+      },
+      "17;15": {
+        "pos": "17;15",
+        "ttype": 0,
+        "variant": 50
+      },
+      "18;15": {
+        "pos": "18;15",
+        "ttype": 0,
+        "variant": 50
+      },
+      "17;16": {
+        "pos": "17;16",
+        "ttype": 0,
+        "variant": 50
+      },
+      "18;16": {
+        "pos": "18;16",
+        "ttype": 0,
+        "variant": 50
+      },
+      "16;15": {
+        "pos": "16;15",
+        "ttype": 0,
+        "variant": 49
+      },
+      "16;16": {
+        "pos": "16;16",
+        "ttype": 0,
+        "variant": 49
+      },
+      "16;14": {
+        "pos": "16;14",
+        "ttype": 0,
+        "variant": 49
+      },
+      "17;14": {
+        "pos": "17;14",
+        "ttype": 0,
+        "variant": 50
+      },
+      "16;13": {
+        "pos": "16;13",
+        "ttype": 0,
+        "variant": 23
+      },
+      "17;13": {
+        "pos": "17;13",
+        "ttype": 0,
+        "variant": 50
+      },
+      "18;13": {
+        "pos": "18;13",
+        "ttype": 0,
+        "variant": 50
+      },
+      "18;14": {
+        "pos": "18;14",
+        "ttype": 0,
+        "variant": 50
+      },
+      "19;13": {
+        "pos": "19;13",
+        "ttype": 0,
+        "variant": 50
+      },
+      "19;14": {
+        "pos": "19;14",
+        "ttype": 0,
+        "variant": 50
+      },
+      "20;13": {
+        "pos": "20;13",
+        "ttype": 0,
+        "variant": 50
+      },
+      "20;14": {
+        "pos": "20;14",
+        "ttype": 0,
+        "variant": 51
+      },
+      "19;15": {
+        "pos": "19;15",
+        "ttype": 0,
+        "variant": 50
+      },
+      "20;15": {
+        "pos": "20;15",
+        "ttype": 0,
+        "variant": 51
+      },
+      "19;16": {
+        "pos": "19;16",
+        "ttype": 0,
+        "variant": 50
+      },
+      "20;16": {
+        "pos": "20;16",
+        "ttype": 0,
+        "variant": 77
+      },
+      "18;17": {
+        "pos": "18;17",
+        "ttype": 0,
+        "variant": 76
+      },
+      "19;17": {
+        "pos": "19;17",
+        "ttype": 0,
+        "variant": 77
+      },
+      "17;17": {
+        "pos": "17;17",
+        "ttype": 0,
+        "variant": 76
+      },
+      "16;17": {
+        "pos": "16;17",
+        "ttype": 0,
+        "variant": 75
+      },
+      "17;12": {
+        "pos": "17;12",
+        "ttype": 0,
+        "variant": 49
+      },
+      "18;12": {
+        "pos": "18;12",
+        "ttype": 0,
+        "variant": 50
+      },
+      "20;12": {
+        "pos": "20;12",
+        "ttype": 0,
+        "variant": 50
+      },
+      "21;12": {
+        "pos": "21;12",
+        "ttype": 0,
+        "variant": 51
+      },
+      "21;13": {
+        "pos": "21;13",
+        "ttype": 0,
+        "variant": 77
+      },
+      "19;12": {
+        "pos": "19;12",
+        "ttype": 0,
+        "variant": 50
+      },
+      "10;8": {
+        "pos": "10;8",
+        "ttype": 0,
+        "variant": 75
+      },
+      "11;8": {
+        "pos": "11;8",
+        "ttype": 0,
+        "variant": 50
+      },
+      "12;8": {
+        "pos": "12;8",
+        "ttype": 0,
+        "variant": 24
+      },
+      "11;9": {
+        "pos": "11;9",
+        "ttype": 0,
+        "variant": 75
+      },
+      "12;9": {
+        "pos": "12;9",
+        "ttype": 0,
+        "variant": 76
+      },
+      "13;8": {
+        "pos": "13;8",
+        "ttype": 0,
+        "variant": 24
+      },
+      "13;9": {
+        "pos": "13;9",
+        "ttype": 0,
+        "variant": 50
+      },
+      "14;8": {
+        "pos": "14;8",
+        "ttype": 0,
+        "variant": 25
+      },
+      "14;9": {
+        "pos": "14;9",
+        "ttype": 0,
+        "variant": 50
+      },
+      "13;10": {
+        "pos": "13;10",
+        "ttype": 0,
+        "variant": 75
+      },
+      "14;10": {
+        "pos": "14;10",
+        "ttype": 0,
+        "variant": 76
+      },
+      "15;9": {
+        "pos": "15;9",
+        "ttype": 0,
+        "variant": 24
+      },
+      "15;10": {
+        "pos": "15;10",
+        "ttype": 0,
+        "variant": 50
+      },
+      "16;9": {
+        "pos": "16;9",
+        "ttype": 0,
+        "variant": 25
+      },
+      "16;10": {
+        "pos": "16;10",
+        "ttype": 0,
+        "variant": 50
+      },
+      "15;11": {
+        "pos": "15;11",
+        "ttype": 0,
+        "variant": 75
+      },
+      "16;11": {
+        "pos": "16;11",
+        "ttype": 0,
+        "variant": 76
       }
     },
     "layers": [
@@ -1162,950 +1364,470 @@
         "opacity": 1.0,
         "z_index": 0,
         "tiles": {
-          "13;8": {
-            "pos": "13;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;9": {
-            "pos": "13;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;10": {
-            "pos": "13;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;11": {
-            "pos": "13;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;12": {
-            "pos": "13;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;13": {
-            "pos": "13;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "14;13": {
-            "pos": "14;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "15;13": {
-            "pos": "15;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "16;13": {
-            "pos": "16;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "17;13": {
-            "pos": "17;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "17;12": {
-            "pos": "17;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "17;11": {
-            "pos": "17;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "17;10": {
-            "pos": "17;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "17;9": {
-            "pos": "17;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "17;8": {
-            "pos": "17;8",
-            "ttype": 0,
-            "variant": 19
-          },
-          "16;8": {
-            "pos": "16;8",
-            "ttype": 0,
-            "variant": 18
-          },
-          "15;8": {
-            "pos": "15;8",
-            "ttype": 0,
-            "variant": 18
-          },
-          "14;8": {
-            "pos": "14;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "14;9": {
-            "pos": "14;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "14;10": {
-            "pos": "14;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "14;11": {
-            "pos": "14;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "14;12": {
-            "pos": "14;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "15;12": {
-            "pos": "15;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "16;11": {
-            "pos": "16;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "16;10": {
-            "pos": "16;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "16;9": {
-            "pos": "16;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "16;12": {
-            "pos": "16;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "15;11": {
-            "pos": "15;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "15;10": {
-            "pos": "15;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "15;9": {
-            "pos": "15;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "18;11": {
-            "pos": "18;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "19;11": {
-            "pos": "19;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "21;11": {
-            "pos": "21;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "22;11": {
-            "pos": "22;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "23;11": {
-            "pos": "23;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "24;11": {
-            "pos": "24;11",
-            "ttype": 0,
-            "variant": 18
-          },
-          "25;11": {
-            "pos": "25;11",
-            "ttype": 0,
-            "variant": 18
-          },
-          "26;11": {
-            "pos": "26;11",
-            "ttype": 0,
-            "variant": 18
-          },
-          "27;11": {
-            "pos": "27;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "28;11": {
-            "pos": "28;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "26;12": {
-            "pos": "26;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "27;12": {
-            "pos": "27;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "28;12": {
-            "pos": "28;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "28;13": {
-            "pos": "28;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "27;13": {
-            "pos": "27;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "26;13": {
-            "pos": "26;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "25;13": {
-            "pos": "25;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "24;13": {
-            "pos": "24;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "23;13": {
-            "pos": "23;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "22;13": {
-            "pos": "22;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "21;13": {
-            "pos": "21;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "20;13": {
-            "pos": "20;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "19;13": {
-            "pos": "19;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "18;13": {
-            "pos": "18;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "18;12": {
-            "pos": "18;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "19;12": {
-            "pos": "19;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "20;12": {
-            "pos": "20;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "21;12": {
-            "pos": "21;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "22;12": {
-            "pos": "22;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "23;12": {
-            "pos": "23;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "24;12": {
-            "pos": "24;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "25;12": {
-            "pos": "25;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "20;11": {
-            "pos": "20;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "14;7": {
-            "pos": "14;7",
-            "ttype": 0,
-            "variant": 45
-          },
-          "14;6": {
-            "pos": "14;6",
-            "ttype": 0,
-            "variant": 19
-          },
-          "13;6": {
-            "pos": "13;6",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;5": {
-            "pos": "13;5",
-            "ttype": 0,
-            "variant": 45
-          },
-          "13;4": {
-            "pos": "13;4",
-            "ttype": 0,
-            "variant": 45
-          },
-          "13;3": {
-            "pos": "13;3",
-            "ttype": 0,
-            "variant": 45
-          },
-          "13;2": {
-            "pos": "13;2",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;3": {
-            "pos": "12;3",
-            "ttype": 0,
-            "variant": 18
-          },
-          "11;3": {
-            "pos": "11;3",
-            "ttype": 0,
-            "variant": 18
-          },
-          "10;3": {
-            "pos": "10;3",
-            "ttype": 0,
-            "variant": 17
-          },
-          "10;4": {
-            "pos": "10;4",
-            "ttype": 0,
-            "variant": 70
-          },
           "9;4": {
             "pos": "9;4",
             "ttype": 0,
             "variant": 18
+          },
+          "10;4": {
+            "pos": "10;4",
+            "ttype": 0,
+            "variant": 18
+          },
+          "10;5": {
+            "pos": "10;5",
+            "ttype": 0,
+            "variant": 70
+          },
+          "10;6": {
+            "pos": "10;6",
+            "ttype": 0,
+            "variant": 25
+          },
+          "10;7": {
+            "pos": "10;7",
+            "ttype": 0,
+            "variant": 50
+          },
+          "9;7": {
+            "pos": "9;7",
+            "ttype": 0,
+            "variant": 76
+          },
+          "9;6": {
+            "pos": "9;6",
+            "ttype": 0,
+            "variant": 24
+          },
+          "9;5": {
+            "pos": "9;5",
+            "ttype": 0,
+            "variant": 70
+          },
+          "8;5": {
+            "pos": "8;5",
+            "ttype": 0,
+            "variant": 69
           },
           "8;4": {
             "pos": "8;4",
             "ttype": 0,
             "variant": 17
           },
-          "8;5": {
-            "pos": "8;5",
-            "ttype": 0,
-            "variant": 43
-          },
           "8;6": {
             "pos": "8;6",
             "ttype": 0,
-            "variant": 43
+            "variant": 23
           },
           "8;7": {
             "pos": "8;7",
             "ttype": 0,
-            "variant": 43
-          },
-          "8;8": {
-            "pos": "8;8",
-            "ttype": 0,
-            "variant": 43
-          },
-          "8;9": {
-            "pos": "8;9",
-            "ttype": 0,
-            "variant": 43
-          },
-          "8;10": {
-            "pos": "8;10",
-            "ttype": 0,
-            "variant": 43
-          },
-          "9;10": {
-            "pos": "9;10",
-            "ttype": 0,
-            "variant": 45
-          },
-          "9;11": {
-            "pos": "9;11",
-            "ttype": 0,
-            "variant": 45
-          },
-          "9;12": {
-            "pos": "9;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "9;13": {
-            "pos": "9;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "10;13": {
-            "pos": "10;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "11;13": {
-            "pos": "11;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "12;13": {
-            "pos": "12;13",
-            "ttype": 0,
-            "variant": 70
-          },
-          "12;12": {
-            "pos": "12;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;11": {
-            "pos": "12;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "11;11": {
-            "pos": "11;11",
-            "ttype": 0,
-            "variant": 43
-          },
-          "11;10": {
-            "pos": "11;10",
-            "ttype": 0,
-            "variant": 43
-          },
-          "11;9": {
-            "pos": "11;9",
-            "ttype": 0,
-            "variant": 43
-          },
-          "11;8": {
-            "pos": "11;8",
-            "ttype": 0,
-            "variant": 43
+            "variant": 75
           },
           "11;7": {
             "pos": "11;7",
             "ttype": 0,
-            "variant": 43
+            "variant": 25
           },
           "11;6": {
             "pos": "11;6",
             "ttype": 0,
-            "variant": 43
+            "variant": 45
           },
           "11;5": {
             "pos": "11;5",
             "ttype": 0,
-            "variant": 43
+            "variant": 45
           },
           "11;4": {
             "pos": "11;4",
             "ttype": 0,
-            "variant": 44
-          },
-          "12;7": {
-            "pos": "12;7",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;8": {
-            "pos": "12;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;9": {
-            "pos": "12;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;10": {
-            "pos": "12;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;6": {
-            "pos": "12;6",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;5": {
-            "pos": "12;5",
-            "ttype": 0,
-            "variant": 44
-          },
-          "12;4": {
-            "pos": "12;4",
-            "ttype": 0,
-            "variant": 44
-          },
-          "13;7": {
-            "pos": "13;7",
-            "ttype": 0,
-            "variant": 44
-          },
-          "18;9": {
-            "pos": "18;9",
-            "ttype": 0,
-            "variant": 18
-          },
-          "20;9": {
-            "pos": "20;9",
-            "ttype": 0,
             "variant": 19
           },
-          "19;10": {
-            "pos": "19;10",
+          "17;7": {
+            "pos": "17;7",
             "ttype": 0,
-            "variant": 44
+            "variant": 17
           },
-          "18;10": {
-            "pos": "18;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "19;9": {
-            "pos": "19;9",
+          "18;7": {
+            "pos": "18;7",
             "ttype": 0,
             "variant": 18
           },
-          "20;10": {
-            "pos": "20;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "28;14": {
-            "pos": "28;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "27;14": {
-            "pos": "27;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "26;14": {
-            "pos": "26;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "21;14": {
-            "pos": "21;14",
-            "ttype": 0,
-            "variant": 69
-          },
-          "22;14": {
-            "pos": "22;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "23;14": {
-            "pos": "23;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "24;14": {
-            "pos": "24;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "25;14": {
-            "pos": "25;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "29;14": {
-            "pos": "29;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "30;14": {
-            "pos": "30;14",
-            "ttype": 0,
-            "variant": 70
-          },
-          "29;10": {
-            "pos": "29;10",
-            "ttype": 0,
-            "variant": 45
-          },
-          "29;11": {
-            "pos": "29;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "29;12": {
-            "pos": "29;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "29;13": {
-            "pos": "29;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "30;13": {
-            "pos": "30;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "30;12": {
-            "pos": "30;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "30;11": {
-            "pos": "30;11",
+          "19;7": {
+            "pos": "19;7",
             "ttype": 0,
             "variant": 18
           },
-          "29;9": {
-            "pos": "29;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "22;10": {
-            "pos": "22;10",
+          "20;7": {
+            "pos": "20;7",
             "ttype": 0,
             "variant": 18
           },
-          "23;10": {
-            "pos": "23;10",
+          "21;7": {
+            "pos": "21;7",
             "ttype": 0,
-            "variant": 19
+            "variant": 18
+          },
+          "21;8": {
+            "pos": "21;8",
+            "ttype": 0,
+            "variant": 70
+          },
+          "22;8": {
+            "pos": "22;8",
+            "ttype": 0,
+            "variant": 71
+          },
+          "21;9": {
+            "pos": "21;9",
+            "ttype": 0,
+            "variant": 23
+          },
+          "22;9": {
+            "pos": "22;9",
+            "ttype": 0,
+            "variant": 25
           },
           "21;10": {
             "pos": "21;10",
             "ttype": 0,
-            "variant": 18
+            "variant": 49
           },
-          "9;5": {
-            "pos": "9;5",
+          "22;10": {
+            "pos": "22;10",
             "ttype": 0,
-            "variant": 45
+            "variant": 51
           },
-          "9;6": {
-            "pos": "9;6",
+          "21;11": {
+            "pos": "21;11",
             "ttype": 0,
-            "variant": 45
+            "variant": 50
           },
-          "9;7": {
-            "pos": "9;7",
+          "22;11": {
+            "pos": "22;11",
             "ttype": 0,
-            "variant": 45
+            "variant": 77
           },
-          "9;8": {
-            "pos": "9;8",
+          "20;11": {
+            "pos": "20;11",
             "ttype": 0,
-            "variant": 45
+            "variant": 24
           },
-          "9;9": {
-            "pos": "9;9",
+          "19;11": {
+            "pos": "19;11",
             "ttype": 0,
-            "variant": 45
+            "variant": 50
           },
-          "8;11": {
-            "pos": "8;11",
+          "19;10": {
+            "pos": "19;10",
             "ttype": 0,
-            "variant": 43
+            "variant": 25
           },
-          "8;12": {
-            "pos": "8;12",
-            "ttype": 0,
-            "variant": 43
-          },
-          "8;13": {
-            "pos": "8;13",
-            "ttype": 0,
-            "variant": 69
-          },
-          "10;12": {
-            "pos": "10;12",
-            "ttype": 0,
-            "variant": 18
-          },
-          "11;12": {
-            "pos": "11;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "29;8": {
-            "pos": "29;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "28;8": {
-            "pos": "28;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "28;9": {
-            "pos": "28;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "27;9": {
-            "pos": "27;9",
-            "ttype": 0,
-            "variant": 43
-          },
-          "27;10": {
-            "pos": "27;10",
-            "ttype": 0,
-            "variant": 43
-          },
-          "28;10": {
-            "pos": "28;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "31;11": {
-            "pos": "31;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "31;12": {
-            "pos": "31;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "31;13": {
-            "pos": "31;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "31;14": {
-            "pos": "31;14",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;12": {
-            "pos": "32;12",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;13": {
-            "pos": "32;13",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;14": {
-            "pos": "32;14",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;15": {
-            "pos": "32;15",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;16": {
-            "pos": "32;16",
-            "ttype": 0,
-            "variant": 70
-          },
-          "31;16": {
-            "pos": "31;16",
-            "ttype": 0,
-            "variant": 69
-          },
-          "31;15": {
-            "pos": "31;15",
-            "ttype": 0,
-            "variant": 43
-          },
-          "31;10": {
-            "pos": "31;10",
-            "ttype": 0,
-            "variant": 43
-          },
-          "31;9": {
-            "pos": "31;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;9": {
-            "pos": "32;9",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;10": {
-            "pos": "32;10",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;11": {
-            "pos": "32;11",
-            "ttype": 0,
-            "variant": 44
-          },
-          "32;8": {
-            "pos": "32;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "30;9": {
-            "pos": "30;9",
-            "ttype": 0,
-            "variant": 70
-          },
-          "30;8": {
-            "pos": "30;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "30;7": {
-            "pos": "30;7",
-            "ttype": 0,
-            "variant": 18
-          },
-          "31;8": {
-            "pos": "31;8",
-            "ttype": 0,
-            "variant": 44
-          },
-          "31;7": {
-            "pos": "31;7",
-            "ttype": 0,
-            "variant": 18
-          },
-          "32;7": {
-            "pos": "32;7",
-            "ttype": 0,
-            "variant": 44
-          },
-          "29;7": {
-            "pos": "29;7",
-            "ttype": 0,
-            "variant": 18
-          },
-          "28;7": {
-            "pos": "28;7",
-            "ttype": 0,
-            "variant": 18
-          },
-          "27;7": {
-            "pos": "27;7",
-            "ttype": 0,
-            "variant": 17
-          },
-          "27;8": {
-            "pos": "27;8",
-            "ttype": 0,
-            "variant": 43
-          },
-          "33;7": {
-            "pos": "33;7",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;8": {
-            "pos": "33;8",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;9": {
-            "pos": "33;9",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;10": {
-            "pos": "33;10",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;11": {
-            "pos": "33;11",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;12": {
-            "pos": "33;12",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;13": {
-            "pos": "33;13",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;14": {
-            "pos": "33;14",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;15": {
-            "pos": "33;15",
-            "ttype": 0,
-            "variant": 45
-          },
-          "33;16": {
-            "pos": "33;16",
+          "20;10": {
+            "pos": "20;10",
             "ttype": 0,
             "variant": 71
           },
-          "32;6": {
-            "pos": "32;6",
+          "18;10": {
+            "pos": "18;10",
             "ttype": 0,
-            "variant": 17
+            "variant": 24
           },
-          "33;6": {
-            "pos": "33;6",
+          "18;9": {
+            "pos": "18;9",
+            "ttype": 0,
+            "variant": 70
+          },
+          "19;9": {
+            "pos": "19;9",
+            "ttype": 0,
+            "variant": 70
+          },
+          "17;9": {
+            "pos": "17;9",
+            "ttype": 0,
+            "variant": 69
+          },
+          "17;8": {
+            "pos": "17;8",
+            "ttype": 0,
+            "variant": 43
+          },
+          "18;8": {
+            "pos": "18;8",
+            "ttype": 0,
+            "variant": 44
+          },
+          "19;8": {
+            "pos": "19;8",
+            "ttype": 0,
+            "variant": 44
+          },
+          "20;8": {
+            "pos": "20;8",
+            "ttype": 0,
+            "variant": 44
+          },
+          "20;9": {
+            "pos": "20;9",
+            "ttype": 0,
+            "variant": 45
+          },
+          "18;11": {
+            "pos": "18;11",
+            "ttype": 0,
+            "variant": 50
+          },
+          "17;11": {
+            "pos": "17;11",
+            "ttype": 0,
+            "variant": 50
+          },
+          "17;10": {
+            "pos": "17;10",
+            "ttype": 0,
+            "variant": 24
+          },
+          "22;7": {
+            "pos": "22;7",
             "ttype": 0,
             "variant": 19
+          },
+          "17;15": {
+            "pos": "17;15",
+            "ttype": 0,
+            "variant": 50
+          },
+          "18;15": {
+            "pos": "18;15",
+            "ttype": 0,
+            "variant": 50
+          },
+          "17;16": {
+            "pos": "17;16",
+            "ttype": 0,
+            "variant": 50
+          },
+          "18;16": {
+            "pos": "18;16",
+            "ttype": 0,
+            "variant": 50
+          },
+          "16;15": {
+            "pos": "16;15",
+            "ttype": 0,
+            "variant": 49
+          },
+          "16;16": {
+            "pos": "16;16",
+            "ttype": 0,
+            "variant": 49
+          },
+          "16;14": {
+            "pos": "16;14",
+            "ttype": 0,
+            "variant": 49
+          },
+          "17;14": {
+            "pos": "17;14",
+            "ttype": 0,
+            "variant": 50
+          },
+          "16;13": {
+            "pos": "16;13",
+            "ttype": 0,
+            "variant": 23
+          },
+          "17;13": {
+            "pos": "17;13",
+            "ttype": 0,
+            "variant": 50
+          },
+          "18;13": {
+            "pos": "18;13",
+            "ttype": 0,
+            "variant": 50
+          },
+          "18;14": {
+            "pos": "18;14",
+            "ttype": 0,
+            "variant": 50
+          },
+          "19;13": {
+            "pos": "19;13",
+            "ttype": 0,
+            "variant": 50
+          },
+          "19;14": {
+            "pos": "19;14",
+            "ttype": 0,
+            "variant": 50
+          },
+          "20;13": {
+            "pos": "20;13",
+            "ttype": 0,
+            "variant": 50
+          },
+          "20;14": {
+            "pos": "20;14",
+            "ttype": 0,
+            "variant": 51
+          },
+          "19;15": {
+            "pos": "19;15",
+            "ttype": 0,
+            "variant": 50
+          },
+          "20;15": {
+            "pos": "20;15",
+            "ttype": 0,
+            "variant": 51
+          },
+          "19;16": {
+            "pos": "19;16",
+            "ttype": 0,
+            "variant": 50
+          },
+          "20;16": {
+            "pos": "20;16",
+            "ttype": 0,
+            "variant": 77
+          },
+          "18;17": {
+            "pos": "18;17",
+            "ttype": 0,
+            "variant": 76
+          },
+          "19;17": {
+            "pos": "19;17",
+            "ttype": 0,
+            "variant": 77
+          },
+          "17;17": {
+            "pos": "17;17",
+            "ttype": 0,
+            "variant": 76
+          },
+          "16;17": {
+            "pos": "16;17",
+            "ttype": 0,
+            "variant": 75
+          },
+          "17;12": {
+            "pos": "17;12",
+            "ttype": 0,
+            "variant": 49
+          },
+          "18;12": {
+            "pos": "18;12",
+            "ttype": 0,
+            "variant": 50
+          },
+          "20;12": {
+            "pos": "20;12",
+            "ttype": 0,
+            "variant": 50
+          },
+          "21;12": {
+            "pos": "21;12",
+            "ttype": 0,
+            "variant": 51
+          },
+          "21;13": {
+            "pos": "21;13",
+            "ttype": 0,
+            "variant": 77
+          },
+          "19;12": {
+            "pos": "19;12",
+            "ttype": 0,
+            "variant": 50
+          },
+          "10;8": {
+            "pos": "10;8",
+            "ttype": 0,
+            "variant": 75
+          },
+          "11;8": {
+            "pos": "11;8",
+            "ttype": 0,
+            "variant": 50
+          },
+          "12;8": {
+            "pos": "12;8",
+            "ttype": 0,
+            "variant": 24
+          },
+          "11;9": {
+            "pos": "11;9",
+            "ttype": 0,
+            "variant": 75
+          },
+          "12;9": {
+            "pos": "12;9",
+            "ttype": 0,
+            "variant": 76
+          },
+          "13;8": {
+            "pos": "13;8",
+            "ttype": 0,
+            "variant": 24
+          },
+          "13;9": {
+            "pos": "13;9",
+            "ttype": 0,
+            "variant": 50
+          },
+          "14;8": {
+            "pos": "14;8",
+            "ttype": 0,
+            "variant": 25
+          },
+          "14;9": {
+            "pos": "14;9",
+            "ttype": 0,
+            "variant": 50
+          },
+          "13;10": {
+            "pos": "13;10",
+            "ttype": 0,
+            "variant": 75
+          },
+          "14;10": {
+            "pos": "14;10",
+            "ttype": 0,
+            "variant": 76
+          },
+          "15;9": {
+            "pos": "15;9",
+            "ttype": 0,
+            "variant": 24
+          },
+          "15;10": {
+            "pos": "15;10",
+            "ttype": 0,
+            "variant": 50
+          },
+          "16;9": {
+            "pos": "16;9",
+            "ttype": 0,
+            "variant": 25
+          },
+          "16;10": {
+            "pos": "16;10",
+            "ttype": 0,
+            "variant": 50
+          },
+          "15;11": {
+            "pos": "15;11",
+            "ttype": 0,
+            "variant": 75
+          },
+          "16;11": {
+            "pos": "16;11",
+            "ttype": 0,
+            "variant": 76
           }
         }
       }

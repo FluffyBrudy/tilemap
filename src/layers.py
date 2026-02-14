@@ -52,30 +52,53 @@ class Layer:
         """
         Update all tiles in this layer according to autotile rules.
         Each rule has a `neighbors` set and a list of `variant_ids`.
+        Rules are now group-aware: a tile only connects to neighbors in its same group.
         """
         if self.locked or self.layer_type != "tile":
             return
 
         if not rules:
-            print("Autotiling skipped: No rules defined.")
             return
 
-        # 1. Identify all 'significant' directions across the current rule set
-        # This allows 4-way rule sets to ignore diagonals on the map.
+        # 1. Build dictionary for O(1) variant+tileset -> group_id lookup
+        # Also group rules by their group_id for efficient matching
+        variant_to_group = {}
+        rules_by_group: Dict[str, List["AutotileRule"]] = {}
+        
+        for rule in rules:
+            gid = rule.group_id
+            if gid not in rules_by_group:
+                rules_by_group[gid] = []
+            rules_by_group[gid].append(rule)
+            
+            ts_idx = rule.tileset_index
+            for vid in rule.variant_ids:
+                variant_to_group[(ts_idx, vid)] = gid
+
+        # Sort rules in each group by neighbor count for best-match priority
+        for gid in rules_by_group:
+            rules_by_group[gid].sort(key=lambda r: len(r.neighbors), reverse=True)
+
+        # 2. Identify all significant offsets across ALL rules
         significant_offsets = set()
         for rule in rules:
             significant_offsets.update(rule.neighbors)
-        
-        # 2. Prepare rules for matching
-        rules_sorted = sorted(rules, key=lambda r: len(r.neighbors), reverse=True)
+            
         tile_positions = list(self.tiles.keys())
-        
         changes_count = 0
+        
         for pos in tile_positions:
             tile = self.tiles[pos]
             ttype = tile["ttype"]
-
-            # 3. Detect neighbors with the same ttype (8-way)
+            current_variant = tile["variant"]
+            
+            # 3. Identify the group of the CURRENT tile
+            target_group_id = variant_to_group.get((ttype, current_variant))
+            if not target_group_id:
+                # If tile isn't in any group, we can't autotile it reliably
+                continue
+                
+            # 4. Detect neighbors (8-way) that belong to the SAME group
             actual_neighbors = []
             for dx, dy in [
                 (-1, -1), (0, -1), (1, -1),
@@ -85,31 +108,36 @@ class Layer:
                 npos = (pos[0] + dx, pos[1] + dy)
                 if npos in self.tiles:
                     n_tile = self.tiles[npos]
-                    # Same ttype matching
-                    if n_tile["ttype"] == ttype:
+                    n_group = variant_to_group.get((n_tile["ttype"], n_tile["variant"]))
+                    
+                    if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            # 4. Filter actual neighbors to only include directions defined in the ruleset
+            # 5. Filter to directions defined in the ruleset
             neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
 
-            # 5. Find first rule that matches neighbors
+            # 6. Find matching rule WITHIN the same group
             matched_rule: Optional["AutotileRule"] = None
-            for rule in rules_sorted:
-                if (
-                    rule.neighbors == neighbor_offsets_set
-                    and ttype == rule.tileset_index
-                ):
+            group_rules = rules_by_group.get(target_group_id, [])
+            
+            for rule in group_rules:
+                if (rule.neighbors == neighbor_offsets_set and 
+                    rule.tileset_index == ttype):
                     matched_rule = rule
                     break
-
+            
             if matched_rule and matched_rule.variant_ids:
+                # Avoid unnecessary updates
+                if current_variant in matched_rule.variant_ids:
+                    continue
+                
                 new_variant = random.choice(matched_rule.variant_ids)
-                if tile["variant"] != new_variant:
-                    tile["variant"] = new_variant
-                    self.tiles[pos] = tile
-                    changes_count += 1
+                tile["variant"] = new_variant
+                changes_count += 1
 
-        print(f"Autotile complete: {changes_count} tiles updated in layer '{self.name}'.")
+        if changes_count > 0:
+            print(f"Autotile complete: {changes_count} tiles updated in layer '{self.name}'.")
+        return changes_count
 
     def remove_tile(self, pos: Tuple[int, int]) -> bool:
         """Remove a tile at the given grid position. Returns True if tile existed."""

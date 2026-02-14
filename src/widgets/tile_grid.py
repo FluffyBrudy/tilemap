@@ -104,9 +104,12 @@ class TileGrid:
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                 if active_layer and hasattr(self.editor, "autotiler"):
                     rules = getattr(self.editor.autotiler, "rules", [])
-                    active_layer.autotile_layer(rules)
+                    count = active_layer.autotile_layer(rules)
                     self.editor.tilemap.update_map_size()
-                    print(f"Autotiling layer: {active_layer.name}")
+                    if count:
+                        self.editor.notifications.success(f"Autotile complete: {count} tiles updated")
+                    else:
+                        self.editor.notifications.notify("No tiles updated (Already matched or no groups found)")
                 return True
             
             if event.key == pygame.K_f:
@@ -132,6 +135,20 @@ class TileGrid:
 
             if event.key == pygame.K_g:
                 self.show_grid = not self.show_grid
+                return True
+
+            if event.key == pygame.K_q:
+                if is_hovering and self.hover_cell:
+                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+                    if active_layer and self.hover_cell in active_layer.tiles:
+                        tile = active_layer.tiles[self.hover_cell]
+                        gid = self._get_group_for_tile(tile)
+                        if gid:
+                            self.editor.notifications.notify(f"Group: {gid}", color=(100, 200, 255))
+                        else:
+                            self.editor.notifications.notify("Group: None (No rule matches)", color=(200, 200, 200))
+                    else:
+                        self.editor.notifications.notify("No tile at cursor")
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -688,3 +705,16 @@ class TileGrid:
         
         screen.blit(bg, bg_rect)
         screen.blit(surf, rect)
+    def _get_group_for_tile(self, tile: dict) -> Optional[str]:
+        if not hasattr(self.editor, "autotiler"):
+            return None
+        
+        ttype = tile["ttype"]
+        variant = tile["variant"]
+        
+        # Check all rules in the designer
+        for group in self.editor.autotiler.groups:
+            for rule in group.rules:
+                if rule.tileset_index == ttype and variant in rule.variant_ids:
+                    return group.name
+        return None

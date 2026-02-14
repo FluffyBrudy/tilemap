@@ -16,6 +16,7 @@ from widgets.ui.tileset_type_dialog import TilesetTypeDialog
 from widgets.ui.layer_type_dialog import LayerTypeDialog
 from widgets.ui.menubar import MenuBar
 from widgets.ui.toolbar import Toolbar
+from widgets.ui.notification import NotificationManager
 
 
 class Editor:
@@ -49,6 +50,7 @@ class Editor:
 
         self.file_manager: Optional[FileManager] = None
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
+        self.notifications = NotificationManager(self)
 
         editor_rect = self.screen.get_rect()
         editor_rect.center = ((width - 300) // 2, height // 2)
@@ -352,7 +354,9 @@ class Editor:
                 self.layer_widget.draw(self.screen)
             if self.autotiler:
                 self.autotiler.draw(self.screen)
-                
+            
+            self.notifications.draw(self.screen)
+
             if self.map_setup_widget and self.map_setup_widget.visible:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 150))
@@ -389,5 +393,5 @@ class Editor:
 
 
 if __name__ == "__main__":
-    editor = Editor()
+    editor = Editor(size=(1500,900))
     editor.run()

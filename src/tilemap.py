@@ -74,9 +74,15 @@ class Tilemap:
 
     def capture_history(self, description: str = "State Change"):
         # Capture current full state
+        designer = getattr(self.editor, "autotiler", None)
+        groups_data = []
+        if designer:
+            groups_data = [g.to_dict() for g in designer.groups]
+
         state = {
             "layers": [L.to_dict() for L in self.layer_manager.layers],
-            "rules": [rule.to_dict() for rule in getattr(self.editor.autotiler, "rules", [])],
+            "groups": groups_data,
+            "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size
@@ -84,9 +90,15 @@ class Tilemap:
         self.history.save_state(state, description)
 
     def undo(self):
+        designer = getattr(self.editor, "autotiler", None)
+        groups_data = []
+        if designer:
+            groups_data = [g.to_dict() for g in designer.groups]
+
         current_state = {
             "layers": [L.to_dict() for L in self.layer_manager.layers],
-            "rules": [rule.to_dict() for rule in getattr(self.editor.autotiler, "rules", [])],
+            "groups": groups_data,
+            "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size
@@ -96,9 +108,15 @@ class Tilemap:
             self._apply_history_state(prev_state)
 
     def redo(self):
+        designer = getattr(self.editor, "autotiler", None)
+        groups_data = []
+        if designer:
+            groups_data = [g.to_dict() for g in designer.groups]
+
         current_state = {
             "layers": [L.to_dict() for L in self.layer_manager.layers],
-            "rules": [rule.to_dict() for rule in getattr(self.editor.autotiler, "rules", [])],
+            "groups": groups_data,
+            "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size
@@ -137,7 +155,7 @@ class Tilemap:
 
     def _apply_history_state(self, state):
         from layers import Layer
-        from widgets.autotiler import AutotileRule
+        from widgets.autotiler import AutotileGroup
         
         self.layer_manager.layers = [Layer.from_dict(L) for L in state["layers"]]
         self.layer_manager.active_layer_idx = state["active_layer_idx"]
@@ -145,8 +163,17 @@ class Tilemap:
         self.map_size = state["map_size"]
         
         if hasattr(self.editor, "autotiler"):
-            self.editor.autotiler.rules = [AutotileRule.from_dict(R) for R in state["rules"]]
-            self.editor.autotiler.selected_rule_index = -1
+            designer = self.editor.autotiler
+            if "groups" in state:
+                designer.groups = [AutotileGroup.from_dict(G) for G in state["groups"]]
+                designer.selected_group_idx = state.get("selected_group_idx", 0)
+            elif "rules" in state: # Fallback for old history
+                from widgets.autotiler import AutotileRule
+                default_group = AutotileGroup("Default")
+                default_group.rules = [AutotileRule.from_dict(R) for R in state["rules"]]
+                designer.groups = [default_group]
+                designer.selected_group_idx = 0
+            designer.selected_rule_index = -1
 
     def get_nearest_tiles(self, tile_location: "TCoor") -> Tuple["TCoor"]:
         """Get empty neighboring tile positions for the given location."""
@@ -214,6 +241,14 @@ class Tilemap:
                 )
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
+            if not hasattr(save_data["project_state"], "groups"):
+                save_data["project_state"]["groups"] = []
+            
+            for group in self.editor.autotiler.groups:
+                save_data["project_state"]["groups"].append(group.to_dict())
+            
+            # For backward compatibility with simpler loaders, also save flat rules
+            save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(rule.to_dict())
 
@@ -267,6 +302,35 @@ class Tilemap:
             JSONDump(save_data, f, indent=2)
 
         print(f"Saved to {target_path}")
+
+    def _resolve_rule_resources(self, rule: "AutotileRule", ts_widget):
+        resolved_ts = None
+        if rule.tileset_index is not None:
+            idx = rule.tileset_index
+            if 0 <= idx < len(ts_widget.tilesets):
+                resolved_ts = ts_widget.tilesets[idx]
+        elif rule.tileset_path:
+            for idx, ts in enumerate(ts_widget.tilesets):
+                try:
+                    if str(Path(rule.tileset_path)) == str(ts.path):
+                        rule.tileset_index = idx
+                        resolved_ts = ts
+                        break
+                    if str(Path(rule.tileset_path)) == str(ts.path.relative_to(BASE_PATH)):
+                        rule.tileset_index = idx
+                        resolved_ts = ts
+                        break
+                except Exception:
+                    continue
+
+        if resolved_ts and rule.variant_ids:
+            vid = rule.variant_ids[0]
+            cols = resolved_ts.surface.get_width() // self.tile_size[0]
+            tx = (vid % cols) * self.tile_size[0]
+            ty = (vid // cols) * self.tile_size[1]
+            pr_rect = Rect(tx, ty, *self.tile_size)
+            if resolved_ts.surface.get_rect().contains(pr_rect):
+                rule.preview_surf = resolved_ts.surface.subsurface(pr_rect).copy()
 
     def load_map(self, path: Path):
         if not path.exists():
@@ -343,52 +407,38 @@ class Tilemap:
                 self.editor.tileset_widget.load_tileset_from_path(p, tileset_type)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
+            from widgets.autotiler import AutotileGroup, AutotileRule
             designer = self.editor.autotiler
-            designer.rules.clear()
+            designer.groups.clear()
 
             ts_widget = self.editor.tileset_widget
             assert ts_widget is not None
 
             if "project_state" in payload:
-                for rule_dict in payload["project_state"]["rules"]:
-                    try:
-                        rule = AutotileRule.from_dict(rule_dict)
-
-                        resolved_ts = None
-                        if rule.tileset_index is not None:
-                            idx = rule.tileset_index
-                            if 0 <= idx < len(ts_widget.tilesets):
-                                resolved_ts = ts_widget.tilesets[idx]
-                        elif rule.tileset_path:
-                            for idx, ts in enumerate(ts_widget.tilesets):
-                                try:
-                                    if str(Path(rule.tileset_path)) == str(ts.path):
-                                        rule.tileset_index = idx
-                                        resolved_ts = ts
-                                        break
-                                    if str(Path(rule.tileset_path)) == str(
-                                        ts.path.relative_to(BASE_PATH)
-                                    ):
-                                        rule.tileset_index = idx
-                                        resolved_ts = ts
-                                        break
-                                except Exception:
-                                    continue
-
-                        if resolved_ts and rule.variant_ids:
-                            vid = rule.variant_ids[0]
-                            cols = resolved_ts.surface.get_width() // self.tile_size[0]
-
-                            tx = (vid % cols) * self.tile_size[0]
-                            ty = (vid // cols) * self.tile_size[1]
-                            
-                            pr_rect = Rect(tx, ty, *self.tile_size)
-                            if resolved_ts.surface.get_rect().contains(pr_rect):
-                                rule.preview_surf = resolved_ts.surface.subsurface(pr_rect).copy()
-
-                        designer.rules.append(rule)
-                    except Exception as e:
-                        print(f"Failed to load rule '{rule_dict.get('name')}': {e}")
+                # Load hierarchical groups if available
+                if "groups" in payload["project_state"]:
+                    for group_dict in payload["project_state"]["groups"]:
+                        group = AutotileGroup.from_dict(group_dict)
+                        # Resolve tileset indices/previews for all rules in group
+                        for rule in group.rules:
+                            self._resolve_rule_resources(rule, ts_widget)
+                        designer.groups.append(group)
+                
+                # Fallback / Migration for old flat rules
+                elif "rules" in payload["project_state"]:
+                    default_group = AutotileGroup("Default")
+                    for rule_dict in payload["project_state"]["rules"]:
+                        try:
+                            rule = AutotileRule.from_dict(rule_dict)
+                            self._resolve_rule_resources(rule, ts_widget)
+                            default_group.rules.append(rule)
+                        except Exception as e:
+                            print(f"Failed to load rule '{rule_dict.get('name')}': {e}")
+                    designer.groups.append(default_group)
+            
+            if not designer.groups:
+                designer.groups.append(AutotileGroup("Default"))
+            designer.selected_group_idx = 0
 
         data_section = payload.get("data", {})
 
