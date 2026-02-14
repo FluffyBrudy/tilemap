@@ -369,15 +369,22 @@ class AutotileRuleDesigner:
 
         self._update_preview_from_selector()
 
-    def _save_current_rule(self):
+    def _get_next_rule_name(self, base_name: str) -> str:
+        import re
+        
+        # Try to find a trailing number
+        match = re.search(r'(.*?)(\d+)$', base_name)
+        if match:
+            prefix = match.group(1)
+            number = int(match.group(2))
+            return f"{prefix}{number + 1}"
+        else:
+            return f"{base_name} 2"
 
+    def _save_current_rule(self):
         self._update_preview_from_selector()
 
         print(f"\nDEBUG: _save_current_rule called")
-        print(f"  current_tileset_path: {self.current_tileset_path}")
-        print(f"  current_tileset_index: {self.current_tileset_index}")
-        print(f"  current_variant_ids: {self.current_variant_ids}")
-        print(f"  current_neighbors: {self.current_neighbors}")
 
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if (
@@ -387,44 +394,34 @@ class AutotileRuleDesigner:
             if ts:
                 self.current_tileset_path = str(ts.path)
                 self.current_tileset_index = tile_selector.active_idx
-                print(f"  Fallback: got path and index from selector")
 
         if not self.current_tileset_path or not self.current_variant_ids:
-
-            print(f"DEBUG: Can't save rule")
-            print(f"  - tileset_path empty: {not self.current_tileset_path}")
-            print(f"  - variant_ids empty: {not self.current_variant_ids}")
-            if not self.current_tileset_path:
-                print(f"  -> Please select a tileset and tile(s) to autotile")
-            if not self.current_variant_ids:
-                print(f"  -> Please select at least one tile in the tileset editor")
+            print(f"DEBUG: Can't save rule - missing tileset or variants")
             return
 
         preview = self.current_preview_surfs[0] if self.current_preview_surfs else None
 
-        name = f"Rule {len(self.rules) + 1}"
-
-        if len(self.current_variant_ids) > 1:
-            name += f" ({len(self.current_variant_ids)} vars)"
-
+        # Determine the name
         if self.selected_rule_index >= 0:
-            r = self.rules[self.selected_rule_index]
-            r.neighbors = set(self.current_neighbors)
-            r.variant_ids = list(self.current_variant_ids)
-            r.tileset_path = self.current_tileset_path
-            r.tileset_index = getattr(self, "current_tileset_index", None)
-            r.preview_surf = preview
+            current_rule = self.rules[self.selected_rule_index]
+            new_name = self._get_next_rule_name(current_rule.name)
         else:
-            new_rule = AutotileRule(
-                name,
-                set(self.current_neighbors),
-                self.current_tileset_path,
-                list(self.current_variant_ids),
-                preview,
-                tileset_index=getattr(self, "current_tileset_index", None),
-            )
-            self.rules.append(new_rule)
-            self.selected_rule_index = len(self.rules) - 1
+            base_name = f"Rule {len(self.rules) + 1}"
+            # Ensure name is unique
+            while any(r.name == base_name for r in self.rules):
+                base_name = self._get_next_rule_name(base_name)
+            new_name = base_name
+
+        new_rule = AutotileRule(
+            new_name,
+            set(self.current_neighbors),
+            self.current_tileset_path,
+            list(self.current_variant_ids),
+            preview,
+            tileset_index=getattr(self, "current_tileset_index", None),
+        )
+        self.rules.append(new_rule)
+        self.selected_rule_index = len(self.rules) - 1
 
         print(f"Rule saved: {self.rules[self.selected_rule_index].to_dict()}")
         print(f"Total rules: {len(self.rules)}")

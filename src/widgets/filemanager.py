@@ -1,8 +1,10 @@
 import pygame
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
+from constants import INTELLISENSE_DEPTH, IGNORE_DIRS, BASE_PATH
 
 
 COLORS = {
@@ -64,6 +66,21 @@ class FileManager:
         self.font_bold = pygame.font.SysFont("Arial", 14, bold=True)
         self.font_icon = pygame.font.SysFont("Consolas", 20)
 
+        self.search_query = ""
+        self.is_searching = False
+        self.search_rect = pygame.Rect(
+            self.rect.x + self.sidebar_width + 10,
+            self.rect.y + self.header_height + 5,
+            self.rect.width - self.sidebar_width - 20,
+            25
+        )
+        self.search_header_height = 35
+        self.is_search_focused = False
+        
+        self.recents_path = BASE_PATH / "data" / "recents.json"
+        self.recents: List[Path] = self._load_recents()
+        self.view_mode = "files"  # "files" or "recents"
+
         self.refresh_items()
 
     def refresh_items(self):
@@ -71,6 +88,25 @@ class FileManager:
         self.scroll_y = 0
         self.selected_index = -1
 
+        if self.view_mode == "recents":
+            for p in self.recents:
+                if p.exists():
+                    self.items.append(FileItem(p))
+            return
+
+        if self.search_query:
+            self.is_searching = True
+            # 1. Search files locally (current dir only)
+            self._search_local_files(self.current_path, self.search_query)
+            # 2. Search directories recursively
+            self._recursive_search(self.current_path, self.search_query, INTELLISENSE_DEPTH)
+            
+            # Use a dict to avoid duplicates (same path might be found)
+            unique_items = {str(item.path): item for item in self.items}
+            self.items = sorted(unique_items.values(), key=lambda x: (not x.is_dir, x.name.lower()))
+            return
+
+        self.is_searching = False
         try:
             all_entries = list(self.current_path.iterdir())
 
@@ -94,12 +130,78 @@ class FileManager:
             print(f"Permission denied: {self.current_path}")
             self.go_up()
 
+    def _search_local_files(self, path: Path, query: str):
+        try:
+            for p in path.iterdir():
+                if p.name.startswith("."):
+                    continue
+                if p.is_file() and query.lower() in p.name.lower():
+                    if p.suffix.lower() in self.allowed_exts:
+                        self.items.append(FileItem(p))
+                elif p.is_dir() and query.lower() in p.name.lower():
+                    if p.name not in IGNORE_DIRS:
+                        self.items.append(FileItem(p))
+        except PermissionError:
+            pass
+
+    def _recursive_search(self, path: Path, query: str, depth: int):
+        if depth < 0:
+            return
+
+        try:
+            for p in path.iterdir():
+                # Ignore hidden and system dirs
+                if p.name.startswith("."):
+                    continue
+                
+                if p.is_dir():
+                    if p.name in IGNORE_DIRS:
+                        continue
+                        
+                    # Add matching sub-directories (recursive discovery)
+                    if query.lower() in p.name.lower():
+                        self.items.append(FileItem(p))
+                    
+                    # Continue falling into subdirs
+                    self._recursive_search(p, query, depth - 1)
+        except (PermissionError, OSError, Exception):
+            # Ignore /proc related errors and permission issues
+            pass
+
+    def _load_recents(self) -> List[Path]:
+        if not self.recents_path.exists():
+            return []
+        try:
+            with open(self.recents_path, "r") as f:
+                data = json.load(f)
+                return [Path(p) for p in data if Path(p).exists()]
+        except:
+            return []
+
+    def _save_recents(self):
+        try:
+            if not self.recents_path.parent.exists():
+                self.recents_path.parent.mkdir(parents=True)
+            with open(self.recents_path, "w") as f:
+                json.dump([str(p) for p in self.recents], f)
+        except:
+            pass
+
+    def _add_to_recents(self, path: Path):
+        if path in self.recents:
+            self.recents.remove(path)
+        self.recents.insert(0, path)
+        self.recents = self.recents[:20]  # Keep last 20
+        self._save_recents()
+
     def go_up(self):
+        self.view_mode = "files"
         if self.current_path.parent != self.current_path:
             self.current_path = self.current_path.parent
             self.refresh_items()
 
     def navigate_to(self, path: Path):
+        self.view_mode = "files"
         if path.is_dir():
             self.current_path = path
             self.refresh_items()
@@ -110,11 +212,14 @@ class FileManager:
         lx = mouse_pos[0] - self.rect.x
         ly = mouse_pos[1] - self.rect.y
 
+        self.search_rect.x = self.rect.x + self.sidebar_width + 10
+        self.search_rect.y = self.rect.y + self.header_height + 5
+
         content_rect = pygame.Rect(
             self.rect.x + self.sidebar_width,
-            self.rect.y + self.header_height,
+            self.rect.y + self.header_height + self.search_header_height,
             self.rect.width - self.sidebar_width,
-            self.rect.height - self.header_height - self.footer_height,
+            self.rect.height - self.header_height - self.footer_height - self.search_header_height,
         )
 
         if event.type == pygame.MOUSEWHEEL:
@@ -129,7 +234,7 @@ class FileManager:
 
         if event.type == pygame.MOUSEMOTION:
             if content_rect.collidepoint(mouse_pos):
-                rel_y = ly - self.header_height + self.scroll_y
+                rel_y = ly - self.header_height - self.search_header_height + self.scroll_y
                 idx = int(rel_y // self.item_height)
                 if 0 <= idx < len(self.items):
                     self.hover_index = idx
@@ -140,11 +245,28 @@ class FileManager:
 
             return True
 
+        if event.type == pygame.KEYDOWN and self.is_search_focused:
+            if event.key == pygame.K_BACKSPACE:
+                self.search_query = self.search_query[:-1]
+                self.refresh_items()
+            elif event.key == pygame.K_ESCAPE:
+                self.is_search_focused = False
+            elif event.unicode and event.unicode.isprintable():
+                self.search_query += event.unicode
+                self.refresh_items()
+            return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 if lx < self.sidebar_width:
                     self._handle_sidebar_click(ly)
                     return True
+
+                if self.search_rect.collidepoint(mouse_pos):
+                    self.is_search_focused = True
+                    return True
+                else:
+                    self.is_search_focused = False
 
                 if ly < self.header_height:
                     if lx < self.sidebar_width + 40:
@@ -168,6 +290,7 @@ class FileManager:
                         if item.is_dir:
                             self.navigate_to(item.path)
                         else:
+                            self._add_to_recents(item.path)
                             self.on_select_callback(item.path)
                     else:
                         self.selected_index = idx
@@ -181,8 +304,10 @@ class FileManager:
     def _handle_sidebar_click(self, ly):
         shortcuts = [
             ("Home", Path.home()),
+            ("Documents", Path.home() / "Documents"),
             ("Desktop", Path.home() / "Desktop"),
             ("Downloads", Path.home() / "Downloads"),
+            ("Recents", None),
             ("Root", Path(os.path.abspath(os.sep))),
         ]
 
@@ -192,7 +317,10 @@ class FileManager:
         for i, (name, path) in enumerate(shortcuts):
             btn_y = start_y + (i * gap)
             if btn_y <= ly <= btn_y + 30:
-                if path.exists():
+                if name == "Recents":
+                    self.view_mode = "recents"
+                    self.refresh_items()
+                elif path and path.exists():
                     self.navigate_to(path)
                 return
 
@@ -208,6 +336,7 @@ class FileManager:
             if self.selected_index != -1:
                 item = self.items[self.selected_index]
                 if not item.is_dir:
+                    self._add_to_recents(item.path)
                     self.on_select_callback(item.path)
 
     def draw(self, screen: pygame.Surface):
@@ -247,11 +376,40 @@ class FileManager:
 
         self._draw_header(screen, header_rect)
 
+        # Draw Search Bar
+        search_bg_rect = pygame.Rect(
+            header_rect.left,
+            header_rect.bottom,
+            header_rect.width,
+            self.search_header_height
+        )
+        pygame.draw.rect(screen, COLORS["bg"], search_bg_rect)
+        
+        self.search_rect.x = search_bg_rect.x + 10
+        self.search_rect.y = search_bg_rect.y + 5
+        self.search_rect.width = search_bg_rect.width - 20
+        
+        box_col = COLORS["selected"] if self.is_search_focused else COLORS["border"]
+        pygame.draw.rect(screen, box_col, self.search_rect, border_radius=4)
+        pygame.draw.rect(screen, COLORS["sidebar"], self.search_rect.inflate(-2, -2), border_radius=4)
+
+        search_text = self.search_query
+        if not search_text and not self.is_search_focused:
+            search_text = "Search files..."
+            search_col = COLORS["text_dim"]
+        else:
+            search_col = COLORS["text_main"]
+            if self.is_search_focused and (pygame.time.get_ticks() // 500) % 2:
+                search_text += "|"
+
+        txt = self.font_main.render(search_text, True, search_col)
+        screen.blit(txt, (self.search_rect.x + 8, self.search_rect.y + 4))
+
         content_rect = pygame.Rect(
             self.rect.x + self.sidebar_width,
-            self.rect.y + self.header_height,
+            self.rect.y + self.header_height + self.search_header_height,
             self.rect.width - self.sidebar_width,
-            self.rect.height - self.header_height - self.footer_height,
+            self.rect.height - self.header_height - self.footer_height - self.search_header_height,
         )
         self._draw_file_list(screen, content_rect)
 
@@ -272,7 +430,7 @@ class FileManager:
         self._draw_footer(screen, footer_rect)
 
     def _draw_sidebar_items(self, screen, rect):
-        shortcuts = ["Home", "Desktop", "Downloads", "Root"]
+        shortcuts = ["Home", "Documents", "Desktop", "Downloads", "Recents", "Root"]
         start_y = rect.y + 10
         gap = 40
 
@@ -282,7 +440,12 @@ class FileManager:
             mx, my = pygame.mouse.get_pos()
             btn_rect = pygame.Rect(rect.x + 5, y, rect.width - 10, 30)
 
+            is_active = False
+            if name == "Recents" and self.view_mode == "recents":
+                is_active = True
+            
             col = (
+                COLORS["selected"] if is_active else
                 COLORS["highlight"]
                 if btn_rect.collidepoint(mx, my)
                 else COLORS["sidebar"]

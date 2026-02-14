@@ -25,6 +25,8 @@ class TileGrid:
 
         self.grid_color = (200, 200, 200)
         self.show_grid = True
+        
+        self.eraser_size = 1  # For tiles: in grid units. For objects: in pixels.
 
     @property
     def tile_size(self):
@@ -60,6 +62,8 @@ class TileGrid:
 
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
+            
+            # Ctrl + A: Autotile
             if event.key == pygame.K_a and (mods & pygame.KMOD_LCTRL):
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                 if active_layer and hasattr(self.editor, "autotiler"):
@@ -67,6 +71,24 @@ class TileGrid:
                     active_layer.autotile_layer(rules)
                     print(f"Autotiling layer: {active_layer.name}")
                 return True
+            
+            # Eraser size adjustments
+            if mods & pygame.KMOD_LCTRL:
+                if event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+                    if active_layer and active_layer.layer_type == "object":
+                        self.eraser_size += 5
+                    else:
+                        self.eraser_size += 1
+                    self.eraser_size = min(self.eraser_size, 100)
+                    return True
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+                    if active_layer and active_layer.layer_type == "object":
+                        self.eraser_size = max(1, self.eraser_size - 5)
+                    else:
+                        self.eraser_size = max(1, self.eraser_size - 1)
+                    return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 2:
@@ -285,24 +307,27 @@ class TileGrid:
             return
 
         if active_layer.layer_type == "object":
-
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
 
+            # Object layer removal: search in a localized area around mouse
+            # If size is small, just remove what's under cursor. 
+            # If size is larger, remove everything within that rectangle.
+            half_size = self.eraser_size // 2
+            erase_rect = Rect(world_pos[0] - half_size, world_pos[1] - half_size, self.eraser_size, self.eraser_size)
+
             for obj_id, obj in list(active_layer.get_all_objects().items()):
                 area = obj["area"]
-                obj_x, obj_y = area["x"], area["y"]
-                obj_w, obj_h = area["w"], area["h"]
+                obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
 
-                if (
-                    obj_x <= world_pos[0] <= obj_x + obj_w
-                    and obj_y <= world_pos[1] <= obj_y + obj_h
-                ):
+                if erase_rect.colliderect(obj_rect):
                     active_layer.remove_object(obj_id)
-                    break
         else:
-
-            active_layer.remove_tile(self.hover_cell)
+            # Tile layer removal: loop over NxN area based on eraser_size
+            for dy in range(self.eraser_size):
+                for dx in range(self.eraser_size):
+                    pos = (self.hover_cell[0] + dx, self.hover_cell[1] + dy)
+                    active_layer.remove_tile(pos)
 
     def draw(self, screen: Surface):
         pygame.draw.rect(screen, (20, 20, 20), self.rect)
@@ -334,10 +359,21 @@ class TileGrid:
             return
 
         tile_w, tile_h = self.tile_size
+        buttons = pygame.mouse.get_pressed()
+        is_erasing = buttons[2]
 
         if active_layer.layer_type == "object":
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
+
+            if is_erasing:
+                # Eraser preview for objects: show a red box based on eraser_size
+                screen_x = mouse_pos[0]
+                screen_y = mouse_pos[1]
+                half_size = self.eraser_size // 2
+                dest_rect = Rect(screen_x - half_size, screen_y - half_size, self.eraser_size, self.eraser_size)
+                pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
+                return
 
             sel_width = src_rect[2]
             sel_height = src_rect[3]
@@ -357,8 +393,15 @@ class TileGrid:
             except ValueError:
                 pass
         else:
-
             if not self.hover_cell:
+                return
+
+            if is_erasing:
+                # Eraser preview for tiles: show a red box based on eraser_size
+                screen_x = self.rect.x - self.scroll_x + (self.hover_cell[0] * tile_w)
+                screen_y = self.rect.y - self.scroll_y + (self.hover_cell[1] * tile_h)
+                dest_rect = Rect(screen_x, screen_y, tile_w * self.eraser_size, tile_h * self.eraser_size)
+                pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
                 return
 
             sel_w_tiles = src_rect[2] // tile_w

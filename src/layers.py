@@ -82,7 +82,6 @@ class Layer:
                 ):
                     matched_rule = rule
                     break
-                print(ttype, rule.tileset_index)
 
             if matched_rule and matched_rule.variant_ids:
                 # Pick a variant randomly if multiple options
