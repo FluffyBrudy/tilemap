@@ -1,4 +1,6 @@
 import pygame
+import threading
+import queue
 from typing import Optional, List, Callable, Tuple
 from pathlib import Path
 from pygame import Rect
@@ -55,6 +57,13 @@ class Editor:
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.notifications = NotificationManager(self)
         self.property_editor: Optional[PropertyEditor] = None
+        self.loading_state = {
+            "active": False,
+            "message": "",
+            "error": None,
+            "path": None,
+        }
+        self._load_queue: "queue.Queue" = queue.Queue()
 
         editor_rect = self.screen.get_rect()
         editor_rect.center = ((width - 300) // 2, height // 2)
@@ -99,9 +108,12 @@ class Editor:
 
     def open_file_manager(
         self,
-        on_select: Callable[[Path], None],
+        on_select: Callable[[Path], None] = lambda p: None,
         initial_dir: Optional[Path] = None,
         allowed_exts: List[str] = [".png", ".jpg", ".json"],
+        mode: str = "open",
+        on_save: Optional[Callable[[Path], None]] = None,
+        default_name: str = "",
     ):
         w, h = 600, 400
         rect = Rect((self.width - w) // 2, (self.height - h) // 2, w, h)
@@ -111,12 +123,20 @@ class Editor:
             initial_dir=initial_dir if initial_dir else Path.cwd(),
             allowed_exts=allowed_exts,
             on_select=lambda p: self._internal_file_select(p, on_select),
+            on_save=(lambda p: self._internal_file_save(p, on_save)) if on_save else None,
+            mode=mode,
+            default_name=default_name,
             on_cancel=self.close_file_manager,
         )
 
     def _internal_file_select(self, path: Path, user_callback):
         self.close_file_manager()
         user_callback(path)
+
+    def _internal_file_save(self, path: Path, user_callback):
+        self.close_file_manager()
+        if user_callback:
+            user_callback(path)
 
     def close_file_manager(self):
         self.file_manager = None
@@ -135,11 +155,26 @@ class Editor:
     def open_save_as_dialog(self):
         if not self.tile_grid_widget:
             return
-        self.save_input.show()
+        default_name = "untitled.json"
+        if self.tilemap.active_project_path:
+            default_name = self.tilemap.active_project_path.name
+        self.open_file_manager(
+            initial_dir=BASE_PATH / "data",
+            allowed_exts=[".json"],
+            mode="save",
+            default_name=default_name,
+            on_save=self.on_map_save_selected,
+        )
 
     def do_save_as(self, filename: str):
         try:
             self.tilemap.save_map(filename)
+        except Exception as e:
+            print(f"Error saving map: {e}")
+
+    def on_map_save_selected(self, path: Path):
+        try:
+            self.tilemap.save_map(path)
         except Exception as e:
             print(f"Error saving map: {e}")
 
@@ -151,13 +186,47 @@ class Editor:
         )
 
     def on_map_file_selected(self, path: Path):
+        self.start_async_load_map(path)
+
+    def start_async_load_map(self, path: Path):
+        if self.loading_state["active"]:
+            return
+        self.loading_state["active"] = True
+        self.loading_state["message"] = "Loading map..."
+        self.loading_state["error"] = None
+        self.loading_state["path"] = path
+
+        def _worker(load_path: Path):
+            try:
+                payload = self.tilemap.read_map_payload(load_path)
+                self._load_queue.put(("ok", load_path, payload))
+            except Exception as e:
+                self._load_queue.put(("error", load_path, e))
+
+        t = threading.Thread(target=_worker, args=(path,), daemon=True)
+        t.start()
+
+    def _poll_async_load(self):
+        if not self.loading_state["active"]:
+            return
         try:
-            # First initialize widgets with default or current map settings
+            status, path, payload_or_error = self._load_queue.get_nowait()
+        except queue.Empty:
+            return
+
+        if status == "error":
+            self.loading_state["active"] = False
+            self.loading_state["error"] = payload_or_error
+            print(f"Error loading map: {payload_or_error}")
+            return
+
+        try:
             self.post_map_setup()
-            # Then load the map data (this will also apply view state to the widgets)
-            self.tilemap.load_map(path)
+            self.tilemap.apply_map_payload(path, payload_or_error)
         except Exception as e:
             print(f"Error loading map: {e}")
+        finally:
+            self.loading_state["active"] = False
 
     def post_map_setup(self):
         self.handle_resize(self.width, self.height)
@@ -354,6 +423,7 @@ class Editor:
     def run(self):
         self.running = True
         while self.running:
+            self._poll_async_load()
             self.handle_events()
             if self.tile_grid_widget:
                 self.tile_grid_widget.update()
@@ -398,6 +468,22 @@ class Editor:
 
             if self.property_editor and self.property_editor.active:
                 self.property_editor.draw(self.screen)
+            if self.loading_state["active"]:
+                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 180))
+                self.screen.blit(overlay, (0, 0))
+
+                msg = self.loading_state.get("message", "Loading...")
+                font = pygame.font.SysFont("Arial", 18, bold=True)
+                text = font.render(msg, True, (230, 230, 230))
+                text_rect = text.get_rect(center=(self.width // 2, self.height // 2))
+                self.screen.blit(text, text_rect)
+
+                dot_font = pygame.font.SysFont("Arial", 16)
+                dots = "." * ((pygame.time.get_ticks() // 400) % 4)
+                dot_surf = dot_font.render(dots, True, (180, 180, 180))
+                dot_rect = dot_surf.get_rect(center=(self.width // 2, self.height // 2 + 30))
+                self.screen.blit(dot_surf, dot_rect)
 
             if self.toolbar:
                 self.toolbar.draw(self.screen)

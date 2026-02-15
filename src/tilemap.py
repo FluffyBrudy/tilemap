@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Optional, Union
 from pygame import Rect
 from json import load as JSONLoad, dump as JSONDump
 from pathlib import Path
@@ -208,13 +208,19 @@ class Tilemap:
                 tiles_around.append(check_loc)
         return tuple(tiles_around)
 
-    def save_map(self, relative_path: Optional[str] = None):
-        target_path: Path = None
+    def save_map(self, relative_path: Optional[Union[str, Path]] = None):
+        target_path: Optional[Path] = None
 
         if relative_path:
-            if not relative_path.endswith(".json"):
-                relative_path += ".json"
-            target_path = BASE_PATH / "data" / relative_path
+            path_obj = Path(relative_path)
+            if path_obj.suffix == "":
+                path_obj = path_obj.with_suffix(".json")
+
+            if path_obj.is_absolute():
+                target_path = path_obj
+            else:
+                target_path = BASE_PATH / "data" / path_obj
+
             self.active_project_path = target_path
         elif self.active_project_path:
             target_path = self.active_project_path
@@ -358,26 +364,18 @@ class Tilemap:
             if resolved_ts.surface.get_rect().contains(pr_rect):
                 rule.preview_surf = resolved_ts.surface.subsurface(pr_rect).copy()
 
-    def load_map(self, path: Path):
+    def read_map_payload(self, path: Path) -> dict:
         if not path.exists():
-            print(f"Error: {path} does not exist")
-            return
-
+            raise FileNotFoundError(f"{path} does not exist")
         if path.suffix.lower() != ".json":
-            print(f"Error loading map: {path.name} is not a JSON file")
-            return
-
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                payload = JSONLoad(f)
-        except Exception as e:
-            print(f"Error loading map: {e}")
-            return
-
+            raise ValueError(f"{path.name} is not a JSON file")
+        with open(path, "r", encoding="utf-8") as f:
+            payload = JSONLoad(f)
         if not isinstance(payload, dict) or "meta" not in payload:
-            print(f"Error loading map: Invalid project format")
-            return
+            raise ValueError("Invalid project format")
+        return payload
 
+    def apply_map_payload(self, path: Path, payload: dict) -> None:
         self.layer_manager.clear_all_layers()
         self.active_project_path = path
 
@@ -392,8 +390,7 @@ class Tilemap:
             else:
                 self.initial_map_size = self.map_size
         except (KeyError, ValueError) as e:
-            print(f"Error loading map metadata: {e}")
-            return
+            raise ValueError(f"Error loading map metadata: {e}") from e
         
         # Restore view state
         if self.editor.tile_grid_widget:
@@ -403,6 +400,7 @@ class Tilemap:
                 scroll = deserialize_point(payload["meta"]["scroll"])
                 self.editor.tile_grid_widget.scroll_x = scroll[0]
                 self.editor.tile_grid_widget.scroll_y = scroll[1]
+            self.editor.tile_grid_widget.clamp_view()
 
         resources = payload.get("resources", {})
         tilesets = []
@@ -504,6 +502,13 @@ class Tilemap:
         print(
             f"Map Loaded: {path.name} (Layers: {self.layer_manager.get_layer_count()})"
         )
+
+    def load_map(self, path: Path):
+        try:
+            payload = self.read_map_payload(path)
+            self.apply_map_payload(path, payload)
+        except Exception as e:
+            print(f"Error loading map: {e}")
 
     def _load_layer_from_dict(self, layer_data: dict):
         """Load a layer from dictionary format."""

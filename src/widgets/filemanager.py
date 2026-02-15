@@ -39,11 +39,16 @@ class FileManager:
         initial_dir: Optional[Path] = None,
         allowed_exts: List[str] = [".png", ".jpg"],
         on_select: Callable[[Path], None] = lambda p: None,
+        on_save: Optional[Callable[[Path], None]] = None,
+        mode: str = "open",
+        default_name: str = "",
         on_cancel: Callable[[], None] = lambda: None,
     ):
         self.rect = rect
         self.allowed_exts = allowed_exts
         self.on_select_callback = on_select
+        self.on_save_callback = on_save
+        self.mode = mode
         self.on_cancel_callback = on_cancel
 
         self.current_path = initial_dir if initial_dir else Path.home()
@@ -76,6 +81,9 @@ class FileManager:
         )
         self.search_header_height = 35
         self.is_search_focused = False
+        self.save_name = default_name
+        self.is_save_name_focused = False
+        self.save_name_rect = pygame.Rect(0, 0, 0, 0)
         
         self.recents_path = BASE_PATH / "data" / "recents.json"
         self.recents: List[Path] = self._load_recents()
@@ -223,6 +231,13 @@ class FileManager:
             self.rect.width - self.sidebar_width,
             self.rect.height - self.header_height - self.footer_height - self.search_header_height,
         )
+        footer_rect = pygame.Rect(
+            self.rect.x + self.sidebar_width,
+            self.rect.bottom - self.footer_height,
+            content_rect.width,
+            self.footer_height,
+        )
+        self._update_save_name_rect(footer_rect)
 
         if event.type == pygame.MOUSEWHEEL:
             if content_rect.collidepoint(mouse_pos):
@@ -245,6 +260,18 @@ class FileManager:
             else:
                 self.hover_index = -1
 
+            return True
+
+        if event.type == pygame.KEYDOWN and self.is_save_name_focused:
+            if event.key == pygame.K_BACKSPACE:
+                self.save_name = self.save_name[:-1]
+            elif event.key == pygame.K_ESCAPE:
+                self.is_save_name_focused = False
+            elif event.key == pygame.K_RETURN:
+                self._attempt_save()
+            elif event.unicode and event.unicode.isprintable():
+                if event.unicode not in ["/", "\\"]:
+                    self.save_name += event.unicode
             return True
 
         if event.type == pygame.KEYDOWN and self.is_search_focused:
@@ -272,9 +299,15 @@ class FileManager:
 
                 if self.search_rect.collidepoint(mouse_pos):
                     self.is_search_focused = True
+                    self.is_save_name_focused = False
                     return True
                 else:
                     self.is_search_focused = False
+                if self.mode == "save" and self.save_name_rect.collidepoint(mouse_pos):
+                    self.is_save_name_focused = True
+                    return True
+                else:
+                    self.is_save_name_focused = False
 
                 if ly < self.header_height:
                     if lx < self.sidebar_width + 40:
@@ -298,12 +331,18 @@ class FileManager:
                         if item.is_dir:
                             self.navigate_to(item.path, record_recent=True)
                         else:
-                            self._add_to_recents(item.path)
-                            self.on_select_callback(item.path)
+                            if self.mode == "save":
+                                self.save_name = item.name
+                                self._attempt_save()
+                            else:
+                                self._add_to_recents(item.path)
+                                self.on_select_callback(item.path)
                     else:
                         self.selected_index = idx
                         self.clicked_item_index = idx
                         self.double_click_timer = current_time
+                        if not item.is_dir and self.mode == "save":
+                            self.save_name = item.name
 
                     return True
 
@@ -341,11 +380,62 @@ class FileManager:
         if cancel_x <= lx <= cancel_x + btn_w:
             self.on_cancel_callback()
         elif open_x <= lx <= open_x + btn_w:
-            if self.selected_index != -1:
-                item = self.items[self.selected_index]
-                if not item.is_dir:
-                    self._add_to_recents(item.path)
-                    self.on_select_callback(item.path)
+            if self.mode == "save":
+                self._attempt_save()
+            else:
+                if self.selected_index != -1:
+                    item = self.items[self.selected_index]
+                    if not item.is_dir:
+                        self._add_to_recents(item.path)
+                        self.on_select_callback(item.path)
+
+    def _update_save_name_rect(self, footer_rect: pygame.Rect):
+        if self.mode != "save":
+            self.save_name_rect = pygame.Rect(0, 0, 0, 0)
+            return
+        btn_w = 80
+        pad = 10
+        label_w = 80
+        input_x = footer_rect.x + label_w
+        input_y = footer_rect.y + 10
+        input_w = footer_rect.width - (btn_w * 2) - (pad * 3) - label_w
+        input_h = 30
+        self.save_name_rect = pygame.Rect(input_x, input_y, max(60, input_w), input_h)
+
+    def _resolve_save_path(self) -> Optional[Path]:
+        name = self.save_name.strip()
+        if not name and self.selected_index != -1:
+            item = self.items[self.selected_index]
+            if not item.is_dir:
+                name = item.name
+
+        if not name:
+            return None
+
+        candidate = Path(name)
+        if candidate.suffix == "" and self.allowed_exts:
+            name = f"{name}{self.allowed_exts[0]}"
+            candidate = Path(name)
+
+        if candidate.suffix and self.allowed_exts and candidate.suffix.lower() not in self.allowed_exts:
+            print(f"Invalid extension: {candidate.suffix}")
+            return None
+
+        target = self.current_path / candidate
+        if target.exists() and target.is_dir():
+            print("Cannot save: selected name is a directory")
+            return None
+        return target
+
+    def _attempt_save(self):
+        path = self._resolve_save_path()
+        if not path:
+            return
+        self._add_to_recents(path)
+        if self.on_save_callback:
+            self.on_save_callback(path)
+        else:
+            self.on_select_callback(path)
 
     def draw(self, screen: pygame.Surface):
         overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
@@ -427,6 +517,7 @@ class FileManager:
             content_rect.width,
             self.footer_height,
         )
+        self._update_save_name_rect(footer_rect)
         pygame.draw.rect(screen, COLORS["header"], footer_rect)
         pygame.draw.line(
             screen,
@@ -530,7 +621,8 @@ class FileManager:
             sel_txt = self.items[self.selected_index].name
 
         txt_surf = self.font_main.render(sel_txt, True, COLORS["text_dim"])
-        screen.blit(txt_surf, (rect.x + 10, rect.y + 17))
+        if self.mode == "open":
+            screen.blit(txt_surf, (rect.x + 10, rect.y + 17))
 
         btn_w, btn_h = 80, 30
         margin = 10
@@ -552,7 +644,21 @@ class FileManager:
         open_x = cancel_x - btn_w - margin
 
         draw_btn(cancel_x, "Cancel")
-        draw_btn(open_x, "Open", accent=True)
+        draw_btn(open_x, "Save" if self.mode == "save" else "Open", accent=True)
+
+        if self.mode == "save":
+            label = self.font_bold.render("File name:", True, COLORS["text_dim"])
+            screen.blit(label, (rect.x + 10, rect.y + 16))
+
+            box_col = COLORS["selected"] if self.is_save_name_focused else COLORS["border"]
+            pygame.draw.rect(screen, box_col, self.save_name_rect, border_radius=4)
+            pygame.draw.rect(screen, COLORS["sidebar"], self.save_name_rect.inflate(-2, -2), border_radius=4)
+
+            display_name = self.save_name
+            if self.is_save_name_focused and (pygame.time.get_ticks() // 500) % 2:
+                display_name += "|"
+            txt = self.font_main.render(display_name, True, COLORS["text_main"])
+            screen.blit(txt, (self.save_name_rect.x + 6, self.save_name_rect.y + 6))
 
     def _draw_icon_folder(self, surface, x, y):
         color = COLORS["folder"]

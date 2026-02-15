@@ -90,6 +90,20 @@ class TileGrid:
                         self.last_eraser_adj_time = current_time
                         self.eraser_overlay_timer = 1500 # Show for 1.5 seconds
 
+        self.clamp_view()
+
+    def clamp_view(self):
+        self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level))
+        world_w = self.editor.tilemap.map_size[0] * self.tile_size[0]
+        world_h = self.editor.tilemap.map_size[1] * self.tile_size[1]
+        view_w = self.rect.width / self.zoom_level
+        view_h = self.rect.height / self.zoom_level
+
+        max_scroll_x = max(0, world_w - view_w)
+        max_scroll_y = max(0, world_h - view_h)
+        self.scroll_x = max(0, min(self.scroll_x, max_scroll_x))
+        self.scroll_y = max(0, min(self.scroll_y, max_scroll_y))
+
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse_pos = pygame.mouse.get_pos()
         is_hovering = self.rect.collidepoint(mouse_pos)
