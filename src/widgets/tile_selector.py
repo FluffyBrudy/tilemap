@@ -1,10 +1,11 @@
 import pygame
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Set, Any
 from pathlib import Path
 from pygame import Rect, Surface
 
 from utils.validation import is_image_multipleof
 from widgets.ui.property_editor import PropertyEditor
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -53,7 +54,7 @@ class TileSelector:
         btn_y = y + h - 35
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
-        self.font = pygame.font.SysFont("Arial", 16)
+        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_md)
 
     def resize(self, x: int, y: int, w: int, h: int):
         self.rect = Rect(x, y, w, h)
@@ -176,6 +177,16 @@ class TileSelector:
                         self.update_selection_rect(self.hover_pos)
                 else:
                     self.hover_pos = None
+        elif event.type == pygame.MOUSEWHEEL:
+            if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
+                mods = pygame.key.get_mods()
+                shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+                ts = self.tilesets[self.active_idx]
+                if shift_held:
+                    ts.offset[0] += event.y * 20
+                else:
+                    ts.offset[1] += event.y * 20
+                return True
 
         return False
 
@@ -337,11 +348,11 @@ class TileSelector:
         self.draw_tabs(screen)
 
     def draw_background(self, screen: pygame.Surface):
-        pygame.draw.rect(screen, (40, 40, 40), self.rect)
-        pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
     def draw_view_area(self, screen: pygame.Surface):
-        pygame.draw.rect(screen, (20, 20, 20), self.view_rect)
+        pygame.draw.rect(screen, COLORS.panel_alt, self.view_rect)
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):
             return
 
@@ -399,30 +410,35 @@ class TileSelector:
         tw, th = self.editor.tilemap.tile_size
         col, row = self.hover_pos
         hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
-        pygame.draw.rect(screen, (255, 255, 0), hover_rect, 2)
+        pygame.draw.rect(screen, COLORS.warning, hover_rect, 2)
 
     def draw_selection(self, screen, img_x: int, img_y: int):
         if not self.selected_tile:
             return
         sx, sy, sw, sh = self.selected_tile
         sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
-        pygame.draw.rect(screen, (0, 255, 0), sel_rect, 2)
+        pygame.draw.rect(screen, COLORS.success, sel_rect, 2)
 
     def draw_tileset_name(self, screen, ts: TilesetData):
-        name_surf = self.font.render(f"{ts.name}", True, (200, 200, 200))
+        name_surf = self.font.render(f"{ts.name}", True, COLORS.text)
         screen.blit(name_surf, (self.rect.x + 5, self.rect.bottom - 30))
 
     def draw_buttons(self, screen):
-        pygame.draw.rect(screen, (60, 60, 60), self.btn_add)
-        pygame.draw.rect(screen, (60, 60, 60), self.btn_rem)
+        pygame.draw.rect(screen, COLORS.header, self.btn_add, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(screen, COLORS.header, self.btn_rem, border_radius=SHAPE.radius_sm)
         screen.blit(
-            self.font.render("+", True, (255, 255, 255)),
+            self.font.render("+", True, COLORS.text),
             (self.btn_add.x + 10, self.btn_add.y + 5),
         )
         screen.blit(
-            self.font.render("-", True, (255, 255, 255)),
+            self.font.render("-", True, COLORS.text),
             (self.btn_rem.x + 10, self.btn_rem.y + 5),
         )
+        mx, my = pygame.mouse.get_pos()
+        if self.btn_add.collidepoint(mx, my):
+            self.editor.tooltip.show("Add Tileset", (mx + 10, my + 10))
+        elif self.btn_rem.collidepoint(mx, my):
+            self.editor.tooltip.show("Remove Tileset", (mx + 10, my + 10))
 
     def draw_tabs(self, screen: Surface):
         if not self.tilesets:
@@ -430,8 +446,12 @@ class TileSelector:
         tab_w = min(100, self.rect.width // len(self.tilesets))
         for i, ts in enumerate(self.tilesets):
             r = Rect(self.rect.x + i * tab_w, self.rect.y, tab_w, self.top_bar_h)
-            col = (60, 60, 80) if i == self.active_idx else (40, 40, 40)
+            is_active = i == self.active_idx
+            col = COLORS.selected if is_active else COLORS.header
             pygame.draw.rect(screen, col, r)
-            pygame.draw.rect(screen, (100, 100, 100), r, 1)
+            pygame.draw.rect(screen, COLORS.border, r, 1)
             t = ts.name[:8] + ".." if len(ts.name) > 10 else ts.name
-            screen.blit(self.font.render(t, True, (200, 200, 200)), (r.x + 5, r.y + 5))
+            screen.blit(self.font.render(t, True, COLORS.text), (r.x + 5, r.y + 5))
+            mx, my = pygame.mouse.get_pos()
+            if r.collidepoint(mx, my):
+                self.editor.tooltip.show(ts.name, (mx + 10, my + 10))

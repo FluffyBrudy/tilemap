@@ -1,6 +1,7 @@
 import pygame
 from pygame import Rect, Color
 from typing import List, Callable, Tuple, Optional
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 class MenuAction:
     def __init__(self, label: str, callback: Callable, shortcut: str = ""):
@@ -20,15 +21,15 @@ class MenuBar:
     def __init__(self, editor, width: int, height: int = 30):
         self.editor = editor
         self.rect = Rect(0, 0, width, height)
-        self.bg_color = (35, 35, 40)
-        self.border_color = (50, 50, 55)
-        self.text_color = (220, 220, 220)
-        self.hover_color = (60, 60, 70)
-        self.open_color = (50, 50, 60)
-        self.accent_color = (66, 135, 245)
+        self.bg_color = COLORS.header
+        self.border_color = COLORS.border_soft
+        self.text_color = COLORS.text
+        self.hover_color = COLORS.hover
+        self.open_color = COLORS.panel_alt
+        self.accent_color = COLORS.accent
         
-        self.font = pygame.font.SysFont("Arial", 13)
-        self.font_shortcut = pygame.font.SysFont("Arial", 11)
+        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_md)
+        self.font_shortcut = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
         
         self.menus = [
             Menu("File", [
@@ -73,7 +74,7 @@ class MenuBar:
             for action in menu.actions:
                 label_w = self.font.render(action.label, True, self.text_color).get_width()
                 if action.shortcut:
-                    shortcut_w = self.font_shortcut.render(action.shortcut, True, (150, 150, 150)).get_width()
+                    shortcut_w = self.font_shortcut.render(action.shortcut, True, COLORS.text_dim).get_width()
                     max_w = max(max_w, label_w + shortcut_w + 40)
                 else:
                     max_w = max(max_w, label_w + 30)
@@ -160,7 +161,7 @@ class MenuBar:
                         shortcut_color = Color("white")
                     else:
                         color = self.text_color
-                        shortcut_color = (150, 150, 155)
+                        shortcut_color = COLORS.text_dim
                         
                     label_surf = self.font.render(action.label, True, color)
                     screen.blit(label_surf, (item_rect.x + 10, item_rect.y + 5))

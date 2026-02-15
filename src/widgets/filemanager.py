@@ -559,12 +559,12 @@ class FileManager:
         self._draw_icon_arrow_up(
             screen, up_btn.centerx, up_btn.centery, COLORS["text_main"]
         )
-
-        path_str = str(self.current_path)
-
-        if len(path_str) > 50:
-            path_str = "..." + path_str[-47:]
-
+        parts = self.current_path.parts
+        if len(parts) > 4:
+            display_parts = ["..."] + list(parts[-3:])
+        else:
+            display_parts = list(parts)
+        path_str = " / ".join(display_parts)
         txt = self.font_main.render(path_str, True, COLORS["text_dim"])
         screen.blit(txt, (rect.x + 45, rect.y + 12))
 

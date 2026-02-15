@@ -92,6 +92,33 @@ class TileGrid:
 
         self.clamp_view()
 
+    def zoom_by(self, delta: float, center: Optional[Tuple[int, int]] = None):
+        old_zoom = self.zoom_level
+        self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level + delta))
+        if self.zoom_level == old_zoom:
+            return
+        if center is None:
+            center = pygame.mouse.get_pos()
+        wx, wy = self.screen_to_world(center)
+        self.scroll_x = wx - (center[0] - self.rect.x) / self.zoom_level
+        self.scroll_y = wy - (center[1] - self.rect.y) / self.zoom_level
+
+    def reset_view(self):
+        self.zoom_level = 1.0
+        self.scroll_x = 0
+        self.scroll_y = 0
+
+    def fit_to_map(self):
+        world_w = self.editor.tilemap.map_size[0] * self.tile_size[0]
+        world_h = self.editor.tilemap.map_size[1] * self.tile_size[1]
+        if world_w <= 0 or world_h <= 0:
+            return
+        zoom_x = self.rect.width / world_w
+        zoom_y = self.rect.height / world_h
+        self.zoom_level = max(self.min_zoom, min(self.max_zoom, min(zoom_x, zoom_y)))
+        self.scroll_x = 0
+        self.scroll_y = 0
+
     def clamp_view(self):
         self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level))
         world_w = self.editor.tilemap.map_size[0] * self.tile_size[0]
@@ -194,9 +221,16 @@ class TileGrid:
 
         elif event.type == pygame.MOUSEWHEEL:
             if is_hovering:
-                old_zoom = self.zoom_level
-                self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level + event.y * 0.1))
-                # Optional: Zoom towards mouse pos
+                mods = pygame.key.get_mods()
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+                shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+                if ctrl_held or meta_held:
+                    self.zoom_by(event.y * 0.1, pygame.mouse.get_pos())
+                elif shift_held:
+                    self.scroll_x -= event.y * self.scroll_speed
+                else:
+                    self.scroll_y -= event.y * self.scroll_speed
                 return True
 
         buttons = pygame.mouse.get_pressed()
@@ -637,14 +671,27 @@ class TileGrid:
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
         layer_name = active_layer.name if active_layer else "None"
         
-        status_text = f"World: {world_pos} | Grid: {grid_pos} | Zoom: {self.zoom_level:.1f}x | Layer: {layer_name}"
-        if self.eraser_size > 1:
-            status_text += f" | Eraser Size: {self.eraser_size}"
-        
+        tileset_name = "-"
+        if self.editor.tileset_widget and self.editor.tileset_widget.active_idx != -1:
+            ts = self.editor.tileset_widget.tilesets[self.editor.tileset_widget.active_idx]
+            tileset_name = ts.name
+
         can_undo = self.editor.tilemap.history.can_undo
         can_redo = self.editor.tilemap.history.can_redo
-        status_text += f" | Undo: {'Y' if can_undo else 'N'} | Redo: {'Y' if can_redo else 'N'}"
-            
+        zoom_pct = int(self.zoom_level * 100)
+        parts = [
+            f"World {world_pos}",
+            f"Grid {grid_pos}",
+            f"Zoom {zoom_pct}%",
+            f"Layer {layer_name}",
+            f"Tileset {tileset_name}",
+            f"Pan {'On' if self.editor.pan_mode else 'Off'}",
+            f"Auto {'On' if self.editor.autotile_mode else 'Off'}",
+        ]
+        if self.eraser_size > 1:
+            parts.append(f"Eraser {self.eraser_size}")
+        parts.append(f"Undo {'Y' if can_undo else 'N'} / Redo {'Y' if can_redo else 'N'}")
+        status_text = " | ".join(parts)
         txt = self.font_status.render(status_text, True, (200, 200, 200))
         screen.blit(txt, (10, bar_rect.y + 5))
 

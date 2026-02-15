@@ -20,6 +20,7 @@ from widgets.ui.menubar import MenuBar
 from widgets.ui.toolbar import Toolbar
 from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
+from widgets.ui.tooltip import TooltipManager
 from utils.log_capture import setup_console_log
 
 
@@ -56,6 +57,7 @@ class Editor:
         self.file_manager: Optional[FileManager] = None
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.notifications = NotificationManager(self)
+        self.tooltip = TooltipManager()
         self.property_editor: Optional[PropertyEditor] = None
         self.loading_state = {
             "active": False,
@@ -429,6 +431,7 @@ class Editor:
                 self.tile_grid_widget.update()
 
             self.screen.fill((30, 30, 30))
+            self.tooltip.hide()
 
             if self.tile_grid_widget:
                 self.tile_grid_widget.draw(self.screen)
@@ -488,6 +491,7 @@ class Editor:
             if self.toolbar:
                 self.toolbar.draw(self.screen)
             self.menubar.draw(self.screen)
+            self.tooltip.draw(self.screen)
 
             pygame.display.update()
             self.clock.tick(self.fps)
