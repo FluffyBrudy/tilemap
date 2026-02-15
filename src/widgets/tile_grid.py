@@ -412,13 +412,16 @@ class TileGrid:
         mouse_pos = pygame.mouse.get_pos()
         world_pos = self.screen_to_world(mouse_pos)
 
-        sel_width = src_rect[2]
-        sel_height = src_rect[3]
-
-        start_sx = src_rect[0]
-        start_sy = src_rect[1]
-
-        variant_id = ((start_sy // tile_h) * sheet_cols) + (start_sx // tile_w)
+        if tileset_type == "object":
+            sel_width = tileset_data.surface.get_width()
+            sel_height = tileset_data.surface.get_height()
+            variant_id = 0
+        else:
+            sel_width = src_rect[2]
+            sel_height = src_rect[3]
+            start_sx = src_rect[0]
+            start_sy = src_rect[1]
+            variant_id = ((start_sy // tile_h) * sheet_cols) + (start_sx // tile_w)
 
         obj_data: TypeObject = {
             "area": {
@@ -791,14 +794,14 @@ class TileGrid:
                     area = obj["area"]
                     obj_x, obj_y = area["x"], area["y"]
                     obj_w, obj_h = area["w"], area["h"]
-
-                    sheet_w = base_surf.get_width()
-                    sheet_cols = sheet_w // tile_w
-
-                    src_x = (variant_id % sheet_cols) * tile_w
-                    src_y = (variant_id // sheet_cols) * tile_h
-
-                    src_rect = Rect(src_x, src_y, obj_w, obj_h)
+                    if tileset_data.tileset_type == "object":
+                        src_rect = Rect(0, 0, obj_w, obj_h)
+                    else:
+                        sheet_w = base_surf.get_width()
+                        sheet_cols = sheet_w // tile_w
+                        src_x = (variant_id % sheet_cols) * tile_w
+                        src_y = (variant_id // sheet_cols) * tile_h
+                        src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
                     dest_x = (obj_x - self.scroll_x) * self.zoom_level + self.rect.x + draw_offset_x
                     dest_y = (obj_y - self.scroll_y) * self.zoom_level + self.rect.y + draw_offset_y

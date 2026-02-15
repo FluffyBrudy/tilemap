@@ -43,6 +43,7 @@ class FileManager:
         mode: str = "open",
         default_name: str = "",
         on_cancel: Callable[[], None] = lambda: None,
+        multi_select: bool = False,
     ):
         self.rect = rect
         self.allowed_exts = allowed_exts
@@ -50,12 +51,14 @@ class FileManager:
         self.on_save_callback = on_save
         self.mode = mode
         self.on_cancel_callback = on_cancel
+        self.multi_select = multi_select
 
         self.current_path = initial_dir if initial_dir else Path.home()
         self.history: List[Path] = []
         self.items: List[FileItem] = []
 
         self.selected_index: int = -1
+        self.selected_indices: List[int] = []
         self.scroll_y = 0
         self.scroll_speed = 30
         self.hover_index = -1
@@ -95,6 +98,7 @@ class FileManager:
         self.items.clear()
         self.scroll_y = 0
         self.selected_index = -1
+        self.selected_indices = []
 
         if self.view_mode == "recents":
             for p in self.recents:
@@ -335,10 +339,42 @@ class FileManager:
                                 self.save_name = item.name
                                 self._attempt_save()
                             else:
-                                self._add_to_recents(item.path)
-                                self.on_select_callback(item.path)
+                                if self.multi_select and self.selected_indices:
+                                    paths = []
+                                    for sidx in self.selected_indices:
+                                        if 0 <= sidx < len(self.items):
+                                            sitem = self.items[sidx]
+                                            if not sitem.is_dir:
+                                                self._add_to_recents(sitem.path)
+                                                paths.append(sitem.path)
+                                    if paths:
+                                        self.on_select_callback(paths)
+                                else:
+                                    self._add_to_recents(item.path)
+                                    self.on_select_callback(item.path)
                     else:
-                        self.selected_index = idx
+                        mods = pygame.key.get_mods()
+                        ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                        meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+                        shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+                        if self.multi_select:
+                            if shift_held and self.selected_indices:
+                                start = self.selected_index if self.selected_index != -1 else idx
+                                lo = min(start, idx)
+                                hi = max(start, idx)
+                                self.selected_indices = list(range(lo, hi + 1))
+                            elif ctrl_held or meta_held:
+                                if idx in self.selected_indices:
+                                    self.selected_indices.remove(idx)
+                                else:
+                                    self.selected_indices.append(idx)
+                            else:
+                                if idx not in self.selected_indices:
+                                    self.selected_indices.append(idx)
+                            self.selected_index = idx
+                        else:
+                            self.selected_index = idx
+                            self.selected_indices = [idx]
                         self.clicked_item_index = idx
                         self.double_click_timer = current_time
                         if not item.is_dir and self.mode == "save":
@@ -383,7 +419,17 @@ class FileManager:
             if self.mode == "save":
                 self._attempt_save()
             else:
-                if self.selected_index != -1:
+                if self.multi_select and self.selected_indices:
+                    paths = []
+                    for idx in self.selected_indices:
+                        if 0 <= idx < len(self.items):
+                            item = self.items[idx]
+                            if not item.is_dir:
+                                self._add_to_recents(item.path)
+                                paths.append(item.path)
+                    if paths:
+                        self.on_select_callback(paths)
+                elif self.selected_index != -1:
                     item = self.items[self.selected_index]
                     if not item.is_dir:
                         self._add_to_recents(item.path)
@@ -584,7 +630,7 @@ class FileManager:
 
             row_rect = pygame.Rect(rect.x, y, rect.width, self.item_height)
 
-            if i == self.selected_index:
+            if i == self.selected_index or (self.multi_select and i in self.selected_indices):
                 pygame.draw.rect(screen, COLORS["selected"], row_rect)
             elif i == self.hover_index:
                 pygame.draw.rect(screen, COLORS["highlight"], row_rect)
