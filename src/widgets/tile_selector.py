@@ -81,17 +81,19 @@ class TileSelector:
                     sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
                     
                     if sel_rect.collidepoint(mouse_pos):
-                        tw, th = self.editor.tilemap.tile_size
-                        cols = ts.surface.get_width() // tw
+                        variant_ids = self._get_selected_variant_ids(ts)
+                        if not variant_ids:
+                            return True
                         # Use top-left tile of selection as reference for properties if multi-tile
-                        variant_id = (sy // th * cols) + (sx // tw)
-                        
+                        variant_id = variant_ids[0]
+ 
                         self.editor.property_editor = PropertyEditor(
                             self.editor,
                             f"Tile Properties: {ts.name} (ID: {variant_id})",
                             ts.tile_properties.get(variant_id, {}),
-                            on_save=lambda props: self._save_tile_properties(ts, variant_id, props),
-                            on_close=lambda: None
+                            on_save=lambda props: self._save_tile_properties_multi(ts, variant_ids, props),
+                            on_close=lambda: None,
+                            shrink_value_font=True,
                         )
                         return True
 
@@ -299,6 +301,29 @@ class TileSelector:
     def _save_tile_properties(self, ts: TilesetData, variant_id: int, props: dict):
         ts.tile_properties[variant_id] = props
         print(f"Saved properties for tile {variant_id} in tileset: {ts.name}")
+    def _save_tile_properties_multi(self, ts: TilesetData, variant_ids: List[int], props: dict):
+        for vid in variant_ids:
+            ts.tile_properties[vid] = props.copy()
+        if len(variant_ids) == 1:
+            print(f"Saved properties for tile {variant_ids[0]} in tileset: {ts.name}")
+        else:
+            print(f"Saved properties for {len(variant_ids)} tiles in tileset: {ts.name}")
+
+    def _get_selected_variant_ids(self, ts: TilesetData) -> List[int]:
+        if not self.selected_tile:
+            return []
+        sx, sy, sw, sh = self.selected_tile
+        tw, th = self.editor.tilemap.tile_size
+        cols = ts.surface.get_width() // tw
+        start_col = sx // tw
+        start_row = sy // th
+        sel_w_tiles = max(1, sw // tw)
+        sel_h_tiles = max(1, sh // th)
+        variant_ids: List[int] = []
+        for row in range(start_row, start_row + sel_h_tiles):
+            for col in range(start_col, start_col + sel_w_tiles):
+                variant_ids.append((row * cols) + col)
+        return variant_ids
 
     def get_active_tile(self):
         if self.active_idx == -1:

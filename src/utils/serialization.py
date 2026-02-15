@@ -17,7 +17,7 @@ def serialize_point(point: IntPoint, sep=";"):
 
 def deserialize_point(point_str: str):
     separators = re.escape(string.punctuation)
-    matched_str = re.search(rf"(\d+)[{separators}](\d+)$", point_str)
+    matched_str = re.search(rf"(-?\d+)[{separators}](-?\d+)$", point_str)
 
     if matched_str is None:
         raise ValueError(f"Improper point string format: {point_str}")

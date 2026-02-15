@@ -3,7 +3,7 @@ from typing import Dict, Any, Callable, Optional, Tuple
 from pygame import Rect, Surface
 
 class PropertyEditor:
-    def __init__(self, editor: "Editor", title: str, properties: Dict[str, Any], on_save: Callable[[Dict[str, Any]], None], on_close: Callable[[], None]):
+    def __init__(self, editor: "Editor", title: str, properties: Dict[str, Any], on_save: Callable[[Dict[str, Any]], None], on_close: Callable[[], None], shrink_value_font: bool = False):
         self.editor = editor
         self.title = title
         self.properties = properties.copy()
@@ -18,6 +18,8 @@ class PropertyEditor:
         self.font_title = pygame.font.SysFont("Arial", 20, bold=True)
         self.font_label = pygame.font.SysFont("Arial", 16)
         self.font_input = pygame.font.SysFont("Arial", 16)
+        self.shrink_value_font = shrink_value_font
+        self._font_cache: Dict[int, pygame.font.Font] = {}
         
         self.scroll_y = 0
         self.item_height = 40
@@ -33,6 +35,20 @@ class PropertyEditor:
         self.btn_save = Rect(self.rect.x + self.width - 110, self.rect.y + self.height - 40, 100, 30)
         self.btn_cancel = Rect(self.rect.x + 10, self.rect.y + self.height - 40, 100, 30)
         self.btn_add = Rect(self.rect.x + self.width // 2 - 50, self.rect.y + self.height - 40, 100, 30)
+    def _get_font(self, size: int) -> pygame.font.Font:
+        if size not in self._font_cache:
+            self._font_cache[size] = pygame.font.SysFont("Arial", size)
+        return self._font_cache[size]
+
+    def _render_value_text(self, text: str, color: Tuple[int, int, int], max_width: int) -> pygame.Surface:
+        if not self.shrink_value_font or max_width <= 0:
+            return self.font_input.render(text, True, color)
+        for size in range(16, 9, -1):
+            font = self._get_font(size)
+            surf = font.render(text, True, color)
+            if surf.get_width() <= max_width:
+                return surf
+        return self._get_font(10).render(text, True, color)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.active:
@@ -177,8 +193,10 @@ class PropertyEditor:
                 val_col = (150, 255, 150) if isinstance(self.properties[key], (int, float)) else \
                           (255, 200, 100) if isinstance(self.properties[key], bool) else (255, 255, 255)
             
-            val_surf = self.font_input.render(val_text, True, val_col)
-            screen.blit(val_surf, (row_rect.x + 120, row_rect.y + 10))
+            value_x = row_rect.x + 120
+            max_width = row_rect.right - value_x - 10
+            val_surf = self._render_value_text(val_text, val_col, max_width)
+            screen.blit(val_surf, (value_x, row_rect.y + 10))
 
         if self.is_entering_new_key:
             y = self.rect.y + 40 + len(keys) * self.item_height - self.scroll_y

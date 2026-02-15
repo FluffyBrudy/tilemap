@@ -18,6 +18,7 @@ from widgets.ui.menubar import MenuBar
 from widgets.ui.toolbar import Toolbar
 from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
+from utils.log_capture import setup_console_log
 
 
 class Editor:
@@ -398,9 +399,9 @@ class Editor:
             if self.property_editor and self.property_editor.active:
                 self.property_editor.draw(self.screen)
 
-            self.menubar.draw(self.screen)
             if self.toolbar:
                 self.toolbar.draw(self.screen)
+            self.menubar.draw(self.screen)
 
             pygame.display.update()
             self.clock.tick(self.fps)
@@ -409,5 +410,8 @@ class Editor:
 
 
 if __name__ == "__main__":
+    log_path = setup_console_log(BASE_PATH)
+    if log_path:
+        print(f"Logging to {log_path}")
     editor = Editor(size=(1500,900))
     editor.run()

@@ -200,9 +200,11 @@ class FileManager:
             self.current_path = self.current_path.parent
             self.refresh_items()
 
-    def navigate_to(self, path: Path):
+    def navigate_to(self, path: Path, record_recent: bool = False):
         self.view_mode = "files"
         if path.is_dir():
+            if record_recent:
+                self._add_to_recents(path)
             self.current_path = path
             self.refresh_items()
 
@@ -246,8 +248,14 @@ class FileManager:
             return True
 
         if event.type == pygame.KEYDOWN and self.is_search_focused:
+            mods = pygame.key.get_mods()
+            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
             if event.key == pygame.K_BACKSPACE:
-                self.search_query = self.search_query[:-1]
+                if ctrl_held or meta_held:
+                    self.search_query = ""
+                else:
+                    self.search_query = self.search_query[:-1]
                 self.refresh_items()
             elif event.key == pygame.K_ESCAPE:
                 self.is_search_focused = False
@@ -288,7 +296,7 @@ class FileManager:
                         and (current_time - self.double_click_timer) < 500
                     ):
                         if item.is_dir:
-                            self.navigate_to(item.path)
+                            self.navigate_to(item.path, record_recent=True)
                         else:
                             self._add_to_recents(item.path)
                             self.on_select_callback(item.path)
