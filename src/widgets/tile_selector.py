@@ -39,7 +39,7 @@ class TileSelector:
         self.view_rect = Rect(
             x, y + self.top_bar_h, w, h - self.top_bar_h - self.btm_bar_h
         )
-
+        self.tab_scroll_x = 0
         self.is_panning = False
         self.pan_start = (0, 0)
         self.pan_start_offset = (0, 0)
@@ -50,11 +50,20 @@ class TileSelector:
         self.selected_tile: Optional[Tuple[int, int, int, int]] = None
 
         self.rule_hints: Set[int] = set()
+        self._pending_tileset_queue: List[Tuple[Path, pygame.Surface]] = []
 
         btn_y = y + h - 35
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
         self.font = pygame.font.SysFont(FONTS.name, FONTS.size_md)
+
+    def _on_tileset_type_cancel(self):
+        if hasattr(self, "_pending_tileset_path"):
+            delattr(self, "_pending_tileset_path")
+        if hasattr(self, "_pending_tileset_surf"):
+            delattr(self, "_pending_tileset_surf")
+        if self._pending_tileset_queue:
+            self._start_tileset_queue()
 
     def resize(self, x: int, y: int, w: int, h: int):
         self.rect = Rect(x, y, w, h)
@@ -77,6 +86,8 @@ class TileSelector:
                 if self.selected_tile:
                     sx, sy, sw, sh = self.selected_tile
                     ts = self.tilesets[self.active_idx]
+                    if ts.tileset_type == "object":
+                        return True
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
                     sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
@@ -145,9 +156,13 @@ class TileSelector:
 
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 if self.hover_pos:
-                    self.is_selecting = True
-                    self.selection_start_grid = self.hover_pos
-                    self.update_selection_rect(self.hover_pos)
+                    ts = self.tilesets[self.active_idx]
+                    if ts.tileset_type == "object":
+                        self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+                    else:
+                        self.is_selecting = True
+                        self.selection_start_grid = self.hover_pos
+                        self.update_selection_rect(self.hover_pos)
                 return True
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -178,6 +193,9 @@ class TileSelector:
                 else:
                     self.hover_pos = None
         elif event.type == pygame.MOUSEWHEEL:
+            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
+                self._scroll_tabs(event.y * 30)
+                return True
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 mods = pygame.key.get_mods()
                 shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
@@ -209,27 +227,45 @@ class TileSelector:
 
     def request_add_tileset(self):
         self.editor.open_file_manager(
-            on_select=self.on_file_selected,
+            on_select=self.on_files_selected,
             initial_dir=Path.cwd(),
             allowed_exts=[".png", ".jpg"],
+            multi_select=True,
         )
 
-    def on_file_selected(self, path: Path):
+    def on_files_selected(self, paths):
+        if isinstance(paths, Path):
+            self.on_file_selected(paths)
+            return
+        if isinstance(paths, (list, tuple, set)):
+            for p in paths:
+                if isinstance(p, Path):
+                    self.on_file_selected(p, enqueue_only=True)
+                elif isinstance(p, str):
+                    self.on_file_selected(Path(p), enqueue_only=True)
+            if self._pending_tileset_queue:
+                self._start_tileset_queue()
+        else:
+            return
+
+    def on_file_selected(self, path: Path, enqueue_only: bool = False):
         if path.exists():
             try:
                 surf = pygame.image.load(path).convert_alpha()
-                if is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
-
-                    self._pending_tileset_path = path
-                    self._pending_tileset_surf = surf
-                    self.editor.tileset_type_dialog.show(
-                        on_confirm=self._on_tileset_type_selected,
-                        on_cancel=lambda: None,
-                    )
-                else:
-                    print("Tileset isnt multiple of tile size")
+                self._pending_tileset_queue.append((path, surf))
+                if not enqueue_only:
+                    self._start_tileset_queue()
             except Exception as e:
                 print(f"Error loading image: {e}")
+
+    def _start_tileset_queue(self):
+        if not self._pending_tileset_queue:
+            return
+        self._pending_tileset_path, self._pending_tileset_surf = self._pending_tileset_queue.pop(0)
+        self.editor.tileset_type_dialog.show(
+            on_confirm=self._on_tileset_type_selected,
+            on_cancel=self._on_tileset_type_cancel,
+        )
 
     def load_tileset_from_path(self, path: Path, tileset_type: str, properties: dict = {}, tile_properties: dict = {}):
         """Load tileset from path without showing dialog (used when loading maps).
@@ -243,7 +279,7 @@ class TileSelector:
         if path.exists():
             try:
                 surf = pygame.image.load(path).convert_alpha()
-                if is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
+                if tileset_type == "object" or is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
 
                     tileset_data = TilesetData(
                         path.name, path, surf, tileset_type=tileset_type
@@ -255,6 +291,8 @@ class TileSelector:
                     self.tilesets.append(tileset_data)
                     self.active_idx = len(self.tilesets) - 1
                     self.tileset_map[self.active_idx] = tileset_data
+                    if tileset_type == "object":
+                        self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
                 else:
                     print("Tileset isnt multiple of tile size")
             except Exception as e:
@@ -268,13 +306,27 @@ class TileSelector:
         path = self._pending_tileset_path
         surf = self._pending_tileset_surf
 
+        if tileset_type == "tile" and not is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
+            self.editor.notifications.error("Tileset size must be multiple of tile size")
+            delattr(self, "_pending_tileset_path")
+            delattr(self, "_pending_tileset_surf")
+            if self._pending_tileset_queue:
+                self._start_tileset_queue()
+            return
+
         tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
         self.tilesets.append(tileset_data)
         self.active_idx = len(self.tilesets) - 1
         self.tileset_map[self.active_idx] = tileset_data
+        if tileset_type == "object":
+            self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
+        else:
+            self.selected_tile = None
 
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
+        if self._pending_tileset_queue:
+            self._start_tileset_queue()
 
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):
@@ -293,7 +345,11 @@ class TileSelector:
         idx = self._get_tab_at_pos(pos)
         if idx is not None:
             self.active_idx = int(idx)
-            self.selected_tile = None
+            ts = self.tilesets[self.active_idx]
+            if ts.tileset_type == "object":
+                self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+            else:
+                self.selected_tile = None
             self.rule_hints.clear()
 
     def _get_tab_at_pos(self, pos) -> Optional[int]:
@@ -443,9 +499,19 @@ class TileSelector:
     def draw_tabs(self, screen: Surface):
         if not self.tilesets:
             return
-        tab_w = min(100, self.rect.width // len(self.tilesets))
+        clip = screen.get_clip()
+        tab_area = Rect(self.rect.x, self.rect.y, self.rect.width, self.top_bar_h)
+        screen.set_clip(tab_area)
+        tab_w = 100
+        total_w = tab_w * len(self.tilesets)
+        if total_w > self.rect.width:
+            self.tab_scroll_x = max(0, min(self.tab_scroll_x, total_w - self.rect.width))
+        else:
+            self.tab_scroll_x = 0
         for i, ts in enumerate(self.tilesets):
-            r = Rect(self.rect.x + i * tab_w, self.rect.y, tab_w, self.top_bar_h)
+            r = Rect(self.rect.x + i * tab_w - self.tab_scroll_x, self.rect.y, tab_w, self.top_bar_h)
+            if r.right < self.rect.x or r.x > self.rect.right:
+                continue
             is_active = i == self.active_idx
             col = COLORS.selected if is_active else COLORS.header
             pygame.draw.rect(screen, col, r)
@@ -455,3 +521,19 @@ class TileSelector:
             mx, my = pygame.mouse.get_pos()
             if r.collidepoint(mx, my):
                 self.editor.tooltip.show(ts.name, (mx + 10, my + 10))
+        if total_w > self.rect.width:
+            bar_w = max(30, int(self.rect.width * (self.rect.width / total_w)))
+            bar_x = self.rect.x + int((self.tab_scroll_x / (total_w - self.rect.width)) * (self.rect.width - bar_w))
+            bar_rect = Rect(bar_x, self.rect.y + self.top_bar_h - 4, bar_w, 3)
+            pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
+        screen.set_clip(clip)
+
+    def _scroll_tabs(self, delta: float):
+        if not self.tilesets:
+            return
+        tab_w = 100
+        total_w = tab_w * len(self.tilesets)
+        if total_w <= self.rect.width:
+            self.tab_scroll_x = 0
+            return
+        self.tab_scroll_x = max(0, min(self.tab_scroll_x - delta, total_w - self.rect.width))

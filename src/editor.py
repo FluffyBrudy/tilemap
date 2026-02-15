@@ -116,6 +116,7 @@ class Editor:
         mode: str = "open",
         on_save: Optional[Callable[[Path], None]] = None,
         default_name: str = "",
+        multi_select: bool = False,
     ):
         w, h = 600, 400
         rect = Rect((self.width - w) // 2, (self.height - h) // 2, w, h)
@@ -129,6 +130,7 @@ class Editor:
             mode=mode,
             default_name=default_name,
             on_cancel=self.close_file_manager,
+            multi_select=multi_select,
         )
 
     def _internal_file_select(self, path: Path, user_callback):
