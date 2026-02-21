@@ -1,6 +1,8 @@
 import pygame
 import threading
 import queue
+import logging
+import sys
 from typing import Optional, List, Callable, Tuple
 from pathlib import Path
 from pygame import Rect
@@ -22,6 +24,39 @@ from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.tooltip import TooltipManager
 from utils.log_capture import setup_console_log
+
+
+# Setup comprehensive error logging
+def setup_error_logging():
+    """Setup logging to capture all errors to log file."""
+    log_dir = BASE_PATH / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    log_file = log_dir / "errors.log"
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.ERROR,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    # Capture uncaught exceptions
+    def exception_handler(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    
+    sys.excepthook = exception_handler
+    
+    return logging.getLogger(__name__)
+
+
+logger = setup_error_logging()
 
 
 class Editor:

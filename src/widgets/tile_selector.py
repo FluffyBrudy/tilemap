@@ -51,6 +51,7 @@ class TileSelector:
 
         self.rule_hints: Set[int] = set()
         self._pending_tileset_queue: List[Tuple[Path, pygame.Surface]] = []
+        self._queue_timer_active = False
 
         btn_y = y + h - 35
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
@@ -78,6 +79,13 @@ class TileSelector:
         self.rule_hints = hints
 
     def handle_event(self, event: pygame.event.Event) -> bool:
+        # Handle timer for queue processing
+        if event.type == pygame.USEREVENT + 1 and self._queue_timer_active:
+            print("DEBUG: Timer triggered, continuing queue")
+            self._queue_timer_active = False
+            self._start_tileset_queue()
+            return True
+        
         mouse_pos = pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -234,6 +242,7 @@ class TileSelector:
         )
 
     def on_files_selected(self, paths):
+        print(f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)")
         if isinstance(paths, Path):
             self.on_file_selected(paths)
             return
@@ -243,6 +252,7 @@ class TileSelector:
                     self.on_file_selected(p, enqueue_only=True)
                 elif isinstance(p, str):
                     self.on_file_selected(Path(p), enqueue_only=True)
+            print(f"DEBUG: Queue size after adding: {len(self._pending_tileset_queue)}")
             if self._pending_tileset_queue:
                 self._start_tileset_queue()
         else:
@@ -256,12 +266,23 @@ class TileSelector:
                 if not enqueue_only:
                     self._start_tileset_queue()
             except Exception as e:
-                print(f"Error loading image: {e}")
+                error_msg = f"Error loading image {path}: {e}"
+                print(error_msg)
+                import logging
+                logging.error(error_msg, exc_info=True)
+        else:
+            error_msg = f"File does not exist: {path}"
+            print(error_msg)
+            import logging
+            logging.error(error_msg)
 
     def _start_tileset_queue(self):
         if not self._pending_tileset_queue:
+            print("DEBUG: Queue is empty, nothing to process")
             return
+        print(f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining")
         self._pending_tileset_path, self._pending_tileset_surf = self._pending_tileset_queue.pop(0)
+        print(f"DEBUG: Processing tileset: {self._pending_tileset_path}")
         self.editor.tileset_type_dialog.show(
             on_confirm=self._on_tileset_type_selected,
             on_cancel=self._on_tileset_type_cancel,
@@ -300,7 +321,9 @@ class TileSelector:
 
     def _on_tileset_type_selected(self, tileset_type: str):
         """Callback when user selects tileset type from dialog."""
+        print(f"DEBUG: Tileset type selected: {tileset_type}")
         if not hasattr(self, "_pending_tileset_path"):
+            print("DEBUG: No pending tileset path!")
             return
 
         path = self._pending_tileset_path
@@ -311,13 +334,17 @@ class TileSelector:
             delattr(self, "_pending_tileset_path")
             delattr(self, "_pending_tileset_surf")
             if self._pending_tileset_queue:
-                self._start_tileset_queue()
+                print(f"DEBUG: Continuing queue after error, {len(self._pending_tileset_queue)} items remaining")
+                # Delay slightly to allow dialog to fully close
+                pygame.time.set_timer(pygame.USEREVENT + 1, 100, 1)
+                self._queue_timer_active = True
             return
 
         tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
         self.tilesets.append(tileset_data)
         self.active_idx = len(self.tilesets) - 1
         self.tileset_map[self.active_idx] = tileset_data
+        print(f"DEBUG: Added tileset {path.name}, total tilesets: {len(self.tilesets)}")
         if tileset_type == "object":
             self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
         else:
@@ -326,7 +353,12 @@ class TileSelector:
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
         if self._pending_tileset_queue:
-            self._start_tileset_queue()
+            print(f"DEBUG: Continuing queue, {len(self._pending_tileset_queue)} items remaining")
+            # Delay slightly to allow dialog to fully close
+            pygame.time.set_timer(pygame.USEREVENT + 1, 100, 1)
+            self._queue_timer_active = True
+        else:
+            print("DEBUG: Queue processing complete")
 
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):

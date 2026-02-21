@@ -253,10 +253,17 @@ class Tilemap:
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
             for ts in self.editor.tileset_widget.tilesets:
                 try:
-                    rel = ts.path.relative_to(BASE_PATH)
+                    # Try to save path relative to map file directory first
+                    rel = ts.path.relative_to(target_path.parent)
                     path_str = str(rel)
                 except ValueError:
-                    path_str = str(ts.path)
+                    # If that fails, try relative to BASE_PATH
+                    try:
+                        rel = ts.path.relative_to(BASE_PATH)
+                        path_str = str(rel)
+                    except ValueError:
+                        # If both fail, use absolute path
+                        path_str = str(ts.path)
 
                 ts_data: Dict[str, Any] = {"path": path_str, "type": ts.tileset_type}
                 if ts.properties:
@@ -424,16 +431,37 @@ class Tilemap:
                     path_str = ts_entry.get("path", "")
                     tileset_type = ts_entry.get("type", "tile")
 
+                # Resolve tileset path relative to map file location
                 p = Path(path_str)
                 if not p.is_absolute():
-                    p = BASE_PATH / p
+                    # First try relative to map file directory
+                    map_dir = path.parent
+                    p = map_dir / p
+                    
+                    # If that doesn't exist, try relative to BASE_PATH (for backward compatibility)
+                    if not p.exists():
+                        p = BASE_PATH / path_str
+                
+                # Log error if tileset file not found
+                if not p.exists():
+                    error_msg = f"Tileset file not found: {path_str} (tried: {p})"
+                    print(error_msg)
+                    import logging
+                    logging.error(error_msg)
+                    continue
 
-                self.editor.tileset_widget.load_tileset_from_path(
-                    p, 
-                    tileset_type, 
-                    properties=ts_entry.get("properties", {}),
-                    tile_properties=ts_entry.get("tile_properties", {})
-                )
+                try:
+                    self.editor.tileset_widget.load_tileset_from_path(
+                        p, 
+                        tileset_type, 
+                        properties=ts_entry.get("properties", {}),
+                        tile_properties=ts_entry.get("tile_properties", {})
+                    )
+                except Exception as e:
+                    error_msg = f"Error loading tileset {path_str}: {e}"
+                    print(error_msg)
+                    import logging
+                    logging.error(error_msg)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             from widgets.autotiler import AutotileGroup, AutotileRule
@@ -508,7 +536,10 @@ class Tilemap:
             payload = self.read_map_payload(path)
             self.apply_map_payload(path, payload)
         except Exception as e:
-            print(f"Error loading map: {e}")
+            error_msg = f"Error loading map: {e}"
+            print(error_msg)
+            import logging
+            logging.error(error_msg, exc_info=True)
 
     def _load_layer_from_dict(self, layer_data: dict):
         """Load a layer from dictionary format."""

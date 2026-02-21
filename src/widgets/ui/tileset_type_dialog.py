@@ -48,12 +48,18 @@ class TilesetTypeDialog:
 
     def show(self, on_confirm: Callable[[str], None], on_cancel: Callable[[], None]):
         """Show the dialog."""
+        print(f"DEBUG: TilesetTypeDialog.show() called, active={self.active}")
+        # Force hide first to ensure clean state
+        if self.active:
+            print("DEBUG: Dialog was already active, hiding first")
+            self.hide()
         self.active = True
         self.selected_type = "tile"
         self.on_confirm = on_confirm
         self.on_cancel = on_cancel
         self.btn_ok_hover = False
         self.btn_cancel_hover = False
+        print(f"DEBUG: TilesetTypeDialog is now active")
 
     def hide(self):
         """Hide the dialog."""
@@ -76,11 +82,13 @@ class TilesetTypeDialog:
                 return True
 
             if self.btn_ok.collidepoint(mouse_pos):
+                print(f"DEBUG: OK button clicked, selected_type={self.selected_type}")
                 if self.on_confirm and self.selected_type:
                     self.on_confirm(self.selected_type)
                 self.hide()
                 return True
             if self.btn_cancel.collidepoint(mouse_pos):
+                print(f"DEBUG: Cancel button clicked")
                 if self.on_cancel:
                     self.on_cancel()
                 self.hide()
