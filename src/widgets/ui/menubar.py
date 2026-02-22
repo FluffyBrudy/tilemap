@@ -49,6 +49,7 @@ class MenuBar:
                 MenuAction("Flood Fill Tool", self.editor.flood_fill_active, "F"),
                 MenuAction("Toggle Auto-Autotile", self.editor.toggle_auto_autotile),
                 MenuAction("Launch External Viewer", self.editor.launch_external_automap),
+                MenuAction("Animation Editor", self.editor.launch_animation_editor),
             ]),
             Menu("View", [
                 MenuAction("Toggle Grid", self.editor.toggle_grid, "G"),

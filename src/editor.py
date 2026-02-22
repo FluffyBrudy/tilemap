@@ -342,6 +342,17 @@ class Editor:
     def launch_external_automap(self):
         if hasattr(self.autotiler, "_launch_external_viewer"):
             self.autotiler._launch_external_viewer()
+    def launch_animation_editor(self):
+        """Launch standalone animation editor as separate process."""
+        import subprocess
+        try:
+            subprocess.Popen([
+                sys.executable,
+                str(BASE_PATH / "src" / "standalone_animation_editor.py")
+            ])
+            self.notifications.notify("Animation Editor launched")
+        except Exception as e:
+            self.notifications.error(f"Failed to launch animation editor: {e}")
 
     def autotile_active(self):
         active_layer = self.tilemap.layer_manager.get_active_layer()
