@@ -10,6 +10,7 @@ from pygame import Rect
 from constants import BASE_PATH
 from tilemap import Tilemap
 from widgets.autotiler import AutotileRuleDesigner
+from widgets.regex_automap_designer import RegexAutomapDesigner
 from widgets.filemanager import FileManager
 from widgets.mapsetup import MapSetup
 from widgets.tile_selector import TileSelector
@@ -91,6 +92,7 @@ class Editor:
 
         self.file_manager: Optional[FileManager] = None
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
+        self.regex_automap_designer = RegexAutomapDesigner(self, 150, 100)
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
         self.property_editor: Optional[PropertyEditor] = None
@@ -329,6 +331,12 @@ class Editor:
         else:
             self.autotiler.show()
 
+    def toggle_regex_automap(self):
+        if self.regex_automap_designer.visible:
+            self.regex_automap_designer.hide()
+        else:
+            self.regex_automap_designer.show()
+
     def undo(self):
         self.tilemap.undo()
 
@@ -404,6 +412,9 @@ class Editor:
                 if event.key == pygame.K_r and (ctrl_held or meta_held):
                     self.toggle_autotiler()
                     continue
+                elif event.key == pygame.K_m and (ctrl_held or meta_held):
+                    self.toggle_regex_automap()
+                    continue
                 elif event.key == pygame.K_s and (ctrl_held or meta_held):
                     if shift_held:
                         self.open_save_as_dialog()
@@ -445,6 +456,10 @@ class Editor:
             if self.autotiler.visible:
                 if self.autotiler.handle_event(event):
                     continue
+            
+            if self.regex_automap_designer.visible:
+                if self.regex_automap_designer.handle_event(event):
+                    continue
 
             # 5. Handle Main Editor Widgets
             consumed = False
@@ -478,6 +493,8 @@ class Editor:
                 self.layer_widget.draw(self.screen)
             if self.autotiler:
                 self.autotiler.draw(self.screen)
+            if self.regex_automap_designer:
+                self.regex_automap_designer.draw(self.screen)
             
             self.notifications.draw(self.screen)
 

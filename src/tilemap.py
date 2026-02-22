@@ -285,6 +285,17 @@ class Tilemap:
             save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(rule.to_dict())
+        
+        # Save automap pattern rules
+        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
+            try:
+                automap_rules = self.editor.regex_automap_designer.serialize_rules()
+                save_data["project_state"]["automap_rules"] = automap_rules
+            except Exception as e:
+                import logging
+                logging.error(f"Error serializing automap rules: {e}", exc_info=True)
+                print(f"Warning: Failed to save automap rules: {e}")
+                # Continue saving other data
 
         for layer in self.layer_manager.layers:
             layer_data = {
@@ -496,6 +507,22 @@ class Tilemap:
             if not designer.groups:
                 designer.groups.append(AutotileGroup("Default"))
             designer.selected_group_idx = 0
+        
+        # Load automap pattern rules
+        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
+            if "project_state" in payload and "automap_rules" in payload["project_state"]:
+                try:
+                    automap_rules_data = payload["project_state"]["automap_rules"]
+                    if isinstance(automap_rules_data, list):
+                        self.editor.regex_automap_designer.deserialize_rules(automap_rules_data)
+                    else:
+                        import logging
+                        logging.warning("Invalid automap_rules format in project file, expected list")
+                except Exception as e:
+                    import logging
+                    logging.error(f"Error loading automap rules: {e}", exc_info=True)
+                    print(f"Warning: Failed to load automap rules: {e}")
+                    # Continue loading other data
 
         data_section = payload.get("data", {})
 

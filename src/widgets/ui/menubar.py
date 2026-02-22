@@ -45,6 +45,7 @@ class MenuBar:
             ]),
             Menu("Tools", [
                 MenuAction("Autotile Designer", self.editor.toggle_autotiler, "Ctrl+R"),
+                MenuAction("Regex Automap Designer", self.editor.toggle_regex_automap, "Ctrl+M"),
                 MenuAction("Autotile Active Layer", self.editor.autotile_active, "Ctrl+A"),
                 MenuAction("Flood Fill Tool", self.editor.flood_fill_active, "F"),
                 MenuAction("Toggle Auto-Autotile", self.editor.toggle_auto_autotile),

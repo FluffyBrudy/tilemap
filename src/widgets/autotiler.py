@@ -101,6 +101,12 @@ class AutotileRuleDesigner:
         self.renaming_group_idx: Optional[int] = None
         self.rename_text: str = ""
 
+        # Scroll state management
+        self.scroll_offset: int = 0
+        self.max_visible_rules: int = 10
+        self.scroll_bar_rect: Optional[Rect] = None
+        self.is_scrollbar_dragging: bool = False
+
         self.current_neighbors: Set[Tuple[int, int]] = set()
 
         self.current_variant_ids: List[int] = []
@@ -237,34 +243,19 @@ class AutotileRuleDesigner:
         if self.template_manager.handle_event(event):
             return True
 
+        # Handle scroll events
+        if self._handle_scroll_event(event):
+            return True
+        
+        # Handle group rename events
+        if self._handle_group_rename(event):
+            return True
+
         mouse_pos = pygame.mouse.get_pos()
         self._update_preview_from_selector()
 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_F2 and self.selected_group_idx != -1:
-                self.renaming_group_idx = self.selected_group_idx
-                self.rename_text = self.groups[self.selected_group_idx].name
-                return True
-            
-            if self.renaming_group_idx is not None:
-                if event.key == pygame.K_RETURN:
-                    group = self.groups[self.renaming_group_idx]
-                    group.name = self.rename_text
-                    # Sync rules in this group
-                    for r in group.rules:
-                        r.group_id = self.rename_text
-                    self.renaming_group_idx = None
-                    return True
-                elif event.key == pygame.K_ESCAPE:
-                    self.renaming_group_idx = None
-                    return True
-                elif event.key == pygame.K_BACKSPACE:
-                    self.rename_text = self.rename_text[:-1]
-                    return True
-                else:
-                    if event.unicode.isprintable():
-                        self.rename_text += event.unicode
-                    return True
+            pass  # Rename handling moved to _handle_group_rename
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -297,9 +288,7 @@ class AutotileRuleDesigner:
                     pass
                 
                 if self.new_group_btn_rect.collidepoint(mouse_pos):
-                    self.groups.append(AutotileGroup(f"Group {len(self.groups) + 1}"))
-                    self.selected_group_idx = len(self.groups) - 1
-                    self.selected_rule_index = -1
+                    self._create_new_group_with_focus()
                     return True
                     
                 if self.new_rule_btn_rect.collidepoint(mouse_pos):
@@ -578,12 +567,18 @@ class AutotileRuleDesigner:
         if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(self.groups[self.selected_group_idx].rules):
             self.groups[self.selected_group_idx].rules.pop(self.selected_rule_index)
             self._reset_selection()
+
+            # Clamp scroll offset after deletion
+            group = self.groups[self.selected_group_idx]
+            max_scroll = max(0, len(group.rules) - self.max_visible_rules)
+            self.scroll_offset = min(self.scroll_offset, max_scroll)
         elif self.selected_group_idx != -1 and self.selected_rule_index == -1:
             # Delete Group
             if len(self.groups) > 1:
                 self.groups.pop(self.selected_group_idx)
                 self.selected_group_idx = 0
                 self.selected_rule_index = -1
+                self.scroll_offset = 0  # Reset scroll when switching groups
 
     def _launch_external_viewer(self):
         import subprocess
@@ -664,8 +659,14 @@ class AutotileRuleDesigner:
         item_h = 25
         for i, group in enumerate(self.groups):
             r = Rect(self.group_list_area.x + 5, start_y + i * item_h, self.group_list_area.width - 10, item_h)
+            
+            # Highlight selected group
             if i == self.selected_group_idx:
                 pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
+            
+            # Show rename mode with different background
+            if i == self.renaming_group_idx:
+                pygame.draw.rect(screen, (100, 120, 140), r, border_radius=3)
             
             name = group.name
             if i == self.renaming_group_idx:
@@ -685,20 +686,198 @@ class AutotileRuleDesigner:
         lbl_rules = self.title_font.render("Rules", True, (150, 150, 255))
         screen.blit(lbl_rules, (self.rule_list_area.x + 5, self.rule_list_area.y + 5))
 
-        if self.selected_group_idx != -1:
-            group = self.groups[self.selected_group_idx]
-            start_y_r = self.rule_list_area.y + 25
-            for i, rule in enumerate(group.rules):
-                r = Rect(self.rule_list_area.x + 5, start_y_r + i * item_h, self.rule_list_area.width - 10, item_h)
-                if i == self.selected_rule_index:
-                    pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
-                
-                d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
-                screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
+        # Use scrollable rule list
+        self._draw_scrollable_rule_list(screen)
 
         pygame.draw.rect(screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4)
         rntxt = self.font.render("+ New Rule", True, TEXT_COLOR)
         screen.blit(rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5))
+    def _draw_scrollable_rule_list(self, screen: Surface) -> None:
+        """Draw rules with scroll indicators and scrollbar"""
+        if self.selected_group_idx == -1:
+            return
+
+        group = self.groups[self.selected_group_idx]
+        total_rules = len(group.rules)
+
+        # Calculate max scroll value
+        max_scroll = max(0, total_rules - self.max_visible_rules)
+
+        # Clamp scroll offset to valid range
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+        # Calculate visible range
+        visible_start = self.scroll_offset
+        visible_end = min(visible_start + self.max_visible_rules, total_rules)
+
+        # Draw visible rules
+        start_y_r = self.rule_list_area.y + 25
+        item_h = 25
+
+        for i in range(visible_start, visible_end):
+            rule = group.rules[i]
+            display_index = i - visible_start
+            y_pos = start_y_r + display_index * item_h
+
+            r = Rect(
+                self.rule_list_area.x + 5,
+                y_pos,
+                self.rule_list_area.width - 10,
+                item_h
+            )
+
+            if i == self.selected_rule_index:
+                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
+
+            d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
+            screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
+
+        # Draw scroll indicators and scrollbar if needed
+        if total_rules > self.max_visible_rules:
+            # Draw upward arrow when not at top
+            if self.scroll_offset > 0:
+                arrow_up = "▲"
+                arrow_surf = self.font.render(arrow_up, True, (150, 200, 255))
+                screen.blit(arrow_surf, (self.rule_list_area.right - 20, self.rule_list_area.y + 5))
+            
+            # Draw downward arrow when not at bottom
+            if self.scroll_offset < max_scroll:
+                arrow_down = "▼"
+                arrow_surf = self.font.render(arrow_down, True, (150, 200, 255))
+                screen.blit(arrow_surf, (self.rule_list_area.right - 20, self.rule_list_area.bottom - 35))
+            
+            # Draw scrollbar
+            scrollbar_height = 60
+            track_height = self.rule_list_area.height - 70  # Leave space for header and button
+            scroll_ratio = self.scroll_offset / max_scroll if max_scroll > 0 else 0
+
+            scrollbar_y = self.rule_list_area.y + 25 + int(scroll_ratio * (track_height - scrollbar_height))
+
+            self.scroll_bar_rect = Rect(
+                self.rule_list_area.right - 15,
+                scrollbar_y,
+                10,
+                scrollbar_height
+            )
+
+            pygame.draw.rect(screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5)
+        else:
+            # Hide scrollbar when all rules are visible
+            self.scroll_bar_rect = None
+    def _handle_scroll_event(self, event) -> bool:
+        """Handle mouse wheel and scrollbar dragging"""
+        if self.selected_group_idx == -1:
+            return False
+
+        group = self.groups[self.selected_group_idx]
+        total_rules = len(group.rules)
+        max_scroll = max(0, total_rules - self.max_visible_rules)
+
+        if event.type == pygame.MOUSEWHEEL:
+            # Handle mouse wheel scrolling
+            if self.rule_list_area.collidepoint(pygame.mouse.get_pos()):
+                scroll_delta = -event.y  # Negative for natural scrolling
+                old_offset = self.scroll_offset
+                self.scroll_offset = max(0, min(self.scroll_offset + scroll_delta, max_scroll))
+                return old_offset != self.scroll_offset
+
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(event.pos):
+                    self.is_scrollbar_dragging = True
+                    return True
+
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1 and self.is_scrollbar_dragging:
+                self.is_scrollbar_dragging = False
+                return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self.is_scrollbar_dragging:
+                # Calculate scroll position from mouse Y
+                relative_y = event.pos[1] - self.rule_list_area.y - 25
+                track_height = self.rule_list_area.height - 70
+
+                if track_height > 0:
+                    scroll_ratio = max(0, min(1, relative_y / track_height))
+                    self.scroll_offset = int(scroll_ratio * max_scroll)
+                    self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+                return True
+
+        return False
+    def _handle_group_rename(self, event) -> bool:
+        """Handle F2 key and inline text editing for group names"""
+        if event.type == pygame.KEYDOWN:
+            # F2 to start renaming selected group
+            if event.key == pygame.K_F2 and self.selected_group_idx >= 0:
+                self.renaming_group_idx = self.selected_group_idx
+                self.rename_text = self.groups[self.selected_group_idx].name
+                return True
+
+            # Handle text input during rename
+            if self.renaming_group_idx is not None:
+                if event.key == pygame.K_RETURN:
+                    # Confirm rename
+                    group = self.groups[self.renaming_group_idx]
+                    old_name = group.name
+                    new_name = self.rename_text.strip()
+
+                    # Handle duplicate names by appending numeric suffix
+                    if new_name and new_name != old_name:
+                        # Check if name already exists
+                        existing_names = {g.name for i, g in enumerate(self.groups) if i != self.renaming_group_idx}
+                        if new_name in existing_names:
+                            # Find a unique name by appending numbers
+                            counter = 2
+                            base_name = new_name
+                            while new_name in existing_names:
+                                new_name = f"{base_name} {counter}"
+                                counter += 1
+
+                        group.name = new_name
+
+                        # Update all rules in this group
+                        for rule in group.rules:
+                            rule.group_id = new_name
+
+                    self.renaming_group_idx = None
+                    return True
+
+                elif event.key == pygame.K_ESCAPE:
+                    # Cancel rename
+                    self.renaming_group_idx = None
+                    return True
+
+                elif event.key == pygame.K_BACKSPACE:
+                    # Delete character
+                    self.rename_text = self.rename_text[:-1]
+                    return True
+
+                else:
+                    # Add character
+                    if event.unicode.isprintable():
+                        self.rename_text += event.unicode
+                    return True
+
+        return False
+    def _create_new_group_with_focus(self) -> None:
+        """Create new group and immediately enter rename mode"""
+        # Generate default name
+        new_group_name = f"Group {len(self.groups) + 1}"
+
+        # Create new group
+        new_group = AutotileGroup(new_group_name)
+        self.groups.append(new_group)
+
+        # Select the new group
+        self.selected_group_idx = len(self.groups) - 1
+        self.selected_rule_index = -1
+
+        # Immediately enter rename mode
+        self.renaming_group_idx = self.selected_group_idx
+        self.rename_text = new_group_name
+
 
     def _draw_grid_editor(self, screen):
         center_x = self.edit_area.centerx
