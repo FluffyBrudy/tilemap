@@ -1,17 +1,22 @@
 """
 Frame Picker — click tiles on a spritesheet to add animation frames.
 
-Displays the spritesheet with a grid overlay. Left-click a tile to
-fire on_frame_clicked(variant_id). Frames used in the current
-animation are highlighted with a tinted overlay.
+Displays the spritesheet with a grid overlay. Left-click toggles a
+tile in/out of the current clip (add vs remove). Ctrl+click jumps the
+timeline to a keyframe that uses that cel. Used tiles are tinted green;
+the active keyframe also has a blue outline.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Callable, Optional, Set, Tuple
 
 import pygame
 from pygame import Rect
+
+TOP_TITLE_H = 22
+TOP_BAR_TOTAL = 42
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +32,10 @@ _COLORS = {
     "text_dim": (140, 140, 140),
     "header": (40, 42, 46),
     "index_bg": (0, 0, 0),
+    "input_bg": (30, 32, 38),
+    "btn_active": (50, 70, 110),
+    "filter_mask": (0, 0, 0),
+    "focus": (100, 170, 255),
 }
 
 
@@ -63,6 +72,13 @@ class FramePicker:
 
         # Highlighted frames (belonging to the active animation)
         self.highlighted: Set[int] = set()
+        self.focus_variant: int = -1
+
+        self.filter_text: str = ""
+        self.only_unused: bool = False
+        self.editing_filter: bool = False
+        self._filter_input_rect = Rect(0, 0, 0, 0)
+        self._btn_unused_rect = Rect(0, 0, 0, 0)
 
         # Callback fired when user clicks a tile
         self.on_frame_clicked: Optional[Callable[[int], None]] = None
@@ -87,6 +103,35 @@ class FramePicker:
     def set_highlighted(self, indices: Set[int]) -> None:
         self.highlighted = indices
 
+    def set_focus_variant(self, variant_id: int) -> None:
+        """Outline this tile to match the selected timeline frame (-1 clears)."""
+        self.focus_variant = int(variant_id) if variant_id >= 0 else -1
+
+    def scroll_variant_into_view(self, variant_id: int) -> None:
+        """Pan so the given variant lies inside the sheet viewport (below the top bar)."""
+        if variant_id < 0 or variant_id >= self.total_frames:
+            return
+        hr = self._tile_screen_rect(variant_id)
+        if hr is None:
+            return
+        margin = 28
+        inner = Rect(
+            self.rect.x,
+            self.rect.y + TOP_BAR_TOTAL,
+            self.rect.w,
+            self.rect.h - TOP_BAR_TOTAL,
+        )
+        if hr.width <= 0 or hr.height <= 0:
+            return
+        if hr.centerx < inner.left + margin:
+            self.offset_x += (inner.left + margin) - hr.centerx
+        elif hr.centerx > inner.right - margin:
+            self.offset_x -= hr.centerx - (inner.right - margin)
+        if hr.centery < inner.top + margin:
+            self.offset_y += (inner.top + margin) - hr.centery
+        elif hr.centery > inner.bottom - margin:
+            self.offset_y -= hr.centery - (inner.bottom - margin)
+
     def resize(self, rect: Rect) -> None:
         self.rect = rect
     
@@ -95,6 +140,23 @@ class FramePicker:
         self.grid_offset_x = offset_x
         self.grid_offset_y = offset_y
         self._recalc_grid()
+
+    def is_filter_input_active(self) -> bool:
+        return self.editing_filter
+
+    def handle_filter_keydown(self, event: pygame.event.Event) -> bool:
+        if not self.editing_filter or event.type != pygame.KEYDOWN:
+            return False
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE):
+            self.editing_filter = False
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            self.filter_text = self.filter_text[:-1]
+            return True
+        if event.unicode and len(self.filter_text) < 20:
+            self.filter_text += event.unicode
+            return True
+        return True
 
     # ------------------------------------------------------------------
     # Events
@@ -107,9 +169,22 @@ class FramePicker:
         ):
             return False
 
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(mouse) and mouse[1] < self.rect.y + TOP_BAR_TOTAL:
+                if self._filter_input_rect.collidepoint(mouse):
+                    self.editing_filter = True
+                    return True
+                if self._btn_unused_rect.collidepoint(mouse):
+                    self.only_unused = not self.only_unused
+                    return True
+                self.editing_filter = False
+                return True
+
         # Right-click drag to pan
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.rect.collidepoint(mouse):
+                if mouse[1] < self.rect.y + TOP_BAR_TOTAL:
+                    return True
                 self._panning = True
                 self._pan_start = mouse
                 self._pan_start_offset = (self.offset_x, self.offset_y)
@@ -129,14 +204,16 @@ class FramePicker:
 
         # Left-click to select a frame
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(mouse):
+            if self.rect.collidepoint(mouse) and mouse[1] >= self.rect.y + TOP_BAR_TOTAL:
                 idx = self._index_at(mouse)
-                if idx >= 0 and self.on_frame_clicked:
+                if idx >= 0 and self._tile_matches_filter(idx) and self.on_frame_clicked:
                     self.on_frame_clicked(idx)
                 return True
 
         # Scroll to pan / Ctrl+scroll to zoom
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
+            if mouse[1] < self.rect.y + TOP_BAR_TOTAL:
+                return True
             mods = pygame.key.get_mods()
             if mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL):
                 old = self.zoom
@@ -159,7 +236,11 @@ class FramePicker:
         # Track hover
         if event.type == pygame.MOUSEMOTION:
             if self.rect.collidepoint(mouse):
-                self.hover_index = self._index_at(mouse)
+                hi = self._index_at(mouse)
+                if hi >= 0 and self._tile_matches_filter(hi):
+                    self.hover_index = hi
+                else:
+                    self.hover_index = -1
             else:
                 self.hover_index = -1
 
@@ -251,6 +332,25 @@ class FramePicker:
             screen.blit(hl_surf, hr.topleft)
             pygame.draw.rect(screen, _COLORS["highlight"], hr, 1)
 
+        # Dim tiles that fail the active filter (still visible for context)
+        for idx in range(self.total_frames):
+            if self._tile_matches_filter(idx):
+                continue
+            hr = self._tile_screen_rect(idx)
+            if hr is None:
+                continue
+            if not self.rect.colliderect(hr):
+                continue
+            dim = pygame.Surface((hr.w, hr.h), pygame.SRCALPHA)
+            dim.fill((*_COLORS["filter_mask"], 140))
+            screen.blit(dim, hr.topleft)
+
+        # Timeline-linked selection (distinct from "used in clip" green wash)
+        if self.focus_variant >= 0 and self.focus_variant < self.total_frames:
+            fhr = self._tile_screen_rect(self.focus_variant)
+            if fhr is not None and self.rect.colliderect(fhr):
+                pygame.draw.rect(screen, _COLORS["focus"], fhr, 3)
+
         # Hover highlight
         if self.hover_index >= 0:
             col = self.hover_index % self.cols
@@ -272,16 +372,47 @@ class FramePicker:
             screen.blit(bg, bg_rect.topleft)
             screen.blit(label, (lx, ly))
 
-        # Header label
-        hdr = Rect(self.rect.x, self.rect.y, self.rect.w, 22)
+        # Top bar: title + filter row
+        hdr = Rect(self.rect.x, self.rect.y, self.rect.w, TOP_TITLE_H)
         hdr_bg = pygame.Surface((hdr.w, hdr.h), pygame.SRCALPHA)
         hdr_bg.fill((*_COLORS["header"], 200))
         screen.blit(hdr_bg, hdr.topleft)
         title = self._font.render(
-            f"Spritesheet  ({self.cols}×{self.rows} = {self.total_frames} tiles)  Zoom: {self.zoom:.1f}x",
-            True, _COLORS["text"],
+            f"Spritesheet  ({self.cols}×{self.rows})  Zoom: {self.zoom:.1f}x"
+            f"  ·  click: add/remove  ·  Ctrl+click: select in strip",
+            True,
+            _COLORS["text"],
         )
         screen.blit(title, (self.rect.x + 6, self.rect.y + 3))
+
+        row2 = Rect(self.rect.x, self.rect.y + TOP_TITLE_H, self.rect.w, TOP_BAR_TOTAL - TOP_TITLE_H)
+        row2_bg = pygame.Surface((row2.w, row2.h), pygame.SRCALPHA)
+        row2_bg.fill((*_COLORS["header"], 220))
+        screen.blit(row2_bg, row2.topleft)
+
+        self._filter_input_rect = Rect(row2.x + 6, row2.y + 4, min(140, row2.w - 100), 18)
+        fi_bg = _COLORS["btn_active"] if self.editing_filter else _COLORS["input_bg"]
+        pygame.draw.rect(screen, fi_bg, self._filter_input_rect, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._filter_input_rect, 1, border_radius=3)
+        ft = self.filter_text + (
+            "|" if self.editing_filter and (pygame.time.get_ticks() // 400) % 2 else ""
+        )
+        lab = "id…" if not self.filter_text and not self.editing_filter else ft
+        col = (255, 220, 100) if self.editing_filter else _COLORS["text"]
+        screen.blit(
+            self._font_sm.render(lab, True, col),
+            (self._filter_input_rect.x + 4, self._filter_input_rect.y + 3),
+        )
+
+        self._btn_unused_rect = Rect(self._filter_input_rect.right + 8, row2.y + 4, 86, 18)
+        ub = _COLORS["btn_active"] if self.only_unused else _COLORS["input_bg"]
+        pygame.draw.rect(screen, ub, self._btn_unused_rect, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._btn_unused_rect, 1, border_radius=3)
+        ut = "Unused only" if self.only_unused else "All tiles"
+        screen.blit(
+            self._font_sm.render(ut, True, _COLORS["text"]),
+            (self._btn_unused_rect.x + 4, self._btn_unused_rect.y + 3),
+        )
 
         screen.set_clip(clip)
 
@@ -299,34 +430,76 @@ class FramePicker:
         self.rows = max(1, available_h // th)
         self.total_frames = self.cols * self.rows
 
+    def _tile_matches_filter(self, idx: int) -> bool:
+        if self.only_unused and idx in self.highlighted:
+            return False
+        q = self.filter_text.strip().lower()
+        if not q:
+            return True
+        return q in str(idx).lower()
+
+    def _tile_screen_rect(self, idx: int) -> Optional[Rect]:
+        if idx < 0 or idx >= self.total_frames:
+            return None
+        tw, th = self.tile_size
+        z = self.zoom
+        col = idx % self.cols
+        row = idx // self.cols
+        img_x = self.rect.x + self.offset_x
+        img_y = self.rect.y + self.offset_y
+        cell_w = tw * z
+        cell_h = th * z
+        return Rect(
+            int(img_x + (self.grid_offset_x + col * tw) * z),
+            int(img_y + (self.grid_offset_y + row * th) * z),
+            int(cell_w),
+            int(cell_h),
+        )
+
     def _index_at(self, mouse: Tuple[int, int]) -> int:
         """Return tile index at the given screen position or -1."""
+        if mouse[1] < self.rect.y + TOP_BAR_TOTAL:
+            return -1
         z = self.zoom
         tw, th = self.tile_size
-        
-        # Convert mouse to spritesheet coordinates
+        W = float(self.surface.get_width())
+        H = float(self.surface.get_height())
+
+        # Convert mouse to spritesheet pixel coordinates
         rel_x = (mouse[0] - self.rect.x - self.offset_x) / z
         rel_y = (mouse[1] - self.rect.y - self.offset_y) / z
-        
-        # Check if within spritesheet bounds
+
+        # ~1 screen pixel in texture space — fixes float overshoot on right/bottom at zoom
+        eps_tex = max(0.25, 0.5 / max(z, 0.01))
+
         if rel_x < 0 or rel_y < 0:
             return -1
-        if rel_x >= self.surface.get_width() or rel_y >= self.surface.get_height():
+        if rel_x >= W and rel_x < W + eps_tex:
+            rel_x = max(0.0, W - 1e-6)
+        if rel_y >= H and rel_y < H + eps_tex:
+            rel_y = max(0.0, H - 1e-6)
+        if rel_x >= W or rel_y >= H:
             return -1
-        
-        # Apply grid offset to get position within the grid
+
         grid_rel_x = rel_x - self.grid_offset_x
         grid_rel_y = rel_y - self.grid_offset_y
-        
-        # Check if within grid area (after offset)
+
         if grid_rel_x < 0 or grid_rel_y < 0:
             return -1
-        
-        # Calculate grid position
-        col = int(grid_rel_x // tw)
-        row = int(grid_rel_y // th)
-        
-        # Verify within grid bounds
+
+        gw = float(self.cols * tw)
+        gh = float(self.rows * th)
+        # Nudge picks that land on the inner edge of the last cell (float / scale artifacts)
+        if grid_rel_x >= gw and grid_rel_x < gw + eps_tex:
+            grid_rel_x = max(0.0, gw - 1e-6)
+        if grid_rel_y >= gh and grid_rel_y < gh + eps_tex:
+            grid_rel_y = max(0.0, gh - 1e-6)
+        if grid_rel_x >= gw or grid_rel_y >= gh:
+            return -1
+
+        col = int(math.floor(grid_rel_x / tw))
+        row = int(math.floor(grid_rel_y / th))
+
         if 0 <= col < self.cols and 0 <= row < self.rows:
             return row * self.cols + col
         return -1

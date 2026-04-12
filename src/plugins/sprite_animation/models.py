@@ -10,7 +10,25 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+
+@dataclass
+class AnimationMarker:
+    """Named cue on a frame index (e.g. startup / active / recovery boundaries)."""
+
+    name: str
+    frame_index: int
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "frame_index": self.frame_index}
+
+    @staticmethod
+    def from_dict(data: dict) -> AnimationMarker:
+        return AnimationMarker(
+            name=str(data["name"]),
+            frame_index=int(data["frame_index"]),
+        )
 
 
 @dataclass
@@ -38,6 +56,11 @@ class Animation:
     name: str
     frames: List[AnimationFrame] = field(default_factory=list)
     loop: bool = True
+    # Playback rate hint for preview + runtime (wall-clock: durations are ms per cel).
+    fps: float = 60.0
+    # Optional JSON-serializable key/value data (combat phases, tags, exporter hints, …).
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    markers: List[AnimationMarker] = field(default_factory=list)
 
     def total_duration_ms(self) -> float:
         return sum(f.duration_ms for f in self.frames)
@@ -73,20 +96,66 @@ class Animation:
             return True
         return False
 
+    def clamp_markers(self) -> None:
+        """Keep marker indices valid after frame add/remove/reorder."""
+        n = len(self.frames)
+        if n == 0:
+            self.markers.clear()
+            return
+        for m in self.markers:
+            m.frame_index = max(0, min(m.frame_index, n - 1))
+
+    def copy_as_new_name(self, new_name: str) -> Animation:
+        """Deep copy of this clip under a new name (for duplicate / template)."""
+        return Animation(
+            name=new_name,
+            frames=[
+                AnimationFrame(f.variant_id, f.duration_ms) for f in self.frames
+            ],
+            loop=self.loop,
+            fps=self.fps,
+            metadata=dict(self.metadata),
+            markers=[AnimationMarker(m.name, m.frame_index) for m in self.markers],
+        )
+
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "name": self.name,
             "frames": [f.to_dict() for f in self.frames],
             "loop": self.loop,
+            "fps": self.fps,
         }
+        if self.metadata:
+            d["metadata"] = dict(self.metadata)
+        if self.markers:
+            d["markers"] = [m.to_dict() for m in self.markers]
+        return d
 
     @staticmethod
     def from_dict(data: dict) -> Animation:
-        return Animation(
+        raw_meta = data.get("metadata")
+        if raw_meta is None:
+            meta: Dict[str, Any] = {}
+        elif isinstance(raw_meta, dict):
+            meta = dict(raw_meta)
+        else:
+            meta = {}
+        raw_markers = data.get("markers")
+        markers: List[AnimationMarker] = []
+        if isinstance(raw_markers, list):
+            for item in raw_markers:
+                if isinstance(item, dict) and "name" in item and "frame_index" in item:
+                    markers.append(AnimationMarker.from_dict(item))
+        anim = Animation(
             name=data["name"],
             frames=[AnimationFrame.from_dict(f) for f in data.get("frames", [])],
             loop=data.get("loop", True),
+            fps=float(data.get("fps", 60.0)),
+            metadata=meta,
+            markers=markers,
         )
+        anim.clamp_markers()
+        return anim
 
 
 @dataclass

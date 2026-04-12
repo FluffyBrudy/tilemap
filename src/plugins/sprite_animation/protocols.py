@@ -48,7 +48,7 @@ class AnimationConsumer(Protocol):
 
         Args:
             name: Animation name (e.g. "idle", "walk_right")
-            data: Serialized animation dict (see Animation.to_dict())
+            data: Serialized animation dict (see Animation.to_dict(); includes ``fps`` and optional ``metadata``)
         """
         ...
 

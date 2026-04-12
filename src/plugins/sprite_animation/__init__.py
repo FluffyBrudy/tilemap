@@ -22,7 +22,7 @@ Protocol-based integration:
 """
 
 from .protocols import SpriteSheetProvider, AnimationConsumer
-from .models import AnimationFrame, Animation, AnimationLibrary
+from .models import AnimationFrame, Animation, AnimationLibrary, AnimationMarker
 from .editor import SpriteAnimationEditor
 
 __all__ = [
@@ -32,4 +32,5 @@ __all__ = [
     "AnimationFrame",
     "Animation",
     "AnimationLibrary",
+    "AnimationMarker",
 ]

@@ -2,12 +2,12 @@
 Animation Preview — real-time playback of the current animation.
 
 Shows a zoomed-up view of the animation playing with optional
-onion-skin ghosting. Provides Play / Pause / Stop / Speed / Loop controls.
+onion-skin ghosting. Provides Play / Pause / Stop / FPS field / Loop controls.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import pygame
 from pygame import Rect
@@ -31,11 +31,13 @@ _COLORS = {
     "btn_hover": (65, 70, 80),
     "btn_active": (50, 70, 110),
     "onion": (180, 120, 255),
+    "input_bg": (30, 32, 38),
+    "text_edit": (255, 220, 100),
 }
 
-HEADER_H = 22
+HEADER_H = 36
 CONTROLS_H = 32
-SPEED_PRESETS = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0]
+# Preview timing vs a 60 Hz editor tick: elapsed += dt_ms * (playback_fps / 60).
 
 
 class AnimationPreview:
@@ -54,19 +56,25 @@ class AnimationPreview:
         self.frames: List[AnimationFrame] = []
         self.playing = False
         self.loop = True
-        self.speed = 1.0
+        self.playback_fps: float = 60.0
         self.show_onion = False
+
+        self.on_playback_fps_changed: Optional[Callable[[float], None]] = None
+        self.authoring_fps: float = 60.0
 
         self.current_frame: int = 0
         self._elapsed: float = 0.0
 
         self._zoom = 3.0
 
+        self._fps_input_text = "60"
+        self._editing_fps = False
+        self._fps_input_rect = Rect(0, 0, 0, 0)
+
         # Buttons (recalculated in draw)
         self._btn_play = Rect(0, 0, 0, 0)
         self._btn_stop = Rect(0, 0, 0, 0)
         self._btn_loop = Rect(0, 0, 0, 0)
-        self._btn_speed = Rect(0, 0, 0, 0)
         self._btn_onion = Rect(0, 0, 0, 0)
         self._btn_prev = Rect(0, 0, 0, 0)
         self._btn_next = Rect(0, 0, 0, 0)
@@ -95,6 +103,38 @@ class AnimationPreview:
     def resize(self, rect: Rect) -> None:
         self.rect = rect
 
+    def is_fps_input_active(self) -> bool:
+        return self._editing_fps
+
+    def fps_input_contains(self, pos: Tuple[int, int]) -> bool:
+        return self._fps_input_rect.collidepoint(pos)
+
+    def sync_playback_fps_field(self) -> None:
+        """Reset the FPS text field from ``playback_fps`` (e.g. after switching clip)."""
+        self._editing_fps = False
+        self._fps_input_text = self._format_fps_display(self.playback_fps)
+
+    def commit_fps_input(self) -> None:
+        """Apply the FPS field to ``playback_fps`` and notify; no-op if not editing."""
+        if not self._editing_fps:
+            return
+        self._editing_fps = False
+        try:
+            v = float(self._fps_input_text.strip().replace(",", "."))
+            v = max(0.1, min(v, 1000.0))
+            self.playback_fps = v
+            self._fps_input_text = self._format_fps_display(v)
+            if self.on_playback_fps_changed:
+                self.on_playback_fps_changed(v)
+        except ValueError:
+            self._fps_input_text = self._format_fps_display(self.playback_fps)
+
+    @staticmethod
+    def _format_fps_display(fps: float) -> str:
+        if abs(fps - round(fps)) < 1e-4:
+            return str(int(round(fps)))
+        return f"{fps:.4g}"
+
     def play(self) -> None:
         self.playing = True
 
@@ -115,7 +155,8 @@ class AnimationPreview:
         if not self.playing or not self.frames:
             return
 
-        self._elapsed += dt_ms * self.speed
+        scale = self.playback_fps / 60.0
+        self._elapsed += dt_ms * scale
         cur = self.frames[self.current_frame]
 
         while self._elapsed >= cur.duration_ms:
@@ -143,11 +184,21 @@ class AnimationPreview:
     # ------------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.KEYDOWN and self._editing_fps:
+            return self._handle_fps_keydown(event)
+
         mouse = pygame.mouse.get_pos()
         if not self.rect.collidepoint(mouse):
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._editing_fps:
+                self.commit_fps_input()
             return False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._editing_fps and not self._fps_input_rect.collidepoint(mouse):
+                self.commit_fps_input()
+            if self._fps_input_rect.collidepoint(mouse):
+                self._editing_fps = True
+                return True
             if self._btn_play.collidepoint(mouse):
                 if self.playing:
                     self.pause()
@@ -159,9 +210,6 @@ class AnimationPreview:
                 return True
             if self._btn_loop.collidepoint(mouse):
                 self.loop = not self.loop
-                return True
-            if self._btn_speed.collidepoint(mouse):
-                self._cycle_speed()
                 return True
             if self._btn_onion.collidepoint(mouse):
                 self.show_onion = not self.show_onion
@@ -199,7 +247,18 @@ class AnimationPreview:
         title = "Preview"
         if self.frames:
             title += f"  {self.current_frame + 1}/{len(self.frames)}"
-        screen.blit(self._font.render(title, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 3))
+        screen.blit(self._font.render(title, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 2))
+        if self.frames and 0 <= self.current_frame < len(self.frames):
+            fr = self.frames[self.current_frame]
+            auth = max(0.001, float(self.authoring_fps))
+            equiv = fr.duration_ms * auth / 1000.0
+            sub = (
+                f"{fr.duration_ms:g} ms  ·  {equiv:.2f} frames @ {auth:g} FPS (clip rate)"
+            )
+            screen.blit(
+                self._font_sm.render(sub, True, _COLORS["text_dim"]),
+                (hdr.x + 6, hdr.y + 18),
+            )
 
         # Preview area
         preview_y = self.rect.y + HEADER_H
@@ -287,10 +346,21 @@ class AnimationPreview:
         self._draw_btn(screen, self._btn_loop, "🔁", mouse, active=self.loop)
         x += bw + pad + 8
 
-        # Speed
-        self._btn_speed = Rect(x, y, 44, bh)
-        self._draw_btn(screen, self._btn_speed, f"{self.speed:.1f}x", mouse)
-        x += 48 + pad
+        # Playback FPS (editable; timing vs 60 Hz tick — see update())
+        fps_tag = self._font_sm.render("FPS", True, _COLORS["text_dim"])
+        screen.blit(fps_tag, (x, y + (bh - fps_tag.get_height()) // 2))
+        x += fps_tag.get_width() + 3
+        self._fps_input_rect = Rect(x, y, 44, bh)
+        fps_bg = _COLORS["btn_active"] if self._editing_fps else _COLORS["input_bg"]
+        pygame.draw.rect(screen, fps_bg, self._fps_input_rect, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._fps_input_rect, 1, border_radius=3)
+        shown = self._fps_input_text
+        if self._editing_fps and (pygame.time.get_ticks() // 400) % 2:
+            shown += "|"
+        col = _COLORS["text_edit"] if self._editing_fps else _COLORS["text"]
+        fps_surf = self._font_sm.render(shown or " ", True, col)
+        screen.blit(fps_surf, (self._fps_input_rect.x + 4, self._fps_input_rect.y + 5))
+        x += 44 + pad
 
         # Onion skin
         if x + bw + 12 < ctrl_rect.right:
@@ -324,12 +394,26 @@ class AnimationPreview:
             return self.surface.subsurface(src).copy()
         return None
 
-    def _cycle_speed(self) -> None:
-        try:
-            idx = SPEED_PRESETS.index(self.speed)
-            self.speed = SPEED_PRESETS[(idx + 1) % len(SPEED_PRESETS)]
-        except ValueError:
-            self.speed = 1.0
+    def _handle_fps_keydown(self, event: pygame.event.Event) -> bool:
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self.commit_fps_input()
+            return True
+        if event.key == pygame.K_ESCAPE:
+            self._editing_fps = False
+            self._fps_input_text = self._format_fps_display(self.playback_fps)
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            self._fps_input_text = self._fps_input_text[:-1]
+            return True
+        if event.unicode and len(self._fps_input_text) < 8:
+            ch = event.unicode
+            if ch.isdigit():
+                self._fps_input_text += ch
+                return True
+            if ch in ".," and "." not in self._fps_input_text.replace(",", "."):
+                self._fps_input_text += "."
+                return True
+        return True
 
     def _step(self, direction: int) -> None:
         if not self.frames:

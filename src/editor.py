@@ -465,19 +465,48 @@ class Editor:
         if hasattr(self.autotiler, "_launch_external_viewer"):
             self.autotiler._launch_external_viewer()
     
+    def _active_tileset_image_path(self) -> Optional[Path]:
+        """Filesystem path of the tileset image to use for the animation editor."""
+        tw = self.tileset_widget
+        if not tw or not tw.tilesets:
+            return None
+
+        candidates: List[Path] = []
+        if 0 <= tw.active_idx < len(tw.tilesets):
+            candidates.append(tw.tilesets[tw.active_idx].path)
+        candidates.append(tw.tilesets[0].path)
+
+        seen: set = set()
+        for p in candidates:
+            if p is None or p in seen:
+                continue
+            seen.add(p)
+            try:
+                rp = Path(p).resolve()
+                if rp.exists():
+                    return rp
+            except (OSError, TypeError, ValueError):
+                continue
+        return None
+
     def launch_animation_editor(self):
-        """Launch the sprite animation editor in a new window."""
-        import subprocess
-        import sys
-        
-        # Open file manager to select a spritesheet
+        """Launch the sprite animation editor in a new window.
+
+        Uses the active tileset image when one is loaded so the editor opens
+        immediately. If no tileset is selected, a file picker asks for a sheet.
+        """
+        sheet = self._active_tileset_image_path()
+        if sheet is not None:
+            self._launch_animation_editor_with_image(sheet)
+            return
+
         self.open_file_manager(
             on_select=self._launch_animation_editor_with_image,
             initial_dir=BASE_PATH / "data",
             allowed_exts=[".png", ".jpg", ".jpeg"],
             mode="open",
         )
-    
+
     def _launch_animation_editor_with_image(self, path: Path):
         """Launch animation editor subprocess with selected image."""
         import subprocess
