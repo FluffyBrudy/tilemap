@@ -214,3 +214,8 @@ data/automap/
 
 # Icon cache
 .cache/
+
+
+# json
+recents.json
+*.prefs.json

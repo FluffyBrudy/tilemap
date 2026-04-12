@@ -465,6 +465,9 @@ class FileManager:
         default_name: str = "",
         on_cancel: Callable[[], None] = lambda: None,
         multi_select: bool = False,
+        draw_overlay: bool = True,
+        enable_window_drag: bool = True,
+        enable_resize_handles: bool = True,
     ):
         self.rect = rect
         self.allowed_exts = allowed_exts
@@ -473,6 +476,9 @@ class FileManager:
         self.mode = mode
         self.on_cancel_callback = on_cancel
         self.multi_select = multi_select
+        self.draw_overlay = draw_overlay
+        self.enable_window_drag = enable_window_drag
+        self.enable_resize_handles = enable_resize_handles
 
         self.current_path = initial_dir if initial_dir else Path.home()
         self.history: List[Path] = []
@@ -695,20 +701,20 @@ class FileManager:
                 return True
 
         if event.type == pygame.MOUSEMOTION:
-            if self.is_dragging_window:
+            if self.enable_window_drag and self.is_dragging_window:
                 self.rect.x = mouse_pos[0] - self.drag_offset_x
                 self.rect.y = mouse_pos[1] - self.drag_offset_y
                 return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self.is_dragging_window:
+            if self.enable_window_drag and self.is_dragging_window:
                 self.is_dragging_window = False
                 return True
 
         if event.type == pygame.MOUSEMOTION:
 
             handle = self.resize_handler.get_handle_at_pos(mouse_pos)
-            if handle:
+            if self.enable_resize_handles and handle:
                 if handle == "right":
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
                 elif handle == "bottom":
@@ -718,14 +724,14 @@ class FileManager:
             elif not self.resize_handler.is_dragging and not self.is_dragging_window:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
-            if self.resize_handler.is_dragging:
+            if self.enable_resize_handles and self.resize_handler.is_dragging:
                 self.resize_handler.update_drag(mouse_pos)
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
 
             handle = self.resize_handler.get_handle_at_pos(mouse_pos)
-            if handle:
+            if self.enable_resize_handles and handle:
                 self.resize_handler.start_drag(handle, mouse_pos)
                 return True
 
@@ -739,7 +745,7 @@ class FileManager:
             up_button_rect = pygame.Rect(
                 self.rect.x + self.sidebar_width, self.rect.y, 40, self.header_height
             )
-            if header_rect.collidepoint(mouse_pos) and not up_button_rect.collidepoint(
+            if self.enable_window_drag and header_rect.collidepoint(mouse_pos) and not up_button_rect.collidepoint(
                 mouse_pos
             ):
                 self.is_dragging_window = True
@@ -749,7 +755,7 @@ class FileManager:
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
 
-            if self.resize_handler.is_dragging:
+            if self.enable_resize_handles and self.resize_handler.is_dragging:
                 self.resize_handler.end_drag()
                 self.dimension_persistence.save_dimensions(
                     self.rect.width, self.rect.height
@@ -1140,9 +1146,11 @@ class FileManager:
             print(f"Error opening image viewer: {e}")
 
     def draw(self, screen: pygame.Surface):
-        overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-        overlay.fill(COLORS["overlay"])
-        screen.blit(overlay, (0, 0))
+        # Only draw overlay if requested (for modal dialog mode)
+        if self.draw_overlay:
+            overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            overlay.fill(COLORS["overlay"])
+            screen.blit(overlay, (0, 0))
 
         pygame.draw.rect(screen, COLORS["bg"], self.rect)
         pygame.draw.rect(screen, COLORS["border"], self.rect, 1)
@@ -1230,7 +1238,8 @@ class FileManager:
             preview_rect = self._get_preview_rect()
             self.image_preview.draw(screen, preview_rect)
 
-        self.resize_handler.draw_handles(screen)
+        if self.enable_resize_handles:
+            self.resize_handler.draw_handles(screen)
 
     def _draw_sidebar_items(self, screen, rect):
         shortcuts = ["Home", "Documents", "Desktop", "Downloads", "Recents", "Root"]
