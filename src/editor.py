@@ -4,7 +4,8 @@ import queue
 import logging
 import sys
 import subprocess
-from typing import Optional, List, Callable, Tuple
+import json
+from typing import Optional, List, Callable, Tuple, Dict, Any
 from pathlib import Path
 from pygame import Rect
 
@@ -12,7 +13,6 @@ from constants import BASE_PATH
 from tilemap import Tilemap
 from widgets.autotiler import AutotileRuleDesigner
 from widgets.regex_automap_designer import RegexAutomapDesigner
-from widgets.filemanager import FileManager
 from widgets.mapsetup import MapSetup
 from widgets.tile_selector import TileSelector
 from widgets.tile_grid import TileGrid
@@ -91,15 +91,16 @@ class Editor:
         self.layer_widget: Optional[LayerSelector] = None
         self.tile_grid_widget: Optional[TileGrid] = None
 
-        self.file_manager: Optional[FileManager] = None
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.regex_automap_designer = RegexAutomapDesigner(self, 150, 100)
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
         self.property_editor: Optional[PropertyEditor] = None
         
-        # Track child processes (like animation editor)
+        # Track child processes (like animation editor, file manager)
         self.child_processes: List[subprocess.Popen] = []
+        self.file_manager_process: Optional[subprocess.Popen] = None
+        self._file_manager_callbacks: Dict[str, Any] = {}
         
         self.loading_state = {
             "active": False,
@@ -160,32 +161,140 @@ class Editor:
         default_name: str = "",
         multi_select: bool = False,
     ):
-        w, h = 600, 400
-        rect = Rect((self.width - w) // 4, (self.height - h) // 4, w, h)
+        """Launch file manager as a subprocess."""
+        if self.file_manager_process and self.file_manager_process.poll() is None:
+            # File manager already running
+            return
+        
+        # Build command line arguments
+        cmd = [
+            sys.executable,
+            str(BASE_PATH / "src" / "standalone_filemanager.py"),
+            "--mode", mode,
+        ]
+        
+        # Add initial directory (make it relative to BASE_PATH for portability)
+        if initial_dir:
+            try:
+                rel_path = initial_dir.relative_to(BASE_PATH)
+                cmd.extend(["--initial-dir", str(rel_path)])
+            except ValueError:
+                # Not relative to BASE_PATH, use absolute
+                cmd.extend(["--initial-dir", str(initial_dir)])
+        else:
+            cmd.extend(["--initial-dir", "data"])
+        
+        # Add allowed extensions
+        if allowed_exts:
+            cmd.extend(["--allowed-exts", ",".join(allowed_exts)])
+        
+        # Add default name for save mode
+        if default_name:
+            cmd.extend(["--default-name", default_name])
+        
+        # Add multi-select flag
+        if multi_select:
+            cmd.append("--multi-select")
+        
+        try:
+            # Launch subprocess with stdout capture
+            # Redirect stderr to devnull to avoid pygame messages
+            self.file_manager_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # Suppress pygame messages
+                text=True,
+                cwd=str(BASE_PATH),
+            )
+            
+            # Store callbacks for later processing
+            self._file_manager_callbacks = {
+                "on_select": on_select,
+                "on_save": on_save,
+                "mode": mode,
+            }
+            
+            # Track the process
+            self.child_processes.append(self.file_manager_process)
+            
+            print(f"Launched file manager subprocess (PID: {self.file_manager_process.pid})")
+        except Exception as e:
+            print(f"Error launching file manager: {e}")
+            self.file_manager_process = None
 
-        self.file_manager = FileManager(
-            rect=rect,
-            initial_dir=initial_dir if initial_dir else Path.cwd(),
-            allowed_exts=allowed_exts,
-            on_select=lambda p: self._internal_file_select(p, on_select),
-            on_save=(lambda p: self._internal_file_save(p, on_save)) if on_save else None,
-            mode=mode,
-            default_name=default_name,
-            on_cancel=self.close_file_manager,
-            multi_select=multi_select,
-        )
-
-    def _internal_file_select(self, path: Path, user_callback):
-        self.close_file_manager()
-        user_callback(path)
-
-    def _internal_file_save(self, path: Path, user_callback):
-        self.close_file_manager()
-        if user_callback:
-            user_callback(path)
+    def _poll_file_manager_result(self):
+        """Check if file manager subprocess has completed and process result."""
+        if not self.file_manager_process:
+            return
+        
+        # Check if process has finished
+        if self.file_manager_process.poll() is not None:
+            # Process finished, read output
+            try:
+                stdout, stderr = self.file_manager_process.communicate(timeout=0.1)
+                
+                if stdout:
+                    # Parse JSON result - get the last non-empty line
+                    lines = [line.strip() for line in stdout.strip().split('\n') if line.strip()]
+                    if lines:
+                        result_line = lines[-1]  # Last line should be the JSON result
+                        try:
+                            result = json.loads(result_line)
+                            status = result.get("status")
+                            
+                            if status == "selected":
+                                # Handle file selection
+                                if "paths" in result:
+                                    # Multi-select
+                                    paths = [Path(p) for p in result["paths"]]
+                                    if self._file_manager_callbacks["on_select"]:
+                                        self._file_manager_callbacks["on_select"](paths)
+                                elif "path" in result:
+                                    # Single select
+                                    path = Path(result["path"])
+                                    if self._file_manager_callbacks["on_select"]:
+                                        self._file_manager_callbacks["on_select"](path)
+                            
+                            elif status == "saved":
+                                # Handle save operation
+                                path = Path(result["path"])
+                                if self._file_manager_callbacks["on_save"]:
+                                    self._file_manager_callbacks["on_save"](path)
+                                elif self._file_manager_callbacks["on_select"]:
+                                    self._file_manager_callbacks["on_select"](path)
+                            
+                            elif status == "cancelled":
+                                # User cancelled
+                                print("File manager cancelled")
+                        except json.JSONDecodeError as e:
+                            print(f"Error parsing file manager result: {e}")
+                            print(f"Output was: {result_line}")
+                
+                if stderr:
+                    print(f"File manager stderr: {stderr}")
+            
+            except subprocess.TimeoutExpired:
+                pass
+            except Exception as e:
+                print(f"Error processing file manager result: {e}")
+            finally:
+                # Clean up
+                self.file_manager_process = None
+                self._file_manager_callbacks = {}
 
     def close_file_manager(self):
-        self.file_manager = None
+        """Terminate file manager subprocess if running."""
+        if self.file_manager_process and self.file_manager_process.poll() is None:
+            try:
+                self.file_manager_process.terminate()
+                self.file_manager_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.file_manager_process.kill()
+            except Exception as e:
+                print(f"Error closing file manager: {e}")
+        
+        self.file_manager_process = None
+        self._file_manager_callbacks = {}
 
     def perform_quick_save(self):
         if not self.tile_grid_widget:
@@ -447,9 +556,7 @@ class Editor:
                 self.handle_resize(event.w, event.h)
 
             # 1. Handle Modal Dialogs first (they block everything else)
-            if self.file_manager:
-                self.file_manager.handle_event(event)
-                continue
+            # Note: file_manager is now a subprocess, no event handling needed here
 
             if self.save_input.active:
                 self.save_input.handle_event(event)
@@ -552,6 +659,7 @@ class Editor:
         frame_count = 0  # For periodic cleanup
         while self.running:
             self._poll_async_load()
+            self._poll_file_manager_result()
             
             # Periodically clean up finished child processes (every 60 frames)
             frame_count += 1
@@ -584,11 +692,7 @@ class Editor:
                 self.screen.blit(overlay, (0, 0))
                 self.map_setup_widget.draw(self.screen)
 
-            if self.file_manager:
-                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
-                self.screen.blit(overlay, (0, 0))
-                self.file_manager.draw(self.screen)
+            # Note: file_manager is now a subprocess, no drawing needed here
                 
             if self.save_input.active:
                 self.save_input.draw(self.screen)
