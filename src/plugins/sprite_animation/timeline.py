@@ -16,7 +16,7 @@ from typing import Callable, List, Optional, Tuple
 import pygame
 from pygame import Rect
 
-from .models import AnimationFrame
+from .models import AnimationFrame, AnimationMarker
 
 # ---------------------------------------------------------------------------
 _COLORS = {
@@ -37,9 +37,21 @@ _COLORS = {
 
 THUMB_SIZE = 48
 CELL_W = 64
-CELL_H_TOTAL = 90  # thumb + duration label + padding
+CELL_H_TOTAL = 90  # legacy layout reference
+CELL_BODY_H = 68  # thumbnail + duration row (fixed so marker band fits in timeline height)
 CELL_PAD = 6
 HEADER_H = 22
+MARKER_BAND_H = 16
+MARKER_HIT_PAD = 4
+
+_MARKER_COLORS = (
+    (255, 180, 80),
+    (90, 190, 255),
+    (190, 130, 255),
+    (110, 220, 140),
+    (255, 120, 160),
+    (240, 240, 120),
+)
 
 
 class Timeline:
@@ -77,9 +89,16 @@ class Timeline:
         # Playback scrubber position (0–1 fraction through the animation)
         self.scrubber_frac: float = 0.0
 
+        # Named markers (same list as Animation.markers when wired from editor)
+        self.markers: List[AnimationMarker] = []
+        self._marker_drag_i: int = -1
+        self._marker_drag_moved: bool = False
+        self._marker_hover_index: int = -1
+
         # Callbacks
         self.on_frame_selected: Optional[Callable[[int], None]] = None
         self.on_frames_changed: Optional[Callable[[], None]] = None
+        self.on_markers_changed: Optional[Callable[[], None]] = None
 
         # Fonts
         self._font: Optional[pygame.font.Font] = None
@@ -97,6 +116,19 @@ class Timeline:
         self.selected_index = min(self.selected_index, len(frames) - 1)
         self._thumb_cache.clear()
 
+    def set_markers(self, markers: List[AnimationMarker]) -> None:
+        self.markers = markers
+
+    def select_frame(self, index: int) -> None:
+        """Select a clip frame by index and notify ``on_frame_selected``."""
+        if not self.frames:
+            self.selected_index = -1
+            return
+        i = max(0, min(index, len(self.frames) - 1))
+        self.selected_index = i
+        if self.on_frame_selected:
+            self.on_frame_selected(i)
+
     def set_surface(self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None) -> None:
         self.surface = surface
         if tile_size:
@@ -112,6 +144,21 @@ class Timeline:
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
+
+        if self._marker_drag_i >= 0:
+            if event.type == pygame.MOUSEMOTION:
+                idx = self._frame_index_from_mouse_x(mouse)
+                if idx >= 0 and self.markers and self._marker_drag_i < len(self.markers):
+                    if self.markers[self._marker_drag_i].frame_index != idx:
+                        self.markers[self._marker_drag_i].frame_index = idx
+                        self._marker_drag_moved = True
+                return True
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self._marker_drag_moved and self.on_markers_changed:
+                    self.on_markers_changed()
+                self._marker_drag_i = -1
+                self._marker_drag_moved = False
+                return True
 
         # Duration editing keyboard
         if self._editing_dur:
@@ -141,15 +188,35 @@ class Timeline:
         # Keyboard shortcuts (when timeline has focus)
         if event.type == pygame.KEYDOWN and self.rect.collidepoint(mouse):
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                if self._marker_hover_index >= 0:
+                    del self.markers[self._marker_hover_index]
+                    if self.on_markers_changed:
+                        self.on_markers_changed()
+                    return True
                 self._delete_selected()
                 return True
             if event.key == pygame.K_d:
                 self._duplicate_selected()
                 return True
 
+        # Delete marker (right-click on marker diamond)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            if self.rect.collidepoint(mouse):
+                mi = self._marker_at(mouse)
+                if mi >= 0:
+                    del self.markers[mi]
+                    if self.on_markers_changed:
+                        self.on_markers_changed()
+                    return True
+
         # Left-click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse):
+                mi = self._marker_at(mouse)
+                if mi >= 0:
+                    self._marker_drag_i = mi
+                    self._marker_drag_moved = False
+                    return True
                 idx = self._cell_at(mouse)
                 # Check if clicking on duration label
                 if idx >= 0 and self._is_duration_click(mouse, idx):
@@ -205,8 +272,22 @@ class Timeline:
         label = f"Timeline  ({len(self.frames)} frames)"
         screen.blit(self._font.render(label, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 3))
 
-        content_y = self.rect.y + HEADER_H + 4
+        band_top = self.rect.y + HEADER_H
+        content_y = band_top + MARKER_BAND_H + 2
 
+        # Marker band background
+        band_rect = Rect(self.rect.x, band_top, self.rect.w, MARKER_BAND_H)
+        pygame.draw.rect(screen, (34, 36, 40), band_rect)
+        pygame.draw.line(
+            screen, _COLORS["border"],
+            (band_rect.x, band_rect.bottom - 1), (band_rect.right, band_rect.bottom - 1),
+        )
+        hint_m = self._font_sm.render(
+            "Markers · drag · Del / RMB on diamond removes", True, _COLORS["text_dim"]
+        )
+        screen.blit(hint_m, (band_rect.x + 6, band_rect.y + 2))
+
+        self._marker_hover_index = -1
         if not self.frames:
             hint = self._font.render(
                 "Click tiles in the spritesheet to add frames →", True, _COLORS["empty_hint"]
@@ -214,6 +295,28 @@ class Timeline:
             screen.blit(hint, (self.rect.x + 12, content_y + 20))
             screen.set_clip(clip)
             return
+
+        mx = pygame.mouse.get_pos()
+        hover_mi = self._marker_at(mx) if self.rect.collidepoint(mx) else -1
+        self._marker_hover_index = hover_mi
+
+        for mi, mk in enumerate(self.markers):
+            cx = self._cell_left_x(mk.frame_index)
+            if cx is None:
+                continue
+            if cx + CELL_W < self.rect.x or cx > self.rect.right:
+                continue
+            color = _MARKER_COLORS[mi % len(_MARKER_COLORS)]
+            tip_y = band_top + MARKER_BAND_H - 6
+            cx_c = cx + CELL_W // 2
+            pts = [(cx_c, tip_y - 8), (cx_c - 7, tip_y + 2), (cx_c + 7, tip_y + 2)]
+            pygame.draw.polygon(screen, color, pts)
+            pygame.draw.polygon(screen, _COLORS["border"], pts, 1)
+            if hover_mi == mi or self._marker_drag_i == mi:
+                nm = mk.name[:10] + ("…" if len(mk.name) > 10 else "")
+                tag = self._font_sm.render(nm, True, _COLORS["text"])
+                tx = max(self.rect.x + 4, min(cx_c - tag.get_width() // 2, self.rect.right - tag.get_width() - 4))
+                screen.blit(tag, (tx, band_top + 2))
 
         # Draw frame cells
         for i, frame in enumerate(self.frames):
@@ -233,7 +336,7 @@ class Timeline:
             else:
                 bg = _COLORS["cell"]
 
-            cell_rect = Rect(cx, cy, CELL_W, CELL_H_TOTAL - HEADER_H)
+            cell_rect = Rect(cx, cy, CELL_W, CELL_BODY_H)
             pygame.draw.rect(screen, bg, cell_rect, border_radius=4)
             if is_selected:
                 pygame.draw.rect(screen, _COLORS["border_accent"], cell_rect, 2, border_radius=4)
@@ -252,7 +355,7 @@ class Timeline:
             screen.blit(idx_label, (cx + 4, cy + 4))
 
             # Duration
-            dur_y = cy + THUMB_SIZE + 8
+            dur_y = cy + THUMB_SIZE + 4
             if self._editing_dur and self._editing_idx == i:
                 dur_str = self._dur_text + ("|" if (pygame.time.get_ticks() // 500) % 2 else "")
                 dur_surf = self._font_sm.render(f"{dur_str}ms", True, _COLORS["text_edit"])
@@ -266,7 +369,7 @@ class Timeline:
             insert_x = self.rect.x + CELL_PAD + self._drag_insert * (CELL_W + CELL_PAD) - int(self.scroll_x) - 2
             pygame.draw.line(
                 screen, _COLORS["drag_line"],
-                (insert_x, content_y), (insert_x, content_y + CELL_H_TOTAL - HEADER_H),
+                (insert_x, content_y), (insert_x, content_y + CELL_BODY_H),
                 3,
             )
 
@@ -277,7 +380,7 @@ class Timeline:
             if self.rect.x <= sx <= self.rect.right:
                 pygame.draw.line(
                     screen, _COLORS["scrubber"],
-                    (sx, content_y - 2), (sx, content_y + CELL_H_TOTAL - HEADER_H + 2),
+                    (sx, content_y - 2), (sx, content_y + CELL_BODY_H + 2),
                     2,
                 )
 
@@ -295,11 +398,48 @@ class Timeline:
     # Internals
     # ------------------------------------------------------------------
 
+    def _band_top(self) -> int:
+        return self.rect.y + HEADER_H
+
+    def _content_y(self) -> int:
+        return self._band_top() + MARKER_BAND_H + 2
+
+    def _cell_left_x(self, idx: int) -> Optional[int]:
+        if idx < 0 or idx >= len(self.frames):
+            return None
+        return self.rect.x + CELL_PAD + idx * (CELL_W + CELL_PAD) - int(self.scroll_x)
+
+    def _frame_index_from_mouse_x(self, mouse: Tuple[int, int]) -> int:
+        if not self.frames:
+            return -1
+        rx = mouse[0] - self.rect.x + self.scroll_x - CELL_PAD
+        idx = int(rx // (CELL_W + CELL_PAD))
+        return max(0, min(idx, len(self.frames) - 1))
+
+    def _marker_at(self, mouse: Tuple[int, int]) -> int:
+        if not self.markers or not self.frames:
+            return -1
+        band_top = self._band_top()
+        if mouse[1] < band_top - MARKER_HIT_PAD or mouse[1] > band_top + MARKER_BAND_H + 8:
+            return -1
+        for i, m in enumerate(self.markers):
+            cx = self._cell_left_x(m.frame_index)
+            if cx is None:
+                continue
+            if cx + CELL_W < self.rect.x or cx > self.rect.right:
+                continue
+            cx_c = cx + CELL_W // 2
+            tip_y = band_top + MARKER_BAND_H - 6
+            hit = Rect(cx_c - 16, tip_y - 14, 32, 26)
+            if hit.collidepoint(mouse):
+                return i
+        return -1
+
     def _cell_at(self, mouse: Tuple[int, int]) -> int:
         if not self.rect.collidepoint(mouse):
             return -1
-        content_y = self.rect.y + HEADER_H + 4
-        if mouse[1] < content_y or mouse[1] > content_y + CELL_H_TOTAL - HEADER_H:
+        content_y = self._content_y()
+        if mouse[1] < content_y or mouse[1] > content_y + CELL_BODY_H:
             return -1
         rx = mouse[0] - self.rect.x + self.scroll_x - CELL_PAD
         idx = int(rx // (CELL_W + CELL_PAD))
@@ -318,8 +458,8 @@ class Timeline:
         return max(0, min(idx, len(self.frames)))
 
     def _is_duration_click(self, mouse: Tuple[int, int], idx: int) -> bool:
-        content_y = self.rect.y + HEADER_H + 4
-        dur_y = content_y + THUMB_SIZE + 8
+        content_y = self._content_y()
+        dur_y = content_y + THUMB_SIZE + 4
         return mouse[1] >= dur_y
 
     def _start_dur_edit(self, idx: int) -> None:
@@ -332,7 +472,7 @@ class Timeline:
         if self._editing_dur and 0 <= self._editing_idx < len(self.frames):
             try:
                 val = float(self._dur_text) if self._dur_text else 100.0
-                self.frames[self._editing_idx].duration_ms = max(10.0, min(val, 10000.0))
+                self.frames[self._editing_idx].duration_ms = max(1.0, min(val, 10000.0))
             except ValueError:
                 pass
             if self.on_frames_changed:

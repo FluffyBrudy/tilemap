@@ -19,11 +19,13 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 import pygame
 from pygame import Rect
 
+from .clipboard_util import copy_plain_text
 from .frame_picker import FramePicker
-from .models import Animation, AnimationFrame, AnimationLibrary
+from .models import Animation, AnimationFrame, AnimationLibrary, AnimationMarker
 from .preview import AnimationPreview
 from .protocols import AnimationConsumer, SpriteSheetProvider
 from .timeline import Timeline
+from .validation import collect_clip_warnings
 
 if TYPE_CHECKING:
     pass
@@ -48,11 +50,46 @@ _COLORS = {
     "dropdown_hover": (55, 60, 72),
     "dropdown_border": (70, 74, 80),
     "input_bg": (30, 32, 38),
+    "text_edit": (255, 220, 100),
 }
 
-TOOLBAR_H = 36
+TOOLBAR_ROW1_H = 36
+TOOLBAR_ROW2_H = 26
+TOOLBAR_H = TOOLBAR_ROW1_H + TOOLBAR_ROW2_H
 PREVIEW_W = 220
-TIMELINE_H = 130
+TIMELINE_H = 132
+META_PANEL_W = 268
+META_PANEL_H = 212
+META_ROW_H = 22
+
+
+def _parse_metadata_value(text: str):
+    """Parse a metadata field string into a JSON-friendly Python value."""
+    s = text.strip()
+    low = s.lower()
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    if low == "null":
+        return None
+    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+        return s[1:-1]
+    try:
+        if "." in s or "e" in low:
+            return float(s)
+        return int(s)
+    except ValueError:
+        return s
+
+
+def _metadata_value_repr(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return str(value)
 
 
 class SpriteAnimationEditor:
@@ -111,6 +148,8 @@ class SpriteAnimationEditor:
         self.frame_picker.on_frame_clicked = self._on_tile_clicked
         self.timeline.on_frame_selected = self._on_timeline_frame_selected
         self.timeline.on_frames_changed = self._on_frames_changed
+        self.timeline.on_markers_changed = self._on_markers_changed
+        self.preview.on_playback_fps_changed = self._on_preview_fps_changed
 
         # Create a default animation (now safe — widgets exist)
         self._create_new_animation("idle")
@@ -129,11 +168,33 @@ class SpriteAnimationEditor:
         self._btn_del = Rect(0, 0, 0, 0)
         self._btn_save = Rect(0, 0, 0, 0)
         self._btn_load = Rect(0, 0, 0, 0)
+        self._btn_meta = Rect(0, 0, 0, 0)
         self._btn_anim_selector = Rect(0, 0, 0, 0)
         self._btn_info = Rect(0, 0, 0, 0)
+        self._btn_dup = Rect(0, 0, 0, 0)
+        self._btn_mk = Rect(0, 0, 0, 0)
+        self._btn_copyjson = Rect(0, 0, 0, 0)
+
+        self._clip_warnings: List[str] = []
+
+        # Metadata side panel (generic JSON-friendly key/value pairs on the active clip)
+        self._meta_panel_open = False
+        self._meta_panel_rect = Rect(0, 0, 0, 0)
+        self._meta_scroll = 0
+        self._meta_key_input = ""
+        self._meta_value_input = ""
+        self._editing_meta_key = False
+        self._editing_meta_value = False
+        self._btn_meta_add = Rect(0, 0, 0, 0)
+        self._btn_meta_key = Rect(0, 0, 0, 0)
+        self._btn_meta_value = Rect(0, 0, 0, 0)
+        self._meta_delete_btn_rects: List[Rect] = []
+        self._meta_row_pick_rects: List[Tuple[str, str, Rect]] = []
         
-        # Tooltip state
+        # Spritesheet / clip info card (hover or click-to-pin; drawn after widgets so it is visible)
         self._show_info_tooltip = False
+        self._info_tooltip_pinned = False
+        self._info_tooltip_screen_rect = Rect(0, 0, 0, 0)
         
         # Frame size controls
         self._frame_width_input = str(self._tile_size[0])
@@ -230,6 +291,9 @@ class SpriteAnimationEditor:
                     )
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        if self._info_tooltip_pinned:
+                            self._info_tooltip_pinned = False
+                            continue
                         running = False
                         continue
                 self.handle_event(event)
@@ -258,9 +322,44 @@ class SpriteAnimationEditor:
         # File manager takes priority
         if self._file_manager:
             return self._file_manager.handle_event(event)
+
+        if self.frame_picker.is_filter_input_active() and event.type == pygame.KEYDOWN:
+            if self.frame_picker.handle_filter_keydown(event):
+                return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mouse = pygame.mouse.get_pos()
+            if self.preview.is_fps_input_active() and not self.preview.fps_input_contains(mouse):
+                self.preview.commit_fps_input()
+            if self._info_tooltip_pinned:
+                if not self._btn_info.collidepoint(mouse) and not self._info_tooltip_screen_rect.collidepoint(
+                    mouse
+                ):
+                    self._info_tooltip_pinned = False
+
+        # Metadata panel: Esc closes or unfocuses fields
+        if self._meta_panel_open and event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if self._editing_meta_key or self._editing_meta_value:
+                self._editing_meta_key = False
+                self._editing_meta_value = False
+                return True
+            self._meta_panel_open = False
+            return True
+
+        if (
+            not self._meta_panel_open
+            and event.type == pygame.KEYDOWN
+            and event.key == pygame.K_ESCAPE
+            and self._info_tooltip_pinned
+        ):
+            self._info_tooltip_pinned = False
+            return True
+
+        if self._meta_panel_open and self._route_meta_panel_event(event):
+            return True
         
         # Global keyboard shortcuts (when not editing text)
-        if event.type == pygame.KEYDOWN and not self._renaming and not self._editing_frame_width and not self._editing_frame_height and not self._editing_offset_x and not self._editing_offset_y:
+        if event.type == pygame.KEYDOWN and not self._renaming and not self._editing_frame_width and not self._editing_frame_height and not self._editing_offset_x and not self._editing_offset_y and not self._editing_meta_key and not self._editing_meta_value and not self.preview.is_fps_input_active() and not self.frame_picker.is_filter_input_active():
             mods = pygame.key.get_mods()
             ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
             shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
@@ -278,6 +377,10 @@ class SpriteAnimationEditor:
             # Ctrl+O: Open/Load
             elif ctrl_held and event.key == pygame.K_o:
                 self._load_dialog()
+                return True
+
+            elif ctrl_held and shift_held and event.key == pygame.K_c:
+                self._copy_active_clip_json()
                 return True
 
         # Close dropdown on outside click
@@ -481,6 +584,28 @@ class SpriteAnimationEditor:
             if self._btn_load.collidepoint(mouse):
                 self._load_dialog()
                 return True
+
+            if self._btn_dup.collidepoint(mouse):
+                self._duplicate_active_animation()
+                return True
+            if self._btn_mk.collidepoint(mouse):
+                self._add_marker_at_selection()
+                return True
+            if self._btn_copyjson.collidepoint(mouse):
+                self._copy_active_clip_json()
+                return True
+
+            # Metadata panel toggle
+            if self._btn_meta.collidepoint(mouse):
+                self._meta_panel_open = not self._meta_panel_open
+                self._editing_meta_key = False
+                self._editing_meta_value = False
+                return True
+
+            # Spritesheet / clip info (toggle pinned card; hover still works)
+            if self._btn_info.collidepoint(mouse):
+                self._info_tooltip_pinned = not self._info_tooltip_pinned
+                return True
             
             # Frame width input
             if self._btn_frame_width.collidepoint(mouse):
@@ -547,6 +672,7 @@ class SpriteAnimationEditor:
             return
 
         self._ensure_fonts()
+        self._refresh_clip_warnings()
 
         # Toolbar
         self._draw_toolbar(screen)
@@ -555,6 +681,12 @@ class SpriteAnimationEditor:
         self.preview.draw(screen)
         self.frame_picker.draw(screen)
         self.timeline.draw(screen)
+
+        if self._meta_panel_open:
+            self._draw_meta_panel(screen)
+
+        if self._show_info_tooltip:
+            self._draw_info_tooltip(screen)
 
         # Dropdown overlay (drawn last, on top)
         if self._dropdown_open:
@@ -595,7 +727,7 @@ class SpriteAnimationEditor:
 
     def _draw_toolbar(self, screen: pygame.Surface) -> None:
         mouse = pygame.mouse.get_pos()
-        tb = Rect(self.rect.x, self.rect.y, self.rect.w, TOOLBAR_H)
+        tb = Rect(self.rect.x, self.rect.y, self.rect.w, TOOLBAR_ROW1_H)
         pygame.draw.rect(screen, _COLORS["toolbar"], tb)
         pygame.draw.line(
             screen, _COLORS["toolbar_border"],
@@ -605,7 +737,7 @@ class SpriteAnimationEditor:
         bh = 26
         pad = 6
         x = tb.x + pad
-        cy = tb.y + (TOOLBAR_H - bh) // 2
+        cy = tb.y + (TOOLBAR_ROW1_H - bh) // 2
 
         # Animation selector
         sel_w = 140
@@ -649,6 +781,19 @@ class SpriteAnimationEditor:
         self._btn_load = Rect(x, cy, 48, bh)
         self._draw_toolbar_btn(screen, self._btn_load, "Load", mouse)
         x += 56
+
+        # Separator
+        pygame.draw.line(screen, _COLORS["toolbar_border"], (x, cy + 2), (x, cy + bh - 2))
+        x += pad + 4
+
+        # Metadata
+        self._btn_meta = Rect(x, cy, 36, bh)
+        self._draw_toolbar_btn(
+            screen, self._btn_meta, "{ }",
+            mouse,
+            active=self._meta_panel_open,
+        )
+        x += 40
 
         # Separator
         pygame.draw.line(screen, _COLORS["toolbar_border"], (x, cy + 2), (x, cy + bh - 2))
@@ -701,19 +846,16 @@ class SpriteAnimationEditor:
         info_hover = self._btn_info.collidepoint(mouse)
         info_bg = _COLORS["btn_hover"] if info_hover else _COLORS["toolbar"]
         pygame.draw.circle(screen, info_bg, self._btn_info.center, 10)
-        pygame.draw.circle(screen, _COLORS["border"], self._btn_info.center, 10, 1)
+        ring = _COLORS["accent"] if self._info_tooltip_pinned else _COLORS["border"]
+        pygame.draw.circle(screen, ring, self._btn_info.center, 10, 1)
         
         # Draw "i" icon
         info_text = self._font_bold.render("i", True, _COLORS["text"])
         info_text_rect = info_text.get_rect(center=self._btn_info.center)
         screen.blit(info_text, info_text_rect)
         
-        # Show tooltip on hover
-        if info_hover:
-            self._show_info_tooltip = True
-        else:
-            self._show_info_tooltip = False
-        
+        self._show_info_tooltip = info_hover or self._info_tooltip_pinned
+
         x += 28
 
         # Separator
@@ -761,10 +903,35 @@ class SpriteAnimationEditor:
         info = f"{self._sheet_name}"
         info_surf = self._font_sm.render(info, True, _COLORS["text_dim"])
         screen.blit(info_surf, (tb.right - info_surf.get_width() - 8, cy + 6))
-        
-        # Draw info tooltip if hovering
-        if self._show_info_tooltip:
-            self._draw_info_tooltip(screen)
+
+        tb2 = Rect(self.rect.x, self.rect.y + TOOLBAR_ROW1_H, self.rect.w, TOOLBAR_ROW2_H)
+        pygame.draw.rect(screen, _COLORS["toolbar"], tb2)
+        pygame.draw.line(
+            screen, _COLORS["toolbar_border"],
+            (tb2.x, tb2.bottom - 1), (tb2.right, tb2.bottom - 1),
+        )
+        bh2 = 22
+        cy2 = tb2.y + (TOOLBAR_ROW2_H - bh2) // 2
+        x2 = tb2.x + 6
+        self._btn_dup = Rect(x2, cy2, 40, bh2)
+        self._draw_toolbar_btn(screen, self._btn_dup, "Dup", mouse)
+        x2 += 44
+        self._btn_mk = Rect(x2, cy2, 32, bh2)
+        self._draw_toolbar_btn(screen, self._btn_mk, "Marker", mouse)
+        x2 += 36
+        self._btn_copyjson = Rect(x2, cy2, 44, bh2)
+        self._draw_toolbar_btn(screen, self._btn_copyjson, "JSON", mouse)
+        x2 += 48
+        if self._clip_warnings:
+            wtxt = f"⚠ {len(self._clip_warnings)} clip issue(s)"
+            screen.blit(self._font_sm.render(wtxt, True, _COLORS["btn_danger_hover"]), (x2, cy2 + 4))
+        else:
+            screen.blit(
+                self._font_sm.render("Clip checks OK", True, _COLORS["text_dim"]),
+                (x2, cy2 + 4),
+            )
+        hint = self._font_sm.render("Ctrl+Shift+C copy JSON", True, _COLORS["text_dim"])
+        screen.blit(hint, (tb2.right - hint.get_width() - 8, cy2 + 4))
 
     def _draw_toolbar_btn(self, screen, rect, label, mouse, danger=False, active=False):
         hover = rect.collidepoint(mouse)
@@ -782,39 +949,74 @@ class SpriteAnimationEditor:
         screen.blit(lbl, lbl.get_rect(center=rect.center))
     
     def _draw_info_tooltip(self, screen: pygame.Surface) -> None:
-        """Draw tooltip showing spritesheet information."""
-        # Gather info
+        """Draw card with spritesheet grid info and current clip summary."""
         sheet_w, sheet_h = self._surface.get_size()
         frame_w, frame_h = self._tile_size
         cols = self.frame_picker.cols
         rows = self.frame_picker.rows
         total_frames = self.frame_picker.total_frames
         offset_x, offset_y = self._grid_offset_x, self._grid_offset_y
-        
-        # Build tooltip lines
-        lines = [
-            f"Spritesheet: {sheet_w} × {sheet_h} px",
-            f"Frame Size: {frame_w} × {frame_h} px",
-            f"Grid: {cols} cols × {rows} rows",
-            f"Total Frames: {total_frames}",
-            f"Offset: {offset_x}, {offset_y}",
+
+        lines: List[str] = [
+            "Spritesheet",
+            f"  Size: {sheet_w} × {sheet_h} px",
+            f"  File: {self._sheet_name}",
         ]
-        
-        # Calculate tooltip size
+        if self.library.spritesheet_path:
+            sp = self.library.spritesheet_path
+            if len(sp) > 46:
+                sp = sp[:44] + "…"
+            lines.append(f"  Path: {sp}")
+        lines.extend(
+            [
+                f"  Cell: {frame_w} × {frame_h} px",
+                f"  Grid: {cols}×{rows} ({total_frames} tiles)",
+                f"  Origin offset: {offset_x}, {offset_y}",
+            ]
+        )
+
+        anim = self._get_active()
+        if anim:
+            lines.append("Current animation")
+            lines.append(f"  Name: {anim.name}")
+            lines.append(f"  Clip frames: {anim.frame_count()}  ·  loop: {anim.loop}")
+            lines.append(f"  FPS: {anim.fps:g}")
+            n_meta = len(anim.metadata)
+            lines.append(f"  Metadata keys: {n_meta}")
+            if n_meta:
+                keys = sorted(anim.metadata.keys(), key=str.lower)[:5]
+                lines.append(f"  Keys: {', '.join(keys)}{'…' if n_meta > 5 else ''}")
+            if anim.markers:
+                lines.append(f"  Markers ({len(anim.markers)}):")
+                for m in sorted(anim.markers, key=lambda x: (x.frame_index, x.name))[:10]:
+                    lines.append(f"    · {m.name} → cel {m.frame_index + 1}")
+                if len(anim.markers) > 10:
+                    lines.append("    …")
+        if self._clip_warnings:
+            lines.append("Clip checks")
+            for w in self._clip_warnings[:14]:
+                lines.append(f"  • {w}")
+            if len(self._clip_warnings) > 14:
+                lines.append(f"  … +{len(self._clip_warnings) - 14} more")
+        if self._info_tooltip_pinned:
+            lines.append("Esc or click outside card to close")
+        else:
+            lines.append("Click ⓘ to pin this panel")
+
         padding = 8
         line_height = 16
         max_width = max(self._font_sm.render(line, True, _COLORS["text"]).get_width() for line in lines)
-        tooltip_w = max_width + padding * 2
+        tooltip_w = max(220, max_width + padding * 2)
         tooltip_h = len(lines) * line_height + padding * 2
-        
-        # Position tooltip below info button
+
         tooltip_x = self._btn_info.centerx - tooltip_w // 2
         tooltip_y = self._btn_info.bottom + 4
-        
-        # Clamp to screen bounds
-        tooltip_x = max(10, min(tooltip_x, self.rect.right - tooltip_w - 10))
-        
+        tooltip_x = max(self.rect.x + 6, min(tooltip_x, self.rect.right - tooltip_w - 6))
+        if tooltip_y + tooltip_h > self.rect.bottom - 6:
+            tooltip_y = max(self.rect.y + 6, self._btn_info.top - tooltip_h - 4)
+
         tooltip_rect = Rect(tooltip_x, tooltip_y, tooltip_w, tooltip_h)
+        self._info_tooltip_screen_rect = tooltip_rect
         
         # Draw tooltip background with shadow
         shadow_rect = tooltip_rect.copy()
@@ -989,15 +1191,324 @@ class SpriteAnimationEditor:
         anim = self._get_active()
         if anim:
             self.timeline.set_frames(anim.frames)
+            self.timeline.set_markers(anim.markers)
             self.preview.set_frames(anim.frames)
             self.preview.loop = anim.loop
+            self.preview.playback_fps = float(anim.fps)
+            self.preview.authoring_fps = float(anim.fps)
+            self.preview.sync_playback_fps_field()
             # Highlight used frames in frame picker
             used = {f.variant_id for f in anim.frames}
             self.frame_picker.set_highlighted(used)
         else:
             self.timeline.set_frames([])
+            self.timeline.set_markers([])
             self.preview.set_frames([])
             self.frame_picker.set_highlighted(set())
+        self._meta_key_input = ""
+        self._meta_value_input = ""
+        self._editing_meta_key = False
+        self._editing_meta_value = False
+        self._meta_scroll = 0
+        self._apply_timeline_focus_to_sheet(scroll=False)
+
+    def _apply_timeline_focus_to_sheet(self, scroll: bool) -> None:
+        """Show which spritesheet cel matches the selected timeline frame."""
+        anim = self._get_active()
+        si = self.timeline.selected_index
+        if anim is None or si < 0 or si >= len(anim.frames):
+            self.frame_picker.set_focus_variant(-1)
+            return
+        vid = anim.frames[si].variant_id
+        self.frame_picker.set_focus_variant(vid)
+        if scroll:
+            self.frame_picker.scroll_variant_into_view(vid)
+
+    def _notify_animation_modified(self) -> None:
+        if self.consumer:
+            anim = self._get_active()
+            if anim:
+                self.consumer.on_animation_saved(anim.name, anim.to_dict())
+
+    def _refresh_clip_warnings(self) -> None:
+        anim = self._get_active()
+        if not anim:
+            self._clip_warnings = []
+            return
+        max_v = max(0, self.frame_picker.total_frames - 1)
+        self._clip_warnings = collect_clip_warnings(anim, max_v)
+
+    def _duplicate_active_animation(self) -> None:
+        anim = self._get_active()
+        if anim is None:
+            return
+        base = anim.name + "_copy"
+        name = base
+        n = 0
+        while name in self.library.animations:
+            n += 1
+            name = f"{base}_{n}"
+        self.library.add_animation(anim.copy_as_new_name(name))
+        self._active_anim_name = name
+        self._sync_active_animation()
+        self._notify_animation_modified()
+
+    def _add_marker_at_selection(self) -> None:
+        anim = self._get_active()
+        if anim is None or not anim.frames:
+            return
+        si = self.timeline.selected_index
+        if si < 0:
+            si = 0
+        si = min(si, len(anim.frames) - 1)
+        prefix = "marker"
+        k = len(anim.markers)
+        name = f"{prefix}_{k}"
+        existing = {m.name for m in anim.markers}
+        while name in existing:
+            k += 1
+            name = f"{prefix}_{k}"
+        anim.markers.append(AnimationMarker(name, si))
+        anim.clamp_markers()
+        self._notify_animation_modified()
+
+    def _copy_active_clip_json(self) -> None:
+        anim = self._get_active()
+        if anim is None:
+            return
+        payload = json.dumps(anim.to_dict(), indent=2)
+        if copy_plain_text(payload):
+            print("Copied current animation JSON to clipboard.")
+        else:
+            print("Clipboard unavailable; JSON printed below:\n", payload[:2000])
+
+    def _on_markers_changed(self) -> None:
+        anim = self._get_active()
+        if anim:
+            anim.clamp_markers()
+            self._notify_animation_modified()
+
+    def _on_preview_fps_changed(self, fps: float) -> None:
+        anim = self._get_active()
+        if anim:
+            anim.fps = float(fps)
+            self.preview.authoring_fps = float(fps)
+            self._notify_animation_modified()
+
+    def _metadata_apply_add(self, anim: Animation) -> None:
+        key = self._meta_key_input.strip()
+        if not key:
+            return
+        anim.metadata[key] = _parse_metadata_value(self._meta_value_input)
+        self._notify_animation_modified()
+
+    def _route_meta_panel_event(self, event: pygame.event.Event) -> bool:
+        """True if the metadata panel consumed the event (it overlays the sheet view)."""
+        anim = self._get_active()
+        if anim is None:
+            return False
+
+        if event.type == pygame.KEYDOWN:
+            if self._editing_meta_key:
+                return self._handle_meta_key_keydown(event)
+            if self._editing_meta_value:
+                return self._handle_meta_value_keydown(event)
+            return False
+
+        mouse = pygame.mouse.get_pos()
+        if not self._meta_panel_rect.collidepoint(mouse):
+            return False
+
+        if event.type == pygame.MOUSEWHEEL:
+            self._meta_scroll = max(0, self._meta_scroll - event.y)
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            return self._handle_meta_panel_mouse_down(anim, mouse)
+
+        return False
+
+    def _handle_meta_panel_mouse_down(self, anim: Animation, mouse: Tuple[int, int]) -> bool:
+        for i, del_rect in enumerate(self._meta_delete_btn_rects):
+            if del_rect.collidepoint(mouse):
+                keys = sorted(anim.metadata.keys())
+                idx = self._meta_scroll + i
+                if 0 <= idx < len(keys):
+                    del anim.metadata[keys[idx]]
+                    self._notify_animation_modified()
+                return True
+
+        for key, _val, pick_rect in self._meta_row_pick_rects:
+            if pick_rect.collidepoint(mouse):
+                self._meta_key_input = key
+                self._meta_value_input = _metadata_value_repr(anim.metadata[key])
+                self._editing_meta_value = True
+                self._editing_meta_key = False
+                return True
+
+        if self._btn_meta_add.collidepoint(mouse):
+            self._metadata_apply_add(anim)
+            return True
+        if self._btn_meta_key.collidepoint(mouse):
+            self._clear_text_editing_focus()
+            self._editing_meta_key = True
+            return True
+        if self._btn_meta_value.collidepoint(mouse):
+            self._clear_text_editing_focus()
+            self._editing_meta_value = True
+            return True
+
+        return True
+
+    def _clear_text_editing_focus(self) -> None:
+        self._renaming = False
+        self._editing_frame_width = False
+        self._editing_frame_height = False
+        self._editing_offset_x = False
+        self._editing_offset_y = False
+
+    def _handle_meta_key_keydown(self, event: pygame.event.Event) -> bool:
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
+            self._editing_meta_key = False
+            self._editing_meta_value = True
+            return True
+        if event.key == pygame.K_ESCAPE:
+            self._editing_meta_key = False
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            self._meta_key_input = self._meta_key_input[:-1]
+            return True
+        if event.unicode and len(self._meta_key_input) < 48:
+            ch = event.unicode
+            if ch.isalnum() or ch in ("_", "-", ".", " "):
+                self._meta_key_input += ch
+            return True
+        return True
+
+    def _handle_meta_value_keydown(self, event: pygame.event.Event) -> bool:
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            anim = self._get_active()
+            if anim:
+                self._metadata_apply_add(anim)
+            self._editing_meta_value = False
+            return True
+        if event.key == pygame.K_TAB:
+            self._editing_meta_value = False
+            self._editing_meta_key = True
+            return True
+        if event.key == pygame.K_ESCAPE:
+            self._editing_meta_value = False
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            self._meta_value_input = self._meta_value_input[:-1]
+            return True
+        if event.unicode and len(self._meta_value_input) < 240:
+            self._meta_value_input += event.unicode
+            return True
+        return True
+
+    def _draw_meta_panel(self, screen: pygame.Surface) -> None:
+        self._ensure_fonts()
+        anim = self._get_active()
+        if anim is None:
+            return
+
+        fp_rect, _, _ = self._layout_rects()
+        panel = Rect(
+            max(fp_rect.x + 6, fp_rect.right - META_PANEL_W - 8),
+            fp_rect.y + 8,
+            META_PANEL_W,
+            META_PANEL_H,
+        )
+        self._meta_panel_rect = panel
+        self._meta_delete_btn_rects = []
+        self._meta_row_pick_rects = []
+
+        items = sorted(anim.metadata.items(), key=lambda kv: kv[0].lower())
+        visible_rows = 5
+        max_scroll = max(0, len(items) - visible_rows)
+        self._meta_scroll = max(0, min(self._meta_scroll, max_scroll))
+
+        shadow = pygame.Surface((panel.w + 4, panel.h + 4), pygame.SRCALPHA)
+        shadow.fill((0, 0, 0, 90))
+        screen.blit(shadow, (panel.x + 2, panel.y + 2))
+        pygame.draw.rect(screen, _COLORS["dropdown_bg"], panel, border_radius=6)
+        pygame.draw.rect(screen, _COLORS["dropdown_border"], panel, 1, border_radius=6)
+
+        title = self._font.render("Metadata", True, _COLORS["text"])
+        screen.blit(title, (panel.x + 10, panel.y + 8))
+        hint = self._font_sm.render("(per animation · JSON-safe values)", True, _COLORS["text_dim"])
+        screen.blit(hint, (panel.x + 10, panel.y + 26))
+
+        list_top = panel.y + 46
+        list_h = visible_rows * META_ROW_H + 4
+        list_rect = Rect(panel.x + 8, list_top, panel.w - 16, list_h)
+        pygame.draw.rect(screen, _COLORS["input_bg"], list_rect, border_radius=4)
+        pygame.draw.rect(screen, _COLORS["border"], list_rect, 1, border_radius=4)
+
+        slice_items = items[self._meta_scroll : self._meta_scroll + visible_rows]
+        row_y = list_rect.y + 2
+        for key, val in slice_items:
+            del_w = 22
+            pick_w = list_rect.w - del_w - 6
+            pick_rect = Rect(list_rect.x + 3, row_y, pick_w, META_ROW_H - 2)
+            del_rect = Rect(pick_rect.right + 2, row_y, del_w, META_ROW_H - 2)
+            self._meta_row_pick_rects.append((key, val, pick_rect))
+            self._meta_delete_btn_rects.append(del_rect)
+
+            pygame.draw.rect(screen, _COLORS["btn"], pick_rect, border_radius=3)
+            pygame.draw.rect(screen, _COLORS["border"], pick_rect, 1, border_radius=3)
+            disp = f"{key}  =  {_metadata_value_repr(val)}"
+            if len(disp) > 42:
+                disp = disp[:40] + "…"
+            screen.blit(
+                self._font_sm.render(disp, True, _COLORS["text"]),
+                (pick_rect.x + 4, pick_rect.y + 4),
+            )
+
+            pygame.draw.rect(screen, _COLORS["btn_danger"], del_rect, border_radius=3)
+            pygame.draw.rect(screen, _COLORS["border"], del_rect, 1, border_radius=3)
+            x_lbl = self._font_sm.render("×", True, _COLORS["text"])
+            screen.blit(x_lbl, x_lbl.get_rect(center=del_rect.center))
+
+            row_y += META_ROW_H
+
+        if not slice_items:
+            empty = self._font_sm.render("No entries — add a key below", True, _COLORS["text_dim"])
+            screen.blit(empty, (list_rect.x + 6, list_rect.centery - 6))
+
+        form_y = list_rect.bottom + 10
+        kw, vw, add_w = 100, panel.w - 16 - 100 - 8 - 44, 40
+        self._btn_meta_key = Rect(panel.x + 8, form_y, kw, 24)
+        self._btn_meta_value = Rect(self._btn_meta_key.right + 4, form_y, vw, 24)
+        self._btn_meta_add = Rect(self._btn_meta_value.right + 4, form_y, add_w, 24)
+
+        for rect, text, editing, placeholder in (
+            (self._btn_meta_key, self._meta_key_input, self._editing_meta_key, "key"),
+            (self._btn_meta_value, self._meta_value_input, self._editing_meta_value, "value"),
+        ):
+            bg = _COLORS["btn_active"] if editing else _COLORS["input_bg"]
+            pygame.draw.rect(screen, bg, rect, border_radius=3)
+            pygame.draw.rect(screen, _COLORS["border"], rect, 1, border_radius=3)
+            if not text and not editing:
+                surf = self._font_sm.render(placeholder, True, _COLORS["text_dim"])
+            else:
+                shown = text + ("|" if editing and (pygame.time.get_ticks() // 400) % 2 else "")
+                col = _COLORS["text_edit"] if editing else _COLORS["text"]
+                surf = self._font_sm.render(shown, True, col)
+            if surf.get_width() > rect.w - 8:
+                surf = self._font_sm.render("…", True, _COLORS["text"] if text or editing else _COLORS["text_dim"])
+            screen.blit(surf, (rect.x + 4, rect.y + 5))
+
+        self._draw_toolbar_btn(screen, self._btn_meta_add, "+", pygame.mouse.get_pos())
+
+        if len(items) > visible_rows:
+            scroll_hint = self._font_sm.render(
+                f"scroll {self._meta_scroll + 1}-{self._meta_scroll + len(slice_items)} / {len(items)}",
+                True,
+                _COLORS["text_dim"],
+            )
+            screen.blit(scroll_hint, (panel.x + 10, panel.bottom - 18))
 
     def _get_active(self) -> Optional[Animation]:
         if self._active_anim_name:
@@ -1009,27 +1520,54 @@ class SpriteAnimationEditor:
     # ------------------------------------------------------------------
 
     def _on_tile_clicked(self, variant_id: int) -> None:
-        """User clicked a tile in the spritesheet — add as a frame."""
+        """Spritesheet click: toggle cel in clip, or Ctrl+click to select its keyframe on the strip."""
         anim = self._get_active()
         if anim is None:
             return
+        mods = pygame.key.get_mods()
+        ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+        if ctrl and anim.frames:
+            for i, fr in enumerate(anim.frames):
+                if fr.variant_id == variant_id:
+                    self.timeline.select_frame(i)
+                    return
+            return
+
+        in_clip = any(fr.variant_id == variant_id for fr in anim.frames)
+        if in_clip:
+            si = self.timeline.selected_index
+            if 0 <= si < len(anim.frames) and anim.frames[si].variant_id == variant_id:
+                anim.remove_frame(si)
+            else:
+                for ri in range(len(anim.frames) - 1, -1, -1):
+                    if anim.frames[ri].variant_id == variant_id:
+                        anim.remove_frame(ri)
+                        break
+            anim.clamp_markers()
+            self._sync_active_animation()
+            self._notify_animation_modified()
+            return
+
         anim.add_frame(variant_id)
         self._sync_active_animation()
+        self._notify_animation_modified()
 
     def _on_timeline_frame_selected(self, index: int) -> None:
         """User selected a frame in the timeline."""
-        # Jump preview to that frame
         self.preview.current_frame = index
         self.preview._elapsed = 0.0
+        self._apply_timeline_focus_to_sheet(scroll=True)
 
     def _on_frames_changed(self) -> None:
         """Timeline modified frames (reorder, delete, duration change)."""
         anim = self._get_active()
         if anim:
+            anim.clamp_markers()
             used = {f.variant_id for f in anim.frames}
             self.frame_picker.set_highlighted(used)
             if self.consumer:
                 self.consumer.on_animation_saved(anim.name, anim.to_dict())
+        self._apply_timeline_focus_to_sheet(scroll=False)
 
     # ------------------------------------------------------------------
     # File I/O
