@@ -3,6 +3,7 @@ import threading
 import queue
 import logging
 import sys
+import subprocess
 from typing import Optional, List, Callable, Tuple
 from pathlib import Path
 from pygame import Rect
@@ -96,6 +97,10 @@ class Editor:
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
         self.property_editor: Optional[PropertyEditor] = None
+        
+        # Track child processes (like animation editor)
+        self.child_processes: List[subprocess.Popen] = []
+        
         self.loading_state = {
             "active": False,
             "message": "",
@@ -156,7 +161,7 @@ class Editor:
         multi_select: bool = False,
     ):
         w, h = 600, 400
-        rect = Rect((self.width - w) // 2, (self.height - h) // 2, w, h)
+        rect = Rect((self.width - w) // 4, (self.height - h) // 4, w, h)
 
         self.file_manager = FileManager(
             rect=rect,
@@ -350,6 +355,52 @@ class Editor:
     def launch_external_automap(self):
         if hasattr(self.autotiler, "_launch_external_viewer"):
             self.autotiler._launch_external_viewer()
+    
+    def launch_animation_editor(self):
+        """Launch the sprite animation editor in a new window."""
+        import subprocess
+        import sys
+        
+        # Open file manager to select a spritesheet
+        self.open_file_manager(
+            on_select=self._launch_animation_editor_with_image,
+            initial_dir=BASE_PATH / "data",
+            allowed_exts=[".png", ".jpg", ".jpeg"],
+            mode="open",
+        )
+    
+    def _launch_animation_editor_with_image(self, path: Path):
+        """Launch animation editor subprocess with selected image."""
+        import subprocess
+        import sys
+        
+        try:
+            # Get tile size from current tilemap if available
+            tile_size = "32x32"  # default
+            if hasattr(self.tilemap, 'tile_size') and self.tilemap.tile_size:
+                tw, th = self.tilemap.tile_size
+                tile_size = f"{tw}x{th}"
+            
+            # Run as module to avoid relative import issues
+            # python -m src.plugins.sprite_animation.standalone image.png --tile-size 32x32
+            process = subprocess.Popen(
+                [
+                    sys.executable, 
+                    "-m", 
+                    "src.plugins.sprite_animation.standalone", 
+                    str(path),
+                    "--tile-size",
+                    tile_size
+                ],
+                cwd=str(BASE_PATH)
+            )
+            
+            # Track the child process
+            self.child_processes.append(process)
+            
+            print(f"Launched animation editor with: {path.name} (tile size: {tile_size})")
+        except Exception as e:
+            print(f"Error launching animation editor: {e}")
 
     def autotile_active(self):
         active_layer = self.tilemap.layer_manager.get_active_layer()
@@ -363,7 +414,29 @@ class Editor:
         print("Flood Fill: Press 'F' while hovering over the target cell in the grid.")
 
     def exit_editor(self):
+        """Clean up and exit the editor."""
+        # Terminate all child processes
+        self._cleanup_child_processes()
         self.running = False
+    
+    def _cleanup_child_processes(self):
+        """Terminate all child processes before exiting."""
+        for process in self.child_processes:
+            if process.poll() is None:  # Process is still running
+                try:
+                    process.terminate()  # Try graceful termination first
+                    process.wait(timeout=2)  # Wait up to 2 seconds
+                except subprocess.TimeoutExpired:
+                    process.kill()  # Force kill if it doesn't terminate
+                except Exception as e:
+                    print(f"Error terminating child process: {e}")
+        
+        # Clear the list
+        self.child_processes.clear()
+    
+    def _cleanup_finished_processes(self):
+        """Remove finished processes from the tracking list."""
+        self.child_processes = [p for p in self.child_processes if p.poll() is None]
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -476,8 +549,15 @@ class Editor:
 
     def run(self):
         self.running = True
+        frame_count = 0  # For periodic cleanup
         while self.running:
             self._poll_async_load()
+            
+            # Periodically clean up finished child processes (every 60 frames)
+            frame_count += 1
+            if frame_count % 60 == 0:
+                self._cleanup_finished_processes()
+            
             self.handle_events()
             if self.tile_grid_widget:
                 self.tile_grid_widget.update()
@@ -550,6 +630,8 @@ class Editor:
             pygame.display.update()
             self.clock.tick(self.fps)
 
+        # Clean up child processes before quitting
+        self._cleanup_child_processes()
         pygame.quit()
 
 

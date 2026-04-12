@@ -13,6 +13,13 @@ import argparse
 import sys
 from pathlib import Path
 
+# Add src directory to path for imports (needed for FileManager, etc.)
+# This allows the animation editor to import widgets.filemanager
+_current_file = Path(__file__).resolve()
+_src_dir = _current_file.parent.parent.parent  # Go up to src/
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
 import pygame
 
 from .editor import SpriteAnimationEditor

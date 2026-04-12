@@ -43,6 +43,11 @@ class FramePicker:
         self.surface = surface
         self.tile_size = tile_size
 
+        # Grid offset (for starting grid at a specific position in the spritesheet)
+        # Must be initialized BEFORE _recalc_grid()
+        self.grid_offset_x: int = 0
+        self.grid_offset_y: int = 0
+
         self._recalc_grid()
 
         # View state
@@ -84,6 +89,12 @@ class FramePicker:
 
     def resize(self, rect: Rect) -> None:
         self.rect = rect
+    
+    def set_grid_offset(self, offset_x: int, offset_y: int) -> None:
+        """Set the grid offset for aligning the grid to a specific position in the spritesheet."""
+        self.grid_offset_x = offset_x
+        self.grid_offset_y = offset_y
+        self._recalc_grid()
 
     # ------------------------------------------------------------------
     # Events
@@ -178,25 +189,60 @@ class FramePicker:
             scaled = pygame.transform.smoothscale(self.surface, (scaled_w, scaled_h))
             screen.blit(scaled, (img_x, img_y))
 
-        # Grid lines
+        # Grid lines (only within spritesheet bounds, starting from offset)
         cell_w = tw * z
         cell_h = th * z
-        grid_alpha_surf = pygame.Surface((self.rect.w, self.rect.h), pygame.SRCALPHA)
-        for c in range(self.cols + 1):
-            x = int(img_x + c * cell_w) - self.rect.x
-            pygame.draw.line(grid_alpha_surf, (*_COLORS["grid"], 40), (x, 0), (x, self.rect.h))
-        for r in range(self.rows + 1):
-            y = int(img_y + r * cell_h) - self.rect.y
-            pygame.draw.line(grid_alpha_surf, (*_COLORS["grid"], 40), (0, y), (self.rect.w, y))
-        screen.blit(grid_alpha_surf, self.rect.topleft)
+        
+        # Calculate spritesheet bounds on screen
+        sheet_screen_rect = Rect(
+            int(img_x),
+            int(img_y),
+            int(scaled_w),
+            int(scaled_h)
+        )
+        
+        # Calculate grid start position (with offset applied)
+        grid_start_x = img_x + (self.grid_offset_x * z)
+        grid_start_y = img_y + (self.grid_offset_y * z)
+        
+        # Clip grid to spritesheet area
+        grid_clip = sheet_screen_rect.clip(self.rect)
+        if grid_clip.width > 0 and grid_clip.height > 0:
+            grid_alpha_surf = pygame.Surface((grid_clip.w, grid_clip.h), pygame.SRCALPHA)
+            
+            # Draw vertical lines
+            for c in range(self.cols + 1):
+                x_world = grid_start_x + c * cell_w
+                x_local = int(x_world - grid_clip.x)
+                if 0 <= x_local <= grid_clip.w:
+                    pygame.draw.line(
+                        grid_alpha_surf, 
+                        (*_COLORS["grid"], 40), 
+                        (x_local, 0), 
+                        (x_local, grid_clip.h)
+                    )
+            
+            # Draw horizontal lines
+            for r in range(self.rows + 1):
+                y_world = grid_start_y + r * cell_h
+                y_local = int(y_world - grid_clip.y)
+                if 0 <= y_local <= grid_clip.h:
+                    pygame.draw.line(
+                        grid_alpha_surf, 
+                        (*_COLORS["grid"], 40), 
+                        (0, y_local), 
+                        (grid_clip.w, y_local)
+                    )
+            
+            screen.blit(grid_alpha_surf, grid_clip.topleft)
 
         # Highlighted tiles (used in current animation)
         for idx in self.highlighted:
             col = idx % self.cols
             row = idx // self.cols
             hr = Rect(
-                int(img_x + col * cell_w),
-                int(img_y + row * cell_h),
+                int(img_x + (self.grid_offset_x + col * tw) * z),
+                int(img_y + (self.grid_offset_y + row * th) * z),
                 int(cell_w),
                 int(cell_h),
             )
@@ -210,8 +256,8 @@ class FramePicker:
             col = self.hover_index % self.cols
             row = self.hover_index // self.cols
             hr = Rect(
-                int(img_x + col * cell_w),
-                int(img_y + row * cell_h),
+                int(img_x + (self.grid_offset_x + col * tw) * z),
+                int(img_y + (self.grid_offset_y + row * th) * z),
                 int(cell_w),
                 int(cell_h),
             )
@@ -244,21 +290,43 @@ class FramePicker:
     # ------------------------------------------------------------------
 
     def _recalc_grid(self) -> None:
+        """Recalculate grid dimensions based on tile size and offset."""
         tw, th = self.tile_size
-        self.cols = max(1, self.surface.get_width() // tw)
-        self.rows = max(1, self.surface.get_height() // th)
+        # Calculate available space after offset
+        available_w = self.surface.get_width() - self.grid_offset_x
+        available_h = self.surface.get_height() - self.grid_offset_y
+        self.cols = max(1, available_w // tw)
+        self.rows = max(1, available_h // th)
         self.total_frames = self.cols * self.rows
 
     def _index_at(self, mouse: Tuple[int, int]) -> int:
         """Return tile index at the given screen position or -1."""
         z = self.zoom
         tw, th = self.tile_size
+        
+        # Convert mouse to spritesheet coordinates
         rel_x = (mouse[0] - self.rect.x - self.offset_x) / z
         rel_y = (mouse[1] - self.rect.y - self.offset_y) / z
+        
+        # Check if within spritesheet bounds
         if rel_x < 0 or rel_y < 0:
             return -1
-        col = int(rel_x // tw)
-        row = int(rel_y // th)
+        if rel_x >= self.surface.get_width() or rel_y >= self.surface.get_height():
+            return -1
+        
+        # Apply grid offset to get position within the grid
+        grid_rel_x = rel_x - self.grid_offset_x
+        grid_rel_y = rel_y - self.grid_offset_y
+        
+        # Check if within grid area (after offset)
+        if grid_rel_x < 0 or grid_rel_y < 0:
+            return -1
+        
+        # Calculate grid position
+        col = int(grid_rel_x // tw)
+        row = int(grid_rel_y // th)
+        
+        # Verify within grid bounds
         if 0 <= col < self.cols and 0 <= row < self.rows:
             return row * self.cols + col
         return -1

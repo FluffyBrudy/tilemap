@@ -54,6 +54,10 @@ class Timeline:
         self.rect = rect
         self.surface = surface
         self.tile_size = tile_size
+        
+        # Grid offset for aligning extraction
+        self.grid_offset_x: int = 0
+        self.grid_offset_y: int = 0
 
         self.frames: List[AnimationFrame] = []
         self.selected_index: int = -1
@@ -368,10 +372,13 @@ class Timeline:
         if variant_id in self._thumb_cache:
             return self._thumb_cache[variant_id]
         tw, th = self.tile_size
-        cols = max(1, self.surface.get_width() // tw)
+        # Calculate cols based on available space after offset
+        available_w = self.surface.get_width() - self.grid_offset_x
+        cols = max(1, available_w // tw)
         col = variant_id % cols
         row = variant_id // cols
-        src = Rect(col * tw, row * th, tw, th)
+        # Apply grid offset to source rect
+        src = Rect(self.grid_offset_x + col * tw, self.grid_offset_y + row * th, tw, th)
         if not self.surface.get_rect().contains(src):
             return None
         tile_surf = self.surface.subsurface(src).copy()

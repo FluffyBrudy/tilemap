@@ -130,6 +130,28 @@ class SpriteAnimationEditor:
         self._btn_save = Rect(0, 0, 0, 0)
         self._btn_load = Rect(0, 0, 0, 0)
         self._btn_anim_selector = Rect(0, 0, 0, 0)
+        self._btn_info = Rect(0, 0, 0, 0)
+        
+        # Tooltip state
+        self._show_info_tooltip = False
+        
+        # Frame size controls
+        self._frame_width_input = str(self._tile_size[0])
+        self._frame_height_input = str(self._tile_size[1])
+        self._editing_frame_width = False
+        self._editing_frame_height = False
+        self._btn_frame_width = Rect(0, 0, 0, 0)
+        self._btn_frame_height = Rect(0, 0, 0, 0)
+        
+        # Grid offset controls
+        self._offset_x_input = "0"
+        self._offset_y_input = "0"
+        self._editing_offset_x = False
+        self._editing_offset_y = False
+        self._btn_offset_x = Rect(0, 0, 0, 0)
+        self._btn_offset_y = Rect(0, 0, 0, 0)
+        self._grid_offset_x = 0
+        self._grid_offset_y = 0
 
         # Fonts
         self._font: Optional[pygame.font.Font] = None
@@ -138,6 +160,12 @@ class SpriteAnimationEditor:
 
         # For standalone mode
         self._clock: Optional[pygame.time.Clock] = None
+        
+        # File manager dialog
+        self._file_manager = None
+        
+        # Track the last saved path for quick save (Ctrl+S)
+        self._last_saved_path: Optional[Path] = None
 
         # Sync sub-widgets
         self._sync_active_animation()
@@ -226,6 +254,31 @@ class SpriteAnimationEditor:
         """Route event to sub-widgets. Returns True if consumed."""
         if not self.visible:
             return False
+        
+        # File manager takes priority
+        if self._file_manager:
+            return self._file_manager.handle_event(event)
+        
+        # Global keyboard shortcuts (when not editing text)
+        if event.type == pygame.KEYDOWN and not self._renaming and not self._editing_frame_width and not self._editing_frame_height and not self._editing_offset_x and not self._editing_offset_y:
+            mods = pygame.key.get_mods()
+            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+            
+            # Ctrl+S: Quick save
+            if ctrl_held and event.key == pygame.K_s and not shift_held:
+                self._quick_save()
+                return True
+            
+            # Ctrl+Shift+S: Save as
+            elif ctrl_held and shift_held and event.key == pygame.K_s:
+                self._save_dialog()
+                return True
+            
+            # Ctrl+O: Open/Load
+            elif ctrl_held and event.key == pygame.K_o:
+                self._load_dialog()
+                return True
 
         # Close dropdown on outside click
         if event.type == pygame.MOUSEBUTTONDOWN and self._dropdown_open:
@@ -247,6 +300,140 @@ class SpriteAnimationEditor:
                     return True
                 elif event.unicode and len(self._rename_text) < 30:
                     self._rename_text += event.unicode
+                    return True
+        
+        # Frame width input
+        if self._editing_frame_width:
+            if event.type == pygame.KEYDOWN:
+                mods = pygame.key.get_mods()
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._apply_frame_size()
+                    self._editing_frame_width = False
+                    return True
+                elif event.key == pygame.K_TAB:
+                    self._apply_frame_size()
+                    self._editing_frame_width = False
+                    self._editing_frame_height = True
+                    return True
+                elif event.key == pygame.K_ESCAPE:
+                    self._frame_width_input = str(self._tile_size[0])
+                    self._editing_frame_width = False
+                    return True
+                elif event.key == pygame.K_BACKSPACE:
+                    if ctrl_held:
+                        # Ctrl+Backspace clears entire field
+                        self._frame_width_input = ""
+                    else:
+                        self._frame_width_input = self._frame_width_input[:-1]
+                    return True
+                elif event.unicode and event.unicode.isdigit() and len(self._frame_width_input) < 5:
+                    # Smart zero handling: if input is "0" and user types non-zero, replace it
+                    if self._frame_width_input == "0" and event.unicode != "0":
+                        self._frame_width_input = event.unicode
+                    else:
+                        self._frame_width_input += event.unicode
+                    return True
+        
+        # Frame height input
+        if self._editing_frame_height:
+            if event.type == pygame.KEYDOWN:
+                mods = pygame.key.get_mods()
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._apply_frame_size()
+                    self._editing_frame_height = False
+                    return True
+                elif event.key == pygame.K_TAB:
+                    self._apply_frame_size()
+                    self._editing_frame_height = False
+                    self._editing_offset_x = True
+                    return True
+                elif event.key == pygame.K_ESCAPE:
+                    self._frame_height_input = str(self._tile_size[1])
+                    self._editing_frame_height = False
+                    return True
+                elif event.key == pygame.K_BACKSPACE:
+                    if ctrl_held:
+                        self._frame_height_input = ""
+                    else:
+                        self._frame_height_input = self._frame_height_input[:-1]
+                    return True
+                elif event.unicode and event.unicode.isdigit() and len(self._frame_height_input) < 5:
+                    # Smart zero handling
+                    if self._frame_height_input == "0" and event.unicode != "0":
+                        self._frame_height_input = event.unicode
+                    else:
+                        self._frame_height_input += event.unicode
+                    return True
+        
+        # Offset X input
+        if self._editing_offset_x:
+            if event.type == pygame.KEYDOWN:
+                mods = pygame.key.get_mods()
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._apply_grid_offset()
+                    self._editing_offset_x = False
+                    return True
+                elif event.key == pygame.K_TAB:
+                    self._apply_grid_offset()
+                    self._editing_offset_x = False
+                    self._editing_offset_y = True
+                    return True
+                elif event.key == pygame.K_ESCAPE:
+                    self._offset_x_input = str(self._grid_offset_x)
+                    self._editing_offset_x = False
+                    return True
+                elif event.key == pygame.K_BACKSPACE:
+                    if ctrl_held:
+                        self._offset_x_input = ""
+                    else:
+                        self._offset_x_input = self._offset_x_input[:-1]
+                    return True
+                elif event.unicode and (event.unicode.isdigit() or (event.unicode == '-' and len(self._offset_x_input) == 0)) and len(self._offset_x_input) < 5:
+                    # Smart zero handling for offset (can be negative)
+                    if self._offset_x_input == "0" and event.unicode != "0" and event.unicode != "-":
+                        self._offset_x_input = event.unicode
+                    else:
+                        self._offset_x_input += event.unicode
+                    return True
+        
+        # Offset Y input
+        if self._editing_offset_y:
+            if event.type == pygame.KEYDOWN:
+                mods = pygame.key.get_mods()
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._apply_grid_offset()
+                    self._editing_offset_y = False
+                    return True
+                elif event.key == pygame.K_TAB:
+                    self._apply_grid_offset()
+                    self._editing_offset_y = False
+                    # Cycle back to frame width
+                    self._editing_frame_width = True
+                    return True
+                elif event.key == pygame.K_ESCAPE:
+                    self._offset_y_input = str(self._grid_offset_y)
+                    self._editing_offset_y = False
+                    return True
+                elif event.key == pygame.K_BACKSPACE:
+                    if ctrl_held:
+                        self._offset_y_input = ""
+                    else:
+                        self._offset_y_input = self._offset_y_input[:-1]
+                    return True
+                elif event.unicode and (event.unicode.isdigit() or (event.unicode == '-' and len(self._offset_y_input) == 0)) and len(self._offset_y_input) < 5:
+                    # Smart zero handling for offset
+                    if self._offset_y_input == "0" and event.unicode != "0" and event.unicode != "-":
+                        self._offset_y_input = event.unicode
+                    else:
+                        self._offset_y_input += event.unicode
                     return True
 
         # Toolbar clicks
@@ -294,6 +481,40 @@ class SpriteAnimationEditor:
             if self._btn_load.collidepoint(mouse):
                 self._load_dialog()
                 return True
+            
+            # Frame width input
+            if self._btn_frame_width.collidepoint(mouse):
+                self._editing_frame_width = True
+                self._editing_frame_height = False
+                self._renaming = False
+                return True
+            
+            # Frame height input
+            if self._btn_frame_height.collidepoint(mouse):
+                self._editing_frame_height = True
+                self._editing_frame_width = False
+                self._editing_offset_x = False
+                self._editing_offset_y = False
+                self._renaming = False
+                return True
+            
+            # Offset X input
+            if self._btn_offset_x.collidepoint(mouse):
+                self._editing_offset_x = True
+                self._editing_offset_y = False
+                self._editing_frame_width = False
+                self._editing_frame_height = False
+                self._renaming = False
+                return True
+            
+            # Offset Y input
+            if self._btn_offset_y.collidepoint(mouse):
+                self._editing_offset_y = True
+                self._editing_offset_x = False
+                self._editing_frame_width = False
+                self._editing_frame_height = False
+                self._renaming = False
+                return True
 
             # Double-click on animation selector -> rename
             # (We treat any click on the name area as potential rename start)
@@ -338,6 +559,10 @@ class SpriteAnimationEditor:
         # Dropdown overlay (drawn last, on top)
         if self._dropdown_open:
             self._draw_dropdown(screen)
+        
+        # File manager overlay (drawn on top of everything)
+        if self._file_manager:
+            self._file_manager.draw(screen)
 
     # ------------------------------------------------------------------
     # Layout
@@ -425,10 +650,121 @@ class SpriteAnimationEditor:
         self._draw_toolbar_btn(screen, self._btn_load, "Load", mouse)
         x += 56
 
+        # Separator
+        pygame.draw.line(screen, _COLORS["toolbar_border"], (x, cy + 2), (x, cy + bh - 2))
+        x += pad + 4
+
+        # Frame size label
+        size_label = self._font_sm.render("Frame:", True, _COLORS["text_dim"])
+        screen.blit(size_label, (x, cy + 7))
+        x += size_label.get_width() + 4
+
+        # Width input
+        input_w = 42
+        self._btn_frame_width = Rect(x, cy, input_w, bh)
+        width_bg = _COLORS["input_bg"] if not self._editing_frame_width else _COLORS["btn_active"]
+        pygame.draw.rect(screen, width_bg, self._btn_frame_width, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._btn_frame_width, 1, border_radius=3)
+        
+        width_text = self._frame_width_input
+        if self._editing_frame_width and (pygame.time.get_ticks() // 400) % 2:
+            width_text += "|"
+        width_surf = self._font_sm.render(width_text, True, _COLORS["text"])
+        screen.blit(width_surf, (self._btn_frame_width.x + 4, self._btn_frame_width.y + 6))
+        x += input_w + 2
+
+        # x separator
+        x_label = self._font_sm.render("×", True, _COLORS["text_dim"])
+        screen.blit(x_label, (x, cy + 6))
+        x += x_label.get_width() + 2
+
+        # Height input
+        self._btn_frame_height = Rect(x, cy, input_w, bh)
+        height_bg = _COLORS["input_bg"] if not self._editing_frame_height else _COLORS["btn_active"]
+        pygame.draw.rect(screen, height_bg, self._btn_frame_height, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._btn_frame_height, 1, border_radius=3)
+        
+        height_text = self._frame_height_input
+        if self._editing_frame_height and (pygame.time.get_ticks() // 400) % 2:
+            height_text += "|"
+        height_surf = self._font_sm.render(height_text, True, _COLORS["text"])
+        screen.blit(height_surf, (self._btn_frame_height.x + 4, self._btn_frame_height.y + 6))
+        x += input_w + 4
+
+        # px label
+        px_label = self._font_sm.render("px", True, _COLORS["text_dim"])
+        screen.blit(px_label, (x, cy + 7))
+        x += px_label.get_width() + 4
+        
+        # Info icon button
+        self._btn_info = Rect(x, cy + 2, 20, 20)
+        info_hover = self._btn_info.collidepoint(mouse)
+        info_bg = _COLORS["btn_hover"] if info_hover else _COLORS["toolbar"]
+        pygame.draw.circle(screen, info_bg, self._btn_info.center, 10)
+        pygame.draw.circle(screen, _COLORS["border"], self._btn_info.center, 10, 1)
+        
+        # Draw "i" icon
+        info_text = self._font_bold.render("i", True, _COLORS["text"])
+        info_text_rect = info_text.get_rect(center=self._btn_info.center)
+        screen.blit(info_text, info_text_rect)
+        
+        # Show tooltip on hover
+        if info_hover:
+            self._show_info_tooltip = True
+        else:
+            self._show_info_tooltip = False
+        
+        x += 28
+
+        # Separator
+        pygame.draw.line(screen, _COLORS["toolbar_border"], (x, cy + 2), (x, cy + bh - 2))
+        x += pad + 4
+
+        # Offset label
+        offset_label = self._font_sm.render("Offset:", True, _COLORS["text_dim"])
+        screen.blit(offset_label, (x, cy + 7))
+        x += offset_label.get_width() + 4
+
+        # Offset X input
+        offset_input_w = 38
+        self._btn_offset_x = Rect(x, cy, offset_input_w, bh)
+        offset_x_bg = _COLORS["input_bg"] if not self._editing_offset_x else _COLORS["btn_active"]
+        pygame.draw.rect(screen, offset_x_bg, self._btn_offset_x, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._btn_offset_x, 1, border_radius=3)
+        
+        offset_x_text = self._offset_x_input
+        if self._editing_offset_x and (pygame.time.get_ticks() // 400) % 2:
+            offset_x_text += "|"
+        offset_x_surf = self._font_sm.render(offset_x_text, True, _COLORS["text"])
+        screen.blit(offset_x_surf, (self._btn_offset_x.x + 4, self._btn_offset_x.y + 6))
+        x += offset_input_w + 2
+
+        # comma separator
+        comma_label = self._font_sm.render(",", True, _COLORS["text_dim"])
+        screen.blit(comma_label, (x, cy + 6))
+        x += comma_label.get_width() + 2
+
+        # Offset Y input
+        self._btn_offset_y = Rect(x, cy, offset_input_w, bh)
+        offset_y_bg = _COLORS["input_bg"] if not self._editing_offset_y else _COLORS["btn_active"]
+        pygame.draw.rect(screen, offset_y_bg, self._btn_offset_y, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._btn_offset_y, 1, border_radius=3)
+        
+        offset_y_text = self._offset_y_input
+        if self._editing_offset_y and (pygame.time.get_ticks() // 400) % 2:
+            offset_y_text += "|"
+        offset_y_surf = self._font_sm.render(offset_y_text, True, _COLORS["text"])
+        screen.blit(offset_y_surf, (self._btn_offset_y.x + 4, self._btn_offset_y.y + 6))
+        x += offset_input_w + 4
+
         # Right-aligned info
-        info = f"{self._sheet_name}  •  {self._tile_size[0]}×{self._tile_size[1]}px"
+        info = f"{self._sheet_name}"
         info_surf = self._font_sm.render(info, True, _COLORS["text_dim"])
         screen.blit(info_surf, (tb.right - info_surf.get_width() - 8, cy + 6))
+        
+        # Draw info tooltip if hovering
+        if self._show_info_tooltip:
+            self._draw_info_tooltip(screen)
 
     def _draw_toolbar_btn(self, screen, rect, label, mouse, danger=False, active=False):
         hover = rect.collidepoint(mouse)
@@ -444,6 +780,60 @@ class SpriteAnimationEditor:
         pygame.draw.rect(screen, _COLORS["border"], rect, 1, border_radius=3)
         lbl = self._font_sm.render(label, True, _COLORS["text"])
         screen.blit(lbl, lbl.get_rect(center=rect.center))
+    
+    def _draw_info_tooltip(self, screen: pygame.Surface) -> None:
+        """Draw tooltip showing spritesheet information."""
+        # Gather info
+        sheet_w, sheet_h = self._surface.get_size()
+        frame_w, frame_h = self._tile_size
+        cols = self.frame_picker.cols
+        rows = self.frame_picker.rows
+        total_frames = self.frame_picker.total_frames
+        offset_x, offset_y = self._grid_offset_x, self._grid_offset_y
+        
+        # Build tooltip lines
+        lines = [
+            f"Spritesheet: {sheet_w} × {sheet_h} px",
+            f"Frame Size: {frame_w} × {frame_h} px",
+            f"Grid: {cols} cols × {rows} rows",
+            f"Total Frames: {total_frames}",
+            f"Offset: {offset_x}, {offset_y}",
+        ]
+        
+        # Calculate tooltip size
+        padding = 8
+        line_height = 16
+        max_width = max(self._font_sm.render(line, True, _COLORS["text"]).get_width() for line in lines)
+        tooltip_w = max_width + padding * 2
+        tooltip_h = len(lines) * line_height + padding * 2
+        
+        # Position tooltip below info button
+        tooltip_x = self._btn_info.centerx - tooltip_w // 2
+        tooltip_y = self._btn_info.bottom + 4
+        
+        # Clamp to screen bounds
+        tooltip_x = max(10, min(tooltip_x, self.rect.right - tooltip_w - 10))
+        
+        tooltip_rect = Rect(tooltip_x, tooltip_y, tooltip_w, tooltip_h)
+        
+        # Draw tooltip background with shadow
+        shadow_rect = tooltip_rect.copy()
+        shadow_rect.x += 2
+        shadow_rect.y += 2
+        shadow_surf = pygame.Surface((shadow_rect.w, shadow_rect.h), pygame.SRCALPHA)
+        shadow_surf.fill((0, 0, 0, 100))
+        screen.blit(shadow_surf, shadow_rect.topleft)
+        
+        # Draw tooltip
+        pygame.draw.rect(screen, _COLORS["dropdown_bg"], tooltip_rect, border_radius=4)
+        pygame.draw.rect(screen, _COLORS["border"], tooltip_rect, 1, border_radius=4)
+        
+        # Draw text lines
+        y = tooltip_rect.y + padding
+        for line in lines:
+            text_surf = self._font_sm.render(line, True, _COLORS["text"])
+            screen.blit(text_surf, (tooltip_rect.x + padding, y))
+            y += line_height
 
     def _draw_dropdown(self, screen: pygame.Surface) -> None:
         names = self.library.animation_names()
@@ -522,6 +912,77 @@ class SpriteAnimationEditor:
             if self.library.rename_animation(self._active_anim_name, new_name):
                 self._active_anim_name = new_name
         self._renaming = False
+    
+    def _apply_frame_size(self) -> None:
+        """Apply the frame size from input fields and update the frame picker."""
+        try:
+            width = int(self._frame_width_input) if self._frame_width_input else self._tile_size[0]
+            height = int(self._frame_height_input) if self._frame_height_input else self._tile_size[1]
+            
+            # Clamp to reasonable values
+            width = max(1, min(width, self._surface.get_width()))
+            height = max(1, min(height, self._surface.get_height()))
+            
+            # Update tile size
+            self._tile_size = (width, height)
+            self.library.tile_size = (width, height)
+            
+            # Update frame picker
+            self.frame_picker.set_surface(self._surface, self._tile_size)
+            self._apply_grid_offset()  # Reapply offset with new tile size
+            
+            # Update preview and timeline
+            self.preview.set_surface(self._surface, self._tile_size)
+            self.timeline.surface = self._surface
+            self.timeline.tile_size = self._tile_size
+            self.timeline._thumb_cache.clear()
+            
+            # Update input fields to show clamped values
+            self._frame_width_input = str(width)
+            self._frame_height_input = str(height)
+            
+        except ValueError:
+            # Reset to current values on invalid input
+            self._frame_width_input = str(self._tile_size[0])
+            self._frame_height_input = str(self._tile_size[1])
+    
+    def _apply_grid_offset(self) -> None:
+        """Apply the grid offset from input fields and update the frame picker."""
+        try:
+            offset_x = int(self._offset_x_input) if self._offset_x_input else 0
+            offset_y = int(self._offset_y_input) if self._offset_y_input else 0
+            
+            # Clamp to reasonable values (can be negative or positive)
+            offset_x = max(-self._surface.get_width(), min(offset_x, self._surface.get_width()))
+            offset_y = max(-self._surface.get_height(), min(offset_y, self._surface.get_height()))
+            
+            # Update grid offset
+            self._grid_offset_x = offset_x
+            self._grid_offset_y = offset_y
+            
+            # Update frame picker with offset
+            if hasattr(self.frame_picker, 'set_grid_offset'):
+                self.frame_picker.set_grid_offset(offset_x, offset_y)
+            
+            # Update timeline with offset
+            if hasattr(self.timeline, 'grid_offset_x'):
+                self.timeline.grid_offset_x = offset_x
+                self.timeline.grid_offset_y = offset_y
+                self.timeline._thumb_cache.clear()
+            
+            # Update preview with offset (if it has the attribute)
+            if hasattr(self.preview, 'grid_offset_x'):
+                self.preview.grid_offset_x = offset_x
+                self.preview.grid_offset_y = offset_y
+            
+            # Update input fields to show clamped values
+            self._offset_x_input = str(offset_x)
+            self._offset_y_input = str(offset_y)
+            
+        except ValueError:
+            # Reset to current values on invalid input
+            self._offset_x_input = str(self._grid_offset_x)
+            self._offset_y_input = str(self._grid_offset_y)
 
     def _sync_active_animation(self) -> None:
         """Push current animation data to sub-widgets."""
@@ -575,24 +1036,137 @@ class SpriteAnimationEditor:
     # ------------------------------------------------------------------
 
     def _save_dialog(self) -> None:
-        """Save animation library to JSON.
-
-        In standalone mode, uses a simple file path.
-        In plugin mode, this could be overridden to use the editor's file manager.
+        """Open file manager to save animation library.
+        
+        This is called when clicking the Save button or pressing Ctrl+Shift+S (Save As).
         """
-        path = self._default_save_path()
+        from pathlib import Path
+        
+        # Import FileManager
+        try:
+            from widgets.filemanager import FileManager
+            from constants import BASE_PATH
+        except ImportError as e:
+            # Fallback to old behavior if FileManager not available
+            print(f"Warning: Could not import FileManager: {e}")
+            path = self._default_save_path()
+            try:
+                self.library.save(path)
+                self._last_saved_path = path
+                print(f"Animations saved to {path}")
+            except Exception as e:
+                print(f"Error saving animations: {e}")
+            return
+        
+        # Get initial directory and default name
+        if self._last_saved_path:
+            # Use last saved location
+            initial_dir = self._last_saved_path.parent
+            default_name = self._last_saved_path.name
+        elif self.library.spritesheet_path:
+            # Use spritesheet location
+            initial_dir = Path(self.library.spritesheet_path).parent
+            default_name = Path(self.library.spritesheet_path).stem + ".anim.json"
+        else:
+            # Use data folder
+            initial_dir = BASE_PATH / "data"
+            default_name = "animations.anim.json"
+        
+        # Create file manager for save
+        screen = pygame.display.get_surface()
+        w, h = 600, 400
+        screen_w, screen_h = screen.get_size()
+        rect = pygame.Rect((screen_w - w) // 2, (screen_h - h) // 2, w, h)
+        
+        self._file_manager = FileManager(
+            rect=rect,
+            initial_dir=initial_dir,
+            allowed_exts=[".json"],
+            on_save=self._on_save_file_selected,
+            mode="save",
+            default_name=default_name,
+            on_cancel=self._close_file_manager,
+        )
+    
+    def _quick_save(self) -> None:
+        """Quick save to last saved path (Ctrl+S).
+        
+        If no path exists, opens save dialog.
+        """
+        if self._last_saved_path:
+            # Save to existing path
+            try:
+                self.library.save(self._last_saved_path)
+                print(f"Animations saved to {self._last_saved_path}")
+            except Exception as e:
+                print(f"Error saving animations: {e}")
+        else:
+            # No saved path yet, open save dialog
+            self._save_dialog()
+
+    def _load_dialog(self) -> None:
+        """Load animation library from JSON using file manager."""
+        from pathlib import Path
+        
+        # Import FileManager
+        try:
+            from widgets.filemanager import FileManager
+            from constants import BASE_PATH
+        except ImportError:
+            # Fallback to old behavior if FileManager not available
+            path = self._default_save_path()
+            if path.exists():
+                try:
+                    self.library = AnimationLibrary.load(path)
+                    names = self.library.animation_names()
+                    self._active_anim_name = names[0] if names else None
+                    if not names:
+                        self._create_new_animation("idle")
+                    self._sync_active_animation()
+                    print(f"Animations loaded from {path}")
+                except Exception as e:
+                    print(f"Error loading animations: {e}")
+            else:
+                print(f"No animation file found at {path}")
+            return
+        
+        # Get initial directory from spritesheet path or use data folder
+        if self.library.spritesheet_path:
+            initial_dir = Path(self.library.spritesheet_path).parent
+        else:
+            initial_dir = BASE_PATH / "data"
+        
+        # Create file manager for load
+        screen = pygame.display.get_surface()
+        w, h = 600, 400
+        screen_w, screen_h = screen.get_size()
+        rect = pygame.Rect((screen_w - w) // 2, (screen_h - h) // 2, w, h)
+        
+        self._file_manager = FileManager(
+            rect=rect,
+            initial_dir=initial_dir,
+            allowed_exts=[".json"],
+            on_select=self._on_load_file_selected,
+            mode="open",
+            on_cancel=self._close_file_manager,
+        )
+    
+    def _on_save_file_selected(self, path: Path) -> None:
+        """Callback when user selects a file to save to."""
         try:
             self.library.save(path)
+            self._last_saved_path = path  # Track for quick save
             print(f"Animations saved to {path}")
         except Exception as e:
             print(f"Error saving animations: {e}")
-
-    def _load_dialog(self) -> None:
-        """Load animation library from JSON."""
-        path = self._default_save_path()
+        self._close_file_manager()
+    
+    def _on_load_file_selected(self, path: Path) -> None:
+        """Callback when user selects a file to load from."""
         if path.exists():
             try:
                 self.library = AnimationLibrary.load(path)
+                self._last_saved_path = path  # Track loaded file as save location
                 names = self.library.animation_names()
                 self._active_anim_name = names[0] if names else None
                 if not names:
@@ -603,6 +1177,11 @@ class SpriteAnimationEditor:
                 print(f"Error loading animations: {e}")
         else:
             print(f"No animation file found at {path}")
+        self._close_file_manager()
+    
+    def _close_file_manager(self) -> None:
+        """Close the file manager dialog."""
+        self._file_manager = None
 
     def _default_save_path(self) -> Path:
         if self.library.spritesheet_path:
