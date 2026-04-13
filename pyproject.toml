@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tilemap-editor"
+version = "1.0.0"
+description = "Pygame tilemap editor with layers and sprite animation tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "tilemap editor contributors" }]
+dependencies = [
+  "pygame-ce>=2.5",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Games/Entertainment",
+  "Topic :: Software Development",
+]
+
+[project.scripts]
+tilemap-editor = "tilemap_editor.cli:main"
+tilemap-anim-editor = "plugins.sprite_animation.standalone:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = false
+py-modules = [
+  "constants",
+  "editor",
+  "event_map",
+  "layers",
+  "tilemap",
+  "tilemap_parser",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = [
+  "tilemap_editor*",
+  "plugins*",
+  "ttypes*",
+  "widgets*",
+  "utils*",
+  "configs*",
+]
+namespaces = true
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.spec", "*.sh"]

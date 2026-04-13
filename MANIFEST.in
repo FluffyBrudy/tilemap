@@ -1,0 +1,8 @@
+include README.md
+recursive-include src *.py
+global-exclude *.py[cod] __pycache__/* *.spec *.spec.bak *.sh
+prune build
+prune dist
+prune data
+prune .venv
+prune scripts
