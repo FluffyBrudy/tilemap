@@ -1765,6 +1765,25 @@ class SpriteAnimationEditor:
             self._create_new_animation("idle")
         self._sync_active_animation()
 
+    def get_image(self, variant: int) -> Optional[pygame.Surface]:
+        """Return a **copy** of the spritesheet cel for ``variant`` (frame size + grid offset)."""
+        tw, th = self._tile_size
+        if tw < 1 or th < 1:
+            return None
+        ox, oy = self._grid_offset_x, self._grid_offset_y
+        surf = self._surface
+        avail_w = surf.get_width() - ox
+        avail_h = surf.get_height() - oy
+        if avail_w < tw or avail_h < th:
+            return None
+        cols = max(1, avail_w // tw)
+        col = variant % cols
+        row = variant // cols
+        src = Rect(ox + col * tw, oy + row * th, tw, th)
+        if not surf.get_rect().contains(src):
+            return None
+        return surf.subsurface(src).copy()
+
     # ------------------------------------------------------------------
     # Fonts
     # ------------------------------------------------------------------

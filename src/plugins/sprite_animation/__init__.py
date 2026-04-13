@@ -24,6 +24,13 @@ Protocol-based integration:
 from .protocols import SpriteSheetProvider, AnimationConsumer
 from .models import AnimationFrame, Animation, AnimationLibrary, AnimationMarker
 from .editor import SpriteAnimationEditor
+from .runtime_load import (
+    AnimationParseError,
+    SpriteAnimRuntime,
+    parse_animation_library_dict,
+    parse_animation_library_file,
+    parse_animation_library_json,
+)
 
 __all__ = [
     "SpriteAnimationEditor",
@@ -33,4 +40,9 @@ __all__ = [
     "Animation",
     "AnimationLibrary",
     "AnimationMarker",
+    "AnimationParseError",
+    "SpriteAnimRuntime",
+    "parse_animation_library_dict",
+    "parse_animation_library_file",
+    "parse_animation_library_json",
 ]
