@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 from constants import INTELLISENSE_DEPTH, IGNORE_DIRS, BASE_PATH
 from utils.icons_cache import get_icon, prewarm_common_icons
+from utils.standalone import launch_standalone
 
 
 COLORS = {
@@ -1134,14 +1135,10 @@ class FileManager:
             return
 
         try:
-
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "standalone_image_viewer",
-                    str(self.image_preview.current_path),
-                ]
+            launch_standalone(
+                "standalone_image_viewer",
+                [str(self.image_preview.current_path)],
+                cwd=BASE_PATH,
             )
         except Exception as e:
             print(f"Error opening image viewer: {e}")

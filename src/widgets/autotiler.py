@@ -578,10 +578,8 @@ class AutotileRuleDesigner:
                 self.scroll_offset = 0
 
     def _launch_external_viewer(self):
-        import subprocess
-        import sys
-
         from constants import BASE_PATH
+        from utils.standalone import launch_standalone
 
         project_path = self.editor.tilemap.active_project_path
 
@@ -605,9 +603,11 @@ class AutotileRuleDesigner:
                 print(f"Warning: Could not auto-save project for viewer: {e}")
 
         try:
-
-            subprocess.Popen(
-                [sys.executable, "-m", "standalone_automap", str(project_path)]
+            # Popen spawns it as a separate independent process
+            launch_standalone(
+                "standalone_automap",
+                [str(project_path)],
+                cwd=BASE_PATH,
             )
             print(f"Launched external automap viewer linked to: {project_path.name}")
         except Exception as e:
