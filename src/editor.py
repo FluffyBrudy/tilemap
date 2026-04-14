@@ -26,6 +26,7 @@ from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.tooltip import TooltipManager
 from utils.log_capture import setup_console_log
+from utils.standalone import launch_standalone
 
 
 def setup_error_logging():
@@ -55,6 +56,10 @@ def setup_error_logging():
 
 
 logger = setup_error_logging()
+
+
+# Backwards-compatible alias for existing editor.py call sites
+_launch_standalone_module = launch_standalone
 
 
 class Editor:
@@ -157,52 +162,53 @@ class Editor:
         if self.file_manager_process and self.file_manager_process.poll() is None:
             return
 
-        cmd = [
-            sys.executable,
-            "-m",
-            "standalone_filemanager",
-            "--mode",
-            mode,
+        # Build command line arguments
+        args = [
+            "--mode", mode,
         ]
 
         if initial_dir:
             try:
                 rel_path = initial_dir.relative_to(BASE_PATH)
-                cmd.extend(["--initial-dir", str(rel_path)])
+                args.extend(["--initial-dir", str(rel_path)])
             except ValueError:
-                cmd.extend(["--initial-dir", str(initial_dir)])
+                # Not relative to BASE_PATH, use absolute
+                args.extend(["--initial-dir", str(initial_dir)])
         else:
-            cmd.extend(["--initial-dir", "data"])
+            args.extend(["--initial-dir", "data"])
 
+        # Add allowed extensions
         if allowed_exts:
-            cmd.extend(["--allowed-exts", ",".join(allowed_exts)])
+            args.extend(["--allowed-exts", ",".join(allowed_exts)])
 
+        # Add default name for save mode
         if default_name:
-            cmd.extend(["--default-name", default_name])
+            args.extend(["--default-name", default_name])
 
+        # Add multi-select flag
         if multi_select:
-            cmd.append("--multi-select")
+            args.append("--multi-select")
 
         try:
-            self.file_manager_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+            # Launch subprocess via unified launcher (stderr captured, text mode for JSON parsing)
+            self.file_manager_process = _launch_standalone_module(
+                "standalone_filemanager",
+                args,
+                cwd=BASE_PATH,
                 text=True,
-                cwd=str(BASE_PATH),
             )
 
+            # Store callbacks for later processing
             self._file_manager_callbacks = {
                 "on_select": on_select,
                 "on_save": on_save,
                 "mode": mode,
             }
 
+            # Track the process
             self.child_processes.append(self.file_manager_process)
 
-            print(
-                f"Launched file manager subprocess (PID: {self.file_manager_process.pid})"
-            )
+            print(f"Launched file manager subprocess (PID: {self.file_manager_process.pid})")
         except Exception as e:
             print(f"Error launching file manager: {e}")
             self.file_manager_process = None
@@ -502,25 +508,17 @@ class Editor:
 
     def _launch_animation_editor_with_image(self, path: Path):
         """Launch animation editor subprocess with selected image."""
-        import subprocess
-        import sys
-
         try:
             tile_size = "32x32"
             if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
                 tw, th = self.tilemap.tile_size
                 tile_size = f"{tw}x{th}"
 
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "plugins.sprite_animation.standalone",
-                    str(path),
-                    "--tile-size",
-                    tile_size,
-                ],
-                cwd=str(BASE_PATH),
+            args = [str(path), "--tile-size", tile_size]
+            process = _launch_standalone_module(
+                "plugins.sprite_animation.standalone",
+                args,
+                cwd=BASE_PATH,
             )
 
             self.child_processes.append(process)

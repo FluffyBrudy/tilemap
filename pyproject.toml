@@ -35,8 +35,8 @@ py-modules = [
   "tilemap",
   "tilemap_parser",
   "standalone_filemanager",
-  "standalone_automap",
   "standalone_image_viewer",
+  "standalone_automap",
 ]
 
 [tool.setuptools.packages.find]
