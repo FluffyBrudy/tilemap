@@ -745,8 +745,10 @@ class FileManager:
             up_button_rect = pygame.Rect(
                 self.rect.x + self.sidebar_width, self.rect.y, 40, self.header_height
             )
-            if self.enable_window_drag and header_rect.collidepoint(mouse_pos) and not up_button_rect.collidepoint(
-                mouse_pos
+            if (
+                self.enable_window_drag
+                and header_rect.collidepoint(mouse_pos)
+                and not up_button_rect.collidepoint(mouse_pos)
             ):
                 self.is_dragging_window = True
                 self.drag_offset_x = mouse_pos[0] - self.rect.x
@@ -1133,12 +1135,11 @@ class FileManager:
 
         try:
 
-            viewer_script = BASE_PATH / "src" / "standalone_image_viewer.py"
-
             subprocess.Popen(
                 [
                     sys.executable,
-                    str(viewer_script),
+                    "-m",
+                    "standalone_image_viewer",
                     str(self.image_preview.current_path),
                 ]
             )
@@ -1146,7 +1147,7 @@ class FileManager:
             print(f"Error opening image viewer: {e}")
 
     def draw(self, screen: pygame.Surface):
-        # Only draw overlay if requested (for modal dialog mode)
+
         if self.draw_overlay:
             overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
             overlay.fill(COLORS["overlay"])

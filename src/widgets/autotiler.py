@@ -101,7 +101,6 @@ class AutotileRuleDesigner:
         self.renaming_group_idx: Optional[int] = None
         self.rename_text: str = ""
 
-        # Scroll state management
         self.scroll_offset: int = 0
         self.max_visible_rules: int = 10
         self.scroll_bar_rect: Optional[Rect] = None
@@ -127,7 +126,7 @@ class AutotileRuleDesigner:
 
         self.font = pygame.font.SysFont("Arial", 12)
         self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
-        
+
         self.template_manager = AutotileTemplateApplier(self)
 
         self._update_layout()
@@ -141,7 +140,9 @@ class AutotileRuleDesigner:
         sidebar_w = 200
         self.list_area = Rect(self.rect.x, body_y, sidebar_w, body_h)
         self.group_list_area = Rect(self.rect.x, body_y, sidebar_w, body_h // 2)
-        self.rule_list_area = Rect(self.rect.x, body_y + body_h // 2, sidebar_w, body_h // 2)
+        self.rule_list_area = Rect(
+            self.rect.x, body_y + body_h // 2, sidebar_w, body_h // 2
+        )
 
         self.edit_area = Rect(
             self.rect.x + sidebar_w, body_y, self.rect.width - sidebar_w, body_h
@@ -152,7 +153,7 @@ class AutotileRuleDesigner:
         cx = self.edit_area.centerx
         self.save_btn_rect = Rect(cx - btn_w - 5, btn_y, btn_w, 30)
         self.delete_btn_rect = Rect(cx + 5, btn_y, btn_w, 30)
-        
+
         self.new_group_btn_rect = Rect(
             self.group_list_area.x + 10,
             self.group_list_area.bottom - 30,
@@ -214,7 +215,7 @@ class AutotileRuleDesigner:
         current_index = selector.active_idx
 
         hints = set()
-        # Collect hints from ALL rules in ALL groups
+
         for group in self.groups:
             for rule in group.rules:
                 if rule.tileset_index is not None:
@@ -243,11 +244,9 @@ class AutotileRuleDesigner:
         if self.template_manager.handle_event(event):
             return True
 
-        # Handle scroll events
         if self._handle_scroll_event(event):
             return True
-        
-        # Handle group rename events
+
         if self._handle_group_rename(event):
             return True
 
@@ -255,7 +254,7 @@ class AutotileRuleDesigner:
         self._update_preview_from_selector()
 
         if event.type == pygame.KEYDOWN:
-            pass  # Rename handling moved to _handle_group_rename
+            pass
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -276,7 +275,7 @@ class AutotileRuleDesigner:
                 if self.group_list_area.collidepoint(mouse_pos):
                     self._handle_group_list_click(mouse_pos)
                     return True
-                
+
                 if self.rule_list_area.collidepoint(mouse_pos):
                     self._handle_rule_list_click(mouse_pos)
                     return True
@@ -284,13 +283,13 @@ class AutotileRuleDesigner:
                 if self.save_btn_rect.collidepoint(mouse_pos):
                     self._save_current_rule()
                     return True
-                if self.save_btn_rect.inflate(0, 40).collidepoint(mouse_pos): # Catch nearby if needed
+                if self.save_btn_rect.inflate(0, 40).collidepoint(mouse_pos):
                     pass
-                
+
                 if self.new_group_btn_rect.collidepoint(mouse_pos):
                     self._create_new_group_with_focus()
                     return True
-                    
+
                 if self.new_rule_btn_rect.collidepoint(mouse_pos):
                     self._reset_selection()
                     return True
@@ -492,9 +491,8 @@ class AutotileRuleDesigner:
 
     def _get_next_rule_name(self, base_name: str) -> str:
         import re
-        
-        # Try to find a trailing number
-        match = re.search(r'(.*?)(\d+)$', base_name)
+
+        match = re.search(r"(.*?)(\d+)$", base_name)
         if match:
             prefix = match.group(1)
             number = int(match.group(2))
@@ -527,7 +525,6 @@ class AutotileRuleDesigner:
         preview = self.current_preview_surfs[0] if self.current_preview_surfs else None
         current_group = self.groups[self.selected_group_idx]
 
-        # If index is >= 0, we update existing. Otherwise we create new.
         if self.selected_rule_index >= 0:
             rule = current_group.rules[self.selected_rule_index]
             rule.neighbors = set(self.current_neighbors)
@@ -535,14 +532,14 @@ class AutotileRuleDesigner:
             rule.preview_surf = preview
             rule.tileset_path = self.current_tileset_path
             rule.tileset_index = getattr(self, "current_tileset_index", None)
-            rule.group_id = current_group.name # Update group_id in rule too
+            rule.group_id = current_group.name
             print(f"Rule updated: {rule.name} in Group {current_group.name}")
         else:
-            # Determine unique name
+
             base_name = f"Rule {len(current_group.rules) + 1}"
             while any(r.name == base_name for r in current_group.rules):
                 base_name = self._get_next_rule_name(base_name)
-            
+
             new_rule = AutotileRule(
                 base_name,
                 set(self.current_neighbors),
@@ -550,13 +547,12 @@ class AutotileRuleDesigner:
                 list(self.current_variant_ids),
                 preview,
                 tileset_index=getattr(self, "current_tileset_index", None),
-                group_id=current_group.name
+                group_id=current_group.name,
             )
             current_group.rules.append(new_rule)
             self.selected_rule_index = len(current_group.rules) - 1
             print(f"New rule created: {new_rule.name} in Group {current_group.name}")
 
-        # After saving, always reset to ready-state for a new rule
         self._reset_selection()
 
         print(f"Total rules now: {len(self.rules)}")
@@ -564,57 +560,55 @@ class AutotileRuleDesigner:
             print(f"  - {r.name}: neighbors={r.neighbors}, variants={r.variant_ids}")
 
     def _delete_current_rule(self):
-        if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(self.groups[self.selected_group_idx].rules):
+        if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(
+            self.groups[self.selected_group_idx].rules
+        ):
             self.groups[self.selected_group_idx].rules.pop(self.selected_rule_index)
             self._reset_selection()
 
-            # Clamp scroll offset after deletion
             group = self.groups[self.selected_group_idx]
             max_scroll = max(0, len(group.rules) - self.max_visible_rules)
             self.scroll_offset = min(self.scroll_offset, max_scroll)
         elif self.selected_group_idx != -1 and self.selected_rule_index == -1:
-            # Delete Group
+
             if len(self.groups) > 1:
                 self.groups.pop(self.selected_group_idx)
                 self.selected_group_idx = 0
                 self.selected_rule_index = -1
-                self.scroll_offset = 0  # Reset scroll when switching groups
+                self.scroll_offset = 0
 
     def _launch_external_viewer(self):
         import subprocess
         import sys
-        
+
         from constants import BASE_PATH
-        
-        # Determine path to the standalone script
-        script_path = os.path.join(os.path.dirname(__file__), "..", "standalone_automap.py")
-        
-        # Determine which project file to tell the viewer to look at
+
         project_path = self.editor.tilemap.active_project_path
-        
-        # If no project is active or it hasn't been saved yet, 
-        # save a temporary snapshot so the viewer can read current rules
+
         if not project_path:
             temp_dir = BASE_PATH / "data" / "cache"
             temp_dir.mkdir(parents=True, exist_ok=True)
             project_path = temp_dir / "current_session.json"
             try:
-                self.editor.tilemap.save_map(str(project_path.relative_to(BASE_PATH / "data")))
+                self.editor.tilemap.save_map(
+                    str(project_path.relative_to(BASE_PATH / "data"))
+                )
             except Exception as e:
-                # Fallback if relative path calculation fails
+
                 self.editor.tilemap.active_project_path = project_path
                 self.editor.tilemap.save_map()
         else:
-            # Even if we have a project path, we should save current changes 
-            # so the external viewer sees the latest rules
+
             try:
                 self.editor.tilemap.save_map()
             except Exception as e:
                 print(f"Warning: Could not auto-save project for viewer: {e}")
-                
+
         try:
-            # Popen spawns it as a separate independent process
-            subprocess.Popen([sys.executable, script_path, str(project_path)])
+
+            subprocess.Popen(
+                [sys.executable, "-m", "standalone_automap", str(project_path)]
+            )
             print(f"Launched external automap viewer linked to: {project_path.name}")
         except Exception as e:
             print(f"Failed to launch external viewer: {e}")
@@ -644,54 +638,68 @@ class AutotileRuleDesigner:
 
         self._draw_rule_list(screen)
         self._draw_grid_editor(screen)
-        
-        self.template_manager.draw(screen) # Draw template manager if visible
+
+        self.template_manager.draw(screen)
 
     def _draw_rule_list(self, screen):
-        # 1. Groups List
+
         pygame.draw.rect(screen, (70, 70, 75), self.group_list_area)
         pygame.draw.rect(screen, (100, 100, 105), self.group_list_area, 1)
-        
-        lbl_groups = self.title_font.render("Groups (F2: Rename)", True, (150, 150, 255))
-        screen.blit(lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5))
+
+        lbl_groups = self.title_font.render(
+            "Groups (F2: Rename)", True, (150, 150, 255)
+        )
+        screen.blit(
+            lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5)
+        )
 
         start_y = self.group_list_area.y + 25
         item_h = 25
         for i, group in enumerate(self.groups):
-            r = Rect(self.group_list_area.x + 5, start_y + i * item_h, self.group_list_area.width - 10, item_h)
-            
-            # Highlight selected group
+            r = Rect(
+                self.group_list_area.x + 5,
+                start_y + i * item_h,
+                self.group_list_area.width - 10,
+                item_h,
+            )
+
             if i == self.selected_group_idx:
                 pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
-            
-            # Show rename mode with different background
+
             if i == self.renaming_group_idx:
                 pygame.draw.rect(screen, (100, 120, 140), r, border_radius=3)
-            
+
             name = group.name
             if i == self.renaming_group_idx:
                 name = self.rename_text + "_"
-            
+
             d_name = name if len(name) < 22 else name[:19] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
-        pygame.draw.rect(screen, (80, 120, 80), self.new_group_btn_rect, border_radius=4)
+        pygame.draw.rect(
+            screen, (80, 120, 80), self.new_group_btn_rect, border_radius=4
+        )
         gntxt = self.font.render("+ New Group", True, TEXT_COLOR)
-        screen.blit(gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5))
+        screen.blit(
+            gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5)
+        )
 
-        # 2. Rules List (for selected group)
         pygame.draw.rect(screen, PANEL_BG, self.rule_list_area)
         pygame.draw.rect(screen, (80, 80, 85), self.rule_list_area, 1)
-        
+
         lbl_rules = self.title_font.render("Rules", True, (150, 150, 255))
         screen.blit(lbl_rules, (self.rule_list_area.x + 5, self.rule_list_area.y + 5))
 
-        # Use scrollable rule list
         self._draw_scrollable_rule_list(screen)
 
-        pygame.draw.rect(screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4)
+        pygame.draw.rect(
+            screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4
+        )
         rntxt = self.font.render("+ New Rule", True, TEXT_COLOR)
-        screen.blit(rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5))
+        screen.blit(
+            rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5)
+        )
+
     def _draw_scrollable_rule_list(self, screen: Surface) -> None:
         """Draw rules with scroll indicators and scrollbar"""
         if self.selected_group_idx == -1:
@@ -700,17 +708,13 @@ class AutotileRuleDesigner:
         group = self.groups[self.selected_group_idx]
         total_rules = len(group.rules)
 
-        # Calculate max scroll value
         max_scroll = max(0, total_rules - self.max_visible_rules)
 
-        # Clamp scroll offset to valid range
         self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
-        # Calculate visible range
         visible_start = self.scroll_offset
         visible_end = min(visible_start + self.max_visible_rules, total_rules)
 
-        # Draw visible rules
         start_y_r = self.rule_list_area.y + 25
         item_h = 25
 
@@ -720,10 +724,7 @@ class AutotileRuleDesigner:
             y_pos = start_y_r + display_index * item_h
 
             r = Rect(
-                self.rule_list_area.x + 5,
-                y_pos,
-                self.rule_list_area.width - 10,
-                item_h
+                self.rule_list_area.x + 5, y_pos, self.rule_list_area.width - 10, item_h
             )
 
             if i == self.selected_rule_index:
@@ -732,38 +733,45 @@ class AutotileRuleDesigner:
             d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
-        # Draw scroll indicators and scrollbar if needed
         if total_rules > self.max_visible_rules:
-            # Draw upward arrow when not at top
+
             if self.scroll_offset > 0:
                 arrow_up = "▲"
                 arrow_surf = self.font.render(arrow_up, True, (150, 200, 255))
-                screen.blit(arrow_surf, (self.rule_list_area.right - 20, self.rule_list_area.y + 5))
-            
-            # Draw downward arrow when not at bottom
+                screen.blit(
+                    arrow_surf,
+                    (self.rule_list_area.right - 20, self.rule_list_area.y + 5),
+                )
+
             if self.scroll_offset < max_scroll:
                 arrow_down = "▼"
                 arrow_surf = self.font.render(arrow_down, True, (150, 200, 255))
-                screen.blit(arrow_surf, (self.rule_list_area.right - 20, self.rule_list_area.bottom - 35))
-            
-            # Draw scrollbar
+                screen.blit(
+                    arrow_surf,
+                    (self.rule_list_area.right - 20, self.rule_list_area.bottom - 35),
+                )
+
             scrollbar_height = 60
-            track_height = self.rule_list_area.height - 70  # Leave space for header and button
+            track_height = self.rule_list_area.height - 70
             scroll_ratio = self.scroll_offset / max_scroll if max_scroll > 0 else 0
 
-            scrollbar_y = self.rule_list_area.y + 25 + int(scroll_ratio * (track_height - scrollbar_height))
-
-            self.scroll_bar_rect = Rect(
-                self.rule_list_area.right - 15,
-                scrollbar_y,
-                10,
-                scrollbar_height
+            scrollbar_y = (
+                self.rule_list_area.y
+                + 25
+                + int(scroll_ratio * (track_height - scrollbar_height))
             )
 
-            pygame.draw.rect(screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5)
+            self.scroll_bar_rect = Rect(
+                self.rule_list_area.right - 15, scrollbar_y, 10, scrollbar_height
+            )
+
+            pygame.draw.rect(
+                screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5
+            )
         else:
-            # Hide scrollbar when all rules are visible
+
             self.scroll_bar_rect = None
+
     def _handle_scroll_event(self, event) -> bool:
         """Handle mouse wheel and scrollbar dragging"""
         if self.selected_group_idx == -1:
@@ -774,16 +782,20 @@ class AutotileRuleDesigner:
         max_scroll = max(0, total_rules - self.max_visible_rules)
 
         if event.type == pygame.MOUSEWHEEL:
-            # Handle mouse wheel scrolling
+
             if self.rule_list_area.collidepoint(pygame.mouse.get_pos()):
-                scroll_delta = -event.y  # Negative for natural scrolling
+                scroll_delta = -event.y
                 old_offset = self.scroll_offset
-                self.scroll_offset = max(0, min(self.scroll_offset + scroll_delta, max_scroll))
+                self.scroll_offset = max(
+                    0, min(self.scroll_offset + scroll_delta, max_scroll)
+                )
                 return old_offset != self.scroll_offset
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(event.pos):
+                if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(
+                    event.pos
+                ):
                     self.is_scrollbar_dragging = True
                     return True
 
@@ -794,7 +806,7 @@ class AutotileRuleDesigner:
 
         elif event.type == pygame.MOUSEMOTION:
             if self.is_scrollbar_dragging:
-                # Calculate scroll position from mouse Y
+
                 relative_y = event.pos[1] - self.rule_list_area.y - 25
                 track_height = self.rule_list_area.height - 70
 
@@ -806,29 +818,32 @@ class AutotileRuleDesigner:
                 return True
 
         return False
+
     def _handle_group_rename(self, event) -> bool:
         """Handle F2 key and inline text editing for group names"""
         if event.type == pygame.KEYDOWN:
-            # F2 to start renaming selected group
+
             if event.key == pygame.K_F2 and self.selected_group_idx >= 0:
                 self.renaming_group_idx = self.selected_group_idx
                 self.rename_text = self.groups[self.selected_group_idx].name
                 return True
 
-            # Handle text input during rename
             if self.renaming_group_idx is not None:
                 if event.key == pygame.K_RETURN:
-                    # Confirm rename
+
                     group = self.groups[self.renaming_group_idx]
                     old_name = group.name
                     new_name = self.rename_text.strip()
 
-                    # Handle duplicate names by appending numeric suffix
                     if new_name and new_name != old_name:
-                        # Check if name already exists
-                        existing_names = {g.name for i, g in enumerate(self.groups) if i != self.renaming_group_idx}
+
+                        existing_names = {
+                            g.name
+                            for i, g in enumerate(self.groups)
+                            if i != self.renaming_group_idx
+                        }
                         if new_name in existing_names:
-                            # Find a unique name by appending numbers
+
                             counter = 2
                             base_name = new_name
                             while new_name in existing_names:
@@ -837,7 +852,6 @@ class AutotileRuleDesigner:
 
                         group.name = new_name
 
-                        # Update all rules in this group
                         for rule in group.rules:
                             rule.group_id = new_name
 
@@ -845,39 +859,36 @@ class AutotileRuleDesigner:
                     return True
 
                 elif event.key == pygame.K_ESCAPE:
-                    # Cancel rename
+
                     self.renaming_group_idx = None
                     return True
 
                 elif event.key == pygame.K_BACKSPACE:
-                    # Delete character
+
                     self.rename_text = self.rename_text[:-1]
                     return True
 
                 else:
-                    # Add character
+
                     if event.unicode.isprintable():
                         self.rename_text += event.unicode
                     return True
 
         return False
+
     def _create_new_group_with_focus(self) -> None:
         """Create new group and immediately enter rename mode"""
-        # Generate default name
+
         new_group_name = f"Group {len(self.groups) + 1}"
 
-        # Create new group
         new_group = AutotileGroup(new_group_name)
         self.groups.append(new_group)
 
-        # Select the new group
         self.selected_group_idx = len(self.groups) - 1
         self.selected_rule_index = -1
 
-        # Immediately enter rename mode
         self.renaming_group_idx = self.selected_group_idx
         self.rename_text = new_group_name
-
 
     def _draw_grid_editor(self, screen):
         center_x = self.edit_area.centerx
@@ -932,13 +943,19 @@ class AutotileRuleDesigner:
                 d_lbl, (self.delete_btn_rect.x + 25, self.delete_btn_rect.y + 8)
             )
 
-        # External button
-        pygame.draw.rect(screen, (100, 100, 150), self.external_btn_rect, border_radius=4)
+        pygame.draw.rect(
+            screen, (100, 100, 150), self.external_btn_rect, border_radius=4
+        )
         ext_lbl = self.font.render("External View", True, Color("white"))
-        screen.blit(ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5))
-        
-        # Template button (only show if selection exists)
+        screen.blit(
+            ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5)
+        )
+
         if self.current_variant_ids:
-            pygame.draw.rect(screen, (60, 120, 120), self.template_btn_rect, border_radius=4)
+            pygame.draw.rect(
+                screen, (60, 120, 120), self.template_btn_rect, border_radius=4
+            )
             tmpl_lbl = self.font.render("Templates", True, Color("white"))
-            screen.blit(tmpl_lbl, (self.template_btn_rect.x + 18, self.template_btn_rect.y + 5))
+            screen.blit(
+                tmpl_lbl, (self.template_btn_rect.x + 18, self.template_btn_rect.y + 5)
+            )

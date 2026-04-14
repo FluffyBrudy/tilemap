@@ -28,33 +28,29 @@ from widgets.ui.tooltip import TooltipManager
 from utils.log_capture import setup_console_log
 
 
-# Setup comprehensive error logging
 def setup_error_logging():
     """Setup logging to capture all errors to log file."""
     log_dir = BASE_PATH / "data" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    
+
     log_file = log_dir / "errors.log"
-    
-    # Configure logging
+
     logging.basicConfig(
         level=logging.ERROR,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)],
     )
-    
-    # Capture uncaught exceptions
+
     def exception_handler(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-        logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-    
+        logging.error(
+            "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
+
     sys.excepthook = exception_handler
-    
+
     return logging.getLogger(__name__)
 
 
@@ -75,7 +71,7 @@ class Editor:
             self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
         else:
             self.screen = pygame.display.set_mode()
-        
+
         width, height = self.screen.get_size()
         self.width, self.height = width, height
 
@@ -96,12 +92,11 @@ class Editor:
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
         self.property_editor: Optional[PropertyEditor] = None
-        
-        # Track child processes (like animation editor, file manager)
+
         self.child_processes: List[subprocess.Popen] = []
         self.file_manager_process: Optional[subprocess.Popen] = None
         self._file_manager_callbacks: Dict[str, Any] = {}
-        
+
         self.loading_state = {
             "active": False,
             "message": "",
@@ -123,11 +118,8 @@ class Editor:
         self.menubar = MenuBar(self, self.width, 30)
         self.toolbar = Toolbar(self, 0, 30, self.width, 35)
 
-        # Initialize with defaults to avoid immediate prompt
-        # Use a dynamic initial map size if preferred, otherwise stick to 50x50
         self.tilemap.init_size((32, 32), (50, 50))
-        
-        # Explicit initialization of widgets
+
         menu_h = 30
         self.tileset_widget = TileSelector(
             self, self.width - self.selector_w, menu_h, self.selector_w, self.tileset_h
@@ -140,12 +132,12 @@ class Editor:
             self.layer_h,
         )
         self.tile_grid_widget = TileGrid(
-            self, Rect(0, menu_h, self.width - self.selector_w, self.height - menu_h - 25)
+            self,
+            Rect(0, menu_h, self.width - self.selector_w, self.height - menu_h - 25),
         )
 
         self.post_map_setup()
-        
-        # Create map setup widget but keep it hidden
+
         center_x = (self.width - 400) // 2
         center_y = (self.height - 400) // 2
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
@@ -163,61 +155,54 @@ class Editor:
     ):
         """Launch file manager as a subprocess."""
         if self.file_manager_process and self.file_manager_process.poll() is None:
-            # File manager already running
             return
-        
-        # Build command line arguments
+
         cmd = [
             sys.executable,
-            str(BASE_PATH / "src" / "standalone_filemanager.py"),
-            "--mode", mode,
+            "-m",
+            "standalone_filemanager",
+            "--mode",
+            mode,
         ]
-        
-        # Add initial directory (make it relative to BASE_PATH for portability)
+
         if initial_dir:
             try:
                 rel_path = initial_dir.relative_to(BASE_PATH)
                 cmd.extend(["--initial-dir", str(rel_path)])
             except ValueError:
-                # Not relative to BASE_PATH, use absolute
                 cmd.extend(["--initial-dir", str(initial_dir)])
         else:
             cmd.extend(["--initial-dir", "data"])
-        
-        # Add allowed extensions
+
         if allowed_exts:
             cmd.extend(["--allowed-exts", ",".join(allowed_exts)])
-        
-        # Add default name for save mode
+
         if default_name:
             cmd.extend(["--default-name", default_name])
-        
-        # Add multi-select flag
+
         if multi_select:
             cmd.append("--multi-select")
-        
+
         try:
-            # Launch subprocess with stdout capture
-            # Redirect stderr to devnull to avoid pygame messages
             self.file_manager_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,  # Suppress pygame messages
+                stderr=subprocess.DEVNULL,
                 text=True,
                 cwd=str(BASE_PATH),
             )
-            
-            # Store callbacks for later processing
+
             self._file_manager_callbacks = {
                 "on_select": on_select,
                 "on_save": on_save,
                 "mode": mode,
             }
-            
-            # Track the process
+
             self.child_processes.append(self.file_manager_process)
-            
-            print(f"Launched file manager subprocess (PID: {self.file_manager_process.pid})")
+
+            print(
+                f"Launched file manager subprocess (PID: {self.file_manager_process.pid})"
+            )
         except Exception as e:
             print(f"Error launching file manager: {e}")
             self.file_manager_process = None
@@ -226,59 +211,62 @@ class Editor:
         """Check if file manager subprocess has completed and process result."""
         if not self.file_manager_process:
             return
-        
-        # Check if process has finished
+
         if self.file_manager_process.poll() is not None:
-            # Process finished, read output
+
             try:
                 stdout, stderr = self.file_manager_process.communicate(timeout=0.1)
-                
+
                 if stdout:
-                    # Parse JSON result - get the last non-empty line
-                    lines = [line.strip() for line in stdout.strip().split('\n') if line.strip()]
+
+                    lines = [
+                        line.strip()
+                        for line in stdout.strip().split("\n")
+                        if line.strip()
+                    ]
                     if lines:
-                        result_line = lines[-1]  # Last line should be the JSON result
+                        result_line = lines[-1]
                         try:
                             result = json.loads(result_line)
                             status = result.get("status")
-                            
+
                             if status == "selected":
-                                # Handle file selection
+
                                 if "paths" in result:
-                                    # Multi-select
+
                                     paths = [Path(p) for p in result["paths"]]
                                     if self._file_manager_callbacks["on_select"]:
                                         self._file_manager_callbacks["on_select"](paths)
                                 elif "path" in result:
-                                    # Single select
+
                                     path = Path(result["path"])
                                     if self._file_manager_callbacks["on_select"]:
                                         self._file_manager_callbacks["on_select"](path)
-                            
+
                             elif status == "saved":
-                                # Handle save operation
+
                                 path = Path(result["path"])
                                 if self._file_manager_callbacks["on_save"]:
                                     self._file_manager_callbacks["on_save"](path)
                                 elif self._file_manager_callbacks["on_select"]:
                                     self._file_manager_callbacks["on_select"](path)
-                            
+
                             elif status == "cancelled":
-                                # User cancelled
+
                                 print("File manager cancelled")
                         except json.JSONDecodeError as e:
                             print(f"Error parsing file manager result: {e}")
                             print(f"Output was: {result_line}")
-                
+
                 if stderr:
                     print(f"File manager stderr: {stderr}")
-            
+
             except subprocess.TimeoutExpired:
                 pass
             except Exception as e:
                 print(f"Error processing file manager result: {e}")
             finally:
-                # Clean up
+
                 self.file_manager_process = None
                 self._file_manager_callbacks = {}
 
@@ -292,7 +280,7 @@ class Editor:
                 self.file_manager_process.kill()
             except Exception as e:
                 print(f"Error closing file manager: {e}")
-        
+
         self.file_manager_process = None
         self._file_manager_callbacks = {}
 
@@ -394,13 +382,16 @@ class Editor:
 
         if hasattr(self, "menubar") and self.menubar:
             self.menubar.resize(width)
-            
+
         if hasattr(self, "toolbar") and self.toolbar:
             self.toolbar.resize(width)
 
         if hasattr(self, "tileset_widget") and self.tileset_widget:
             self.tileset_widget.resize(
-                width - self.selector_w, menu_h + toolbar_h, self.selector_w, self.tileset_h
+                width - self.selector_w,
+                menu_h + toolbar_h,
+                self.selector_w,
+                self.tileset_h,
             )
 
         if hasattr(self, "layer_widget") and self.layer_widget:
@@ -413,10 +404,12 @@ class Editor:
 
         if hasattr(self, "tile_grid_widget") and self.tile_grid_widget:
             self.tile_grid_widget.rect = Rect(
-                0, menu_h + toolbar_h, width - self.selector_w, height - (menu_h + toolbar_h)
+                0,
+                menu_h + toolbar_h,
+                width - self.selector_w,
+                height - (menu_h + toolbar_h),
             )
 
-        # Update modal dialogs
         rect_full = Rect(0, 0, width, height)
         if hasattr(self, "save_input") and self.save_input:
             self.save_input.editor_rect = rect_full
@@ -464,7 +457,7 @@ class Editor:
     def launch_external_automap(self):
         if hasattr(self.autotiler, "_launch_external_viewer"):
             self.autotiler._launch_external_viewer()
-    
+
     def _active_tileset_image_path(self) -> Optional[Path]:
         """Filesystem path of the tileset image to use for the animation editor."""
         tw = self.tileset_widget
@@ -511,32 +504,30 @@ class Editor:
         """Launch animation editor subprocess with selected image."""
         import subprocess
         import sys
-        
+
         try:
-            # Get tile size from current tilemap if available
-            tile_size = "32x32"  # default
-            if hasattr(self.tilemap, 'tile_size') and self.tilemap.tile_size:
+            tile_size = "32x32"
+            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
                 tw, th = self.tilemap.tile_size
                 tile_size = f"{tw}x{th}"
-            
-            # Run as module to avoid relative import issues
-            # python -m src.plugins.sprite_animation.standalone image.png --tile-size 32x32
+
             process = subprocess.Popen(
                 [
-                    sys.executable, 
-                    "-m", 
-                    "src.plugins.sprite_animation.standalone", 
+                    sys.executable,
+                    "-m",
+                    "plugins.sprite_animation.standalone",
                     str(path),
                     "--tile-size",
-                    tile_size
+                    tile_size,
                 ],
-                cwd=str(BASE_PATH)
+                cwd=str(BASE_PATH),
             )
-            
-            # Track the child process
+
             self.child_processes.append(process)
-            
-            print(f"Launched animation editor with: {path.name} (tile size: {tile_size})")
+
+            print(
+                f"Launched animation editor with: {path.name} (tile size: {tile_size})"
+            )
         except Exception as e:
             print(f"Error launching animation editor: {e}")
 
@@ -548,30 +539,29 @@ class Editor:
             print(f"Autotiling layer: {active_layer.name}")
 
     def flood_fill_active(self):
-        # Flood fill usually requires a target cell (mouse position)
+
         print("Flood Fill: Press 'F' while hovering over the target cell in the grid.")
 
     def exit_editor(self):
         """Clean up and exit the editor."""
-        # Terminate all child processes
+
         self._cleanup_child_processes()
         self.running = False
-    
+
     def _cleanup_child_processes(self):
         """Terminate all child processes before exiting."""
         for process in self.child_processes:
-            if process.poll() is None:  # Process is still running
+            if process.poll() is None:
                 try:
-                    process.terminate()  # Try graceful termination first
-                    process.wait(timeout=2)  # Wait up to 2 seconds
+                    process.terminate()
+                    process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
-                    process.kill()  # Force kill if it doesn't terminate
+                    process.kill()
                 except Exception as e:
                     print(f"Error terminating child process: {e}")
-        
-        # Clear the list
+
         self.child_processes.clear()
-    
+
     def _cleanup_finished_processes(self):
         """Remove finished processes from the tracking list."""
         self.child_processes = [p for p in self.child_processes if p.poll() is None]
@@ -580,12 +570,9 @@ class Editor:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            
+
             if event.type == pygame.VIDEORESIZE:
                 self.handle_resize(event.w, event.h)
-
-            # 1. Handle Modal Dialogs first (they block everything else)
-            # Note: file_manager is now a subprocess, no event handling needed here
 
             if self.save_input.active:
                 self.save_input.handle_event(event)
@@ -607,17 +594,15 @@ class Editor:
                 if self.property_editor.handle_event(event):
                     continue
 
-            # 2. Handle Menu Bar (blocks widgets, but we fixed it to not block shortcuts)
             if self.menubar.handle_event(event):
                 continue
 
-            # 3. Handle Keyboard Shortcuts (Ctrl+O, Ctrl+S, etc.)
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
                 meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
                 shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
-                
+
                 if event.key == pygame.K_r and (ctrl_held or meta_held):
                     self.toggle_autotiler()
                     continue
@@ -657,20 +642,17 @@ class Editor:
                         self.tilemap.layer_manager.set_active_layer(idx)
                     continue
 
-            # 4. Handle Toolbar
             if self.toolbar and self.toolbar.handle_event(event):
                 continue
 
-            # 5. Handle Side Panels/Tools
             if self.autotiler.visible:
                 if self.autotiler.handle_event(event):
                     continue
-            
+
             if self.regex_automap_designer.visible:
                 if self.regex_automap_designer.handle_event(event):
                     continue
 
-            # 5. Handle Main Editor Widgets
             consumed = False
             if self.tileset_widget and self.tileset_widget.handle_event(event):
                 consumed = True
@@ -685,16 +667,15 @@ class Editor:
 
     def run(self):
         self.running = True
-        frame_count = 0  # For periodic cleanup
+        frame_count = 0
         while self.running:
             self._poll_async_load()
             self._poll_file_manager_result()
-            
-            # Periodically clean up finished child processes (every 60 frames)
+
             frame_count += 1
             if frame_count % 60 == 0:
                 self._cleanup_finished_processes()
-            
+
             self.handle_events()
             if self.tile_grid_widget:
                 self.tile_grid_widget.update()
@@ -712,7 +693,7 @@ class Editor:
                 self.autotiler.draw(self.screen)
             if self.regex_automap_designer:
                 self.regex_automap_designer.draw(self.screen)
-            
+
             self.notifications.draw(self.screen)
 
             if self.map_setup_widget and self.map_setup_widget.visible:
@@ -721,8 +702,6 @@ class Editor:
                 self.screen.blit(overlay, (0, 0))
                 self.map_setup_widget.draw(self.screen)
 
-            # Note: file_manager is now a subprocess, no drawing needed here
-                
             if self.save_input.active:
                 self.save_input.draw(self.screen)
             if self.tileset_type_dialog.active:
@@ -752,7 +731,9 @@ class Editor:
                 dot_font = pygame.font.SysFont("Arial", 16)
                 dots = "." * ((pygame.time.get_ticks() // 400) % 4)
                 dot_surf = dot_font.render(dots, True, (180, 180, 180))
-                dot_rect = dot_surf.get_rect(center=(self.width // 2, self.height // 2 + 30))
+                dot_rect = dot_surf.get_rect(
+                    center=(self.width // 2, self.height // 2 + 30)
+                )
                 self.screen.blit(dot_surf, dot_rect)
 
             if self.toolbar:
@@ -763,7 +744,6 @@ class Editor:
             pygame.display.update()
             self.clock.tick(self.fps)
 
-        # Clean up child processes before quitting
         self._cleanup_child_processes()
         pygame.quit()
 
@@ -772,5 +752,5 @@ if __name__ == "__main__":
     log_path = setup_console_log(BASE_PATH)
     if log_path:
         print(f"Logging to {log_path}")
-    editor = Editor(size=(1500,900))
+    editor = Editor(size=(1500, 900))
     editor.run()

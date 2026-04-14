@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tilemap-editor"
-version = "1.0.0"
+version = "1.0.2"
 description = "Pygame tilemap editor with layers and sprite animation tools"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,6 +34,9 @@ py-modules = [
   "layers",
   "tilemap",
   "tilemap_parser",
+  "standalone_filemanager",
+  "standalone_automap",
+  "standalone_image_viewer",
 ]
 
 [tool.setuptools.packages.find]
