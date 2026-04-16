@@ -8,6 +8,7 @@ import json
 from typing import Optional, List, Callable, Tuple, Dict, Any
 from pathlib import Path
 from pygame import Rect
+from typing import TYPE_CHECKING
 
 from constants import BASE_PATH
 from tilemap import Tilemap
@@ -28,6 +29,8 @@ from widgets.ui.tooltip import TooltipManager
 from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
 
+if TYPE_CHECKING:
+    from plugins.sprite_animation import SpriteAnimationEditor
 
 def setup_error_logging():
     """Setup logging to capture all errors to log file."""
@@ -85,12 +88,18 @@ class Editor:
         self.tilemap = Tilemap(self)
 
         self.selector_w = 300
+        self.left_panel_w = 380  # Width for the dockable left sidebar
         self.tileset_h = 300
         self.layer_h = 150
         self.map_setup_widget: Optional[MapSetup] = None
         self.tileset_widget: Optional[TileSelector] = None
         self.layer_widget: Optional[LayerSelector] = None
         self.tile_grid_widget: Optional[TileGrid] = None
+
+        # Dockable left sidebar (animation panel)
+        self.left_panel_visible = False
+        self.animation_panel: Optional["SpriteAnimationEditor"] = None  
+        self._animation_panel_surface: Optional[pygame.Surface] = None
 
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.regex_automap_designer = RegexAutomapDesigner(self, 150, 100)
@@ -386,6 +395,9 @@ class Editor:
         menu_h = 30
         toolbar_h = 35
 
+        # Left sidebar offset
+        left_offset = self.left_panel_w if self.left_panel_visible else 0
+
         if hasattr(self, "menubar") and self.menubar:
             self.menubar.resize(width)
 
@@ -394,7 +406,7 @@ class Editor:
 
         if hasattr(self, "tileset_widget") and self.tileset_widget:
             self.tileset_widget.resize(
-                width - self.selector_w,
+                width - self.selector_w - left_offset,
                 menu_h + toolbar_h,
                 self.selector_w,
                 self.tileset_h,
@@ -402,7 +414,7 @@ class Editor:
 
         if hasattr(self, "layer_widget") and self.layer_widget:
             self.layer_widget.resize(
-                width - self.selector_w,
+                width - self.selector_w - left_offset,
                 menu_h + toolbar_h + self.tileset_h,
                 self.selector_w,
                 height - (menu_h + toolbar_h + self.tileset_h),
@@ -410,15 +422,22 @@ class Editor:
 
         if hasattr(self, "tile_grid_widget") and self.tile_grid_widget:
             self.tile_grid_widget.rect = Rect(
-                0,
+                left_offset,
                 menu_h + toolbar_h,
-                width - self.selector_w,
+                width - self.selector_w - left_offset,
                 height - (menu_h + toolbar_h),
             )
 
+        # Update animation panel rect
+        if self.left_panel_visible and self.animation_panel:
+            panel_rect = Rect(0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h))
+            if hasattr(self.animation_panel, "rect"):
+                self.animation_panel.rect = panel_rect
+                if hasattr(self.animation_panel, "_relayout"):
+                    self.animation_panel._relayout()
+
         rect_full = Rect(0, 0, width, height)
-        if hasattr(self, "save_input") and self.save_input:
-            self.save_input.editor_rect = rect_full
+
         if hasattr(self, "tileset_type_dialog") and self.tileset_type_dialog:
             self.tileset_type_dialog.editor_rect = rect_full
         if hasattr(self, "layer_type_dialog") and self.layer_type_dialog:
@@ -436,6 +455,9 @@ class Editor:
         self.menubar._layout_menus()
 
     def open_map_setup(self):
+        if self.map_setup_widget is None:
+            logger.warning({"msg": "map_setup_widget is not initialized"})
+            return
         self.map_setup_widget.visible = True
 
     def toggle_autotiler(self):
@@ -449,6 +471,57 @@ class Editor:
             self.regex_automap_designer.hide()
         else:
             self.regex_automap_designer.show()
+
+    def toggle_animation_panel(self):
+        """Toggle the dockable animation panel visibility (Cmd/Ctrl+B)."""
+        if not self.left_panel_visible:
+            # Lazy-initialize the animation panel on first toggle
+            if self.animation_panel is None:
+                self._init_animation_panel()
+            if self.animation_panel is not None:
+                self.left_panel_visible = True
+                self.handle_resize(self.width, self.height)
+        else:
+            self.left_panel_visible = False
+            self.handle_resize(self.width, self.height)
+
+    def _init_animation_panel(self):
+        """Initialize the sprite animation editor as an embedded panel."""
+        from plugins.sprite_animation.editor import SpriteAnimationEditor
+
+        sheet = self._active_tileset_image_path()
+        if sheet is None:
+            self.notifications.notify("No tileset loaded. Open a project first.")
+            return
+
+        try:
+            tile_surf = pygame.image.load(str(sheet)).convert_alpha()
+            tile_size = (32, 32)
+            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
+                tile_size = self.tilemap.tile_size
+
+            # Create a simple consumer adapter that logs animation changes
+            class _PanelConsumer:
+                editor_instance = self
+                def on_animation_saved(self, name: str, data: dict) -> None:
+                    self.editor_instance.notifications.notify(f"Animation saved: {name}")
+
+                def on_animation_deleted(self, name: str) -> None:
+                    self.editor_instance.notifications.notify(f"Animation deleted: {name}")
+
+            consumer = _PanelConsumer()
+
+            # Create panel rect (will be set by handle_resize)
+            panel_rect = Rect(0, 65, self.left_panel_w, self.height - 65)
+            self.animation_panel = SpriteAnimationEditor(
+                panel_rect,
+                surface=tile_surf,
+                tile_size=tile_size,
+                consumer=consumer,
+            )
+        except Exception as e:
+            print(f"Error initializing animation panel: {e}")
+            self.notifications.notify(f"Failed to init animation panel: {e}")
 
     def undo(self):
         self.tilemap.undo()
@@ -634,6 +707,9 @@ class Editor:
                 elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
                     self.toggle_grid()
                     continue
+                elif event.key == pygame.K_b and (ctrl_held or meta_held):
+                    self.toggle_animation_panel()
+                    continue
                 elif pygame.K_1 <= event.key <= pygame.K_9:
                     idx = event.key - pygame.K_1
                     if idx < self.tilemap.layer_manager.get_layer_count():
@@ -650,6 +726,12 @@ class Editor:
             if self.regex_automap_designer.visible:
                 if self.regex_automap_designer.handle_event(event):
                     continue
+
+            # Route events to the dockable animation panel
+            if self.left_panel_visible and self.animation_panel:
+                if hasattr(self.animation_panel, "handle_event"):
+                    if self.animation_panel.handle_event(event):
+                        continue
 
             consumed = False
             if self.tileset_widget and self.tileset_widget.handle_event(event):
@@ -678,6 +760,11 @@ class Editor:
             if self.tile_grid_widget:
                 self.tile_grid_widget.update()
 
+            # Update animation panel
+            if self.left_panel_visible and self.animation_panel:
+                if hasattr(self.animation_panel, "update"):
+                    self.animation_panel.update()
+
             self.screen.fill((30, 30, 30))
             self.tooltip.hide()
 
@@ -691,6 +778,17 @@ class Editor:
                 self.autotiler.draw(self.screen)
             if self.regex_automap_designer:
                 self.regex_automap_designer.draw(self.screen)
+
+            # Draw the dockable animation panel
+            if self.left_panel_visible and self.animation_panel:
+                # Draw panel background
+                panel_surf = pygame.Surface((self.left_panel_w, self.height), pygame.SRCALPHA)
+                panel_surf.fill((28, 30, 34, 255))
+                self.screen.blit(panel_surf, (0, 65))
+                # Draw panel border
+                pygame.draw.rect(self.screen, (60, 62, 65), Rect(0, 65, self.left_panel_w, self.height - 65), 1)
+                if hasattr(self.animation_panel, "draw"):
+                    self.animation_panel.draw(self.screen)
 
             self.notifications.draw(self.screen)
 

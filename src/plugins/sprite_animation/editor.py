@@ -170,6 +170,7 @@ class SpriteAnimationEditor:
         self._btn_load = Rect(0, 0, 0, 0)
         self._btn_meta = Rect(0, 0, 0, 0)
         self._btn_anim_selector = Rect(0, 0, 0, 0)
+        self._btn_rename = Rect(0, 0, 0, 0)
         self._btn_info = Rect(0, 0, 0, 0)
         self._btn_dup = Rect(0, 0, 0, 0)
         self._btn_mk = Rect(0, 0, 0, 0)
@@ -383,6 +384,11 @@ class SpriteAnimationEditor:
                 self._copy_active_clip_json()
                 return True
 
+            # F2: Rename active animation
+            elif event.key == pygame.K_F2:
+                self._start_rename()
+                return True
+
         # Close dropdown on outside click
         if event.type == pygame.MOUSEBUTTONDOWN and self._dropdown_open:
             mouse = pygame.mouse.get_pos()
@@ -548,6 +554,11 @@ class SpriteAnimationEditor:
                 self._dropdown_open = not self._dropdown_open
                 return True
 
+            # Rename button
+            if self._btn_rename.collidepoint(mouse):
+                self._start_rename()
+                return True
+
             # Dropdown item selection
             if self._dropdown_open:
                 for i, item_rect in enumerate(self._dropdown_items_rects):
@@ -641,10 +652,7 @@ class SpriteAnimationEditor:
                 self._renaming = False
                 return True
 
-            # Double-click on animation selector -> rename
-            # (We treat any click on the name area as potential rename start)
-
-        # Double-click to rename
+        # Double-click on animation selector area -> rename (secondary method)
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse = pygame.mouse.get_pos()
             if self._btn_anim_selector.collidepoint(mouse):
@@ -757,6 +765,17 @@ class SpriteAnimationEditor:
             lbl = self._font.render(f"  {display_name} ▾", True, _COLORS["text"])
         screen.blit(lbl, (self._btn_anim_selector.x + 4, self._btn_anim_selector.y + 5))
         x += sel_w + pad
+
+        # [✏️ Rename] button
+        rename_btn_w = 24
+        self._btn_rename = Rect(x, cy, rename_btn_w, bh)
+        rename_hover = self._btn_rename.collidepoint(mouse)
+        rename_bg = _COLORS["btn_hover"] if rename_hover else _COLORS["btn"]
+        pygame.draw.rect(screen, rename_bg, self._btn_rename, border_radius=3)
+        pygame.draw.rect(screen, _COLORS["border"], self._btn_rename, 1, border_radius=3)
+        rename_icon = self._font_sm.render("✎", True, _COLORS["text"])
+        screen.blit(rename_icon, (self._btn_rename.x + 4, self._btn_rename.y + 5))
+        x += rename_btn_w + pad
 
         # [+ New]
         self._btn_new = Rect(x, cy, 28, bh)
@@ -930,7 +949,7 @@ class SpriteAnimationEditor:
                 self._font_sm.render("Clip checks OK", True, _COLORS["text_dim"]),
                 (x2, cy2 + 4),
             )
-        hint = self._font_sm.render("Ctrl+Shift+C copy JSON", True, _COLORS["text_dim"])
+        hint = self._font_sm.render("F2 rename  ·  Ctrl+Shift+C copy JSON", True, _COLORS["text_dim"])
         screen.blit(hint, (tb2.right - hint.get_width() - 8, cy2 + 4))
 
     def _draw_toolbar_btn(self, screen, rect, label, mouse, danger=False, active=False):

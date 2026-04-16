@@ -436,6 +436,6 @@ class AnimationPreview:
 
     def _ensure_fonts(self) -> None:
         if self._font is None:
-            self._font = pygame.font.SysFont("Arial", 13)
+            self._font = pygame.font.SysFont("Futura", 13)
         if self._font_sm is None:
-            self._font_sm = pygame.font.SysFont("Arial", 11)
+            self._font_sm = pygame.font.SysFont("Futura", 11)
