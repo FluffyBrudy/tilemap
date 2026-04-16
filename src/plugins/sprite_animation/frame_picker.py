@@ -211,27 +211,90 @@ class FramePicker:
                 return True
 
         # Scroll to pan / Ctrl+scroll to zoom
+        # Handles both mouse wheel and touchpad gestures
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
             if mouse[1] < self.rect.y + TOP_BAR_TOTAL:
                 return True
             mods = pygame.key.get_mods()
             if mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL):
+                # Zoom mode: vertical scroll zooms, horizontal scroll pans
                 old = self.zoom
-                self.zoom *= 1.12 if event.y > 0 else 0.88
-                self.zoom = max(0.25, min(self.zoom, 8.0))
-                # Zoom toward mouse
-                rel_x = mouse[0] - self.rect.x - self.offset_x
-                rel_y = mouse[1] - self.rect.y - self.offset_y
-                scale = self.zoom / old
-                self.offset_x -= rel_x * (scale - 1)
-                self.offset_y -= rel_y * (scale - 1)
+                # Use vertical scroll for zoom
+                if event.y != 0:
+                    self.zoom *= 1.12 if event.y > 0 else 0.88
+                    self.zoom = max(0.25, min(self.zoom, 8.0))
+                    # Zoom toward mouse position
+                    rel_x = mouse[0] - self.rect.x - self.offset_x
+                    rel_y = mouse[1] - self.rect.y - self.offset_y
+                    scale = self.zoom / old
+                    self.offset_x -= rel_x * (scale - 1)
+                    self.offset_y -= rel_y * (scale - 1)
+                # Use horizontal scroll for panning (touchpad support)
+                if event.x != 0:
+                    self.offset_x += event.x * 30
             else:
-                shift = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
-                if shift:
-                    self.offset_x += event.y * 30
-                else:
+                # Pan mode: vertical scroll pans Y, horizontal scroll pans X
+                # Touchpad two-finger scroll sends both x and y
+                if event.y != 0:
                     self.offset_y += event.y * 30
+                if event.x != 0:
+                    self.offset_x += event.x * 30
             return True
+
+        # Keyboard shortcuts for zoom and pan (when mouse is over the frame picker)
+        if event.type == pygame.KEYDOWN and self.rect.collidepoint(mouse):
+            mods = pygame.key.get_mods()
+            # Don't capture if Ctrl/Shift is held (let mouse wheel zoom handle it)
+            if not (mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL | pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)):
+                zoom_step = 1.15
+                if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
+                    # Zoom in
+                    old = self.zoom
+                    self.zoom *= zoom_step
+                    self.zoom = min(self.zoom, 8.0)
+                    # Zoom toward center of view
+                    cx = self.rect.w // 2
+                    cy = self.rect.h // 2
+                    rel_x = cx - self.offset_x
+                    rel_y = cy - self.offset_y
+                    scale = self.zoom / old
+                    self.offset_x -= rel_x * (scale - 1)
+                    self.offset_y -= rel_y * (scale - 1)
+                    return True
+                elif event.key == pygame.K_MINUS:
+                    # Zoom out
+                    old = self.zoom
+                    self.zoom /= zoom_step
+                    self.zoom = max(self.zoom, 0.25)
+                    cx = self.rect.w // 2
+                    cy = self.rect.h // 2
+                    rel_x = cx - self.offset_x
+                    rel_y = cy - self.offset_y
+                    scale = self.zoom / old
+                    self.offset_x -= rel_x * (scale - 1)
+                    self.offset_y -= rel_y * (scale - 1)
+                    return True
+                elif event.key == pygame.K_0:
+                    # Reset zoom to 1x and center
+                    self.zoom = 1.0
+                    self.offset_x = 0.0
+                    self.offset_y = 0.0
+                    return True
+
+                # Arrow keys for panning
+                pan_amount = 20
+                if event.key == pygame.K_LEFT:
+                    self.offset_x += pan_amount
+                    return True
+                elif event.key == pygame.K_RIGHT:
+                    self.offset_x -= pan_amount
+                    return True
+                elif event.key == pygame.K_UP:
+                    self.offset_y += pan_amount
+                    return True
+                elif event.key == pygame.K_DOWN:
+                    self.offset_y -= pan_amount
+                    return True
 
         # Track hover
         if event.type == pygame.MOUSEMOTION:
@@ -379,7 +442,7 @@ class FramePicker:
         screen.blit(hdr_bg, hdr.topleft)
         title = self._font.render(
             f"Spritesheet  ({self.cols}×{self.rows})  Zoom: {self.zoom:.1f}x"
-            f"  ·  click: add/remove  ·  Ctrl+click: select in strip",
+            f"  ·  click: add/remove  ·  Ctrl+click: select  ·  +/-: zoom  ·  arrows: pan",
             True,
             _COLORS["text"],
         )
