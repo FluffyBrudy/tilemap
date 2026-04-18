@@ -132,17 +132,28 @@ class SpriteAnimationEditor:
             self._tile_size = tile_size
             self._sheet_name = "Spritesheet"
         else:
-            raise ValueError("Must supply either `surface` or `provider`")
+            # Allow initialization without surface - user will load spritesheet later
+            self._provider = None
+            self._surface = None
+            self._tile_size = tile_size
+            self._sheet_name = "No Spritesheet"
 
         # Animation library (holds all named animations)
         self.library = AnimationLibrary(tile_size=self._tile_size)
         self._active_anim_name: Optional[str] = None
 
+        # Create dummy surface if none provided (will be replaced when spritesheet is loaded)
+        if self._surface is None:
+            dummy_surface = pygame.Surface((64, 64), pygame.SRCALPHA)
+            dummy_surface.fill((50, 50, 50, 128))  # Semi-transparent gray
+        else:
+            dummy_surface = self._surface
+
         # Sub-widgets (must be created before any animation sync)
         fp_rect, pv_rect, tl_rect = self._layout_rects()
-        self.frame_picker = FramePicker(fp_rect, self._surface, self._tile_size)
-        self.preview = AnimationPreview(pv_rect, self._surface, self._tile_size)
-        self.timeline = Timeline(tl_rect, self._surface, self._tile_size)
+        self.frame_picker = FramePicker(fp_rect, dummy_surface, self._tile_size)
+        self.preview = AnimationPreview(pv_rect, dummy_surface, self._tile_size)
+        self.timeline = Timeline(tl_rect, dummy_surface, self._tile_size)
 
         # Wire callbacks
         self.frame_picker.on_frame_clicked = self._on_tile_clicked
@@ -168,6 +179,7 @@ class SpriteAnimationEditor:
         self._btn_del = Rect(0, 0, 0, 0)
         self._btn_save = Rect(0, 0, 0, 0)
         self._btn_load = Rect(0, 0, 0, 0)
+        self._btn_load_spritesheet = Rect(0, 0, 0, 0)
         self._btn_meta = Rect(0, 0, 0, 0)
         self._btn_anim_selector = Rect(0, 0, 0, 0)
         self._btn_rename = Rect(0, 0, 0, 0)
@@ -295,7 +307,9 @@ class SpriteAnimationEditor:
                         if self._info_tooltip_pinned:
                             self._info_tooltip_pinned = False
                             continue
-                        running = False
+                        # Don't close editor if file manager is open - let file manager handle ESC
+                        if self._file_manager is None:
+                            running = False
                         continue
                 self.handle_event(event)
 
@@ -596,6 +610,11 @@ class SpriteAnimationEditor:
                 self._load_dialog()
                 return True
 
+            # Load Spritesheet
+            if self._btn_load_spritesheet.collidepoint(mouse):
+                self._load_spritesheet_dialog()
+                return True
+
             if self._btn_dup.collidepoint(mouse):
                 self._duplicate_active_animation()
                 return True
@@ -799,7 +818,12 @@ class SpriteAnimationEditor:
         # [Load]
         self._btn_load = Rect(x, cy, 48, bh)
         self._draw_toolbar_btn(screen, self._btn_load, "Load", mouse)
-        x += 56
+        x += 52
+
+        # [Load Spritesheet]
+        self._btn_load_spritesheet = Rect(x, cy, 80, bh)
+        self._draw_toolbar_btn(screen, self._btn_load_spritesheet, "Sheet", mouse)
+        x += 84
 
         # Separator
         pygame.draw.line(screen, _COLORS["toolbar_border"], (x, cy + 2), (x, cy + bh - 2))
@@ -1739,6 +1763,69 @@ class SpriteAnimationEditor:
     def _close_file_manager(self) -> None:
         """Close the file manager dialog."""
         self._file_manager = None
+
+    def _load_spritesheet_dialog(self) -> None:
+        """Load spritesheet image using file manager."""
+        from pathlib import Path
+        
+        # Import FileManager
+        try:
+            from widgets.filemanager import FileManager
+            from constants import BASE_PATH
+        except ImportError as e:
+            print(f"Warning: Could not import FileManager: {e}")
+            return
+        
+        # Get initial directory
+        if self.library.spritesheet_path:
+            initial_dir = Path(self.library.spritesheet_path).parent
+        else:
+            initial_dir = BASE_PATH / "data"
+        
+        # Create file manager for loading spritesheet
+        screen = pygame.display.get_surface()
+        w, h = 600, 400
+        screen_w, screen_h = screen.get_size()
+        rect = pygame.Rect((screen_w - w) // 2, (screen_h - h) // 2, w, h)
+        
+        self._file_manager = FileManager(
+            rect=rect,
+            initial_dir=initial_dir,
+            allowed_exts=[".png", ".jpg", ".jpeg", ".bmp", ".gif"],
+            on_select=self._on_spritesheet_selected,
+            mode="open",
+            on_cancel=self._close_file_manager,
+        )
+    
+    def _on_spritesheet_selected(self, path: Path) -> None:
+        """Callback when user selects a spritesheet image to load."""
+        try:
+            # Load the image
+            pygame.init()
+            new_surface = pygame.image.load(str(path)).convert_alpha()
+            
+            # Update the editor with the new spritesheet
+            self._surface = new_surface
+            self.library.spritesheet_path = str(path)
+            self._sheet_name = path.name
+            
+            # Update all sub-widgets with the new surface
+            self.frame_picker.set_surface(new_surface, self._tile_size)
+            self.preview.set_surface(new_surface, self._tile_size)
+            self.timeline.set_surface(new_surface, self._tile_size)
+            
+            # Clear existing animations since we're loading a new spritesheet
+            self.library = AnimationLibrary(tile_size=self._tile_size)
+            self.library.spritesheet_path = str(path)
+            self._active_anim_name = None
+            self._sync_active_animation()
+            
+            print(f"Loaded spritesheet: {path}")
+            self._close_file_manager()
+            
+        except Exception as e:
+            print(f"Error loading spritesheet: {e}")
+            self._close_file_manager()
 
     def _default_save_path(self) -> Path:
         if self.library.spritesheet_path:

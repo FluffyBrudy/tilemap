@@ -480,26 +480,12 @@ class Editor:
                 self._init_animation_panel()
             if self.animation_panel is not None:
                 self.left_panel_visible = True
-                self.handle_resize(self.width, self.height)
-        else:
-            self.left_panel_visible = False
-            self.handle_resize(self.width, self.height)
 
     def _init_animation_panel(self):
-        """Initialize the sprite animation editor as an embedded panel."""
+        """Initialize the animation panel without loading any tileset."""
         from plugins.sprite_animation.editor import SpriteAnimationEditor
 
-        sheet = self._active_tileset_image_path()
-        if sheet is None:
-            self.notifications.notify("No tileset loaded. Open a project first.")
-            return
-
         try:
-            tile_surf = pygame.image.load(str(sheet)).convert_alpha()
-            tile_size = (32, 32)
-            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
-                tile_size = self.tilemap.tile_size
-
             # Create a simple consumer adapter that logs animation changes
             class _PanelConsumer:
                 editor_instance = self
@@ -513,16 +499,18 @@ class Editor:
 
             # Create panel rect (will be set by handle_resize)
             panel_rect = Rect(0, 65, self.left_panel_w, self.height - 65)
+            
+            # Create animation editor without any surface - user will load spritesheet via "Sheet" button
             self.animation_panel = SpriteAnimationEditor(
                 panel_rect,
-                surface=tile_surf,
-                tile_size=tile_size,
+                surface=None,  # No surface - user must load spritesheet
+                tile_size=(32, 32),  # Default tile size
                 consumer=consumer,
             )
         except Exception as e:
             print(f"Error initializing animation panel: {e}")
             self.notifications.notify(f"Failed to init animation panel: {e}")
-
+        
     def undo(self):
         self.tilemap.undo()
 
