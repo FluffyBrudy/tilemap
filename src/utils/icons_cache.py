@@ -9,9 +9,8 @@ import pygame
 import json
 import hashlib
 import time
-import os
 from pathlib import Path
-from typing import Dict, Tuple, Optional, Callable, Any
+from typing import Dict, Tuple, Optional, Callable
 
 
 SOURCE_VERSION = "1.0.0"

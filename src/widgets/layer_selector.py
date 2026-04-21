@@ -5,7 +5,7 @@ Displays list of layers with ability to select, reorder, and manage them.
 
 import pygame
 from pygame import Rect, Surface, Color
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional
 from layers import Layer
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE

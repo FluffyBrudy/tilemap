@@ -6,6 +6,7 @@ from pygame import Rect, Surface
 from utils.validation import is_image_multipleof
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils import error_handler
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -85,7 +86,7 @@ class TileSelector:
             self._queue_timer_active = False
             self._start_tileset_queue()
             return True
-        
+
         mouse_pos = pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -99,19 +100,21 @@ class TileSelector:
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
                     sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
-                    
+
                     if sel_rect.collidepoint(mouse_pos):
                         variant_ids = self._get_selected_variant_ids(ts)
                         if not variant_ids:
                             return True
                         # Use top-left tile of selection as reference for properties if multi-tile
                         variant_id = variant_ids[0]
- 
+
                         self.editor.property_editor = PropertyEditor(
                             self.editor,
                             f"Tile Properties: {ts.name} (ID: {variant_id})",
                             ts.tile_properties.get(variant_id, {}),
-                            on_save=lambda props: self._save_tile_properties_multi(ts, variant_ids, props),
+                            on_save=lambda props: self._save_tile_properties_multi(
+                                ts, variant_ids, props
+                            ),
                             on_close=lambda: None,
                             shrink_value_font=True,
                         )
@@ -121,7 +124,7 @@ class TileSelector:
                 self.pan_start = mouse_pos
                 self.pan_start_offset = tuple(self.tilesets[self.active_idx].offset)
                 return True
-            
+
             # Check for right-click on tabs for tileset properties
             if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
                 tab_idx = self._get_tab_at_pos(mouse_pos)
@@ -132,7 +135,7 @@ class TileSelector:
                         f"Tileset Properties: {ts.name}",
                         ts.properties,
                         on_save=lambda props: self._save_tileset_properties(ts, props),
-                        on_close=lambda: None
+                        on_close=lambda: None,
                     )
                     return True
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
@@ -166,7 +169,12 @@ class TileSelector:
                 if self.hover_pos:
                     ts = self.tilesets[self.active_idx]
                     if ts.tileset_type == "object":
-                        self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+                        self.selected_tile = (
+                            0,
+                            0,
+                            ts.surface.get_width(),
+                            ts.surface.get_height(),
+                        )
                     else:
                         self.is_selecting = True
                         self.selection_start_grid = self.hover_pos
@@ -242,7 +250,9 @@ class TileSelector:
         )
 
     def on_files_selected(self, paths):
-        print(f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)")
+        print(
+            f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)"
+        )
         if isinstance(paths, Path):
             self.on_file_selected(paths)
             return
@@ -267,28 +277,42 @@ class TileSelector:
                     self._start_tileset_queue()
             except Exception as e:
                 error_msg = f"Error loading image {path}: {e}"
-                print(error_msg)
+                error_handler.capture(
+                    Exception(error_msg), context="load_tileset_image"
+                )
                 import logging
+
                 logging.error(error_msg, exc_info=True)
         else:
             error_msg = f"File does not exist: {path}"
-            print(error_msg)
+            error_handler.capture(Exception(error_msg), context="load_tileset_missing")
             import logging
+
             logging.error(error_msg)
 
     def _start_tileset_queue(self):
         if not self._pending_tileset_queue:
             print("DEBUG: Queue is empty, nothing to process")
             return
-        print(f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining")
-        self._pending_tileset_path, self._pending_tileset_surf = self._pending_tileset_queue.pop(0)
+        print(
+            f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining"
+        )
+        self._pending_tileset_path, self._pending_tileset_surf = (
+            self._pending_tileset_queue.pop(0)
+        )
         print(f"DEBUG: Processing tileset: {self._pending_tileset_path}")
         self.editor.tileset_type_dialog.show(
             on_confirm=self._on_tileset_type_selected,
             on_cancel=self._on_tileset_type_cancel,
         )
 
-    def load_tileset_from_path(self, path: Path, tileset_type: str, properties: dict = {}, tile_properties: dict = {}):
+    def load_tileset_from_path(
+        self,
+        path: Path,
+        tileset_type: str,
+        properties: dict = {},
+        tile_properties: dict = {},
+    ):
         """Load tileset from path without showing dialog (used when loading maps).
 
         Args:
@@ -300,15 +324,19 @@ class TileSelector:
         if path.exists():
             try:
                 surf = pygame.image.load(path).convert_alpha()
-                if tileset_type == "object" or is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
+                if tileset_type == "object" or is_image_multipleof(
+                    surf.get_size(), self.editor.tilemap.tile_size
+                ):
 
                     tileset_data = TilesetData(
                         path.name, path, surf, tileset_type=tileset_type
                     )
                     tileset_data.properties = properties
                     # Convert string keys back to int if necessary
-                    tileset_data.tile_properties = {int(k): v for k, v in tile_properties.items()}
-                    
+                    tileset_data.tile_properties = {
+                        int(k): v for k, v in tile_properties.items()
+                    }
+
                     self.tilesets.append(tileset_data)
                     self.active_idx = len(self.tilesets) - 1
                     self.tileset_map[self.active_idx] = tileset_data
@@ -317,7 +345,7 @@ class TileSelector:
                 else:
                     print("Tileset isnt multiple of tile size")
             except Exception as e:
-                print(f"Error loading image: {e}")
+                error_handler.capture(e, context="load_tileset_surface")
 
     def _on_tileset_type_selected(self, tileset_type: str):
         """Callback when user selects tileset type from dialog."""
@@ -329,12 +357,22 @@ class TileSelector:
         path = self._pending_tileset_path
         surf = self._pending_tileset_surf
 
-        if tileset_type == "tile" and not is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
-            self.editor.notifications.error("Tileset size must be multiple of tile size")
+        if tileset_type == "tile" and not is_image_multipleof(
+            surf.get_size(), self.editor.tilemap.tile_size
+        ):
+            self.editor.notifications.error(
+                "Tileset size must be multiple of tile size"
+            )
             delattr(self, "_pending_tileset_path")
             delattr(self, "_pending_tileset_surf")
             if self._pending_tileset_queue:
-                print(f"DEBUG: Continuing queue after error, {len(self._pending_tileset_queue)} items remaining")
+                error_handler.capture(
+                    Exception(
+                        f"Queue error continuation: {len(self._pending_tileset_queue)} items"
+                    ),
+                    context="tileset_queue_error",
+                    severity="info",
+                )
                 # Delay slightly to allow dialog to fully close
                 pygame.time.set_timer(pygame.USEREVENT + 1, 100, 1)
                 self._queue_timer_active = True
@@ -353,7 +391,9 @@ class TileSelector:
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
         if self._pending_tileset_queue:
-            print(f"DEBUG: Continuing queue, {len(self._pending_tileset_queue)} items remaining")
+            print(
+                f"DEBUG: Continuing queue, {len(self._pending_tileset_queue)} items remaining"
+            )
             # Delay slightly to allow dialog to fully close
             pygame.time.set_timer(pygame.USEREVENT + 1, 100, 1)
             self._queue_timer_active = True
@@ -362,7 +402,7 @@ class TileSelector:
 
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):
-            data = self.tilesets.pop(self.active_idx)
+            self.tilesets.pop(self.active_idx)
 
             self.tileset_map.clear()
             for i, ts in enumerate(self.tilesets):
@@ -379,7 +419,12 @@ class TileSelector:
             self.active_idx = int(idx)
             ts = self.tilesets[self.active_idx]
             if ts.tileset_type == "object":
-                self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+                self.selected_tile = (
+                    0,
+                    0,
+                    ts.surface.get_width(),
+                    ts.surface.get_height(),
+                )
             else:
                 self.selected_tile = None
             self.rule_hints.clear()
@@ -400,13 +445,18 @@ class TileSelector:
     def _save_tile_properties(self, ts: TilesetData, variant_id: int, props: dict):
         ts.tile_properties[variant_id] = props
         print(f"Saved properties for tile {variant_id} in tileset: {ts.name}")
-    def _save_tile_properties_multi(self, ts: TilesetData, variant_ids: List[int], props: dict):
+
+    def _save_tile_properties_multi(
+        self, ts: TilesetData, variant_ids: List[int], props: dict
+    ):
         for vid in variant_ids:
             ts.tile_properties[vid] = props.copy()
         if len(variant_ids) == 1:
             print(f"Saved properties for tile {variant_ids[0]} in tileset: {ts.name}")
         else:
-            print(f"Saved properties for {len(variant_ids)} tiles in tileset: {ts.name}")
+            print(
+                f"Saved properties for {len(variant_ids)} tiles in tileset: {ts.name}"
+            )
 
     def _get_selected_variant_ids(self, ts: TilesetData) -> List[int]:
         if not self.selected_tile:
@@ -512,8 +562,12 @@ class TileSelector:
         screen.blit(name_surf, (self.rect.x + 5, self.rect.bottom - 30))
 
     def draw_buttons(self, screen):
-        pygame.draw.rect(screen, COLORS.header, self.btn_add, border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(screen, COLORS.header, self.btn_rem, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.header, self.btn_add, border_radius=SHAPE.radius_sm
+        )
+        pygame.draw.rect(
+            screen, COLORS.header, self.btn_rem, border_radius=SHAPE.radius_sm
+        )
         screen.blit(
             self.font.render("+", True, COLORS.text),
             (self.btn_add.x + 10, self.btn_add.y + 5),
@@ -537,11 +591,18 @@ class TileSelector:
         tab_w = 100
         total_w = tab_w * len(self.tilesets)
         if total_w > self.rect.width:
-            self.tab_scroll_x = max(0, min(self.tab_scroll_x, total_w - self.rect.width))
+            self.tab_scroll_x = max(
+                0, min(self.tab_scroll_x, total_w - self.rect.width)
+            )
         else:
             self.tab_scroll_x = 0
         for i, ts in enumerate(self.tilesets):
-            r = Rect(self.rect.x + i * tab_w - self.tab_scroll_x, self.rect.y, tab_w, self.top_bar_h)
+            r = Rect(
+                self.rect.x + i * tab_w - self.tab_scroll_x,
+                self.rect.y,
+                tab_w,
+                self.top_bar_h,
+            )
             if r.right < self.rect.x or r.x > self.rect.right:
                 continue
             is_active = i == self.active_idx
@@ -555,7 +616,10 @@ class TileSelector:
                 self.editor.tooltip.show(ts.name, (mx + 10, my + 10))
         if total_w > self.rect.width:
             bar_w = max(30, int(self.rect.width * (self.rect.width / total_w)))
-            bar_x = self.rect.x + int((self.tab_scroll_x / (total_w - self.rect.width)) * (self.rect.width - bar_w))
+            bar_x = self.rect.x + int(
+                (self.tab_scroll_x / (total_w - self.rect.width))
+                * (self.rect.width - bar_w)
+            )
             bar_rect = Rect(bar_x, self.rect.y + self.top_bar_h - 4, bar_w, 3)
             pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
         screen.set_clip(clip)
@@ -568,4 +632,6 @@ class TileSelector:
         if total_w <= self.rect.width:
             self.tab_scroll_x = 0
             return
-        self.tab_scroll_x = max(0, min(self.tab_scroll_x - delta, total_w - self.rect.width))
+        self.tab_scroll_x = max(
+            0, min(self.tab_scroll_x - delta, total_w - self.rect.width)
+        )

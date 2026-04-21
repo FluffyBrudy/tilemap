@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import List, Optional
 
 # Suppress pygame welcome message
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 import pygame
 from pygame import Rect
@@ -40,16 +40,14 @@ class StandaloneFileManager:
         self,
         mode: str = "open",
         initial_dir: Optional[Path] = None,
-        allowed_exts: List[str] = None,
+        allowed_exts: List[str] = [],
         default_name: str = "",
         multi_select: bool = False,
         window_size: tuple[int, int] = (800, 600),
     ):
         pygame.init()
         self.screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
-        pygame.display.set_caption(
-            f"File Manager - {mode.capitalize()}"
-        )
+        pygame.display.set_caption(f"File Manager - {mode.capitalize()}")
         self.clock = pygame.time.Clock()
         self.running = True
         self.window_size = window_size
@@ -57,7 +55,7 @@ class StandaloneFileManager:
         # Resolve initial directory relative to BASE_PATH if it's relative
         if initial_dir and not initial_dir.is_absolute():
             initial_dir = BASE_PATH / initial_dir
-        
+
         if not initial_dir or not initial_dir.exists():
             initial_dir = BASE_PATH / "data"
             if not initial_dir.exists():
@@ -94,7 +92,7 @@ class StandaloneFileManager:
                 "status": "selected",
                 "path": str(path.resolve()),
             }
-        
+
         print(json.dumps(result), flush=True)
         self.running = False
 
@@ -116,7 +114,7 @@ class StandaloneFileManager:
     def run(self, fps: int = 60):
         """Main event loop."""
         while self.running:
-            dt = self.clock.tick(fps)
+            self.clock.tick(fps)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -132,7 +130,9 @@ class StandaloneFileManager:
                     self.file_manager.rect.width = event.w
                     self.file_manager.rect.height = event.h
                     # Update resize handler to track new rect
-                    self.file_manager.resize_handler.widget_rect = self.file_manager.rect
+                    self.file_manager.resize_handler.widget_rect = (
+                        self.file_manager.rect
+                    )
                     # Don't handle this event further to avoid double processing
                     continue
                 elif event.type == pygame.KEYDOWN:
@@ -197,7 +197,7 @@ def main(argv: List[str] | None = None) -> None:
     try:
         w, h = map(int, args.window_size.split("x"))
         window_size = (w, h)
-    except:
+    except ValueError:
         window_size = (800, 600)
 
     # Parse allowed extensions

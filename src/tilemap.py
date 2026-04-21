@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Tuple, Optional, Union
 from pygame import Rect
 from json import load as JSONLoad, dump as JSONDump
 from pathlib import Path
@@ -7,12 +7,11 @@ from constants import BASE_PATH
 from utils.serialization import (
     deserialize_point,
     serialize_point,
-    copy_object,
-    serialize_object,
 )
-from ttypes.tilemap import TypeObject, TypeTile, TypeTileSerealized
-from layers import LayerManager, create_default_layer_manager
+from ttypes.tilemap import TypeObject
+from layers import create_default_layer_manager
 from utils.history import HistoryManager
+from utils import error_handler
 
 if TYPE_CHECKING:
     from src.ttypes import TTile, TCoor
@@ -63,10 +62,10 @@ class Tilemap:
     def init_size(self, tile_size: "TCoor", map_size: "TCoor"):
         self.tile_size = tile_size
         self.map_size = map_size
-        self.initial_map_size = map_size # Store what user initially setup
+        self.initial_map_size = map_size  # Store what user initially setup
         self.initialized = True
         self.active_project_path = None
-        
+
         # Clear and create default layer
         self.layer_manager.layers.clear()
         self.layer_manager.create_layer("Layer 1", "tile")
@@ -85,7 +84,7 @@ class Tilemap:
             "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
-            "map_size": self.map_size
+            "map_size": self.map_size,
         }
         self.history.save_state(state, description)
 
@@ -101,7 +100,7 @@ class Tilemap:
             "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
-            "map_size": self.map_size
+            "map_size": self.map_size,
         }
         prev_state = self.history.undo(current_state)
         if prev_state:
@@ -119,7 +118,7 @@ class Tilemap:
             "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
-            "map_size": self.map_size
+            "map_size": self.map_size,
         }
         next_state = self.history.redo(current_state)
         if next_state:
@@ -138,7 +137,7 @@ class Tilemap:
                 for pos in layer.tiles.keys():
                     max_w = max(max_w, pos[0] + 1)
                     max_h = max(max_h, pos[1] + 1)
-            
+
             if layer.objects:
                 for obj in layer.objects.values():
                     area = obj["area"]
@@ -149,7 +148,12 @@ class Tilemap:
 
         self.map_size = (max_w, max_h)
 
-    def incremental_update_map_size(self, pos: Tuple[int, int], is_pixel: bool = False, size: Optional[Tuple[int, int]] = None):
+    def incremental_update_map_size(
+        self,
+        pos: Tuple[int, int],
+        is_pixel: bool = False,
+        size: Optional[Tuple[int, int]] = None,
+    ):
         """Update map size based on a single point or area without full scan."""
         if not self.initialized:
             return
@@ -165,28 +169,31 @@ class Tilemap:
             # For grid positions
             new_w = max(self.map_size[0], pos[0] + 1)
             new_h = max(self.map_size[1], pos[1] + 1)
-        
+
         if (new_w, new_h) != self.map_size:
             self.map_size = (new_w, new_h)
 
     def _apply_history_state(self, state):
         from layers import Layer
         from widgets.autotiler import AutotileGroup
-        
+
         self.layer_manager.layers = [Layer.from_dict(L) for L in state["layers"]]
         self.layer_manager.active_layer_idx = state["active_layer_idx"]
         self.tile_size = state["tile_size"]
         self.map_size = state["map_size"]
-        
+
         if hasattr(self.editor, "autotiler"):
             designer = self.editor.autotiler
             if "groups" in state:
                 designer.groups = [AutotileGroup.from_dict(G) for G in state["groups"]]
                 designer.selected_group_idx = state.get("selected_group_idx", 0)
-            elif "rules" in state: # Fallback for old history
+            elif "rules" in state:  # Fallback for old history
                 from widgets.autotiler import AutotileRule
+
                 default_group = AutotileGroup("Default")
-                default_group.rules = [AutotileRule.from_dict(R) for R in state["rules"]]
+                default_group.rules = [
+                    AutotileRule.from_dict(R) for R in state["rules"]
+                ]
                 designer.groups = [default_group]
                 designer.selected_group_idx = 0
             designer.selected_rule_index = -1
@@ -234,11 +241,25 @@ class Tilemap:
             "meta": {
                 "tile_size": serialize_point(self.tile_size),
                 "map_size": serialize_point(self.map_size),
-                "zoom_level": getattr(self.editor.tile_grid_widget, "zoom_level", 1.0) if self.editor.tile_grid_widget else 1.0,
-                "scroll": serialize_point((
-                    getattr(self.editor.tile_grid_widget, "scroll_x", 0) if self.editor.tile_grid_widget else 0,
-                    getattr(self.editor.tile_grid_widget, "scroll_y", 0) if self.editor.tile_grid_widget else 0
-                )),
+                "zoom_level": (
+                    getattr(self.editor.tile_grid_widget, "zoom_level", 1.0)
+                    if self.editor.tile_grid_widget
+                    else 1.0
+                ),
+                "scroll": serialize_point(
+                    (
+                        (
+                            getattr(self.editor.tile_grid_widget, "scroll_x", 0)
+                            if self.editor.tile_grid_widget
+                            else 0
+                        ),
+                        (
+                            getattr(self.editor.tile_grid_widget, "scroll_y", 0)
+                            if self.editor.tile_grid_widget
+                            else 0
+                        ),
+                    )
+                ),
                 "initial_map_size": serialize_point(self.initial_map_size),
                 "version": "1.1",
             },
@@ -270,31 +291,39 @@ class Tilemap:
                     ts_data["properties"] = ts.properties
                 if ts.tile_properties:
                     # Convert int keys to str for JSON
-                    ts_data["tile_properties"] = {str(k): v for k, v in ts.tile_properties.items()}
-                
+                    ts_data["tile_properties"] = {
+                        str(k): v for k, v in ts.tile_properties.items()
+                    }
+
                 save_data["resources"]["tilesets"].append(ts_data)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             if not hasattr(save_data["project_state"], "groups"):
                 save_data["project_state"]["groups"] = []
-            
+
             for group in self.editor.autotiler.groups:
                 save_data["project_state"]["groups"].append(group.to_dict())
-            
+
             # For backward compatibility with simpler loaders, also save flat rules
             save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(rule.to_dict())
-        
+
         # Save automap pattern rules
-        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
+        if (
+            hasattr(self.editor, "regex_automap_designer")
+            and self.editor.regex_automap_designer
+        ):
             try:
                 automap_rules = self.editor.regex_automap_designer.serialize_rules()
                 save_data["project_state"]["automap_rules"] = automap_rules
             except Exception as e:
                 import logging
+
                 logging.error(f"Error serializing automap rules: {e}", exc_info=True)
-                print(f"Warning: Failed to save automap rules: {e}")
+                error_handler.capture(
+                    e, context="save_automap_rules", severity="warning"
+                )
                 # Continue saving other data
 
         for layer in self.layer_manager.layers:
@@ -366,7 +395,9 @@ class Tilemap:
                         rule.tileset_index = idx
                         resolved_ts = ts
                         break
-                    if str(Path(rule.tileset_path)) == str(ts.path.relative_to(BASE_PATH)):
+                    if str(Path(rule.tileset_path)) == str(
+                        ts.path.relative_to(BASE_PATH)
+                    ):
                         rule.tileset_index = idx
                         resolved_ts = ts
                         break
@@ -409,7 +440,7 @@ class Tilemap:
                 self.initial_map_size = self.map_size
         except (KeyError, ValueError) as e:
             raise ValueError(f"Error loading map metadata: {e}") from e
-        
+
         # Restore view state
         if self.editor.tile_grid_widget:
             if "zoom_level" in payload["meta"]:
@@ -448,34 +479,45 @@ class Tilemap:
                     # First try relative to map file directory
                     map_dir = path.parent
                     p = map_dir / p
-                    
+
                     # If that doesn't exist, try relative to BASE_PATH (for backward compatibility)
                     if not p.exists():
                         p = BASE_PATH / path_str
-                
+
                 # Log error if tileset file not found
                 if not p.exists():
                     error_msg = f"Tileset file not found: {path_str} (tried: {p})"
-                    print(error_msg)
+                    error_handler.capture(
+                        Exception(error_msg),
+                        context="load_tileset_missing",
+                        severity="warning",
+                    )
                     import logging
+
                     logging.error(error_msg)
                     continue
 
                 try:
                     self.editor.tileset_widget.load_tileset_from_path(
-                        p, 
-                        tileset_type, 
+                        p,
+                        tileset_type,
                         properties=ts_entry.get("properties", {}),
-                        tile_properties=ts_entry.get("tile_properties", {})
+                        tile_properties=ts_entry.get("tile_properties", {}),
                     )
                 except Exception as e:
                     error_msg = f"Error loading tileset {path_str}: {e}"
-                    print(error_msg)
+                    error_handler.capture(
+                        Exception(error_msg),
+                        context="load_tileset_error",
+                        severity="warning",
+                    )
                     import logging
+
                     logging.error(error_msg)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             from widgets.autotiler import AutotileGroup, AutotileRule
+
             designer = self.editor.autotiler
             designer.groups.clear()
 
@@ -491,7 +533,7 @@ class Tilemap:
                         for rule in group.rules:
                             self._resolve_rule_resources(rule, ts_widget)
                         designer.groups.append(group)
-                
+
                 # Fallback / Migration for old flat rules
                 elif "rules" in payload["project_state"]:
                     default_group = AutotileGroup("Default")
@@ -501,27 +543,43 @@ class Tilemap:
                             self._resolve_rule_resources(rule, ts_widget)
                             default_group.rules.append(rule)
                         except Exception as e:
-                            print(f"Failed to load rule '{rule_dict.get('name')}': {e}")
+                            error_handler.capture(
+                                e, context="load_automap_rule", severity="warning"
+                            )
                     designer.groups.append(default_group)
-            
+
             if not designer.groups:
                 designer.groups.append(AutotileGroup("Default"))
             designer.selected_group_idx = 0
-        
+
         # Load automap pattern rules
-        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
-            if "project_state" in payload and "automap_rules" in payload["project_state"]:
+        if (
+            hasattr(self.editor, "regex_automap_designer")
+            and self.editor.regex_automap_designer
+        ):
+            if (
+                "project_state" in payload
+                and "automap_rules" in payload["project_state"]
+            ):
                 try:
                     automap_rules_data = payload["project_state"]["automap_rules"]
                     if isinstance(automap_rules_data, list):
-                        self.editor.regex_automap_designer.deserialize_rules(automap_rules_data)
+                        self.editor.regex_automap_designer.deserialize_rules(
+                            automap_rules_data
+                        )
                     else:
                         import logging
-                        logging.warning("Invalid automap_rules format in project file, expected list")
+
+                        logging.warning(
+                            "Invalid automap_rules format in project file, expected list"
+                        )
                 except Exception as e:
                     import logging
+
                     logging.error(f"Error loading automap rules: {e}", exc_info=True)
-                    print(f"Warning: Failed to load automap rules: {e}")
+                    error_handler.capture(
+                        e, context="load_automap_rules", severity="warning"
+                    )
                     # Continue loading other data
 
         data_section = payload.get("data", {})
@@ -554,9 +612,7 @@ class Tilemap:
                         active_layer.tiles[pos] = tile_data
 
         self.initialized = True
-        print(
-            f"Map Loaded: {path.name} (Layers: {self.layer_manager.get_layer_count()})"
-        )
+        error_handler.capture(None, context="load_map")
 
     def load_map(self, path: Path):
         try:
@@ -564,8 +620,9 @@ class Tilemap:
             self.apply_map_payload(path, payload)
         except Exception as e:
             error_msg = f"Error loading map: {e}"
-            print(error_msg)
+            error_handler.capture(Exception(error_msg), context="load_map")
             import logging
+
             logging.error(error_msg, exc_info=True)
 
     def _load_layer_from_dict(self, layer_data: dict):

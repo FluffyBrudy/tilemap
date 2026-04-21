@@ -1,7 +1,7 @@
 import pygame
-from pygame import Rect, Surface, Color
+from pygame import Rect, Surface
 import time
-from typing import List, Tuple
+from typing import List
 
 class Notification:
     def __init__(self, text: str, color=(200, 200, 200), duration=3.0):

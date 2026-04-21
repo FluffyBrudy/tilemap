@@ -1,11 +1,10 @@
-import pygame
-import os
-import sys
 import json
-import subprocess
+import os
+import pygame
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 from constants import INTELLISENSE_DEPTH, IGNORE_DIRS, BASE_PATH
+from utils.error_handler import error_handler
 from utils.icons_cache import get_icon, prewarm_common_icons
 from utils.standalone import launch_standalone
 
@@ -54,7 +53,6 @@ class DimensionPersistence:
             height: Widget height in pixels
         """
         try:
-
             self.pref_file.parent.mkdir(parents=True, exist_ok=True)
 
             data = {"filemanager_width": width, "filemanager_height": height}
@@ -62,7 +60,6 @@ class DimensionPersistence:
             with open(self.pref_file, "w") as f:
                 json.dump(data, f, indent=2)
         except (OSError, IOError) as e:
-
             print(f"Warning: Could not save FileManager dimensions: {e}")
 
     def load_dimensions(self) -> Optional[Tuple[int, int]]:
@@ -89,7 +86,6 @@ class DimensionPersistence:
             return None
 
         except (OSError, IOError, json.JSONDecodeError) as e:
-
             print(f"Warning: Could not load FileManager dimensions: {e}")
             return None
 
@@ -318,16 +314,20 @@ class ImagePreview:
         ):
             return self.scaled_cache
 
+        if self.image_dimensions is None:
+            error_handler.capture(
+                Exception("Image dimensions are None"), "scale_to_fit", "info"
+            )
+            return None
+
         image_width, image_height = self.image_dimensions
         aspect_ratio = image_width / image_height
         target_aspect = target_width / target_height
 
         if aspect_ratio > target_aspect:
-
             new_width = target_width
             new_height = int(target_width / aspect_ratio)
         else:
-
             new_height = target_height
             new_width = int(target_height * aspect_ratio)
 
@@ -417,7 +417,6 @@ class ImagePreview:
 
         scaled_image = self.scale_to_fit(image_area_width, image_area_height)
         if scaled_image:
-
             image_rect = scaled_image.get_rect()
             image_rect.centerx = rect.centerx
             image_rect.top = rect.top + close_button_size + close_button_margin * 2
@@ -460,7 +459,7 @@ class FileManager:
         rect: pygame.Rect,
         initial_dir: Optional[Path] = None,
         allowed_exts: List[str] = [".png", ".jpg"],
-        on_select: Callable[[Path], None] = lambda p: None,
+        on_select: Callable[[Union[Path, List[Path]]], None] = lambda p: None,
         on_save: Optional[Callable[[Path], None]] = None,
         mode: str = "open",
         default_name: str = "",
@@ -613,7 +612,6 @@ class FileManager:
 
         try:
             for p in path.iterdir():
-
                 if p.name.startswith("."):
                     continue
 
@@ -626,7 +624,6 @@ class FileManager:
 
                     self._recursive_search(p, query, depth - 1)
         except (PermissionError, OSError, Exception):
-
             pass
 
     def _load_recents(self) -> List[Path]:
@@ -636,8 +633,9 @@ class FileManager:
             with open(self.recents_path, "r") as f:
                 data = json.load(f)
                 return [Path(p) for p in data if Path(p).exists()]
-        except:
-            return []
+        except Exception as e:
+            error_handler.capture(e, context="filemanager_load_recents")
+        return []
 
     def _save_recents(self):
         try:
@@ -645,8 +643,8 @@ class FileManager:
                 self.recents_path.parent.mkdir(parents=True)
             with open(self.recents_path, "w") as f:
                 json.dump([str(p) for p in self.recents], f)
-        except:
-            pass
+        except Exception as e:
+            error_handler.capture(e, context="filemanager_save_recents")
 
     def _add_to_recents(self, path: Path):
         if path in self.recents:
@@ -689,7 +687,6 @@ class FileManager:
         self._update_save_name_rect(footer_rect)
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-
             if not self.is_search_focused and not self.is_save_name_focused:
                 self.on_cancel_callback()
                 return True
@@ -713,7 +710,6 @@ class FileManager:
                 return True
 
         if event.type == pygame.MOUSEMOTION:
-
             handle = self.resize_handler.get_handle_at_pos(mouse_pos)
             if self.enable_resize_handles and handle:
                 if handle == "right":
@@ -730,7 +726,6 @@ class FileManager:
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-
             handle = self.resize_handler.get_handle_at_pos(mouse_pos)
             if self.enable_resize_handles and handle:
                 self.resize_handler.start_drag(handle, mouse_pos)
@@ -757,7 +752,6 @@ class FileManager:
                 return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-
             if self.enable_resize_handles and self.resize_handler.is_dragging:
                 self.resize_handler.end_drag()
                 self.dimension_persistence.save_dimensions(
@@ -822,7 +816,6 @@ class FileManager:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-
                 if self.image_preview.is_visible and hasattr(
                     self.image_preview, "close_button_rect"
                 ):
@@ -921,7 +914,6 @@ class FileManager:
                                 else:
                                     self.selected_indices.append(idx)
                             else:
-
                                 self.selected_indices = [idx]
                             self.selected_index = idx
                         else:
@@ -933,14 +925,11 @@ class FileManager:
                             self.save_name = item.name
 
                         if not item.is_dir:
-
                             if item.ext in [".png", ".jpg", ".jpeg"]:
                                 self._show_preview(item.path)
                             else:
-
                                 self._hide_preview()
                         else:
-
                             self._hide_preview()
 
                     return True
@@ -989,7 +978,7 @@ class FileManager:
                 self._attempt_save()
             else:
                 if self.multi_select and self.selected_indices:
-                    paths = []
+                    paths: List[Path] = []
                     for idx in self.selected_indices:
                         if 0 <= idx < len(self.items):
                             item = self.items[idx]
@@ -1076,13 +1065,11 @@ class FileManager:
         )
 
         if self.image_preview.is_visible:
-
             file_list_width = int(content_width * 0.6)
 
             min_file_list_width = int(content_width * 0.4)
             file_list_width = max(file_list_width, min_file_list_width)
         else:
-
             file_list_width = content_width
 
         return pygame.Rect(content_x, content_y, file_list_width, content_height)

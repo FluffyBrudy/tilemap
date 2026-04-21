@@ -1,9 +1,9 @@
 import pygame
-import os
-import json
 from pygame import Surface, Rect, Color
 from typing import TYPE_CHECKING, List, Tuple, Set, Optional
 import time
+
+from utils.error_handler import error_handler
 from .autotile_template import AutotileTemplateApplier
 
 if TYPE_CHECKING:
@@ -66,7 +66,7 @@ class AutotileRule:
 
 
 class AutotileGroup:
-    def __init__(self, name: str, rules: List[AutotileRule] = None):
+    def __init__(self, name: str, rules: Optional[List[AutotileRule]] = None):
         self.name = name
         self.rules = rules or []
 
@@ -379,8 +379,8 @@ class AutotileRuleDesigner:
                             try:
                                 sub = ts.surface.subsurface(sub_rect).copy()
                                 self.current_preview_surfs.append(sub)
-                            except:
-                                pass
+                            except Exception as e:
+                                error_handler.capture(e, context="autotiler_preview")
                     print(f"DEBUG: Variants loaded: {self.current_variant_ids}")
 
     def _handle_grid_click(self, mouse_pos):
@@ -469,8 +469,8 @@ class AutotileRuleDesigner:
                         sub_rect = Rect(tx, ty, tile_w, tile_h)
                         sub = ts.surface.subsurface(sub_rect).copy()
                         self.current_preview_surfs.append(sub)
-                    except:
-                        pass
+                    except Exception as e:
+                        error_handler.capture(e, context="autotiler_preview")
 
         elif rule.preview_surf:
             self.current_preview_surfs.append(rule.preview_surf)
@@ -503,7 +503,7 @@ class AutotileRuleDesigner:
     def _save_current_rule(self):
         self._update_preview_from_selector()
 
-        print(f"\nDEBUG: _save_current_rule called")
+        print("\nDEBUG: _save_current_rule called")
 
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if (
@@ -515,7 +515,7 @@ class AutotileRuleDesigner:
                 self.current_tileset_index = tile_selector.active_idx
 
         if not self.current_tileset_path or not self.current_variant_ids:
-            print(f"DEBUG: Can't save rule - missing tileset or variants")
+            print("DEBUG: Can't save rule - missing tileset or variants")
             return
 
         if self.selected_group_idx == -1:
@@ -535,7 +535,6 @@ class AutotileRuleDesigner:
             rule.group_id = current_group.name
             print(f"Rule updated: {rule.name} in Group {current_group.name}")
         else:
-
             base_name = f"Rule {len(current_group.rules) + 1}"
             while any(r.name == base_name for r in current_group.rules):
                 base_name = self._get_next_rule_name(base_name)
@@ -570,7 +569,6 @@ class AutotileRuleDesigner:
             max_scroll = max(0, len(group.rules) - self.max_visible_rules)
             self.scroll_offset = min(self.scroll_offset, max_scroll)
         elif self.selected_group_idx != -1 and self.selected_rule_index == -1:
-
             if len(self.groups) > 1:
                 self.groups.pop(self.selected_group_idx)
                 self.selected_group_idx = 0
@@ -591,12 +589,10 @@ class AutotileRuleDesigner:
                 self.editor.tilemap.save_map(
                     str(project_path.relative_to(BASE_PATH / "data"))
                 )
-            except Exception as e:
-
+            except Exception:
                 self.editor.tilemap.active_project_path = project_path
                 self.editor.tilemap.save_map()
         else:
-
             try:
                 self.editor.tilemap.save_map()
             except Exception as e:
@@ -734,7 +730,6 @@ class AutotileRuleDesigner:
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
         if total_rules > self.max_visible_rules:
-
             if self.scroll_offset > 0:
                 arrow_up = "▲"
                 arrow_surf = self.font.render(arrow_up, True, (150, 200, 255))
@@ -769,7 +764,6 @@ class AutotileRuleDesigner:
                 screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5
             )
         else:
-
             self.scroll_bar_rect = None
 
     def _handle_scroll_event(self, event) -> bool:
@@ -782,7 +776,6 @@ class AutotileRuleDesigner:
         max_scroll = max(0, total_rules - self.max_visible_rules)
 
         if event.type == pygame.MOUSEWHEEL:
-
             if self.rule_list_area.collidepoint(pygame.mouse.get_pos()):
                 scroll_delta = -event.y
                 old_offset = self.scroll_offset
@@ -806,7 +799,6 @@ class AutotileRuleDesigner:
 
         elif event.type == pygame.MOUSEMOTION:
             if self.is_scrollbar_dragging:
-
                 relative_y = event.pos[1] - self.rule_list_area.y - 25
                 track_height = self.rule_list_area.height - 70
 
@@ -822,7 +814,6 @@ class AutotileRuleDesigner:
     def _handle_group_rename(self, event) -> bool:
         """Handle F2 key and inline text editing for group names"""
         if event.type == pygame.KEYDOWN:
-
             if event.key == pygame.K_F2 and self.selected_group_idx >= 0:
                 self.renaming_group_idx = self.selected_group_idx
                 self.rename_text = self.groups[self.selected_group_idx].name
@@ -830,20 +821,17 @@ class AutotileRuleDesigner:
 
             if self.renaming_group_idx is not None:
                 if event.key == pygame.K_RETURN:
-
                     group = self.groups[self.renaming_group_idx]
                     old_name = group.name
                     new_name = self.rename_text.strip()
 
                     if new_name and new_name != old_name:
-
                         existing_names = {
                             g.name
                             for i, g in enumerate(self.groups)
                             if i != self.renaming_group_idx
                         }
                         if new_name in existing_names:
-
                             counter = 2
                             base_name = new_name
                             while new_name in existing_names:
@@ -859,17 +847,14 @@ class AutotileRuleDesigner:
                     return True
 
                 elif event.key == pygame.K_ESCAPE:
-
                     self.renaming_group_idx = None
                     return True
 
                 elif event.key == pygame.K_BACKSPACE:
-
                     self.rename_text = self.rename_text[:-1]
                     return True
 
                 else:
-
                     if event.unicode.isprintable():
                         self.rename_text += event.unicode
                     return True

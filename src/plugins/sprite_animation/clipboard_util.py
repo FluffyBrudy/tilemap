@@ -4,7 +4,10 @@ from __future__ import annotations
 
 
 def copy_plain_text(text: str) -> bool:
-    """Copy UTF-8 text to the system clipboard. Returns True if likely succeeded."""
+    """Copy text to clipboard using multiple fallback methods.
+
+    Returns True if successful, False if all methods fail.
+    """
     if not text:
         return False
     try:
@@ -12,7 +15,13 @@ def copy_plain_text(text: str) -> bool:
 
         pyperclip.copy(text)
         return True
-    except Exception:
+    except Exception as e:
+        try:
+            from utils import error_handler
+
+            error_handler.capture(e, context="clipboard_pyperclip", severity="warning")
+        except ImportError:
+            pass
         pass
     try:
         import subprocess
@@ -38,7 +47,15 @@ def copy_plain_text(text: str) -> bool:
         proc.communicate(text, timeout=5)
         if proc.returncode == 0:
             return True
-    except Exception:
+    except Exception as e:
+        try:
+            from utils import error_handler
+
+            error_handler.capture(
+                e, context="clipboard_subprocess_wsl", severity="warning"
+            )
+        except ImportError:
+            pass
         pass
     try:
         import tkinter as tk
@@ -50,5 +67,11 @@ def copy_plain_text(text: str) -> bool:
         r.update()
         r.destroy()
         return True
-    except Exception:
+    except Exception as e:
+        try:
+            from utils import error_handler
+
+            error_handler.capture(e, context="clipboard_tkinter", severity="warning")
+        except ImportError:
+            pass
         return False

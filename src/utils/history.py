@@ -1,4 +1,4 @@
-from typing import List, Any, Callable
+from typing import List, Any
 import copy
 
 class HistoryState:

@@ -26,11 +26,14 @@ from widgets.ui.toolbar import Toolbar
 from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.tooltip import TooltipManager
+from widgets.ui.error_console import ErrorConsole
 from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
+from utils import error_handler, error_context
 
 if TYPE_CHECKING:
     from plugins.sprite_animation import SpriteAnimationEditor
+
 
 def setup_error_logging():
     """Setup logging to capture all errors to log file."""
@@ -98,13 +101,16 @@ class Editor:
 
         # Dockable left sidebar (animation panel)
         self.left_panel_visible = False
-        self.animation_panel: Optional["SpriteAnimationEditor"] = None  
+        self.animation_panel: Optional["SpriteAnimationEditor"] = None
         self._animation_panel_surface: Optional[pygame.Surface] = None
 
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.regex_automap_designer = RegexAutomapDesigner(self, 150, 100)
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
+        self.error_console = ErrorConsole(Rect(0, 0, self.width, self.height))
+        # Register console with error handler for real-time updates
+        error_handler.register_console(self.error_console)
         self.property_editor: Optional[PropertyEditor] = None
 
         self.child_processes: List[subprocess.Popen] = []
@@ -173,7 +179,8 @@ class Editor:
 
         # Build command line arguments
         args = [
-            "--mode", mode,
+            "--mode",
+            mode,
         ]
 
         if initial_dir:
@@ -200,7 +207,7 @@ class Editor:
 
         try:
             # Launch subprocess via unified launcher (stderr captured, text mode for JSON parsing)
-            self.file_manager_process = _launch_standalone_module(
+            self.file_manager_process = launch_standalone(
                 "standalone_filemanager",
                 args,
                 cwd=BASE_PATH,
@@ -217,9 +224,11 @@ class Editor:
             # Track the process
             self.child_processes.append(self.file_manager_process)
 
-            print(f"Launched file manager subprocess (PID: {self.file_manager_process.pid})")
+            print(
+                f"Launched file manager subprocess (PID: {self.file_manager_process.pid})"
+            )
         except Exception as e:
-            print(f"Error launching file manager: {e}")
+            error_handler.capture(e, context="launch_file_manager")
             self.file_manager_process = None
 
     def _poll_file_manager_result(self):
@@ -228,12 +237,10 @@ class Editor:
             return
 
         if self.file_manager_process.poll() is not None:
-
             try:
                 stdout, stderr = self.file_manager_process.communicate(timeout=0.1)
 
                 if stdout:
-
                     lines = [
                         line.strip()
                         for line in stdout.strip().split("\n")
@@ -246,20 +253,16 @@ class Editor:
                             status = result.get("status")
 
                             if status == "selected":
-
                                 if "paths" in result:
-
                                     paths = [Path(p) for p in result["paths"]]
                                     if self._file_manager_callbacks["on_select"]:
                                         self._file_manager_callbacks["on_select"](paths)
                                 elif "path" in result:
-
                                     path = Path(result["path"])
                                     if self._file_manager_callbacks["on_select"]:
                                         self._file_manager_callbacks["on_select"](path)
 
                             elif status == "saved":
-
                                 path = Path(result["path"])
                                 if self._file_manager_callbacks["on_save"]:
                                     self._file_manager_callbacks["on_save"](path)
@@ -267,21 +270,25 @@ class Editor:
                                     self._file_manager_callbacks["on_select"](path)
 
                             elif status == "cancelled":
-
                                 print("File manager cancelled")
                         except json.JSONDecodeError as e:
-                            print(f"Error parsing file manager result: {e}")
-                            print(f"Output was: {result_line}")
+                            error_handler.capture(
+                                e, context="parse_file_manager_result"
+                            )
+                            print(f"Output was: {result_line}")  # Keep for debugging
 
                 if stderr:
-                    print(f"File manager stderr: {stderr}")
+                    error_handler.capture(
+                        Exception(stderr),
+                        context="file_manager_stderr",
+                        severity="warning",
+                    )
 
             except subprocess.TimeoutExpired:
                 pass
             except Exception as e:
-                print(f"Error processing file manager result: {e}")
+                error_handler.capture(e, context="process_file_manager_result")
             finally:
-
                 self.file_manager_process = None
                 self._file_manager_callbacks = {}
 
@@ -294,7 +301,7 @@ class Editor:
             except subprocess.TimeoutExpired:
                 self.file_manager_process.kill()
             except Exception as e:
-                print(f"Error closing file manager: {e}")
+                error_handler.capture(e, context="close_file_manager")
 
         self.file_manager_process = None
         self._file_manager_callbacks = {}
@@ -306,7 +313,7 @@ class Editor:
             try:
                 self.tilemap.save_map()
             except Exception as e:
-                print(f"Error saving: {e}")
+                error_handler.capture(e, context="save_map")
         else:
             self.open_save_as_dialog()
 
@@ -328,13 +335,13 @@ class Editor:
         try:
             self.tilemap.save_map(filename)
         except Exception as e:
-            print(f"Error saving map: {e}")
+            error_handler.capture(e, context="save_map_as")
 
     def on_map_save_selected(self, path: Path):
         try:
             self.tilemap.save_map(path)
         except Exception as e:
-            print(f"Error saving map: {e}")
+            error_handler.capture(e, context="save_map_selected")
 
     def perform_load(self):
         self.open_file_manager(
@@ -375,14 +382,16 @@ class Editor:
         if status == "error":
             self.loading_state["active"] = False
             self.loading_state["error"] = payload_or_error
-            print(f"Error loading map: {payload_or_error}")
+            error_handler.capture(
+                Exception(payload_or_error), context="load_map_status"
+            )
             return
 
         try:
             self.post_map_setup()
             self.tilemap.apply_map_payload(path, payload_or_error)
         except Exception as e:
-            print(f"Error loading map: {e}")
+            error_handler.capture(e, context="load_map_apply")
         finally:
             self.loading_state["active"] = False
 
@@ -392,6 +401,16 @@ class Editor:
     def handle_resize(self, width: int, height: int):
         self.width = width
         self.height = height
+
+        # Update error console size
+        if hasattr(self, "error_console"):
+            self.error_console.editor_rect = Rect(0, 0, self.width, self.height)
+            self.error_console.width = min(800, self.width - 100)
+            self.error_console.height = min(400, self.height - 100)
+            self.error_console.x = (self.width - self.error_console.width) // 2
+            self.error_console.y = (self.height - self.error_console.height) // 2
+            self.error_console._update_rects()
+
         menu_h = 30
         toolbar_h = 35
 
@@ -430,7 +449,9 @@ class Editor:
 
         # Update animation panel rect
         if self.left_panel_visible and self.animation_panel:
-            panel_rect = Rect(0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h))
+            panel_rect = Rect(
+                0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h)
+            )
             if hasattr(self.animation_panel, "rect"):
                 self.animation_panel.rect = panel_rect
                 if hasattr(self.animation_panel, "_relayout"):
@@ -489,17 +510,22 @@ class Editor:
             # Create a simple consumer adapter that logs animation changes
             class _PanelConsumer:
                 editor_instance = self
+
                 def on_animation_saved(self, name: str, data: dict) -> None:
-                    self.editor_instance.notifications.notify(f"Animation saved: {name}")
+                    self.editor_instance.notifications.notify(
+                        f"Animation saved: {name}"
+                    )
 
                 def on_animation_deleted(self, name: str) -> None:
-                    self.editor_instance.notifications.notify(f"Animation deleted: {name}")
+                    self.editor_instance.notifications.notify(
+                        f"Animation deleted: {name}"
+                    )
 
             consumer = _PanelConsumer()
 
             # Create panel rect (will be set by handle_resize)
             panel_rect = Rect(0, 65, self.left_panel_w, self.height - 65)
-            
+
             # Create animation editor without any surface - user will load spritesheet via "Sheet" button
             self.animation_panel = SpriteAnimationEditor(
                 panel_rect,
@@ -508,9 +534,9 @@ class Editor:
                 consumer=consumer,
             )
         except Exception as e:
-            print(f"Error initializing animation panel: {e}")
+            error_handler.capture(e, context="init_animation_panel")
             self.notifications.notify(f"Failed to init animation panel: {e}")
-        
+
     def undo(self):
         self.tilemap.undo()
 
@@ -576,19 +602,19 @@ class Editor:
                 tile_size = f"{tw}x{th}"
 
             args = [str(path), "--tile-size", tile_size]
-            process = _launch_standalone_module(
+            process = launch_standalone(
                 "plugins.sprite_animation.standalone",
                 args,
                 cwd=BASE_PATH,
+                text=True,
             )
-
             self.child_processes.append(process)
 
             print(
                 f"Launched animation editor with: {path.name} (tile size: {tile_size})"
             )
         except Exception as e:
-            print(f"Error launching animation editor: {e}")
+            error_handler.capture(e, context="launch_animation_editor")
 
     def autotile_active(self):
         active_layer = self.tilemap.layer_manager.get_active_layer()
@@ -617,7 +643,7 @@ class Editor:
                 except subprocess.TimeoutExpired:
                     process.kill()
                 except Exception as e:
-                    print(f"Error terminating child process: {e}")
+                    error_handler.capture(e, context="terminate_child_process")
 
         self.child_processes.clear()
 
@@ -627,6 +653,10 @@ class Editor:
 
     def handle_events(self):
         for event in pygame.event.get():
+            # Handle error console events first (it has priority for Ctrl+`)
+            if self.error_console.handle_event(event):
+                continue
+
             if event.type == pygame.QUIT:
                 self.running = False
 
@@ -770,11 +800,18 @@ class Editor:
             # Draw the dockable animation panel
             if self.left_panel_visible and self.animation_panel:
                 # Draw panel background
-                panel_surf = pygame.Surface((self.left_panel_w, self.height), pygame.SRCALPHA)
+                panel_surf = pygame.Surface(
+                    (self.left_panel_w, self.height), pygame.SRCALPHA
+                )
                 panel_surf.fill((28, 30, 34, 255))
                 self.screen.blit(panel_surf, (0, 65))
                 # Draw panel border
-                pygame.draw.rect(self.screen, (60, 62, 65), Rect(0, 65, self.left_panel_w, self.height - 65), 1)
+                pygame.draw.rect(
+                    self.screen,
+                    (60, 62, 65),
+                    Rect(0, 65, self.left_panel_w, self.height - 65),
+                    1,
+                )
                 if hasattr(self.animation_panel, "draw"):
                     self.animation_panel.draw(self.screen)
 
@@ -824,6 +861,7 @@ class Editor:
                 self.toolbar.draw(self.screen)
             self.menubar.draw(self.screen)
             self.tooltip.draw(self.screen)
+            self.error_console.draw(self.screen)
 
             pygame.display.update()
             self.clock.tick(self.fps)
@@ -833,8 +871,27 @@ class Editor:
 
 
 if __name__ == "__main__":
-    log_path = setup_console_log(BASE_PATH)
-    if log_path:
-        print(f"Logging to {log_path}")
-    editor = Editor(size=(1500, 900))
-    editor.run()
+    # Global exception handler for direct execution
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        error_handler.capture(exc_value, context="editor_main_exception")
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+    sys.excepthook = handle_exception
+
+    try:
+        log_path = setup_console_log(BASE_PATH)
+        if log_path:
+            print(f"Logging to {log_path}")
+
+        with error_context("editor_main"):
+            editor = Editor(size=(1500, 900))
+            editor.run()
+    except KeyboardInterrupt:
+        print("\nEditor interrupted by user")
+    except Exception as e:
+        error_handler.capture(e, context="editor_main")
+        print(f"Failed to start editor: {e}")
+        sys.exit(1)

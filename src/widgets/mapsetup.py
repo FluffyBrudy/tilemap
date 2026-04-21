@@ -1,5 +1,5 @@
 import pygame
-from typing import TYPE_CHECKING, List, Tuple, Literal
+from typing import TYPE_CHECKING, List
 from pygame import Rect
 
 
