@@ -7,7 +7,7 @@ Opens images in a scrollable window with optional grid overlay for spritesheets.
 import pygame
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 
 class ImageViewer:

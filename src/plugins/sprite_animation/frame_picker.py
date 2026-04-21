@@ -13,6 +13,7 @@ import math
 from typing import Callable, Optional, Set, Tuple
 
 import pygame
+from utils.font_manager import font_manager, FontWeight, FontStyle
 from pygame import Rect
 
 TOP_TITLE_H = 22
@@ -94,7 +95,9 @@ class FramePicker:
     # Public helpers
     # ------------------------------------------------------------------
 
-    def set_surface(self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None) -> None:
+    def set_surface(
+        self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None
+    ) -> None:
         self.surface = surface
         if tile_size:
             self.tile_size = tile_size
@@ -134,7 +137,7 @@ class FramePicker:
 
     def resize(self, rect: Rect) -> None:
         self.rect = rect
-    
+
     def set_grid_offset(self, offset_x: int, offset_y: int) -> None:
         """Set the grid offset for aligning the grid to a specific position in the spritesheet."""
         self.grid_offset_x = offset_x
@@ -165,7 +168,8 @@ class FramePicker:
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
         if not self.rect.collidepoint(mouse) and event.type not in (
-            pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION
+            pygame.MOUSEBUTTONUP,
+            pygame.MOUSEMOTION,
         ):
             return False
 
@@ -204,9 +208,16 @@ class FramePicker:
 
         # Left-click to select a frame
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(mouse) and mouse[1] >= self.rect.y + TOP_BAR_TOTAL:
+            if (
+                self.rect.collidepoint(mouse)
+                and mouse[1] >= self.rect.y + TOP_BAR_TOTAL
+            ):
                 idx = self._index_at(mouse)
-                if idx >= 0 and self._tile_matches_filter(idx) and self.on_frame_clicked:
+                if (
+                    idx >= 0
+                    and self._tile_matches_filter(idx)
+                    and self.on_frame_clicked
+                ):
                     self.on_frame_clicked(idx)
                 return True
 
@@ -245,7 +256,15 @@ class FramePicker:
         if event.type == pygame.KEYDOWN and self.rect.collidepoint(mouse):
             mods = pygame.key.get_mods()
             # Don't capture if Ctrl/Shift is held (let mouse wheel zoom handle it)
-            if not (mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL | pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)):
+            if not (
+                mods
+                & (
+                    pygame.KMOD_LCTRL
+                    | pygame.KMOD_RCTRL
+                    | pygame.KMOD_LSHIFT
+                    | pygame.KMOD_RSHIFT
+                )
+            ):
                 zoom_step = 1.15
                 if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                     # Zoom in
@@ -336,48 +355,45 @@ class FramePicker:
         # Grid lines (only within spritesheet bounds, starting from offset)
         cell_w = tw * z
         cell_h = th * z
-        
+
         # Calculate spritesheet bounds on screen
-        sheet_screen_rect = Rect(
-            int(img_x),
-            int(img_y),
-            int(scaled_w),
-            int(scaled_h)
-        )
-        
+        sheet_screen_rect = Rect(int(img_x), int(img_y), int(scaled_w), int(scaled_h))
+
         # Calculate grid start position (with offset applied)
         grid_start_x = img_x + (self.grid_offset_x * z)
         grid_start_y = img_y + (self.grid_offset_y * z)
-        
+
         # Clip grid to spritesheet area
         grid_clip = sheet_screen_rect.clip(self.rect)
         if grid_clip.width > 0 and grid_clip.height > 0:
-            grid_alpha_surf = pygame.Surface((grid_clip.w, grid_clip.h), pygame.SRCALPHA)
-            
+            grid_alpha_surf = pygame.Surface(
+                (grid_clip.w, grid_clip.h), pygame.SRCALPHA
+            )
+
             # Draw vertical lines
             for c in range(self.cols + 1):
                 x_world = grid_start_x + c * cell_w
                 x_local = int(x_world - grid_clip.x)
                 if 0 <= x_local <= grid_clip.w:
                     pygame.draw.line(
-                        grid_alpha_surf, 
-                        (*_COLORS["grid"], 40), 
-                        (x_local, 0), 
-                        (x_local, grid_clip.h)
+                        grid_alpha_surf,
+                        (*_COLORS["grid"], 40),
+                        (x_local, 0),
+                        (x_local, grid_clip.h),
                     )
-            
+
             # Draw horizontal lines
             for r in range(self.rows + 1):
                 y_world = grid_start_y + r * cell_h
                 y_local = int(y_world - grid_clip.y)
                 if 0 <= y_local <= grid_clip.h:
                     pygame.draw.line(
-                        grid_alpha_surf, 
-                        (*_COLORS["grid"], 40), 
-                        (0, y_local), 
-                        (grid_clip.w, y_local)
+                        grid_alpha_surf,
+                        (*_COLORS["grid"], 40),
+                        (0, y_local),
+                        (grid_clip.w, y_local),
                     )
-            
+
             screen.blit(grid_alpha_surf, grid_clip.topleft)
 
         # Highlighted tiles (used in current animation)
@@ -429,7 +445,9 @@ class FramePicker:
             label = self._font_sm.render(str(self.hover_index), True, _COLORS["text"])
             lx = hr.x + 2
             ly = hr.y + 2
-            bg_rect = Rect(lx - 1, ly - 1, label.get_width() + 4, label.get_height() + 2)
+            bg_rect = Rect(
+                lx - 1, ly - 1, label.get_width() + 4, label.get_height() + 2
+            )
             bg = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
             bg.fill((0, 0, 0, 160))
             screen.blit(bg, bg_rect.topleft)
@@ -448,15 +466,24 @@ class FramePicker:
         )
         screen.blit(title, (self.rect.x + 6, self.rect.y + 3))
 
-        row2 = Rect(self.rect.x, self.rect.y + TOP_TITLE_H, self.rect.w, TOP_BAR_TOTAL - TOP_TITLE_H)
+        row2 = Rect(
+            self.rect.x,
+            self.rect.y + TOP_TITLE_H,
+            self.rect.w,
+            TOP_BAR_TOTAL - TOP_TITLE_H,
+        )
         row2_bg = pygame.Surface((row2.w, row2.h), pygame.SRCALPHA)
         row2_bg.fill((*_COLORS["header"], 220))
         screen.blit(row2_bg, row2.topleft)
 
-        self._filter_input_rect = Rect(row2.x + 6, row2.y + 4, min(140, row2.w - 100), 18)
+        self._filter_input_rect = Rect(
+            row2.x + 6, row2.y + 4, min(140, row2.w - 100), 18
+        )
         fi_bg = _COLORS["btn_active"] if self.editing_filter else _COLORS["input_bg"]
         pygame.draw.rect(screen, fi_bg, self._filter_input_rect, border_radius=3)
-        pygame.draw.rect(screen, _COLORS["border"], self._filter_input_rect, 1, border_radius=3)
+        pygame.draw.rect(
+            screen, _COLORS["border"], self._filter_input_rect, 1, border_radius=3
+        )
         ft = self.filter_text + (
             "|" if self.editing_filter and (pygame.time.get_ticks() // 400) % 2 else ""
         )
@@ -467,10 +494,14 @@ class FramePicker:
             (self._filter_input_rect.x + 4, self._filter_input_rect.y + 3),
         )
 
-        self._btn_unused_rect = Rect(self._filter_input_rect.right + 8, row2.y + 4, 86, 18)
+        self._btn_unused_rect = Rect(
+            self._filter_input_rect.right + 8, row2.y + 4, 86, 18
+        )
         ub = _COLORS["btn_active"] if self.only_unused else _COLORS["input_bg"]
         pygame.draw.rect(screen, ub, self._btn_unused_rect, border_radius=3)
-        pygame.draw.rect(screen, _COLORS["border"], self._btn_unused_rect, 1, border_radius=3)
+        pygame.draw.rect(
+            screen, _COLORS["border"], self._btn_unused_rect, 1, border_radius=3
+        )
         ut = "Unused only" if self.only_unused else "All tiles"
         screen.blit(
             self._font_sm.render(ut, True, _COLORS["text"]),
@@ -567,11 +598,27 @@ class FramePicker:
             return row * self.cols + col
         return -1
 
+    def _auto_select_font(self) -> str:
+        """Returns the best available coding font using centralized font manager."""
+        candidates = [
+            "jetbrainsmono",
+            "firacode",
+            "consolas",
+            "robotomono",
+            "monospace",
+        ]
+        for c in candidates:
+            if font_manager.get_font_info(c):
+                return c
+        return "monospace"
+
     def _ensure_fonts(self) -> None:
+        """Initialize fonts using bold weight for better clarity like the console."""
+        font_family = self._auto_select_font()
         if self._font is None:
-            self._font = pygame.font.SysFont("Arial", 13)
+            self._font = font_manager.get_font(font_family, 13, FontWeight.BOLD)
         if self._font_sm is None:
-            self._font_sm = pygame.font.SysFont("Arial", 11)
+            self._font_sm = font_manager.get_font(font_family, 11, FontWeight.BOLD)
 
     def _draw_checker_bg(self, screen: pygame.Surface) -> None:
         if self._checker is None:

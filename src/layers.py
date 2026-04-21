@@ -4,7 +4,7 @@ Supports multiple layers with independent tile and object data.
 """
 
 import random
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Any
 from ttypes.tilemap import TypeTile, TypeObject
 
 if TYPE_CHECKING:

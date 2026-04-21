@@ -4,7 +4,7 @@ from typing import Sequence, TYPE_CHECKING
 from pygame.typing import IntPoint
 
 if TYPE_CHECKING:
-    from ttypes.tilemap import TypeObject, TypeArea
+    from ttypes.tilemap import TypeObject
 
 
 def serialize_point(point: IntPoint, sep=";"):

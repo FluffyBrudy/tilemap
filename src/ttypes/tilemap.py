@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, TypedDict, Any, List, NotRequired
+from typing import Dict, Tuple, TypedDict, Any, NotRequired
 
 
 class TypeTile(TypedDict, total=True):

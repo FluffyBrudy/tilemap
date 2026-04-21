@@ -1,7 +1,7 @@
 import pygame
-from pygame import Rect, Surface, Color
+from pygame import Rect, Surface
 from pathlib import Path
-from typing import List, Callable, Optional
+from typing import List, Callable
 import os
 
 from constants import BASE_PATH

@@ -5,10 +5,11 @@ Displays list of layers with ability to select, reorder, and manage them.
 
 import pygame
 from pygame import Rect, Surface, Color
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional
 from layers import Layer
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils.font_manager import font_manager, FontWeight, FontStyle
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -49,8 +50,12 @@ class LayerSelector:
         self.btn_add = Rect(x + 5, btn_y, btn_w, btn_h)
         self.btn_remove = Rect(x + 35, btn_y, btn_w, btn_h)
 
-        self.font_header = pygame.font.SysFont(FONTS.name, FONTS.size_md, bold=True)
-        self.font_layer = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
+        self.font_header = font_manager.get_font(
+            FONTS.name, FONTS.size_md, FontWeight.BOLD
+        )
+        self.font_layer = font_manager.get_font(
+            FONTS.name, FONTS.size_sm, FontWeight.REGULAR
+        )
 
         self.bg_color = COLORS.panel
         self.header_color = COLORS.accent
@@ -68,7 +73,7 @@ class LayerSelector:
             x, y + self.header_h, w, h - self.header_h - self.footer_h
         )
         self.footer_rect = Rect(x, y + h - self.footer_h, w, self.footer_h)
-        
+
         btn_y = self.footer_rect.y + 5
         self.btn_add = Rect(x + 5, btn_y, 25, 25)
         self.btn_remove = Rect(x + 35, btn_y, 25, 25)
@@ -79,7 +84,6 @@ class LayerSelector:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-
                 if self.btn_add.collidepoint(mouse_pos):
                     self._add_layer()
                     return True
@@ -91,7 +95,6 @@ class LayerSelector:
                 if self.list_rect.collidepoint(mouse_pos):
                     layer_idx = self._get_layer_at_pos(mouse_pos)
                     if layer_idx is not None:
-
                         eye_rect = self._get_eye_icon_rect(layer_idx, mouse_pos)
                         if eye_rect and eye_rect.collidepoint(mouse_pos):
                             layer = self.editor.tilemap.layer_manager.get_layer(
@@ -122,7 +125,7 @@ class LayerSelector:
                         self.editor.tilemap.layer_manager.set_active_layer(layer_idx)
                         return True
 
-            elif event.button == 3: # Right click
+            elif event.button == 3:  # Right click
                 if self.list_rect.collidepoint(mouse_pos):
                     layer_idx = self._get_layer_at_pos(mouse_pos)
                     if layer_idx is not None:
@@ -132,8 +135,10 @@ class LayerSelector:
                                 self.editor,
                                 f"Layer Properties: {layer.name}",
                                 layer.properties,
-                                on_save=lambda props: self._save_layer_properties(layer, props),
-                                on_close=lambda: None
+                                on_save=lambda props: self._save_layer_properties(
+                                    layer, props
+                                ),
+                                on_close=lambda: None,
                             )
                         return True
 
@@ -149,7 +154,6 @@ class LayerSelector:
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self.dragging_layer_idx is not None:
-
                 layer_idx = self._get_layer_at_pos(mouse_pos)
                 if layer_idx is not None and layer_idx != self.dragging_layer_idx:
                     self.editor.tilemap.layer_manager.reorder_layer(
@@ -161,18 +165,15 @@ class LayerSelector:
 
         elif event.type == pygame.MOUSEMOTION:
             if self.list_rect.collidepoint(mouse_pos):
-
                 if self.dragging_layer_idx is None:
                     self.hover_idx = self._get_layer_at_pos(mouse_pos)
             else:
                 self.hover_idx = None
 
             if self.dragging_layer_idx is not None:
-
                 return True
 
         elif event.type == pygame.KEYDOWN:
-
             if event.key == pygame.K_F2:
                 active_idx = self.editor.tilemap.layer_manager.active_layer_idx
                 if active_idx >= 0:
@@ -181,18 +182,15 @@ class LayerSelector:
 
             if self.renaming_layer_idx is not None:
                 if event.key == pygame.K_RETURN:
-
                     self._confirm_rename()
                     return True
                 elif event.key == pygame.K_ESCAPE:
-
                     self._cancel_rename()
                     return True
                 elif event.key == pygame.K_BACKSPACE:
                     self.rename_text = self.rename_text[:-1]
                     return True
                 else:
-
                     if event.unicode.isprintable():
                         self.rename_text += event.unicode
                     return True
@@ -307,17 +305,14 @@ class LayerSelector:
         valid_chars = set(string.ascii_letters + string.digits + " ")
 
         if not self.rename_text:
-
             self._cancel_rename()
             return
 
         if all(c in valid_chars for c in self.rename_text):
-
             layer = self.editor.tilemap.layer_manager.get_layer(self.renaming_layer_idx)
             if layer:
                 layer.name = self.rename_text
         else:
-
             self._cancel_rename()
             return
 
@@ -360,7 +355,6 @@ class LayerSelector:
         screen.set_clip(self.list_rect)
 
         for i, layer in enumerate(layer_manager.layers):
-
             item_y = self.list_rect.y + (i * self.item_h) - self.scroll_offset
 
             if (
@@ -377,7 +371,6 @@ class LayerSelector:
             )
 
             if i == self.dragging_layer_idx:
-
                 color = self.item_drag_color
             elif i == active_idx:
                 color = self.item_active_color
@@ -390,7 +383,6 @@ class LayerSelector:
             pygame.draw.rect(screen, COLORS.border_soft, item_rect, 1)
 
             if i == self.renaming_layer_idx:
-
                 pygame.draw.rect(
                     screen,
                     COLORS.selected,
@@ -415,12 +407,10 @@ class LayerSelector:
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
             if layer.visible:
-
                 pygame.draw.circle(screen, (100, 200, 100), (eye_x, eye_y), 4)
                 pygame.draw.circle(screen, (60, 150, 60), (eye_x, eye_y), 4, 1)
                 pygame.draw.circle(screen, (200, 255, 100), (eye_x - 1, eye_y - 1), 1)
             else:
-
                 pygame.draw.line(
                     screen,
                     (100, 100, 100),
@@ -439,13 +429,11 @@ class LayerSelector:
             lock_x = item_rect.right - 10
             lock_y = item_rect.y + 7
             if layer.locked:
-
                 pygame.draw.rect(
                     screen, (200, 100, 100), Rect(lock_x - 4, lock_y - 4, 8, 8)
                 )
                 pygame.draw.circle(screen, (150, 50, 50), (lock_x, lock_y - 2), 1)
             else:
-
                 pygame.draw.rect(
                     screen, COLORS.text_muted, Rect(lock_x - 4, lock_y - 4, 8, 8), 1
                 )
@@ -477,7 +465,9 @@ class LayerSelector:
         total_h = len(layer_manager.layers) * self.item_h
         if total_h > self.list_rect.height:
             scroll_pct = self.scroll_offset / max(1, (total_h - self.list_rect.height))
-            bar_h = max(18, int(self.list_rect.height * (self.list_rect.height / total_h)))
+            bar_h = max(
+                18, int(self.list_rect.height * (self.list_rect.height / total_h))
+            )
             bar_y = self.list_rect.y + scroll_pct * (self.list_rect.height - bar_h)
             bar_rect = Rect(self.list_rect.right - 5, bar_y, 3, bar_h)
             pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
@@ -492,11 +482,15 @@ class LayerSelector:
             (self.footer_rect.right, self.footer_rect.y),
             1,
         )
-        pygame.draw.rect(screen, COLORS.accent, self.btn_add, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.accent, self.btn_add, border_radius=SHAPE.radius_sm
+        )
         pygame.draw.rect(screen, (70, 130, 180), self.btn_add)
         add_txt = self.font_layer.render("+", True, Color("white"))
         screen.blit(add_txt, (self.btn_add.x + 8, self.btn_add.y + 5))
-        pygame.draw.rect(screen, COLORS.danger, self.btn_remove, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.danger, self.btn_remove, border_radius=SHAPE.radius_sm
+        )
         pygame.draw.rect(screen, (180, 100, 100), self.btn_remove)
         rem_txt = self.font_layer.render("-", True, Color("white"))
         screen.blit(rem_txt, (self.btn_remove.x + 8, self.btn_remove.y + 5))

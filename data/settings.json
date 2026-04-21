@@ -1,0 +1,24 @@
+{
+  "error_handler": {
+    "log_path": "data/logs/errors.log",
+    "max_recent_errors": 50,
+    "console_output": true,
+    "file_logging": true,
+    "severity_levels": [
+      "error",
+      "warning",
+      "info"
+    ]
+  },
+  "editor": {
+    "default_window_size": "1500x900",
+    "default_fps": 60,
+    "auto_save": false,
+    "auto_save_interval": 300
+  },
+  "paths": {
+    "default_tileset_dir": "data/tilesets",
+    "default_map_dir": "data/maps",
+    "default_project_dir": "data/projects"
+  }
+}

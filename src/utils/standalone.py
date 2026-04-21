@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from utils.error_handler import error_handler
+
 # Import BASE_PATH from constants (works both installed and as script)
 _current = Path(__file__).resolve()
 _src = _current.parent.parent
@@ -64,38 +66,80 @@ def launch_standalone(
     RuntimeError
         If none of the three strategies can locate the module.
     """
-    # Strategy 1: module invocation
-    try:
-        import importlib.util
-        if importlib.util.find_spec(module_name) is not None:
-            cmd = [sys.executable, "-m", module_name] + args
-            return subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=text, cwd=str(cwd) if cwd else None,
-            )
-    except ModuleNotFoundError:
-        pass
-    except Exception:
-        pass
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(BASE_PATH / "src") + (
+        os.pathsep + env.get("PYTHONPATH", "")
+    )
+    # Strategy 1: module invocation (skip for standalone_* modules - they need PYTHONPATH)
+    if not module_name.startswith("standalone_"):
+        try:
+            import importlib.util
 
-    # Strategy 2: direct script path from src/
-    # Convert dotted name to file path: standalone_filemanager -> standalone_filemanager.py
-    #                                   plugins.sprite_animation.standalone -> plugins/sprite_animation/standalone.py
-    script_rel = module_name.replace(".", "/") + ".py"
-    script_path = BASE_PATH / "src" / script_rel
-    if script_path.exists():
-        cmd = [sys.executable, str(script_path)] + args
-        return subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=text, cwd=str(cwd) if cwd else None,
-        )
+            spec = importlib.util.find_spec(module_name)
+            if spec is None:
+                error_handler.capture(
+                    f"Module not found: {module_name}", severity="info"
+                )
+                raise ModuleNotFoundError(f"Module not found: {module_name}")
+            else:
+                error_handler.capture(f"Module found: {module_name}", severity="info")
+            cmd = [sys.executable, "-m", module_name] + args
+            error_handler.capture(f"Command: {cmd}", severity="info")
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(cwd) if cwd else None,
+            )
+
+            stdout, stderr = proc.communicate(timeout=2)
+
+            error_handler.capture(f"[child stdout]\n{stdout}")
+            error_handler.capture(f"[child stderr]\n{stderr}")
+
+            return proc
+        except ModuleNotFoundError:
+            error_handler.capture(f"Module not found: {module_name}", severity="info")
+        except Exception as e:
+            error_handler.capture(
+                e, f"Error launching module {module_name}", severity="info"
+            )
+
+    # Strategy 2: direct script path from src/ (only for non-standalone modules)
+    # Skip this strategy for standalone_* modules as they need proper module resolution
+    if not module_name.startswith("standalone_"):
+        # Convert dotted name to file path: standalone_filemanager -> standalone_filemanager.py
+        #                                       plugins.sprite_animation.standalone -> plugins/sprite_animation/standalone.py
+        script_rel = module_name.replace(".", "/") + ".py"
+        script_path = BASE_PATH / "src" / script_rel
+        if script_path.exists():
+            cmd = [sys.executable, str(script_path)] + args
+            return subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=text,
+                cwd=str(cwd) if cwd else None,
+            )
 
     # Strategy 3: inject src/ into PYTHONPATH
     env = os.environ.copy()
     existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(BASE_PATH / "src") + (os.pathsep + existing if existing else "")
+    env["PYTHONPATH"] = str(BASE_PATH / "src") + (
+        os.pathsep + existing if existing else ""
+    )
     cmd = [sys.executable, "-m", module_name] + args
+    # For standalone modules, don't override cwd to keep PYTHONPATH working
+    effective_cwd = (
+        None if module_name.startswith("standalone_") else (str(cwd) if cwd else None)
+    )
     return subprocess.Popen(
-        cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=text, cwd=str(cwd) if cwd else None,
+        cmd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=text,
+        cwd=effective_cwd,
     )

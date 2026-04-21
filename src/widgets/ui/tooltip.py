@@ -1,7 +1,8 @@
 import pygame
 from typing import Optional, Tuple
 
-from .theme import COLORS, FONTS, SHAPE
+from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils.font_manager import font_manager, FontWeight, FontStyle
 from .draw_utils import draw_soft_rect
 
 
@@ -10,7 +11,7 @@ class TooltipManager:
         self.text: Optional[str] = None
         self.pos: Tuple[int, int] = (0, 0)
         self.visible = False
-        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
+        self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
 
     def show(self, text: str, pos: Tuple[int, int]):
         self.text = text
@@ -32,6 +33,10 @@ class TooltipManager:
         x = min(max(5, x), surface.get_width() - w - 5)
         y = min(max(5, y), surface.get_height() - h - 5)
         rect = pygame.Rect(x, y, w, h)
-        draw_soft_rect(surface, rect, COLORS.panel_alt, radius=SHAPE.radius_sm, alpha=230)
-        pygame.draw.rect(surface, COLORS.border_soft, rect, 1, border_radius=SHAPE.radius_sm)
+        draw_soft_rect(
+            surface, rect, COLORS.panel_alt, radius=SHAPE.radius_sm, alpha=230
+        )
+        pygame.draw.rect(
+            surface, COLORS.border_soft, rect, 1, border_radius=SHAPE.radius_sm
+        )
         surface.blit(text_surf, (x + pad_x, y + pad_y))

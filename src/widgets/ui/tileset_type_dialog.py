@@ -3,7 +3,7 @@ Simple dialog for selecting tileset type (tile vs object).
 """
 
 import pygame
-from pygame import Rect, Surface, Color
+from pygame import Rect, Surface
 from typing import Callable, Optional
 
 
@@ -59,7 +59,7 @@ class TilesetTypeDialog:
         self.on_cancel = on_cancel
         self.btn_ok_hover = False
         self.btn_cancel_hover = False
-        print(f"DEBUG: TilesetTypeDialog is now active")
+        print("DEBUG: TilesetTypeDialog is now active")
 
     def hide(self):
         """Hide the dialog."""
@@ -88,7 +88,7 @@ class TilesetTypeDialog:
                 self.hide()
                 return True
             if self.btn_cancel.collidepoint(mouse_pos):
-                print(f"DEBUG: Cancel button clicked")
+                print("DEBUG: Cancel button clicked")
                 if self.on_cancel:
                     self.on_cancel()
                 self.hide()

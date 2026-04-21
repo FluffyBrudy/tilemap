@@ -13,6 +13,7 @@ import pygame
 from pygame import Rect
 
 from .models import AnimationFrame
+from utils.font_manager import font_manager, FontWeight, FontStyle
 
 # ---------------------------------------------------------------------------
 _COLORS = {
@@ -95,7 +96,9 @@ class AnimationPreview:
         self.current_frame = 0
         self._elapsed = 0.0
 
-    def set_surface(self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None) -> None:
+    def set_surface(
+        self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None
+    ) -> None:
         self.surface = surface
         if tile_size:
             self.tile_size = tile_size
@@ -174,7 +177,10 @@ class AnimationPreview:
         # Compute scrubber fraction
         total = sum(f.duration_ms for f in self.frames)
         if total > 0:
-            elapsed_to_cur = sum(f.duration_ms for f in self.frames[: self.current_frame]) + self._elapsed
+            elapsed_to_cur = (
+                sum(f.duration_ms for f in self.frames[: self.current_frame])
+                + self._elapsed
+            )
             self.scrubber_frac = elapsed_to_cur / total
         else:
             self.scrubber_frac = 0.0
@@ -189,7 +195,11 @@ class AnimationPreview:
 
         mouse = pygame.mouse.get_pos()
         if not self.rect.collidepoint(mouse):
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._editing_fps:
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and self._editing_fps
+            ):
                 self.commit_fps_input()
             return False
 
@@ -247,14 +257,14 @@ class AnimationPreview:
         title = "Preview"
         if self.frames:
             title += f"  {self.current_frame + 1}/{len(self.frames)}"
-        screen.blit(self._font.render(title, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 2))
+        screen.blit(
+            self._font.render(title, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 2)
+        )
         if self.frames and 0 <= self.current_frame < len(self.frames):
             fr = self.frames[self.current_frame]
             auth = max(0.001, float(self.authoring_fps))
             equiv = fr.duration_ms * auth / 1000.0
-            sub = (
-                f"{fr.duration_ms:g} ms  ·  {equiv:.2f} frames @ {auth:g} FPS (clip rate)"
-            )
+            sub = f"{fr.duration_ms:g} ms  ·  {equiv:.2f} frames @ {auth:g} FPS (clip rate)"
             screen.blit(
                 self._font_sm.render(sub, True, _COLORS["text_dim"]),
                 (hdr.x + 6, hdr.y + 18),
@@ -279,7 +289,10 @@ class AnimationPreview:
                 if prev_surf:
                     zoomed = pygame.transform.scale(
                         prev_surf,
-                        (int(self.tile_size[0] * self._zoom), int(self.tile_size[1] * self._zoom)),
+                        (
+                            int(self.tile_size[0] * self._zoom),
+                            int(self.tile_size[1] * self._zoom),
+                        ),
                     )
                     zoomed.set_alpha(60)
                     dx = preview_rect.centerx - zoomed.get_width() // 2
@@ -353,7 +366,9 @@ class AnimationPreview:
         self._fps_input_rect = Rect(x, y, 44, bh)
         fps_bg = _COLORS["btn_active"] if self._editing_fps else _COLORS["input_bg"]
         pygame.draw.rect(screen, fps_bg, self._fps_input_rect, border_radius=3)
-        pygame.draw.rect(screen, _COLORS["border"], self._fps_input_rect, 1, border_radius=3)
+        pygame.draw.rect(
+            screen, _COLORS["border"], self._fps_input_rect, 1, border_radius=3
+        )
         shown = self._fps_input_text
         if self._editing_fps and (pygame.time.get_ticks() // 400) % 2:
             shown += "|"
@@ -367,7 +382,9 @@ class AnimationPreview:
             self._btn_onion = Rect(x, y, bw + 4, bh)
             self._draw_btn(screen, self._btn_onion, "👻", mouse, active=self.show_onion)
 
-    def _draw_btn(self, screen: pygame.Surface, rect: Rect, label: str, mouse, active=False) -> None:
+    def _draw_btn(
+        self, screen: pygame.Surface, rect: Rect, label: str, mouse, active=False
+    ) -> None:
         hover = rect.collidepoint(mouse)
         if active:
             bg = _COLORS["btn_active"]
@@ -434,8 +451,24 @@ class AnimationPreview:
             for x in range(rect.x, rect.right, self._checker.get_width()):
                 screen.blit(self._checker, (x, y))
 
+    def _auto_select_font(self) -> str:
+        """Returns the best available coding font using centralized font manager."""
+        candidates = [
+            "jetbrainsmono",
+            "firacode",
+            "consolas",
+            "robotomono",
+            "monospace",
+        ]
+        for c in candidates:
+            if font_manager.get_font_info(c):
+                return c
+        return "monospace"
+
     def _ensure_fonts(self) -> None:
+        """Initialize fonts using bold weight for better clarity like the console."""
+        font_family = self._auto_select_font()
         if self._font is None:
-            self._font = pygame.font.SysFont("Futura", 13)
+            self._font = font_manager.get_font(font_family, 13, FontWeight.BOLD)
         if self._font_sm is None:
-            self._font_sm = pygame.font.SysFont("Futura", 11)
+            self._font_sm = font_manager.get_font(font_family, 11, FontWeight.BOLD)
