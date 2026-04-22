@@ -14,6 +14,7 @@ from pygame import Rect
 
 from .models import AnimationFrame
 from utils.font_manager import font_manager, FontWeight, FontStyle
+from utils.icon_manager import icon_manager
 
 # ---------------------------------------------------------------------------
 _COLORS = {
@@ -340,13 +341,18 @@ class AnimationPreview:
 
         # Play / Pause
         self._btn_play = Rect(x, y, bw, bh)
-        play_label = "⏸" if self.playing else "▶"
-        self._draw_btn(screen, self._btn_play, play_label, mouse, active=self.playing)
+        self._draw_btn(screen, self._btn_play, "", mouse, active=self.playing)
+        play_icon = icon_manager.get_icon(
+            "pause" if self.playing else "play", 12, _COLORS["text"]
+        )
+        screen.blit(play_icon, play_icon.get_rect(center=self._btn_play.center))
         x += bw + pad
 
         # Stop
         self._btn_stop = Rect(x, y, bw, bh)
-        self._draw_btn(screen, self._btn_stop, "⏹", mouse)
+        self._draw_btn(screen, self._btn_stop, "", mouse)
+        stop_icon = icon_manager.get_icon("stop", 12, _COLORS["text"])
+        screen.blit(stop_icon, stop_icon.get_rect(center=self._btn_stop.center))
         x += bw + pad
 
         # >>| (next)
@@ -356,7 +362,9 @@ class AnimationPreview:
 
         # Loop toggle
         self._btn_loop = Rect(x, y, bw + 4, bh)
-        self._draw_btn(screen, self._btn_loop, "🔁", mouse, active=self.loop)
+        self._draw_btn(screen, self._btn_loop, "", mouse, active=self.loop)
+        loop_icon = icon_manager.get_icon("loop", 12, _COLORS["text"])
+        screen.blit(loop_icon, loop_icon.get_rect(center=self._btn_loop.center))
         x += bw + pad + 8
 
         # Playback FPS (editable; timing vs 60 Hz tick — see update())

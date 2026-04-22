@@ -6,6 +6,8 @@ if TYPE_CHECKING:
     from editor import Editor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 from widgets.ui.draw_utils import draw_panel
+from utils.icon_manager import icon_manager
+
 
 class Toolbar:
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int = 35):
@@ -43,7 +45,7 @@ class Toolbar:
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for key, (r, _) in self.buttons.items():
+            for key, (r, label) in self.buttons.items():
                 if r.collidepoint(event.pos):
                     if key == "pan":
                         self.editor.pan_mode = not self.editor.pan_mode
@@ -67,7 +69,9 @@ class Toolbar:
         return False
 
     def draw(self, screen: pygame.Surface):
-        draw_panel(screen, self.rect, bg=COLORS.header, border=COLORS.border_soft, radius=0)
+        draw_panel(
+            screen, self.rect, bg=COLORS.header, border=COLORS.border_soft, radius=0
+        )
         mouse_pos = pygame.mouse.get_pos()
 
         for key, (r, label) in self.buttons.items():
@@ -75,16 +79,31 @@ class Toolbar:
             if key == "pan":
                 is_active = self.editor.pan_mode
             elif key == "grid":
-                is_active = bool(self.editor.tile_grid_widget and self.editor.tile_grid_widget.show_grid)
+                is_active = bool(
+                    self.editor.tile_grid_widget
+                    and self.editor.tile_grid_widget.show_grid
+                )
             elif key == "auto":
                 is_active = self.editor.autotile_mode
 
             hover = r.collidepoint(mouse_pos)
-            bg = COLORS.accent_active if is_active else (COLORS.hover if hover else COLORS.panel_alt)
+            bg = (
+                COLORS.accent_active
+                if is_active
+                else (COLORS.hover if hover else COLORS.panel_alt)
+            )
             pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm)
-            pygame.draw.rect(screen, COLORS.border_soft, r, 1, border_radius=SHAPE.radius_sm)
-            txt = self.font.render(label, True, COLORS.text)
-            screen.blit(txt, txt.get_rect(center=r.center))
+            pygame.draw.rect(
+                screen, COLORS.border_soft, r, 1, border_radius=SHAPE.radius_sm
+            )
+
+            # Draw icon if available (lookup by button key), otherwise use text
+            if icon_manager.has_icon(key):
+                icon = icon_manager.get_icon(key, 16, COLORS.text)
+                screen.blit(icon, icon.get_rect(center=r.center))
+            else:
+                txt = self.font.render(label, True, COLORS.text)
+                screen.blit(txt, txt.get_rect(center=r.center))
 
             if hover:
                 tip = label

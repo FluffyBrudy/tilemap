@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union, cast
 import pygame
 from pygame import Rect, Surface, Color
 from utils.font_manager import font_manager, FontWeight, FontStyle
+from utils.icon_manager import icon_manager
 from utils import error_handler
 from .clipboard_util import copy_plain_text
 from .frame_picker import FramePicker
@@ -835,7 +836,13 @@ class SpriteAnimationEditor:
             display_name = self._active_anim_name or "(none)"
             if len(display_name) > 16:
                 display_name = display_name[:14] + ".."
-            lbl = self._font.render(f"  {display_name} ▾", True, _COLORS["text"])
+            lbl = self._font.render(f"  {display_name}", True, _COLORS["text"])
+            # Dropdown arrow icon
+            arrow_icon = icon_manager.get_icon("arrow-down", 10, _COLORS["text"])
+            screen.blit(
+                arrow_icon,
+                (self._btn_anim_selector.right - 16, self._btn_anim_selector.y + 8),
+            )
         screen.blit(lbl, (self._btn_anim_selector.x + 4, self._btn_anim_selector.y + 5))
         x += sel_w + pad
 
@@ -848,8 +855,9 @@ class SpriteAnimationEditor:
         pygame.draw.rect(
             screen, _COLORS["border"], self._btn_rename, 1, border_radius=3
         )
-        rename_icon = self._font_sm.render("✎", True, _COLORS["text"])
-        screen.blit(rename_icon, (self._btn_rename.x + 4, self._btn_rename.y + 5))
+        # Pencil icon for rename
+        pencil_icon = icon_manager.get_icon("pencil", 14, _COLORS["text"])
+        screen.blit(pencil_icon, (self._btn_rename.x + 5, self._btn_rename.y + 6))
         x += rename_btn_w + pad
 
         # [+ New]
@@ -859,7 +867,9 @@ class SpriteAnimationEditor:
 
         # [✕ Delete]
         self._btn_del = Rect(x, cy, 28, bh)
-        self._draw_toolbar_btn(screen, self._btn_del, "✕", mouse, danger=True)
+        # Close/X icon for delete
+        close_icon = icon_manager.get_icon("close", 14, _COLORS["btn_danger_hover"])
+        screen.blit(close_icon, (self._btn_del.x + 7, self._btn_del.y + 6))
         x += 36
 
         # Separator
@@ -934,9 +944,10 @@ class SpriteAnimationEditor:
         x += input_w + 2
 
         # x separator
-        x_label = self._font_sm.render("×", True, _COLORS["text_dim"])
-        screen.blit(x_label, (x, cy + 6))
-        x += x_label.get_width() + 2
+        # Multiplication sign as icon
+        x_icon = icon_manager.get_icon("close", 10, _COLORS["text_dim"])
+        screen.blit(x_icon, (x, cy + 5))
+        x += 12
 
         # Height input
         self._btn_frame_height = Rect(x, cy, input_w, bh)
@@ -1050,20 +1061,36 @@ class SpriteAnimationEditor:
         bh2 = 22
         cy2 = tb2.y + (TOOLBAR_ROW2_H - bh2) // 2
         x2 = tb2.x + 6
-        self._btn_dup = Rect(x2, cy2, 40, bh2)
-        self._draw_toolbar_btn(screen, self._btn_dup, "Dup", mouse)
-        x2 += 44
-        self._btn_mk = Rect(x2, cy2, 32, bh2)
-        self._draw_toolbar_btn(screen, self._btn_mk, "Marker", mouse)
-        x2 += 36
-        self._btn_copyjson = Rect(x2, cy2, 44, bh2)
-        self._draw_toolbar_btn(screen, self._btn_copyjson, "JSON", mouse)
-        x2 += 48
+        # Duplicate button (icon)
+        self._btn_dup = Rect(x2, cy2, 24, bh2)
+        self._draw_toolbar_btn(screen, self._btn_dup, "", mouse)
+        dup_icon = icon_manager.get_icon("duplicate", 12, _COLORS["text"])
+        screen.blit(dup_icon, dup_icon.get_rect(center=self._btn_dup.center))
+        x2 += 28
+
+        # Marker button (icon - using radio as marker symbol)
+        self._btn_mk = Rect(x2, cy2, 24, bh2)
+        self._draw_toolbar_btn(screen, self._btn_mk, "", mouse)
+        marker_icon = icon_manager.get_icon("radio", 12, _COLORS["text"])
+        screen.blit(marker_icon, marker_icon.get_rect(center=self._btn_mk.center))
+        x2 += 28
+
+        # Copy JSON button (icon - using file symbol)
+        self._btn_copyjson = Rect(x2, cy2, 24, bh2)
+        self._draw_toolbar_btn(screen, self._btn_copyjson, "", mouse)
+        json_icon = icon_manager.get_icon("file", 12, _COLORS["text"])
+        screen.blit(json_icon, json_icon.get_rect(center=self._btn_copyjson.center))
+        x2 += 28
         if self._clip_warnings:
-            wtxt = f"⚠ {len(self._clip_warnings)} clip issue(s)"
+            # Warning icon
+            warning_icon = icon_manager.get_icon(
+                "warning", 12, _COLORS["btn_danger_hover"]
+            )
+            screen.blit(warning_icon, (x2, cy2 + 4))
+            wtxt = f"{len(self._clip_warnings)} clip issue(s)"
             screen.blit(
                 self._font_sm.render(wtxt, True, _COLORS["btn_danger_hover"]),
-                (x2, cy2 + 4),
+                (x2 + 14, cy2 + 4),
             )
         else:
             screen.blit(

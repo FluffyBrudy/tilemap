@@ -1,5 +1,6 @@
 include README.md
 recursive-include src *.py
+recursive-include assets/icons *.svg
 global-exclude *.py[cod] __pycache__/* *.spec *.spec.bak *.sh
 prune build
 prune dist

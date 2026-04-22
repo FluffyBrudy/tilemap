@@ -26,7 +26,7 @@ tilemap-anim-editor = "plugins.sprite_animation.standalone:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-include-package-data = false
+include-package-data = true
 py-modules = [
   "constants",
   "editor",

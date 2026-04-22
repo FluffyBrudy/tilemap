@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple, Union
 from constants import INTELLISENSE_DEPTH, IGNORE_DIRS, BASE_PATH
 from utils.error_handler import error_handler
+from utils.icon_manager import icon_manager
 from utils.icons_cache import get_icon, prewarm_common_icons
 from utils.standalone import launch_standalone
 
@@ -1257,9 +1258,11 @@ class FileManager:
 
     def _draw_header(self, screen, rect):
         up_btn = pygame.Rect(rect.x + 5, rect.y + 5, 30, 30)
-        self._draw_icon_arrow_up(
-            screen, up_btn.centerx, up_btn.centery, COLORS["text_main"]
-        )
+        # Use arrow-up icon (rotate arrow-down or use folder-up)
+        up_icon = icon_manager.get_icon("arrow-down", 16, COLORS["text_main"])
+        # Rotate the icon 90 degrees for up
+        up_icon = pygame.transform.rotate(up_icon, 180)
+        screen.blit(up_icon, up_icon.get_rect(center=up_btn.center))
         parts = self.current_path.parts
         if len(parts) > 4:
             display_parts = ["..."] + list(parts[-3:])
@@ -1297,11 +1300,11 @@ class FileManager:
             icon_y = y + (self.item_height - icon_size[1]) // 2
 
             if item.is_dir:
-                icon = get_icon("folder", {"color": COLORS["folder"]}, icon_size)
+                icon = icon_manager.get_icon("folder", 20, COLORS["folder"])
             elif item.ext in [".png", ".jpg", ".jpeg"]:
-                icon = get_icon("image", {"color": COLORS["image"]}, icon_size)
+                icon = icon_manager.get_icon("image", 20, COLORS["image"])
             else:
-                icon = get_icon("file", {"color": COLORS["file"]}, icon_size)
+                icon = icon_manager.get_icon("file", 20, COLORS["file"])
 
             screen.blit(icon, (icon_x, icon_y))
 

@@ -18,6 +18,7 @@ from datetime import datetime
 import pygame
 from pygame import Rect, Surface, Color, KEYDOWN, K_ESCAPE
 from utils.font_manager import font_manager, FontWeight, FontStyle
+from utils.icon_manager import icon_manager
 import logging
 
 from utils.error_handler import error_handler
@@ -503,10 +504,19 @@ class StandaloneErrorConsole:
                 if row_rect.collidepoint(self.mouse_pos):
                     pygame.draw.rect(self.screen, C["bg_secondary"], row_rect)
 
-                # Severity Stripe
+                # Severity Stripe with icon
                 pygame.draw.rect(
                     self.screen, C[f"{sev}_stripe"], Rect(0, curr_y, self.STRIPE_W, eh)
                 )
+                # Severity icon
+                icon_name = {
+                    "error": "error",
+                    "warning": "warning",
+                    "info": "info",
+                }.get(sev, "info")
+                icon_color = C[f"{sev}_stripe"]
+                sev_icon = icon_manager.get_icon(icon_name, 14, icon_color)
+                self.screen.blit(sev_icon, (8, curr_y + self.CELL_PADDING))
 
                 # 1. Timestamp
                 ts = entry.get("timestamp", "")[11:19]
@@ -536,10 +546,15 @@ class StandaloneErrorConsole:
 
                 # 4. Context (Below Message)
                 if layout["ctx"]:
-                    c_surf = self.f_small.render(
-                        f"➜ {layout['ctx']}", True, C["text_secondary"]
+                    # Arrow icon for context
+                    arrow_icon = icon_manager.get_icon(
+                        "arrow-down", 10, C["text_secondary"]
                     )
-                    self.screen.blit(c_surf, (text_x, text_y))
+                    self.screen.blit(arrow_icon, (text_x, text_y + 2))
+                    c_surf = self.f_small.render(
+                        f" {layout['ctx']}", True, C["text_secondary"]
+                    )
+                    self.screen.blit(c_surf, (text_x + 12, text_y))
                     text_y += 18
 
                 # 5. Expanded Stack Trace
