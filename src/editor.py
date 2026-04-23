@@ -490,6 +490,9 @@ class Editor:
                 self._init_animation_panel()
             if self.animation_panel is not None:
                 self.left_panel_visible = True
+        else:
+            self.left_panel_visible = False
+
 
     def _init_animation_panel(self):
         """Initialize the animation panel without loading any tileset."""
@@ -605,6 +608,87 @@ class Editor:
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
 
+    def launch_collision_editor(self):
+        """Launch the tileset collision editor in a new window.
+
+        Uses the active tileset image when one is loaded. If no tileset is
+        selected, shows a notification.
+        """
+        sheet = self._active_tileset_image_path()
+        if sheet is not None:
+            self._launch_collision_editor_with_image(sheet)
+            return
+
+        self.notifications.notify("No tileset loaded. Please load a tileset first.")
+
+    def _launch_collision_editor_with_image(self, path: Path):
+        """Launch collision editor subprocess with selected tileset."""
+        try:
+            tile_size = "32x32"
+            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
+                tw, th = self.tilemap.tile_size
+                tile_size = f"{tw}x{th}"
+
+            args = [str(path), "--tile-size", tile_size]
+            
+            # Check if collision data file exists and load it
+            collision_path = path.with_suffix('.collision.json')
+            if collision_path.exists():
+                args.extend(["--load", str(collision_path)])
+
+            process = launch_standalone(
+                "plugins.tileset_collision.standalone",
+                args,
+                cwd=BASE_PATH,
+                text=True,
+            )
+            self.child_processes.append(process)
+
+            print(
+                f"Launched collision editor with: {path.name} (tile size: {tile_size})"
+            )
+        except Exception as e:
+            error_handler.capture(e, context="launch_collision_editor")
+
+    def launch_character_collision_editor(self):
+        """Launch the character collision editor in a new window.
+
+        Opens a file picker to select a character sprite image.
+        """
+        self.open_file_manager(
+            on_select=self._launch_character_collision_editor_with_image,
+            initial_dir=BASE_PATH / "data",
+            allowed_exts=[".png", ".jpg", ".jpeg"],
+            mode="open",
+        )
+
+    def _launch_character_collision_editor_with_image(self, path: Path):
+        """Launch character collision editor subprocess with selected image."""
+        try:
+            # Use filename (without extension) as default character name
+            character_name = path.stem
+
+            args = [str(path), "--name", character_name]
+            
+            # Check if collision data file exists and load it
+            collision_path = path.with_suffix('.collision.json')
+            if collision_path.exists():
+                args.extend(["--load", str(collision_path)])
+
+            process = launch_standalone(
+                "plugins.character_collision.standalone",
+                args,
+                cwd=BASE_PATH,
+                text=True,
+            )
+            self.child_processes.append(process)
+
+            print(
+                f"Launched character collision editor with: {path.name} (character: {character_name})"
+            )
+        except Exception as e:
+            error_handler.capture(e, context="launch_character_collision_editor")
+
     def launch_error_console(self):
         """Launch the error console as a subprocess."""
         if self.error_console_process and self.error_console_process.poll() is None:
@@ -670,6 +754,7 @@ class Editor:
         self.child_processes = [p for p in self.child_processes if p.poll() is None]
 
     def handle_events(self):
+        """Process all pygame events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False

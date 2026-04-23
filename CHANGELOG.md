@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2025-04-23
+
+### Added
+- **Tileset Collision Plugin**: Godot-like polygon collision editor
+  - `CollisionPainter`: Interactive polygon drawing with edge-constrain mode
+  - `TilesetCollisionEditor`: Full editor with tile selector and painted tiles list
+  - `TilesetCollisionLibrary`: Persistent collision data management
+  - Edge-draw mode (`E` key + `Shift`) for precise slope/stair creation
+  - Help panel (`H` key) with all controls documented
+  - One-way collision support for platforms
+  - Zoom, pan, and grid controls
+- **Character Collision Plugin**: Shape-based character collision editor
+  - Rectangle, Circle, and Capsule shape support
+  - Protocol-based design for easy integration
+
+### Changed
+- Updated pyproject.toml version to 2.0.1
+- Improved editor.py and tile_selector.py integration
+
 ## [2.0.0] - 2025-04-22
 
 ### Major Changes
