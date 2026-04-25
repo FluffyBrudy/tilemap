@@ -22,6 +22,7 @@ from utils.icon_manager import icon_manager
 import logging
 
 from utils.error_handler import error_handler
+from plugins.sprite_animation.clipboard_util import copy_plain_text
 
 # Setup logging for font debugging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -101,6 +102,8 @@ class StandaloneErrorConsole:
         self._expanded_ids = set()
         self._scroll_offset = 0
         self.mouse_pos = (0, 0)
+        self._clicked_entry_id = None  # Track entry clicked for toggle on release
+        self._copy_btns = []  # Track copy button rects: (entry_id, rect)
 
         self.log_file = BASE_PATH / "data" / "logs" / "errors.log"
         self.last_file_size = 0
@@ -368,18 +371,30 @@ class StandaloneErrorConsole:
                     self._all_entries = []
                     self._refresh_entries()
 
-                # Handle Entry Expansion
+                # Handle Copy Button clicks
+                for eid, btn_rect in self._copy_btns:
+                    if btn_rect.collidepoint(event.pos):
+                        entry = next((e for e in self._all_entries if e["id"] == eid), None)
+                        if entry:
+                            text_to_copy = f"[{entry['severity'].upper()}] {entry.get('message', '')}"
+                            ctx = entry.get("context", "")
+                            if ctx:
+                                text_to_copy += f"\nContext: {ctx}"
+                            stack = entry.get("stack_trace", "")
+                            if stack:
+                                text_to_copy += f"\n\nStack Trace:\n{stack}"
+                            copy_plain_text(text_to_copy)
+                        break
+
+                # Track entry for toggle on release (don't toggle immediately)
+                self._clicked_entry_id = None
                 if self.content_rect.collidepoint(event.pos):
                     rel_y = event.pos[1] - self.content_rect.y + self._scroll_offset
                     curr_y = 0
                     for entry in self._visible_entries:
                         layout = self._get_entry_layout(entry, self.width)
                         if curr_y <= rel_y <= curr_y + layout["total_h"]:
-                            eid = entry["id"]
-                            if eid in self._expanded_ids:
-                                self._expanded_ids.discard(eid)
-                            else:
-                                self._expanded_ids.add(eid)
+                            self._clicked_entry_id = entry["id"]
                             break
                         curr_y += layout["total_h"]
 
@@ -387,6 +402,15 @@ class StandaloneErrorConsole:
                 self._scroll_offset = max(0, self._scroll_offset - 40)
             if event.button == 5:
                 self._scroll_offset += 40
+
+        if event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1 and self._clicked_entry_id is not None:
+                eid = self._clicked_entry_id
+                if eid in self._expanded_ids:
+                    self._expanded_ids.discard(eid)
+                else:
+                    self._expanded_ids.add(eid)
+                self._clicked_entry_id = None
 
         if event.type == KEYDOWN:
             # Better mod detection using event.mod
@@ -486,8 +510,7 @@ class StandaloneErrorConsole:
 
     def _draw_entries(self):
         """Draws entries with dynamic spacing to prevent overlapping."""
-        # Use a list to store entry surfaces to avoid huge surface allocation issues
-        # Actually, let's just draw directly to screen with clipping
+        self._copy_btns = []  # Reset copy button rects
         content_y = self.content_rect.y
         curr_y = content_y - self._scroll_offset
 
@@ -578,6 +601,22 @@ class StandaloneErrorConsole:
                             )
                             self.screen.blit(st_surf, (text_x + 10, text_y + 10))
                             text_y += 16
+
+                    # Copy Button (shown when expanded)
+                    if entry["id"] in self._expanded_ids:
+                        copy_btn_x = self.width - 40
+                        copy_btn_y = curr_y + self.CELL_PADDING
+                        copy_btn = Rect(copy_btn_x, copy_btn_y, 24, 24)
+                        self._copy_btns.append((entry["id"], copy_btn))
+
+                        # Draw copy button with hover effect
+                        btn_color = C["bg_tertiary"] if copy_btn.collidepoint(self.mouse_pos) else C["bg_secondary"]
+                        pygame.draw.rect(self.screen, btn_color, copy_btn, border_radius=3)
+                        pygame.draw.rect(self.screen, C["border"], copy_btn, 1, border_radius=3)
+
+                        # Copy icon
+                        copy_icon = icon_manager.get_icon("copy", 12, C["text_secondary"])
+                        self.screen.blit(copy_icon, (copy_btn_x + 6, copy_btn_y + 6))
 
                 # Divider
                 pygame.draw.line(
