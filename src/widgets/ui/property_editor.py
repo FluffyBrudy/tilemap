@@ -1,9 +1,17 @@
+"""
+Property Editor
+
+Modal dialog for editing key-value property lists.
+"""
 import pygame
 from typing import TYPE_CHECKING, Dict, Any, Callable, Optional, Tuple
 from pygame import Rect, Surface
 
 if TYPE_CHECKING:
     from editor import Editor
+
+from .theme import COLORS
+from utils.font_manager import font_manager, FontWeight
 
 
 class PropertyEditor:
@@ -32,11 +40,10 @@ class PropertyEditor:
             self.height,
         )
 
-        self.font_title = pygame.font.SysFont("Arial", 20, bold=True)
-        self.font_label = pygame.font.SysFont("Arial", 16)
-        self.font_input = pygame.font.SysFont("Arial", 16)
+        self.font_title = font_manager.get_font("Arial", 20, FontWeight.BOLD)
+        self.font_label = font_manager.get_font("Arial", 16, FontWeight.REGULAR)
+        self.font_input = font_manager.get_font("Arial", 16, FontWeight.REGULAR)
         self.shrink_value_font = shrink_value_font
-        self._font_cache: Dict[int, pygame.font.Font] = {}
 
         self.scroll_y = 0
         self.item_height = 40
@@ -59,22 +66,17 @@ class PropertyEditor:
             self.rect.x + self.width // 2 - 50, self.rect.y + self.height - 40, 100, 30
         )
 
-    def _get_font(self, size: int) -> pygame.font.Font:
-        if size not in self._font_cache:
-            self._font_cache[size] = pygame.font.SysFont("Arial", size)
-        return self._font_cache[size]
-
     def _render_value_text(
         self, text: str, color: Tuple[int, int, int], max_width: int
     ) -> pygame.Surface:
         if not self.shrink_value_font or max_width <= 0:
             return self.font_input.render(text, True, color)
         for size in range(16, 9, -1):
-            font = self._get_font(size)
+            font = font_manager.get_font("Arial", size, FontWeight.REGULAR)
             surf = font.render(text, True, color)
             if surf.get_width() <= max_width:
                 return surf
-        return self._get_font(10).render(text, True, color)
+        return font_manager.get_font("Arial", 10, FontWeight.REGULAR).render(text, True, color)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.active:

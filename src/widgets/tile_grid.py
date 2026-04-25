@@ -1,3 +1,8 @@
+"""
+Tile Grid
+
+Main editing canvas for tilemap.
+"""
 import pygame
 from typing import TYPE_CHECKING, Optional, Tuple
 from pygame import Rect, Surface, K_UP, K_LEFT, K_RIGHT
@@ -6,6 +11,8 @@ from ttypes.tilemap import TypeTile, TypeObject
 
 if TYPE_CHECKING:
     from editor import Editor
+
+from utils.font_manager import font_manager, FontWeight
 
 
 class TileGrid:
@@ -25,13 +32,13 @@ class TileGrid:
         self.grid_color = (200, 200, 200)
         self.show_grid = True
 
-        self.eraser_size = 1  # For tiles: in grid units. For objects: in pixels.
+        self.eraser_size = 1
         self.zoom_level = 1.0
         self.min_zoom = 0.1
         self.max_zoom = 5.0
 
-        self.font_status = pygame.font.SysFont("Arial", 12)
-        self.font_overlay = pygame.font.SysFont("Arial", 24, bold=True)
+        self.font_status = font_manager.get_font("Arial", 12, FontWeight.REGULAR)
+        self.font_overlay = font_manager.get_font("Arial", 24, FontWeight.BOLD)
         self._last_history_capture = 0
 
         # Continuous adjustment and visual feedback
@@ -737,8 +744,6 @@ class TileGrid:
         pygame.draw.line(
             screen, (60, 64, 72), (0, bar_rect.y), (self.editor.width, bar_rect.y)
         )
-
-        pygame.font.SysFont("Arial", 12)
 
         mouse_pos = pygame.mouse.get_pos()
         world_pos = self.screen_to_world(mouse_pos)

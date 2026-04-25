@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "tile_size": "32;32",
+    "map_size": "50;50",
+    "zoom_level": 1.0,
+    "scroll": "0;0",
+    "initial_map_size": "50;50",
+    "version": "1.1"
+  },
+  "resources": {
+    "tilesets": [
+      {
+        "path": "/Users/upstem/Downloads/assets/25.07 - Free Mana Seed RPG Starter Pack/tilesets/seasonal sample (summer).png",
+        "type": "tile"
+      }
+    ]
+  },
+  "project_state": {
+    "rules": [
+      {
+        "name": "Rule 1",
+        "neighbors": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "tileset_path": "",
+        "tileset_index": null,
+        "variant_ids": [
+          0
+        ],
+        "group_id": "Default"
+      }
+    ],
+    "groups": [
+      {
+        "name": "Default",
+        "rules": [
+          {
+            "name": "Rule 1",
+            "neighbors": [
+              [
+                1,
+                0
+              ],
+              [
+                0,
+                0
+              ]
+            ],
+            "tileset_path": "",
+            "tileset_index": null,
+            "variant_ids": [
+              0
+            ],
+            "group_id": "Default"
+          }
+        ]
+      }
+    ],
+    "automap_rules": []
+  },
+  "data": {
+    "ongrid": {},
+    "layers": [
+      {
+        "name": "Layer 1",
+        "type": "tile",
+        "visible": true,
+        "locked": false,
+        "opacity": 1.0,
+        "z_index": 0,
+        "tiles": {},
+        "properties": {}
+      }
+    ]
+  }
+}

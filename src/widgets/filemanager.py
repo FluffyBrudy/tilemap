@@ -8,6 +8,8 @@ from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
 from utils.icons_cache import get_icon, prewarm_common_icons
 from utils.standalone import launch_standalone
+from widgets.ui import SHAPE
+from widgets.ui.theme import COLORS as UI_COLORS, FONTS
 
 
 COLORS = {
@@ -387,7 +389,7 @@ class ImagePreview:
         self.close_button_rect = close_button_rect
 
         if self.error_message:
-            font = pygame.font.SysFont("Arial", 14)
+            font = FONTS.get_font(14)
             error_lines = self.error_message.split("\n")
             y_offset = rect.centery - (len(error_lines) * 20) // 2
 
@@ -399,7 +401,7 @@ class ImagePreview:
             return
 
         if not self.current_image:
-            font = pygame.font.SysFont("Arial", 14)
+            font = FONTS.get_font(14)
             text_surf = font.render("No preview available", True, COLORS["text_dim"])
             text_rect = text_surf.get_rect(center=rect.center)
             surface.blit(text_surf, text_rect)
@@ -425,7 +427,7 @@ class ImagePreview:
             surface.blit(scaled_image, image_rect)
 
             if self.image_dimensions:
-                font = pygame.font.SysFont("Arial", 12)
+                font = FONTS.get_font(12)
                 dim_text = f"{self.image_dimensions[0]} × {self.image_dimensions[1]} px"
                 text_surf = font.render(dim_text, True, COLORS["text_dim"])
                 text_rect = text_surf.get_rect(
@@ -448,7 +450,7 @@ class ImagePreview:
                 surface, button_color, self.open_viewer_button_rect, border_radius=4
             )
 
-            font = pygame.font.SysFont("Arial", 13, bold=True)
+            font = FONTS.get_bold_font(13)
             button_text = font.render("Open in Viewer", True, COLORS["text_main"])
             text_rect = button_text.get_rect(center=self.open_viewer_button_rect.center)
             surface.blit(button_text, text_rect)
@@ -498,9 +500,9 @@ class FileManager:
         self.footer_height = 50
         self.item_height = 30
 
-        self.font_main = pygame.font.SysFont("Arial", 14)
-        self.font_bold = pygame.font.SysFont("Arial", 14, bold=True)
-        self.font_icon = pygame.font.SysFont("Consolas", 20)
+        self.font_main = FONTS.get_font(14)
+        self.font_bold = FONTS.get_bold_font(14)
+        self.font_icon = FONTS.get_mono_font(20)
 
         self.search_query = ""
         self.is_searching = False

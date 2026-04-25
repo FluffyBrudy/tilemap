@@ -1,7 +1,14 @@
+"""
+Menu Bar
+
+Dropdown menu system.
+"""
 import pygame
 from pygame import Rect, Color
 from typing import List, Callable
-from widgets.ui.theme import COLORS, FONTS
+
+from .theme import COLORS, FONTS
+from utils.font_manager import font_manager, FontWeight
 
 
 class MenuAction:
@@ -31,8 +38,8 @@ class MenuBar:
         self.open_color = COLORS.panel_alt
         self.accent_color = COLORS.accent
 
-        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_md)
-        self.font_shortcut = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
+        self.font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
+        self.font_shortcut = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
 
         self.menus = [
             Menu(

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, List, Tuple, Set
 if TYPE_CHECKING:
     from .autotiler import AutotileRule
 
+from widgets.ui import FONTS
+
 # Directions mapping for convenience
 U = (0, -1)
 D = (0, 1)
@@ -57,7 +59,7 @@ class AutotileTemplateApplier:
         self.visible = False
         self.active_templates: List[TemplateDefinition] = []
         self.rect = Rect(0, 0, 200, 10)
-        self.font = pygame.font.SysFont("Arial", 12)
+        self.font = FONTS.get_font(12)
 
     def show_at(self, pos: Tuple[int, int]):
         self.active_templates = self._get_active_templates()

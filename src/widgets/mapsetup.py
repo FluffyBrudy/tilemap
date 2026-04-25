@@ -1,3 +1,8 @@
+"""
+Map Setup Dialog
+
+Dialog for setting up new tilemap dimensions and tile sizes.
+"""
 import pygame
 from typing import TYPE_CHECKING, List
 from pygame import Rect
@@ -6,56 +11,156 @@ from pygame import Rect
 if TYPE_CHECKING:
     from editor import Editor
 
-
-COLOR_BG = (45, 45, 50)
-COLOR_BORDER = (80, 80, 80)
-COLOR_ACCENT = (60, 100, 160)
-COLOR_TEXT = (220, 220, 220)
-COLOR_ERROR = (200, 60, 60)
+from .ui.theme import COLORS, FONTS
+from .ui.base.input import NumericInput
+from .ui.base.uibase import create_simple_options
+from utils.font_manager import font_manager, FontWeight
 
 
-class FormInput:
+class FormInput(NumericInput):
+    """Numeric input field for map setup form."""
+    
     def __init__(self, rect: Rect, label: str, key: str, default_val: str = ""):
-        self.rect_area = rect
         self.label = label
         self.key = key
+        
+        input_rect = Rect(rect.x, rect.y + 20, rect.width, 30)
+        opts = create_simple_options(rect.width, 30)
+        super().__init__(opts)
+        
+        self.rect = input_rect
         self.text = default_val
-        self.is_focused = False
-
-        self.rect_input = Rect(rect.x, rect.y + 20, rect.width, 30)
-        self.font = pygame.font.SysFont("Arial", 16)
-        self.font_lbl = pygame.font.SysFont("Arial", 14)
-
+        
+        self.font = font_manager.get_font("Arial", 16, FontWeight.REGULAR)
+        self.font_label = font_manager.get_font("Arial", 14, FontWeight.REGULAR)
+    
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.MOUSEBUTTONDOWN:
-            self.is_focused = self.rect_input.collidepoint(event.pos)
+            self.is_focused = self.rect.collidepoint(event.pos)
             return self.is_focused
-
+        
         if self.is_focused and event.type == pygame.KEYDOWN:
+            ctrl_held = event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)
+            shift_held = event.mod & pygame.KMOD_SHIFT
+            
+            # Ctrl/Cmd+A: Select all
+            if event.key == pygame.K_a and ctrl_held:
+                self._select_all()
+                return True
+            
+            # Ctrl/Cmd+Backspace: Delete word
+            if event.key == pygame.K_BACKSPACE and ctrl_held:
+                self._delete_word_left()
+                return True
+            
+            # Ctrl/Cmd+Left: Word left
+            if event.key == pygame.K_LEFT and ctrl_held:
+                self._move_cursor_word_left(shift_held)
+                return True
+            
+            # Ctrl/Cmd+Right: Word right
+            if event.key == pygame.K_RIGHT and ctrl_held:
+                self._move_cursor_word_right(shift_held)
+                return True
+            
+            # Home: Move to start
+            if event.key == pygame.K_HOME:
+                self.cursor_pos = 0
+                if not shift_held:
+                    self.selection_start = self.selection_end = 0
+                return True
+            
+            # End: Move to end
+            if event.key == pygame.K_END:
+                self.cursor_pos = len(self.text)
+                if not shift_held:
+                    self.selection_start = self.selection_end = len(self.text)
+                return True
+            
+            # Left arrow
+            if event.key == pygame.K_LEFT:
+                if self.cursor_pos > 0:
+                    self.cursor_pos -= 1
+                if not shift_held:
+                    self.selection_start = self.selection_end = self.cursor_pos
+                return True
+            
+            # Right arrow
+            if event.key == pygame.K_RIGHT:
+                if self.cursor_pos < len(self.text):
+                    self.cursor_pos += 1
+                if not shift_held:
+                    self.selection_start = self.selection_end = self.cursor_pos
+                return True
+            
+            # Backspace
             if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            elif event.key in (pygame.K_RETURN, pygame.K_TAB):
+                if not self._delete_selection():
+                    self._delete_char()
+                return True
+            
+            # Return/Tab - don't handle
+            if event.key in (pygame.K_RETURN, pygame.K_TAB):
                 return False
-            elif event.unicode.isdigit():
-                self.text += event.unicode
+            
+            # Digits only
+            if event.unicode.isdigit():
+                self._add_char(event.unicode)
+                return True
+            
             return True
         return False
-
+    
     def get_value(self) -> int:
         return int(self.text) if self.text else 0
-
+    
+    def _get_cursor_x(self) -> int:
+        """Get x position of cursor based on text before cursor."""
+        text_before = self.text[:self.cursor_pos]
+        return self.rect.x + 5 + self.font.size(text_before)[0]
+    
     def draw(self, screen: pygame.Surface):
-        screen.blit(
-            self.font_lbl.render(self.label, True, (150, 150, 150)),
-            (self.rect_area.x, self.rect_area.y),
-        )
-
-        col = COLOR_ACCENT if self.is_focused else COLOR_BORDER
-        pygame.draw.rect(screen, (20, 20, 20), self.rect_input)
-        pygame.draw.rect(screen, col, self.rect_input, 2 if self.is_focused else 1)
-
-        txt_surf = self.font.render(self.text, True, COLOR_TEXT)
-        screen.blit(txt_surf, (self.rect_input.x + 5, self.rect_input.y + 5))
+        # Draw label
+        label_surf = self.font_label.render(self.label, True, COLORS.text_dim)
+        screen.blit(label_surf, (self.rect.x, self.rect.y - 18))
+        
+        # Draw input background
+        bg_color = COLORS.panel
+        border_color = COLORS.accent if self.is_focused else COLORS.border
+        border_width = 2 if self.is_focused else 1
+        
+        pygame.draw.rect(screen, bg_color, self.rect)
+        pygame.draw.rect(screen, border_color, self.rect, border_width)
+        
+        # Draw selection highlight
+        if self.selection_start != self.selection_end:
+            start, end = self._get_selection()
+            text_before_start = self.text[:start]
+            text_selected = self.text[start:end]
+            sel_x = self.rect.x + 5 + self.font.size(text_before_start)[0]
+            sel_w = self.font.size(text_selected)[0]
+            sel_rect = pygame.Rect(sel_x, self.rect.y + 3, sel_w, self.rect.height - 6)
+            pygame.draw.rect(screen, COLORS.selected, sel_rect)
+        
+        # Draw text
+        if self.text:
+            text_surf = self.font.render(self.text, True, COLORS.text)
+        else:
+            text_surf = self.font.render(self.placeholder, True, COLORS.text_muted)
+        
+        screen.blit(text_surf, (self.rect.x + 5, self.rect.y + 5))
+        
+        # Draw blinking cursor
+        if self.is_focused and self.show_cursor:
+            cursor_x = self._get_cursor_x()
+            if int(pygame.time.get_ticks() * 0.002) % 2 == 0:
+                pygame.draw.line(
+                    screen,
+                    COLORS.text,
+                    (cursor_x, self.rect.y + 4),
+                    (cursor_x, self.rect.y + self.rect.height - 4),
+                    2,
+                )
 
 
 class MapSetup:
@@ -85,7 +190,7 @@ class MapSetup:
             self.inputs.append(FormInput(r, lbl, key, default))
 
         self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
-        self.font = pygame.font.SysFont("Arial", 20, bold=True)
+        self.font = font_manager.get_font("Arial", 20, FontWeight.BOLD)
 
     def resize(self, center_rect: Rect):
         self.rect = center_rect
@@ -98,8 +203,7 @@ class MapSetup:
         for i, inp in enumerate(self.inputs):
             row, col = divmod(i, cols)
             r = Rect(start_x + col * cell_w, start_y + row * cell_h, cell_w - 10, 60)
-            inp.rect_area = r
-            inp.rect_input = Rect(r.x, r.y + 20, r.width, 30)
+            inp.rect = Rect(r.x, r.y + 20, r.width, 30)
 
         self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
 
@@ -143,21 +247,26 @@ class MapSetup:
         if not self.visible:
             return
 
-        pygame.draw.rect(screen, COLOR_BG, self.rect)
-        pygame.draw.rect(screen, COLOR_BORDER, self.rect, 1)
+        # Draw background
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
-        title = self.font.render("Project Setup", True, COLOR_TEXT)
+        # Draw title
+        title = self.font.render("Project Setup", True, COLORS.text)
         screen.blit(title, (self.rect.x + 20, self.rect.y + 15))
 
+        # Draw inputs
         for inp in self.inputs:
             inp.draw(screen)
 
-        pygame.draw.rect(screen, COLOR_ACCENT, self.btn_rect)
-        btn_txt = self.font.render("Create", True, COLOR_TEXT)
+        # Draw button
+        pygame.draw.rect(screen, COLORS.accent, self.btn_rect)
+        btn_txt = self.font.render("Create", True, COLORS.text)
         screen.blit(btn_txt, btn_txt.get_rect(center=self.btn_rect.center))
 
+        # Draw error
         if self.error_message:
-            err = pygame.font.SysFont("Arial", 12).render(
-                self.error_message, True, COLOR_ERROR
+            err = font_manager.get_font("Arial", 12, FontWeight.REGULAR).render(
+                self.error_message, True, COLORS.danger
             )
             screen.blit(err, (self.rect.x + 20, self.btn_rect.y - 20))

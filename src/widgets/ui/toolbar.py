@@ -1,19 +1,26 @@
+"""
+Toolbar
+
+Horizontal toolbar with icon buttons.
+"""
 import pygame
 from pygame import Rect
 from typing import TYPE_CHECKING, Dict, Tuple
 
 if TYPE_CHECKING:
     from editor import Editor
-from widgets.ui.theme import COLORS, FONTS, SHAPE
-from widgets.ui.draw_utils import draw_panel
+
+from .theme import COLORS, FONTS, SHAPE
+from .draw_utils import draw_panel
 from utils.icon_manager import icon_manager
+from utils.font_manager import font_manager, FontWeight
 
 
 class Toolbar:
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int = 35):
         self.editor = editor
         self.rect = Rect(x, y, w, h)
-        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
+        self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
         self.buttons: Dict[str, Tuple[Rect, str]] = {}
         self._layout_buttons()
 

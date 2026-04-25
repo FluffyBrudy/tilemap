@@ -9,6 +9,7 @@ import pygame
 from pygame import Surface, Rect, Color
 from typing import TYPE_CHECKING, List, Optional, Tuple
 from utils import error_handler
+from widgets.ui import FONTS
 from widgets.automap_models import (
     AutomapEngine,
     PatternGrid,
@@ -95,8 +96,8 @@ class RegexAutomapDesigner:
         self.current_match_mode = MatchMode.EXACT
 
         # Fonts
-        self.font = pygame.font.SysFont("Arial", 12)
-        self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
+        self.font = FONTS.get_font(12)
+        self.title_font = FONTS.get_bold_font(14)
 
         # Create and cache match mode icons
         self.match_mode_icons = self._create_match_mode_icons()
@@ -128,7 +129,7 @@ class RegexAutomapDesigner:
             1,
         )
         # Draw asterisk
-        font = pygame.font.SysFont("Arial", 14, bold=True)
+        font = FONTS.get_bold_font(14)
         asterisk = font.render("*", True, (220, 220, 240))
         wildcard_surf.blit(asterisk, (icon_size // 2 - 4, icon_size // 2 - 8))
         icons[MatchMode.WILDCARD] = wildcard_surf
@@ -142,7 +143,7 @@ class RegexAutomapDesigner:
             filled_surf, (180, 150, 90), Rect(2, 2, icon_size - 4, icon_size - 4), 2
         )
         # Draw F
-        f_text = pygame.font.SysFont("Arial", 10, bold=True).render(
+        f_text = FONTS.get_bold_font(10).render(
             "F", True, (80, 60, 30)
         )
         filled_surf.blit(f_text, (5, 3))
@@ -190,7 +191,7 @@ class RegexAutomapDesigner:
                 2,
             )
         # Draw E
-        e_text = pygame.font.SysFont("Arial", 10, bold=True).render(
+        e_text = FONTS.get_bold_font(10).render(
             "E", True, (70, 130, 180)
         )
         empty_surf.blit(e_text, (5, 3))
