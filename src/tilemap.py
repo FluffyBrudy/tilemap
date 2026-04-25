@@ -14,21 +14,7 @@ from utils.history import HistoryManager
 from utils import error_handler
 
 if TYPE_CHECKING:
-    from src.ttypes import TTile, TCoor
-    from editor import Editor
-
-NEAREST_NEIGHBOUR_OFFSET = (
-    (-1, -1),
-    (0, -1),
-    (1, -1),
-    (-1, 0),
-    (0, 0),
-    (1, 0),
-    (-1, 1),
-    (0, 1),
-    (1, 1),
-)
-from widgets.autotiler import AutotileRule
+    from widgets.autotiler import AutotileRule
 
 
 class Tilemap:
@@ -187,7 +173,7 @@ class Tilemap:
             if "groups" in state:
                 designer.groups = [AutotileGroup.from_dict(G) for G in state["groups"]]
                 designer.selected_group_idx = state.get("selected_group_idx", 0)
-            elif "rules" in state:  # Fallback for old history
+            elif "rules" in state:
                 from widgets.autotiler import AutotileRule
 
                 default_group = AutotileGroup("Default")
@@ -306,8 +292,9 @@ class Tilemap:
 
             # For backward compatibility with simpler loaders, also save flat rules
             save_data["project_state"]["rules"] = []
-            for rule in self.editor.autotiler.rules:
-                save_data["project_state"]["rules"].append(rule.to_dict())
+            for group in self.editor.autotiler.groups:
+                for rule in group.rules:
+                    save_data["project_state"]["rules"].append(rule.to_dict())
 
         # Save automap pattern rules
         if (
