@@ -156,7 +156,7 @@ class AutotileRuleDesigner:
 
         self.new_group_btn_rect = Rect(
             self.group_list_area.x + 10,
-            self.group_list_area.bottom - 30,
+            self.group_list_area.bottom - 35,
             self.group_list_area.width - 20,
             25,
         )
@@ -250,7 +250,12 @@ class AutotileRuleDesigner:
         if self._handle_group_rename(event):
             return True
 
-        mouse_pos = pygame.mouse.get_pos()
+        # Get mouse position from event if available, otherwise from pygame
+        if hasattr(event, 'pos'):
+            mouse_pos = event.pos
+        else:
+            mouse_pos = pygame.mouse.get_pos()
+            
         self._update_preview_from_selector()
 
         if event.type == pygame.KEYDOWN:
@@ -272,6 +277,10 @@ class AutotileRuleDesigner:
                     )
                     return True
 
+                if self.new_group_btn_rect.collidepoint(mouse_pos):
+                    self._create_new_group_with_focus()
+                    return True
+
                 if self.group_list_area.collidepoint(mouse_pos):
                     self._handle_group_list_click(mouse_pos)
                     return True
@@ -285,10 +294,6 @@ class AutotileRuleDesigner:
                     return True
                 if self.save_btn_rect.inflate(0, 40).collidepoint(mouse_pos):
                     pass
-
-                if self.new_group_btn_rect.collidepoint(mouse_pos):
-                    self._create_new_group_with_focus()
-                    return True
 
                 if self.new_rule_btn_rect.collidepoint(mouse_pos):
                     self._reset_selection()
@@ -409,7 +414,7 @@ class AutotileRuleDesigner:
         return False
 
     def _handle_group_list_click(self, mouse_pos):
-        start_y = self.group_list_area.y + 10
+        start_y = self.group_list_area.y + 25
         item_h = 25
         for i, group in enumerate(self.groups):
             item_rect = Rect(
@@ -421,6 +426,7 @@ class AutotileRuleDesigner:
             if item_rect.collidepoint(mouse_pos):
                 self.selected_group_idx = i
                 self.selected_rule_index = -1
+                self.scroll_offset = 0
                 return
 
     def _handle_rule_list_click(self, mouse_pos):
@@ -432,12 +438,18 @@ class AutotileRuleDesigner:
             return
 
         group = self.groups[self.selected_group_idx]
-        start_y = self.rule_list_area.y + 10
+        start_y = self.rule_list_area.y + 25
         item_h = 25
-        for i, rule in enumerate(group.rules):
+        
+        visible_start = self.scroll_offset
+        visible_end = min(visible_start + self.max_visible_rules, len(group.rules))
+        
+        for i in range(visible_start, visible_end):
+            rule = group.rules[i]
+            display_index = i - visible_start
             item_rect = Rect(
                 self.rule_list_area.x + 5,
-                start_y + i * item_h,
+                start_y + display_index * item_h,
                 self.rule_list_area.width - 10,
                 item_h,
             )
