@@ -762,6 +762,7 @@ class Editor:
             if event.type == pygame.VIDEORESIZE:
                 self.handle_resize(event.w, event.h)
 
+            # Priority 1: Modal dialogs and inputs (highest priority)
             if self.save_input.active:
                 self.save_input.handle_event(event)
                 continue
@@ -782,9 +783,20 @@ class Editor:
                 if self.property_editor.handle_event(event):
                     continue
 
+            # Priority 2: Autotiler and Regex Designer (block all events when visible)
+            if self.autotiler.visible:
+                if self.autotiler.handle_event(event):
+                    continue
+
+            if self.regex_automap_designer.visible:
+                if self.regex_automap_designer.handle_event(event):
+                    continue
+
+            # Priority 3: Menu bar
             if self.menubar.handle_event(event):
                 continue
 
+            # Priority 4: Keyboard shortcuts
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
@@ -836,23 +848,17 @@ class Editor:
                         self.tilemap.layer_manager.set_active_layer(idx)
                     continue
 
+            # Priority 5: Toolbar
             if self.toolbar and self.toolbar.handle_event(event):
                 continue
 
-            if self.autotiler.visible:
-                if self.autotiler.handle_event(event):
-                    continue
-
-            if self.regex_automap_designer.visible:
-                if self.regex_automap_designer.handle_event(event):
-                    continue
-
-            # Route events to the dockable animation panel
+            # Priority 6: Dockable animation panel
             if self.left_panel_visible and self.animation_panel:
                 if hasattr(self.animation_panel, "handle_event"):
                     if self.animation_panel.handle_event(event):
                         continue
 
+            # Priority 7: Side panels (tileset and layer widgets)
             consumed = False
             if self.tileset_widget and self.tileset_widget.handle_event(event):
                 consumed = True
@@ -862,6 +868,8 @@ class Editor:
                 and self.layer_widget.handle_event(event)
             ):
                 consumed = True
+            
+            # Priority 8: Main tile grid (lowest priority)
             if not consumed and self.tile_grid_widget:
                 self.tile_grid_widget.handle_event(event)
 
@@ -894,9 +902,22 @@ class Editor:
                 self.tileset_widget.draw(self.screen)
             if self.layer_widget:
                 self.layer_widget.draw(self.screen)
+            
+            # Draw autotiler and regex designer with modal overlay
             if self.autotiler:
+                if self.autotiler.visible:
+                    # Dim background when autotiler is open
+                    overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                    overlay.fill((0, 0, 0, 100))
+                    self.screen.blit(overlay, (0, 0))
                 self.autotiler.draw(self.screen)
+            
             if self.regex_automap_designer:
+                if self.regex_automap_designer.visible:
+                    # Dim background when regex designer is open
+                    overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                    overlay.fill((0, 0, 0, 100))
+                    self.screen.blit(overlay, (0, 0))
                 self.regex_automap_designer.draw(self.screen)
 
             # Draw the dockable animation panel

@@ -166,30 +166,20 @@ class AutotileTemplateApplier:
         if not ts:
             return
 
+        # Check if a group is selected
+        if self.designer.selected_group_idx == -1:
+            print("Template Error: No group selected. Please select a group first.")
+            return
+
+        # Use the currently selected group
+        target_group = self.designer.groups[self.designer.selected_group_idx]
+
         rx, ry, rw, rh = tile_selector.selected_tile
         tile_w, tile_h = self.designer.editor.tilemap.tile_size
         sheet_cols = ts.surface.get_width() // tile_w
 
         start_col = rx // tile_w
         start_row = ry // tile_h
-
-        # Define a unique group ID for THIS specific 3x3 selection area
-        # (e.g. "GrassSet_12_4")
-        set_id = f"{ts.name}_{start_col}_{start_row}"
-
-        from .autotiler import AutotileGroup
-
-        # Create a real group object in the designer
-        target_group = None
-        for g in self.designer.groups:
-            if g.name == set_id:
-                target_group = g
-                break
-
-        if not target_group:
-            target_group = AutotileGroup(set_id)
-            self.designer.groups.append(target_group)
-            self.designer.selected_group_idx = len(self.designer.groups) - 1
 
         added_count = 0
         updated_count = 0
@@ -204,32 +194,43 @@ class AutotileTemplateApplier:
 
             ts_index = tile_selector.active_idx
 
-            # Check for existing rule in THIS group
+            # Check for existing rule in THIS group with EXACT same neighbors and tileset
             matched_rule = None
             for r in target_group.rules:
+                # Must match both neighbors AND tileset to be considered the same rule
                 if r.neighbors == neighbors and r.tileset_index == ts_index:
                     matched_rule = r
                     break
 
             if matched_rule:
+                # Only add variant if it's not already there
                 if vid not in matched_rule.variant_ids:
                     matched_rule.variant_ids.append(vid)
                     updated_count += 1
             else:
-                rule_name = f"{ts.name}_{start_col}_{start_row}_{rel_col}_{rel_row}"
+                # Create a new rule with a unique name
+                rule_num = len(target_group.rules) + 1
+                rule_name = f"Rule {rule_num}"
+                
+                # Ensure unique name
+                existing_names = {r.name for r in target_group.rules}
+                while rule_name in existing_names:
+                    rule_num += 1
+                    rule_name = f"Rule {rule_num}"
+                
                 new_rule = AutotileRule(
                     name=rule_name,
-                    neighbors=neighbors,
+                    neighbors=set(neighbors),  # Create a new set to avoid reference issues
                     tileset_path=str(ts.path),
                     variant_ids=[vid],
                     tileset_index=ts_index,
-                    group_id=set_id,
+                    group_id=target_group.name,
                 )
                 target_group.rules.append(new_rule)
                 added_count += 1
 
         print(
-            f"Template Applied: {template.name}. Group: {set_id}. {added_count} rules added, {updated_count} rules updated."
+            f"Template Applied: {template.name} to Group '{target_group.name}'. {added_count} rules added, {updated_count} rules updated."
         )
 
     def draw(self, screen: Surface):

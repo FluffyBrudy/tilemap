@@ -87,7 +87,7 @@ class AutotileGroup:
 class AutotileRuleDesigner:
     def __init__(self, editor: "Editor", x: int, y: int):
         self.editor = editor
-        self.rect = Rect(x, y, 600, 450)
+        self.rect = Rect(x, y, 600, 500)  # Increased height to accommodate buttons outside list areas
         self.header_height = 30
 
         self.visible = False
@@ -102,7 +102,7 @@ class AutotileRuleDesigner:
         self.rename_text: str = ""
 
         self.scroll_offset: int = 0
-        self.max_visible_rules: int = 10
+        self.max_visible_rules: int = 6  # Reduced to make scrolling more visible
         self.scroll_bar_rect: Optional[Rect] = None
         self.is_scrollbar_dragging: bool = False
 
@@ -139,9 +139,16 @@ class AutotileRuleDesigner:
         body_h = self.rect.height - self.header_height
         sidebar_w = 200
         self.list_area = Rect(self.rect.x, body_y, sidebar_w, body_h)
-        self.group_list_area = Rect(self.rect.x, body_y, sidebar_w, body_h // 2)
+        
+        # Reserve space for buttons at the bottom of each list area
+        button_h = 30
+        group_content_h = (body_h // 2) - button_h
+        rule_content_h = (body_h // 2) - button_h
+        
+        # Group list area excludes the button
+        self.group_list_area = Rect(self.rect.x, body_y, sidebar_w, group_content_h)
         self.rule_list_area = Rect(
-            self.rect.x, body_y + body_h // 2, sidebar_w, body_h // 2
+            self.rect.x, body_y + body_h // 2, sidebar_w, rule_content_h
         )
 
         self.edit_area = Rect(
@@ -154,15 +161,16 @@ class AutotileRuleDesigner:
         self.save_btn_rect = Rect(cx - btn_w - 5, btn_y, btn_w, 30)
         self.delete_btn_rect = Rect(cx + 5, btn_y, btn_w, 30)
 
+        # Position buttons OUTSIDE their respective list areas to prevent click conflicts
         self.new_group_btn_rect = Rect(
             self.group_list_area.x + 10,
-            self.group_list_area.bottom - 35,
+            self.group_list_area.bottom + 5,  # Below the group list area
             self.group_list_area.width - 20,
             25,
         )
         self.new_rule_btn_rect = Rect(
             self.rule_list_area.x + 10,
-            self.rule_list_area.bottom - 30,
+            self.rule_list_area.bottom + 5,  # Below the rule list area
             self.rule_list_area.width - 20,
             25,
         )
@@ -277,10 +285,16 @@ class AutotileRuleDesigner:
                     )
                     return True
 
+                # Check buttons FIRST before checking list areas (since buttons are outside)
                 if self.new_group_btn_rect.collidepoint(mouse_pos):
                     self._create_new_group_with_focus()
                     return True
+                
+                if self.new_rule_btn_rect.collidepoint(mouse_pos):
+                    self._reset_selection()
+                    return True
 
+                # Then check list areas
                 if self.group_list_area.collidepoint(mouse_pos):
                     self._handle_group_list_click(mouse_pos)
                     return True
@@ -289,28 +303,18 @@ class AutotileRuleDesigner:
                     self._handle_rule_list_click(mouse_pos)
                     return True
 
-                if self.save_btn_rect.collidepoint(mouse_pos):
-                    self._save_current_rule()
-                    return True
-                if self.save_btn_rect.inflate(0, 40).collidepoint(mouse_pos):
-                    pass
-
-                if self.new_rule_btn_rect.collidepoint(mouse_pos):
-                    self._reset_selection()
-                    return True
-
+                # Edit area interactions
                 if self.edit_area.collidepoint(mouse_pos):
-                    if self._handle_grid_click(mouse_pos):
-                        return True
-
-                if self.delete_btn_rect.collidepoint(mouse_pos):
-                    self._delete_current_rule()
-                    return True
-                if self.external_btn_rect.collidepoint(mouse_pos):
-                    self._launch_external_viewer()
-                    return True
-                if self.template_btn_rect.collidepoint(mouse_pos):
-                    self.template_manager.show_at(mouse_pos)
+                    if self.save_btn_rect.collidepoint(mouse_pos):
+                        self._save_current_rule()
+                    elif self.delete_btn_rect.collidepoint(mouse_pos):
+                        self._delete_current_rule()
+                    elif self.external_btn_rect.collidepoint(mouse_pos):
+                        self._launch_external_viewer()
+                    elif self.template_btn_rect.collidepoint(mouse_pos):
+                        self.template_manager.show_at(mouse_pos)
+                    else:
+                        self._handle_grid_click(mouse_pos)
                     return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
@@ -323,10 +327,8 @@ class AutotileRuleDesigner:
                 self._update_layout()
                 return True
 
-        if not self.rect.collidepoint(mouse_pos) and not self.is_dragging:
-            return False
-
-        return True
+        # Always consume events when visible to prevent clicks bleeding through
+        return self.rect.collidepoint(mouse_pos) or self.is_dragging
 
     def _sync_last_editor_state(self):
         tile_selector = getattr(self.editor, "tileset_widget", None)
@@ -430,16 +432,23 @@ class AutotileRuleDesigner:
                 return
 
     def _handle_rule_list_click(self, mouse_pos):
-        if self.new_rule_btn_rect.collidepoint(mouse_pos):
-            self._reset_selection()
-            return
-
         if self.selected_group_idx == -1:
             return
 
         group = self.groups[self.selected_group_idx]
         start_y = self.rule_list_area.y + 25
         item_h = 25
+        
+        # Only process clicks within the visible list area
+        list_content_area = Rect(
+            self.rule_list_area.x,
+            self.rule_list_area.y + 25,
+            self.rule_list_area.width,
+            self.rule_list_area.height - 25  # Adjusted since button is outside
+        )
+        
+        if not list_content_area.collidepoint(mouse_pos):
+            return
         
         visible_start = self.scroll_offset
         visible_end = min(visible_start + self.max_visible_rules, len(group.rules))
@@ -684,6 +693,7 @@ class AutotileRuleDesigner:
             d_name = name if len(name) < 22 else name[:19] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
+        # Draw button OUTSIDE the group list area
         pygame.draw.rect(
             screen, (80, 120, 80), self.new_group_btn_rect, border_radius=4
         )
@@ -700,6 +710,7 @@ class AutotileRuleDesigner:
 
         self._draw_scrollable_rule_list(screen)
 
+        # Draw button OUTSIDE the rule list area
         pygame.draw.rect(
             screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4
         )
@@ -709,7 +720,7 @@ class AutotileRuleDesigner:
         )
 
     def _draw_scrollable_rule_list(self, screen: Surface) -> None:
-        """Draw rules with scroll indicators and scrollbar"""
+        """Draw rules with scroll indicators and scrollbar - with clipping to prevent overflow"""
         if self.selected_group_idx == -1:
             return
 
@@ -719,6 +730,17 @@ class AutotileRuleDesigner:
         max_scroll = max(0, total_rules - self.max_visible_rules)
 
         self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+        # Set clip rect to prevent rules from rendering outside the list area
+        # Since button is now outside, we can use more of the area
+        list_clip = Rect(
+            self.rule_list_area.x,
+            self.rule_list_area.y + 25,
+            self.rule_list_area.width,
+            self.rule_list_area.height - 25  # Just leave space for header
+        )
+        old_clip = screen.get_clip()
+        screen.set_clip(list_clip)
 
         visible_start = self.scroll_offset
         visible_end = min(visible_start + self.max_visible_rules, total_rules)
@@ -741,6 +763,9 @@ class AutotileRuleDesigner:
             d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
+        # Restore clip
+        screen.set_clip(old_clip)
+
         if total_rules > self.max_visible_rules:
             if self.scroll_offset > 0:
                 arrow_up = "▲"
@@ -755,11 +780,11 @@ class AutotileRuleDesigner:
                 arrow_surf = self.font.render(arrow_down, True, (150, 200, 255))
                 screen.blit(
                     arrow_surf,
-                    (self.rule_list_area.right - 20, self.rule_list_area.bottom - 35),
+                    (self.rule_list_area.right - 20, self.rule_list_area.bottom - 20),
                 )
 
             scrollbar_height = 60
-            track_height = self.rule_list_area.height - 70
+            track_height = self.rule_list_area.height - 50
             scroll_ratio = self.scroll_offset / max_scroll if max_scroll > 0 else 0
 
             scrollbar_y = (
@@ -812,7 +837,7 @@ class AutotileRuleDesigner:
         elif event.type == pygame.MOUSEMOTION:
             if self.is_scrollbar_dragging:
                 relative_y = event.pos[1] - self.rule_list_area.y - 25
-                track_height = self.rule_list_area.height - 70
+                track_height = self.rule_list_area.height - 50  # Updated to match drawing
 
                 if track_height > 0:
                     scroll_ratio = max(0, min(1, relative_y / track_height))
