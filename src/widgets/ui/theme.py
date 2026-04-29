@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 import pygame
 from utils.font_manager import font_manager, FontWeight, FontStyle
 
@@ -26,6 +26,207 @@ class UIColorSet:
     warning: Color = (220, 180, 80)
     hover: Color = (55, 60, 70)
     selected: Color = (50, 70, 110)
+
+
+DARK_COLORS = UIColorSet(
+    bg=(35, 38, 44),
+    panel=(30, 32, 36),
+    panel_alt=(25, 27, 30),
+    header=(40, 42, 46),
+    border=(60, 62, 65),
+    border_soft=(50, 54, 59),
+    text=(230, 230, 230),
+    text_dim=(150, 150, 150),
+    text_muted=(120, 120, 120),
+    accent=(80, 120, 200),
+    accent_hover=(100, 140, 220),
+    accent_active=(70, 110, 190),
+    success=(80, 180, 120),
+    danger=(200, 80, 80),
+    warning=(220, 180, 80),
+    hover=(55, 60, 70),
+    selected=(50, 70, 110),
+)
+
+MOLOKAI_COLORS = UIColorSet(
+    bg=(40, 42, 52),
+    panel=(45, 47, 57),
+    panel_alt=(35, 37, 45),
+    header=(50, 52, 62),
+    border=(70, 72, 82),
+    border_soft=(60, 62, 72),
+    text=(240, 240, 235),
+    text_dim=(160, 160, 155),
+    text_muted=(130, 130, 125),
+    accent=(120, 160, 200),
+    accent_hover=(140, 180, 220),
+    accent_active=(100, 140, 180),
+    success=(100, 200, 140),
+    danger=(220, 100, 100),
+    warning=(240, 200, 100),
+    hover=(65, 70, 80),
+    selected=(60, 90, 140),
+)
+
+LIGHT_COLORS = UIColorSet(
+    bg=(240, 240, 240),
+    panel=(255, 255, 255),
+    panel_alt=(245, 245, 245),
+    header=(250, 250, 250),
+    border=(200, 200, 200),
+    border_soft=(220, 220, 220),
+    text=(30, 30, 30),
+    text_dim=(100, 100, 100),
+    text_muted=(130, 130, 130),
+    accent=(50, 100, 200),
+    accent_hover=(70, 120, 220),
+    accent_active=(40, 80, 180),
+    success=(40, 160, 100),
+    danger=(200, 60, 60),
+    warning=(200, 160, 60),
+    hover=(230, 230, 230),
+    selected=(80, 130, 200),
+)
+
+SEMI_LIGHT_COLORS = UIColorSet(
+    bg=(60, 63, 68),
+    panel=(55, 58, 63),
+    panel_alt=(50, 52, 57),
+    header=(65, 68, 73),
+    border=(80, 82, 87),
+    border_soft=(70, 72, 77),
+    text=(220, 220, 220),
+    text_dim=(140, 140, 140),
+    text_muted=(110, 110, 110),
+    accent=(90, 130, 210),
+    accent_hover=(110, 150, 230),
+    accent_active=(80, 120, 200),
+    success=(90, 170, 120),
+    danger=(210, 90, 90),
+    warning=(230, 180, 90),
+    hover=(75, 80, 85),
+    selected=(60, 100, 160),
+)
+
+
+THEMES: Dict[str, UIColorSet] = {
+    "dark": DARK_COLORS,
+    "molokai": MOLOKAI_COLORS,
+    "light": LIGHT_COLORS,
+    "semi_light": SEMI_LIGHT_COLORS,
+}
+
+
+class ThemeManager:
+    def __init__(self, theme_name: str = "dark"):
+        self._theme_name = theme_name
+        self._colors = THEMES.get(theme_name, DARK_COLORS)
+        self._listeners: list = []
+
+    @property
+    def name(self) -> str:
+        return self._theme_name
+
+    @property
+    def colors(self) -> UIColorSet:
+        return self._colors
+
+    @property
+    def bg(self) -> Color:
+        return self._colors.bg
+
+    @property
+    def panel(self) -> Color:
+        return self._colors.panel
+
+    @property
+    def panel_alt(self) -> Color:
+        return self._colors.panel_alt
+
+    @property
+    def header(self) -> Color:
+        return self._colors.header
+
+    @property
+    def border(self) -> Color:
+        return self._colors.border
+
+    @property
+    def border_soft(self) -> Color:
+        return self._colors.border_soft
+
+    @property
+    def text(self) -> Color:
+        return self._colors.text
+
+    @property
+    def text_dim(self) -> Color:
+        return self._colors.text_dim
+
+    @property
+    def text_muted(self) -> Color:
+        return self._colors.text_muted
+
+    @property
+    def accent(self) -> Color:
+        return self._colors.accent
+
+    @property
+    def accent_hover(self) -> Color:
+        return self._colors.accent_hover
+
+    @property
+    def accent_active(self) -> Color:
+        return self._colors.accent_active
+
+    @property
+    def success(self) -> Color:
+        return self._colors.success
+
+    @property
+    def danger(self) -> Color:
+        return self._colors.danger
+
+    @property
+    def warning(self) -> Color:
+        return self._colors.warning
+
+    @property
+    def hover(self) -> Color:
+        return self._colors.hover
+
+    @property
+    def selected(self) -> Color:
+        return self._colors.selected
+
+    def set_theme(self, theme_name: str) -> None:
+        if theme_name in THEMES:
+            self._theme_name = theme_name
+            self._colors = THEMES[theme_name]
+            for listener in self._listeners:
+                listener(theme_name)
+
+    def add_listener(self, callback) -> None:
+        self._listeners.append(callback)
+
+    def remove_listener(self, callback) -> None:
+        if callback in self._listeners:
+            self._listeners.remove(callback)
+
+
+_theme_manager = ThemeManager("dark")
+
+
+def get_theme_manager() -> ThemeManager:
+    return _theme_manager
+
+
+def set_theme(theme_name: str) -> None:
+    _theme_manager.set_theme(theme_name)
+
+
+def get_current_theme_name() -> str:
+    return _theme_manager.name
 
 
 @dataclass(frozen=True)
@@ -155,6 +356,13 @@ class UIFonts:
         return self.get_font(size, FontWeight.BOLD, FontStyle.ITALIC)
 
 
-COLORS = UIColorSet()
+class _DynamicColors:
+    """Dynamic color proxy that forwards to the theme manager."""
+
+    def __getattr__(self, name: str):
+        return getattr(_theme_manager, name)
+
+
+COLORS = _DynamicColors()
 SHAPE = UIShape()
 FONTS = UIFonts()

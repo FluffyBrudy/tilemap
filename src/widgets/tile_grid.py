@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 from pygame import Rect, Surface, K_UP, K_LEFT, K_RIGHT
 
 from ttypes.tilemap import TypeTile, TypeObject
+from widgets.ui.theme import COLORS
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -545,7 +546,7 @@ class TileGrid:
 
     def draw(self, screen: Surface):
         # 1. Background for the whole widget area
-        pygame.draw.rect(screen, (20, 20, 20), self.rect)
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
 
         # 2. Main clipping (full widget area)
         widget_clip = self.rect.clip(screen.get_rect())
@@ -574,7 +575,7 @@ class TileGrid:
         screen.set_clip(prev_clip)
         self._draw_eraser_overlay(screen)
         self._draw_status_bar(screen)
-        pygame.draw.rect(screen, (100, 100, 100), self.rect, 1)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
     def _draw_preview(self, screen):
         res = self.get_selected_brush()
@@ -733,9 +734,9 @@ class TileGrid:
     def _draw_status_bar(self, screen):
         bar_h = 25
         bar_rect = Rect(0, self.editor.height - bar_h, self.editor.width, bar_h)
-        pygame.draw.rect(screen, (40, 44, 52), bar_rect)
+        pygame.draw.rect(screen, COLORS.header, bar_rect)
         pygame.draw.line(
-            screen, (60, 64, 72), (0, bar_rect.y), (self.editor.width, bar_rect.y)
+            screen, COLORS.border_soft, (0, bar_rect.y), (self.editor.width, bar_rect.y)
         )
 
         pygame.font.SysFont("Arial", 12)
