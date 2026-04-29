@@ -5,6 +5,7 @@ import time
 
 from utils.error_handler import error_handler
 from .autotile_template import AutotileTemplateApplier
+from .input import InlineTextInput
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -99,7 +100,7 @@ class AutotileRuleDesigner:
         self.selected_rule_index: int = -1
 
         self.renaming_group_idx: Optional[int] = None
-        self.rename_text: str = ""
+        self.rename_input = InlineTextInput("group_rename", "")
 
         self.scroll_offset: int = 0
         self.max_visible_rules: int = 6  # Reduced to make scrolling more visible
@@ -688,7 +689,13 @@ class AutotileRuleDesigner:
 
             name = group.name
             if i == self.renaming_group_idx:
-                name = self.rename_text + "_"
+                display_name = self.rename_input.text
+                cursor_offset = self.rename_input.cursor_pos
+                prefix = display_name[:cursor_offset]
+                if (pygame.time.get_ticks() // 500) % 2:
+                    name = prefix + "|" + display_name[cursor_offset:]
+                else:
+                    name = prefix + " " + display_name[cursor_offset:]
 
             d_name = name if len(name) < 22 else name[:19] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
@@ -853,14 +860,16 @@ class AutotileRuleDesigner:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_F2 and self.selected_group_idx >= 0:
                 self.renaming_group_idx = self.selected_group_idx
-                self.rename_text = self.groups[self.selected_group_idx].name
+                self.rename_input.text = self.groups[self.selected_group_idx].name
+                self.rename_input.cursor_pos = len(self.rename_input.text)
+                self.rename_input.is_focused = True
                 return True
 
             if self.renaming_group_idx is not None:
                 if event.key == pygame.K_RETURN:
                     group = self.groups[self.renaming_group_idx]
                     old_name = group.name
-                    new_name = self.rename_text.strip()
+                    new_name = self.rename_input.text.strip()
 
                     if new_name and new_name != old_name:
                         existing_names = {
@@ -881,20 +890,17 @@ class AutotileRuleDesigner:
                             rule.group_id = new_name
 
                     self.renaming_group_idx = None
+                    self.rename_input.is_focused = False
                     return True
 
                 elif event.key == pygame.K_ESCAPE:
                     self.renaming_group_idx = None
-                    return True
-
-                elif event.key == pygame.K_BACKSPACE:
-                    self.rename_text = self.rename_text[:-1]
+                    self.rename_input.is_focused = False
                     return True
 
                 else:
-                    if event.unicode.isprintable():
-                        self.rename_text += event.unicode
-                    return True
+                    if self.rename_input.handle_event(event, self.font):
+                        return True
 
         return False
 
@@ -910,7 +916,9 @@ class AutotileRuleDesigner:
         self.selected_rule_index = -1
 
         self.renaming_group_idx = self.selected_group_idx
-        self.rename_text = new_group_name
+        self.rename_input.text = new_group_name
+        self.rename_input.cursor_pos = len(new_group_name)
+        self.rename_input.is_focused = True
 
     def _draw_grid_editor(self, screen):
         center_x = self.edit_area.centerx

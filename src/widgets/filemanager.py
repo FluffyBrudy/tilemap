@@ -8,6 +8,7 @@ from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
 from utils.icons_cache import get_icon, prewarm_common_icons
 from utils.standalone import launch_standalone
+from widgets.input import InlineTextInput
 
 
 COLORS = {
@@ -502,8 +503,8 @@ class FileManager:
         self.font_bold = pygame.font.SysFont("Arial", 14, bold=True)
         self.font_icon = pygame.font.SysFont("Consolas", 20)
 
-        self.search_query = ""
-        self.is_searching = False
+        self.search_input = InlineTextInput("search", "")
+        self.is_search_focused = False
         self.search_rect = pygame.Rect(
             self.rect.x + self.sidebar_width + 10,
             self.rect.y + self.header_height + 5,
@@ -511,8 +512,9 @@ class FileManager:
             25,
         )
         self.search_header_height = 35
-        self.is_search_focused = False
-        self.save_name = default_name
+        self.is_searching = False
+
+        self.save_input = InlineTextInput("save", default_name)
         self.is_save_name_focused = False
         self.save_name_rect = pygame.Rect(0, 0, 0, 0)
 
@@ -554,13 +556,13 @@ class FileManager:
                     self.items.append(FileItem(p))
             return
 
-        if self.search_query:
+        if self.search_input.text:
             self.is_searching = True
 
-            self._search_local_files(self.current_path, self.search_query)
+            self._search_local_files(self.current_path, self.search_input.text)
 
             self._recursive_search(
-                self.current_path, self.search_query, INTELLISENSE_DEPTH
+                self.current_path, self.search_input.text, INTELLISENSE_DEPTH
             )
 
             unique_items = {str(item.path): item for item in self.items}
@@ -787,33 +789,24 @@ class FileManager:
             return True
 
         if event.type == pygame.KEYDOWN and self.is_save_name_focused:
-            if event.key == pygame.K_BACKSPACE:
-                self.save_name = self.save_name[:-1]
-            elif event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_ESCAPE:
                 self.is_save_name_focused = False
+                return True
             elif event.key == pygame.K_RETURN:
                 self._attempt_save()
-            elif event.unicode and event.unicode.isprintable():
-                if event.unicode not in ["/", "\\"]:
-                    self.save_name += event.unicode
-            return True
+                return True
+
+            if self.save_input.handle_event(event, self.font_main):
+                return True
 
         if event.type == pygame.KEYDOWN and self.is_search_focused:
-            mods = pygame.key.get_mods()
-            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
-            meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
-            if event.key == pygame.K_BACKSPACE:
-                if ctrl_held or meta_held:
-                    self.search_query = ""
-                else:
-                    self.search_query = self.search_query[:-1]
-                self.refresh_items()
-            elif event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_ESCAPE:
                 self.is_search_focused = False
-            elif event.unicode and event.unicode.isprintable():
-                self.search_query += event.unicode
+                return True
+
+            if self.search_input.handle_event(event, self.font_main):
                 self.refresh_items()
-            return True
+                return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -846,14 +839,18 @@ class FileManager:
                 if self.search_rect.collidepoint(mouse_pos):
                     self.is_search_focused = True
                     self.is_save_name_focused = False
+                    self.search_input.is_focused = True
                     return True
                 else:
                     self.is_search_focused = False
+                    self.search_input.is_focused = False
                 if self.mode == "save" and self.save_name_rect.collidepoint(mouse_pos):
                     self.is_save_name_focused = True
+                    self.save_input.is_focused = True
                     return True
                 else:
                     self.is_save_name_focused = False
+                    self.save_input.is_focused = False
 
                 if ly < self.header_height:
                     if lx < self.sidebar_width + 40:
@@ -878,7 +875,7 @@ class FileManager:
                             self.navigate_to(item.path, record_recent=True)
                         else:
                             if self.mode == "save":
-                                self.save_name = item.name
+                                self.save_input.text = item.name
                                 self._attempt_save()
                             else:
                                 if self.multi_select and self.selected_indices:
@@ -923,7 +920,7 @@ class FileManager:
                         self.clicked_item_index = idx
                         self.double_click_timer = current_time
                         if not item.is_dir and self.mode == "save":
-                            self.save_name = item.name
+                            self.save_input.text = item.name
 
                         if not item.is_dir:
                             if item.ext in [".png", ".jpg", ".jpeg"]:
@@ -1008,7 +1005,7 @@ class FileManager:
         self.save_name_rect = pygame.Rect(input_x, input_y, max(60, input_w), input_h)
 
     def _resolve_save_path(self) -> Optional[Path]:
-        name = self.save_name.strip()
+        name = self.save_input.text.strip()
         if not name and self.selected_index != -1:
             item = self.items[self.selected_index]
             if not item.is_dir:
@@ -1188,14 +1185,23 @@ class FileManager:
             screen, COLORS["sidebar"], self.search_rect.inflate(-2, -2), border_radius=4
         )
 
-        search_text = self.search_query
+        search_text = self.search_input.text
         if not search_text and not self.is_search_focused:
             search_text = "Search files..."
             search_col = COLORS["text_dim"]
         else:
             search_col = COLORS["text_main"]
-            if self.is_search_focused and (pygame.time.get_ticks() // 500) % 2:
-                search_text += "|"
+            if self.is_search_focused:
+                display_text = search_text
+                cursor_offset = self.search_input.cursor_pos
+                prefix = display_text[:cursor_offset]
+                if (pygame.time.get_ticks() // 500) % 2:
+                    display_text = prefix + "|" + display_text[cursor_offset:]
+                else:
+                    display_text = prefix + " " + display_text[cursor_offset:]
+                txt = self.font_main.render(display_text, True, search_col)
+            else:
+                txt = self.font_main.render(search_text, True, search_col)
 
         txt = self.font_main.render(search_text, True, search_col)
         screen.blit(txt, (self.search_rect.x + 8, self.search_rect.y + 4))
@@ -1371,9 +1377,14 @@ class FileManager:
                 border_radius=4,
             )
 
-            display_name = self.save_name
-            if self.is_save_name_focused and (pygame.time.get_ticks() // 500) % 2:
-                display_name += "|"
+            display_name = self.save_input.text
+            if self.is_save_name_focused:
+                cursor_offset = self.save_input.cursor_pos
+                prefix = display_name[:cursor_offset]
+                if (pygame.time.get_ticks() // 500) % 2:
+                    display_name = prefix + "|" + display_name[cursor_offset:]
+                else:
+                    display_name = prefix + " " + display_name[cursor_offset:]
             txt = self.font_main.render(display_name, True, COLORS["text_main"])
             screen.blit(txt, (self.save_name_rect.x + 6, self.save_name_rect.y + 6))
 

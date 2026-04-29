@@ -2,6 +2,8 @@ import pygame
 from typing import TYPE_CHECKING, List
 from pygame import Rect
 
+from .input import DigitInput
+
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -14,50 +16,6 @@ COLOR_TEXT = (220, 220, 220)
 COLOR_ERROR = (200, 60, 60)
 
 
-class FormInput:
-    def __init__(self, rect: Rect, label: str, key: str, default_val: str = ""):
-        self.rect_area = rect
-        self.label = label
-        self.key = key
-        self.text = default_val
-        self.is_focused = False
-
-        self.rect_input = Rect(rect.x, rect.y + 20, rect.width, 30)
-        self.font = pygame.font.SysFont("Arial", 16)
-        self.font_lbl = pygame.font.SysFont("Arial", 14)
-
-    def handle_event(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            self.is_focused = self.rect_input.collidepoint(event.pos)
-            return self.is_focused
-
-        if self.is_focused and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            elif event.key in (pygame.K_RETURN, pygame.K_TAB):
-                return False
-            elif event.unicode.isdigit():
-                self.text += event.unicode
-            return True
-        return False
-
-    def get_value(self) -> int:
-        return int(self.text) if self.text else 0
-
-    def draw(self, screen: pygame.Surface):
-        screen.blit(
-            self.font_lbl.render(self.label, True, (150, 150, 150)),
-            (self.rect_area.x, self.rect_area.y),
-        )
-
-        col = COLOR_ACCENT if self.is_focused else COLOR_BORDER
-        pygame.draw.rect(screen, (20, 20, 20), self.rect_input)
-        pygame.draw.rect(screen, col, self.rect_input, 2 if self.is_focused else 1)
-
-        txt_surf = self.font.render(self.text, True, COLOR_TEXT)
-        screen.blit(txt_surf, (self.rect_input.x + 5, self.rect_input.y + 5))
-
-
 class MapSetup:
     def __init__(self, editor: "Editor", center_rect: Rect):
         self.editor = editor
@@ -65,7 +23,7 @@ class MapSetup:
         self.visible = True
         self.error_message = ""
 
-        self.inputs: List[FormInput] = []
+        self.inputs: List[DigitInput] = []
         fields = [
             ("Map Width", "map_w", "30"),
             ("Map Height", "map_h", "20"),
@@ -82,7 +40,7 @@ class MapSetup:
         for i, (lbl, key, default) in enumerate(fields):
             row, col = divmod(i, cols)
             r = Rect(start_x + col * cell_w, start_y + row * cell_h, cell_w - 10, 60)
-            self.inputs.append(FormInput(r, lbl, key, default))
+            self.inputs.append(DigitInput(r, lbl, key, default, tab_index=i))
 
         self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
         self.font = pygame.font.SysFont("Arial", 20, bold=True)
@@ -111,6 +69,26 @@ class MapSetup:
             event.pos
         ):
             self.submit()
+            return True
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB:
+            focused = [i for i in self.inputs if i.is_focused]
+            shift_held = pygame.key.get_mods() & pygame.KMOD_SHIFT
+
+            if focused:
+                current_idx = focused[0].tab_index
+                if shift_held:
+                    next_idx = (current_idx - 1) % len(self.inputs)
+                else:
+                    next_idx = (current_idx + 1) % len(self.inputs)
+            else:
+                next_idx = 0 if not shift_held else len(self.inputs) - 1
+
+            for o in self.inputs:
+                o.is_focused = False
+            self.inputs[next_idx].is_focused = True
+            self.inputs[next_idx].cursor_pos = len(self.inputs[next_idx].text)
+            self.inputs[next_idx].selection_start = None
             return True
 
         for inp in self.inputs:
