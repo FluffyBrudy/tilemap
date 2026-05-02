@@ -34,25 +34,45 @@ class PaintMode(Enum):
 _COLORS = {
     "bg": (25, 27, 30),
     "grid": (255, 255, 255),
-    "polygon_fill": (80, 180, 255),  # Blue like Godot
+    "polygon_fill": (80, 180, 255),
     "polygon_stroke": (100, 200, 255),
-    "polygon_selected": (255, 180, 80),  # Orange for selection
+    "polygon_selected": (255, 180, 80),
     "vertex": (255, 255, 255),
     "vertex_hover": (255, 220, 80),
-    "vertex_first": (80, 255, 120),  # Green for first vertex
+    "vertex_first": (80, 255, 120),
     "preview_line": (200, 200, 200),
     "text": (230, 230, 230),
     "text_dim": (140, 140, 140),
     "header": (40, 42, 46),
     "border": (60, 62, 65),
-    "one_way": (255, 120, 120),  # Red for one-way collision
-    "edge_mode": (120, 255, 120),  # Green for edge-draw mode
+    "border_soft": (80, 82, 85),
+    "accent": (80, 180, 255),
+    "one_way": (255, 120, 120),
+    "edge_mode": (120, 255, 120),
     "help_bg": (15, 17, 20),
 }
 
+# Constants
 VERTEX_RADIUS = 5
 VERTEX_HOVER_RADIUS = 7
-SNAP_THRESHOLD = 10  # pixels
+SNAP_THRESHOLD = 10
+
+# Help panel
+HELP_PANEL_WIDTH = 360
+HELP_PANEL_HEIGHT = 450
+HELP_SCROLL_SPEED = 30
+HELP_SCROLLBAR_WIDTH = 12
+HELP_CONTENT_PADDING = 10
+HELP_CLOSE_BTN_SIZE = 20
+HELP_TITLE_HEIGHT = 40
+HELP_FOOTER_HEIGHT = 30
+HELP_SCROLL_MARGIN = 80  # Extra padding at bottom for scroll
+HELP_THUMB_MIN_HEIGHT = 30  # Minimum scrollbar thumb height
+
+# Info button
+INFO_BTN_SIZE = 28
+INFO_BTN_OFFSET_X = 36
+INFO_BTN_OFFSET_Y = 8
 
 
 class CollisionPainter:
@@ -102,7 +122,25 @@ class CollisionPainter:
         
         # Help panel
         self.show_help = False
-        self._help_rect = Rect(0, 0, 300, 400)
+        self._help_rect = Rect(
+            rect.x + (rect.w - HELP_PANEL_WIDTH) // 2,
+            rect.y + (rect.h - HELP_PANEL_HEIGHT) // 2,
+            HELP_PANEL_WIDTH,
+            HELP_PANEL_HEIGHT
+        )
+        self._help_scroll = 0
+        self._help_content_height = 0
+        self._help_scrolling = False
+        self._help_scroll_start = 0
+        self._help_scroll_start_y = 0
+        
+        # Info button (top-right corner) - position based on initial rect
+        self._info_button_rect = Rect(
+            rect.right - INFO_BTN_OFFSET_X,
+            rect.y + INFO_BTN_OFFSET_Y,
+            INFO_BTN_SIZE,
+            INFO_BTN_SIZE
+        )
         
         # Callbacks
         self.on_polygon_added: Optional[Callable[[List[Tuple[float, float]]], None]] = None
@@ -201,10 +239,17 @@ class CollisionPainter:
         self._center_view()
         # Center help panel in view
         self._help_rect = Rect(
-            self.rect.x + (self.rect.w - 300) // 2,
-            self.rect.y + (self.rect.h - 400) // 2,
-            300,
-            400
+            self.rect.x + (self.rect.w - HELP_PANEL_WIDTH) // 2,
+            self.rect.y + (self.rect.h - HELP_PANEL_HEIGHT) // 2,
+            HELP_PANEL_WIDTH,
+            HELP_PANEL_HEIGHT
+        )
+        # Info button in top-right
+        self._info_button_rect = Rect(
+            self.rect.right - INFO_BTN_OFFSET_X,
+            self.rect.y + INFO_BTN_OFFSET_Y,
+            INFO_BTN_SIZE,
+            INFO_BTN_SIZE
         )
     
     def set_polygons(self, polygons: List[List[Tuple[float, float]]], one_way_flags: Optional[List[bool]] = None) -> None:
@@ -237,6 +282,63 @@ class CollisionPainter:
         mouse = pygame.mouse.get_pos()
         self.mouse_pos = mouse
         
+        # Allow Escape to close help even when outside rect
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if self.show_help:
+                self.show_help = False
+                return True
+            return False
+        
+        # Block most events when help is open
+        if self.show_help:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Close button (X in top-right)
+                close_btn = Rect(self._help_rect.right - HELP_CLOSE_BTN_SIZE - HELP_CONTENT_PADDING, self._help_rect.y + HELP_CONTENT_PADDING, HELP_CLOSE_BTN_SIZE, HELP_CLOSE_BTN_SIZE)
+                if close_btn.collidepoint(mouse):
+                    self.show_help = False
+                    self._help_scroll = 0
+                    return True
+                
+                if self._help_rect.collidepoint(mouse):
+                    # Check if clicking on scrollbar area (right side)
+                    if mouse[0] > self._help_rect.right - HELP_SCROLLBAR_WIDTH:
+                        self._help_scrolling = True
+                        self._help_scroll_start = self._help_scroll
+                        self._help_scroll_start_y = mouse[1]
+                        return True
+                    return True  # Click inside help content - don't close
+                # Click outside help panel - close it
+                self.show_help = False
+                self._help_scroll = 0
+                return True
+            
+            # Handle scrollbar drag
+            if event.type == pygame.MOUSEBUTTONUP:
+                if self._help_scrolling:
+                    self._help_scrolling = False
+                    return True
+            
+            if event.type == pygame.MOUSEMOTION:
+                if self._help_scrolling:
+                    dy = mouse[1] - self._help_scroll_start_y
+                    self._help_scroll = self._help_scroll_start + dy * 2
+                    self._help_scroll = max(0, min(self._help_scroll, max(0, self._help_content_height - self._help_rect.h + HELP_SCROLL_MARGIN)))
+                    return True
+            
+            # Mouse wheel for scrolling
+            if event.type == pygame.MOUSEWHEEL:
+                if self._help_rect.collidepoint(mouse) or (self._help_rect.right - HELP_SCROLLBAR_WIDTH < mouse[0] < self._help_rect.right):
+                    self._help_scroll -= event.y * HELP_SCROLL_SPEED
+                    self._help_scroll = max(0, min(self._help_scroll, max(0, self._help_content_height - self._help_rect.h + HELP_SCROLL_MARGIN)))
+                    return True
+            
+            # Escape to close
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.show_help = False
+                return True
+            
+            return False
+        
         if not self.rect.collidepoint(mouse) and event.type not in (
             pygame.MOUSEBUTTONUP,
             pygame.MOUSEMOTION,
@@ -254,6 +356,12 @@ class CollisionPainter:
         if event.type == pygame.MOUSEBUTTONUP and event.button == 2:
             if self._panning:
                 self._panning = False
+                return True
+        
+        # Info button click (only when help is not open)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._info_button_rect.collidepoint(mouse):
+                self.show_help = not self.show_help
                 return True
         
         if event.type == pygame.MOUSEMOTION:
@@ -390,11 +498,6 @@ class CollisionPainter:
                     self._edge_start = None
                 return True
             
-            # H - toggle help panel
-            elif event.key == pygame.K_h:
-                self.show_help = not self.show_help
-                return True
-            
             # Enter - complete polygon
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 if len(self.current_polygon) >= 3:
@@ -524,6 +627,10 @@ class CollisionPainter:
         if self.edge_draw_mode:
             self._draw_edge_mode_indicator(screen)
         
+        # Draw info button (only when help is not shown)
+        if not self.show_help:
+            self._draw_info_button(screen)
+        
         screen.set_clip(None)
     
     def _draw_edge_mode_indicator(self, screen: pygame.Surface) -> None:
@@ -541,8 +648,46 @@ class CollisionPainter:
         pygame.draw.rect(screen, _COLORS["edge_mode"], (x, y, bg_w, bg_h), 1)
         screen.blit(surf, (x + 8, y + 4))
     
+    def _draw_info_button(self, screen: pygame.Surface) -> None:
+        """Draw info button in top-right corner"""
+        self._ensure_fonts()
+        
+        btn = self._info_button_rect
+        mouse = pygame.mouse.get_pos()
+        is_hover = btn.collidepoint(mouse)
+        
+        # Circle background with gradient-like effect
+        bg_color = _COLORS["polygon_fill"] if is_hover else _COLORS["header"]
+        border_color = _COLORS["accent"] if is_hover else _COLORS["border_soft"]
+        
+        # Draw filled circle
+        pygame.draw.circle(screen, bg_color, btn.center, btn.width // 2)
+        
+        # Draw circle border
+        pygame.draw.circle(screen, border_color, btn.center, btn.width // 2, 2)
+        
+        # "i" text - slightly bold
+        info_text = self._font.render("i", True, _COLORS["text"])
+        text_rect = info_text.get_rect(center=btn.center)
+        
+        # Add subtle shadow
+        shadow_text = self._font.render("i", True, _COLORS["text_dim"])
+        shadow_rect = shadow_text.get_rect(center=(btn.centerx + 1, btn.centery + 1))
+        screen.blit(shadow_text, shadow_rect)
+        screen.blit(info_text, text_rect)
+        
+        # Add a tooltip hint on hover
+        if is_hover:
+            hint = self._font_sm.render("Help", True, _COLORS["text"])
+            hint_bg = pygame.Surface((hint.get_width() + 12, hint.get_height() + 6), pygame.SRCALPHA)
+            hint_bg.fill((*_COLORS["header"], 220))
+            hint_x = btn.centerx - hint.get_width() // 2
+            hint_y = btn.bottom + 4
+            screen.blit(hint_bg, (hint_x - 6, hint_y - 3))
+            screen.blit(hint, (hint_x, hint_y))
+    
     def _draw_help(self, screen: pygame.Surface) -> None:
-        """Draw help panel overlay"""
+        """Draw help panel overlay with scrollbox"""
         self._ensure_fonts()
         
         # Semi-transparent overlay
@@ -553,23 +698,43 @@ class CollisionPainter:
         # Help panel background
         panel_rect = self._help_rect
         panel_surf = pygame.Surface((panel_rect.w, panel_rect.h), pygame.SRCALPHA)
-        panel_surf.fill((*_COLORS["help_bg"], 240))
+        panel_surf.fill((*_COLORS["help_bg"], 245))
+        
+        # Panel border with rounded corners
         pygame.draw.rect(panel_surf, _COLORS["border"], (0, 0, panel_rect.w, panel_rect.h), 2)
         screen.blit(panel_surf, panel_rect.topleft)
         
-        # Title
+        # Title bar
         title = self._font.render("Collision Painter Help", True, _COLORS["text"])
-        screen.blit(title, (panel_rect.x + 15, panel_rect.y + 15))
+        screen.blit(title, (panel_rect.x + 15, panel_rect.y + 12))
+        
+        # Close button (X)
+        close_btn = Rect(panel_rect.right - 30, panel_rect.y + 10, 20, 20)
+        mouse = pygame.mouse.get_pos()
+        close_hover = close_btn.collidepoint(mouse)
+        close_bg = _COLORS["polygon_stroke"] if close_hover else _COLORS["bg"]
+        pygame.draw.rect(screen, close_bg, close_btn)
+        pygame.draw.rect(screen, _COLORS["border"], close_btn, 1)
+        close_x = self._font.render("×", True, _COLORS["text"])
+        screen.blit(close_x, close_x.get_rect(center=close_btn.center))
         
         # Divider
         pygame.draw.line(
             screen, _COLORS["border"],
-            (panel_rect.x + 10, panel_rect.y + 45),
-            (panel_rect.right - 10, panel_rect.y + 45)
+            (panel_rect.x + 10, panel_rect.y + 40),
+            (panel_rect.right - 10, panel_rect.y + 40)
         )
         
-        # Help content
-        help_lines = [
+        # Scrollable content area
+        content_rect = Rect(
+            panel_rect.x + HELP_CONTENT_PADDING,
+            panel_rect.y + HELP_TITLE_HEIGHT + HELP_CONTENT_PADDING,
+            panel_rect.w - HELP_SCROLLBAR_WIDTH - HELP_CONTENT_PADDING,
+            panel_rect.h - HELP_TITLE_HEIGHT - HELP_FOOTER_HEIGHT - HELP_CONTENT_PADDING
+        )
+        
+        # Calculate total content height
+        help_sections = [
             ("DRAWING", [
                 ("Left-click", "Add vertex"),
                 ("Right-click / Enter", "Complete polygon"),
@@ -591,32 +756,71 @@ class CollisionPainter:
                 ("R", "Reset view"),
             ]),
             ("MISC", [
-                ("H", "Toggle this help panel"),
-                ("?", "Same as H"),
+                ("Info button (top-right)", "Toggle this help panel"),
             ]),
         ]
         
-        y = panel_rect.y + 55
-        for section_title, items in help_lines:
+        # Calculate content height
+        self._help_content_height = 0
+        for section_title, items in help_sections:
+            self._help_content_height += 25  # Section header
+            self._help_content_height += len(items) * 20 + 10  # Items + spacing
+        
+        # Set up clipping for scrollable content
+        old_clip = screen.get_clip()
+        screen.set_clip(content_rect)
+        
+        # Draw content with scrolling offset
+        y = content_rect.y - self._help_scroll
+        for section_title, items in help_sections:
             # Section header
             header = self._font_sm.render(section_title, True, _COLORS["polygon_fill"])
-            screen.blit(header, (panel_rect.x + 15, y))
-            y += 20
+            screen.blit(header, (content_rect.x + 10, y))
+            y += 22
             
             for key, desc in items:
-                # Key
+                # Key with background
                 key_surf = self._font_sm.render(key, True, _COLORS["vertex_first"])
-                screen.blit(key_surf, (panel_rect.x + 20, y))
-                # Description
+                key_x = content_rect.x + 10
+                key_bg = Rect(key_x, y - 2, key_surf.get_width() + 10, key_surf.get_height() + 4)
+                pygame.draw.rect(screen, (*_COLORS["bg"], 180), key_bg, border_radius=3)
+                screen.blit(key_surf, (key_x + 5, y))
+                
+                # Description - starts after key with some spacing
+                desc_x = key_x + key_bg.width + 8
                 desc_surf = self._font_sm.render(desc, True, _COLORS["text"])
-                screen.blit(desc_surf, (panel_rect.x + 130, y))
-                y += 18
+                screen.blit(desc_surf, (desc_x, y))
+                y += 20
             
-            y += 8
+            y += 12
         
-        # Close hint
-        close_hint = self._font_sm.render("Press H or Escape to close", True, _COLORS["text_dim"])
-        screen.blit(close_hint, (panel_rect.x + (panel_rect.w - close_hint.get_width()) // 2, panel_rect.bottom - 25))
+        screen.set_clip(old_clip)
+        
+        # Draw scrollbar (if content is longer than view)
+        scrollbar_rect = Rect(
+            panel_rect.right - 20,
+            content_rect.y,
+            12,
+            content_rect.h
+        )
+        
+        # Scrollbar track
+        pygame.draw.rect(screen, (*_COLORS["bg"], 100), scrollbar_rect, border_radius=6)
+        
+        # Calculate scrollbar thumb
+        if self._help_content_height > content_rect.h:
+            thumb_height = max(HELP_THUMB_MIN_HEIGHT, int(content_rect.h * content_rect.h / self._help_content_height))
+            thumb_y = content_rect.y + int((self._help_scroll / max(1, self._help_content_height - content_rect.h)) * (content_rect.h - thumb_height))
+            thumb_rect = Rect(scrollbar_rect.x, thumb_y, 12, thumb_height)
+            
+            # Scrollbar thumb
+            thumb_color = _COLORS["polygon_fill"] if scrollbar_rect.collidepoint(mouse) else _COLORS["border_soft"]
+            pygame.draw.rect(screen, thumb_color, thumb_rect, border_radius=6)
+        
+        # Footer hint
+        footer_y = panel_rect.bottom - 30
+        footer_hint = self._font_sm.render("Scroll to view all shortcuts", True, _COLORS["text_dim"])
+        screen.blit(footer_hint, (panel_rect.x + 15, footer_y))
     
     def _draw_grid(self, screen: pygame.Surface) -> None:
         """Draw grid overlay"""

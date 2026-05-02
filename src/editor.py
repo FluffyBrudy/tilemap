@@ -1,3 +1,4 @@
+import os
 import pygame
 import threading
 import queue
@@ -10,6 +11,10 @@ from pathlib import Path
 from pygame import Rect
 from typing import TYPE_CHECKING
 from utils.font_manager import font_manager, FontWeight, FontStyle
+
+# Fix HiDPI/Retina blur on macOS
+if sys.platform == "darwin":
+    os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
 from constants import BASE_PATH
 from tilemap import Tilemap

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pygame
 from pygame import Rect, Surface
+import thorpy as tp
 
 from .models import CollisionPolygon, TileCollisionData, TilesetCollisionLibrary
 from .collision_painter import CollisionPainter
@@ -114,8 +115,57 @@ class TilesetCollisionEditor:
         self._font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
         self._font_sm = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
 
+        # ThorPy toolbar elements
+        self._setup_thorpy_toolbar()
+
         # Load collision data for first tile
         self._load_tile_collision_for_selection()
+
+    def _setup_thorpy_toolbar(self) -> None:
+        """Setup ThorPy toolbar elements"""
+        save_btn = tp.Button("Save")
+        save_btn.set_size((80, 28))
+        save_btn.callback = self._thorpy_save
+
+        load_btn = tp.Button("Load")
+        load_btn.set_size((80, 28))
+        load_btn.callback = self._thorpy_load
+
+        clear_btn = tp.Button("Clear")
+        clear_btn.set_size((80, 28))
+        clear_btn.callback = self._thorpy_clear_current
+
+        self._thorpy_buttons = [save_btn, load_btn, clear_btn]
+        self._thorpy_toolbar = tp.Group(self._thorpy_buttons, "h")
+        self._thorpy_updater = self._thorpy_toolbar.get_updater()
+
+    def _thorpy_save(self) -> None:
+        """Save collision via thorpy button"""
+        save_path = Path("collision_data.json")
+        self.save_to_file(save_path)
+        print(f"Saved collision data to {save_path}")
+
+    def _thorpy_load(self) -> None:
+        """Load collision via thorpy button"""
+        load_path = Path("collision_data.json")
+        if load_path.exists():
+            self.load_from_file(load_path)
+            print(f"Loaded collision data from {load_path}")
+
+    def _thorpy_clear_current(self) -> None:
+        """Clear collision for selected tiles via thorpy button"""
+        self.clear_current_selection()
+
+    def _position_thorpy_toolbar(self) -> None:
+        """Position ThorPy toolbar buttons in the toolbar area"""
+        if not hasattr(self, '_thorpy_toolbar'):
+            return
+
+        # Position toolbar on the right side of the toolbar rect
+        toolbar_x = self.toolbar_rect.right - self._thorpy_toolbar.rect.width - 10
+        toolbar_y = self.toolbar_rect.y + (self.toolbar_rect.height - self._thorpy_toolbar.rect.height) // 2
+
+        self._thorpy_toolbar.move(toolbar_x, toolbar_y)
 
     def _update_layout(self) -> None:
         """Update layout rects based on current sizes"""
@@ -668,11 +718,15 @@ class TilesetCollisionEditor:
         if screen is None:
             raise RuntimeError("pygame display not initialized")
 
+        # Position thorpy toolbar
+        self._position_thorpy_toolbar()
+
         clock = pygame.time.Clock()
         running = True
 
         while running:
-            for event in pygame.event.get():
+            events = pygame.event.get()
+            for event in events:
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN:
@@ -695,6 +749,11 @@ class TilesetCollisionEditor:
                             print(f"Loaded collision data from {load_path}")
 
                 self.handle_event(event)
+
+            # Update ThorPy elements
+            if hasattr(self, '_thorpy_updater'):
+                mouse_rel = pygame.mouse.get_rel()
+                self._thorpy_updater.update(events=events, mouse_rel=mouse_rel)
 
             screen.fill((20, 20, 20))
             self.draw(screen)
