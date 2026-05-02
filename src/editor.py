@@ -1,3 +1,4 @@
+import os
 import pygame
 import threading
 import queue
@@ -10,6 +11,10 @@ from pathlib import Path
 from pygame import Rect
 from typing import TYPE_CHECKING
 from utils.font_manager import font_manager, FontWeight, FontStyle
+
+# Fix HiDPI/Retina blur on macOS
+if sys.platform == "darwin":
+    os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
 from constants import BASE_PATH
 from tilemap import Tilemap
@@ -27,6 +32,7 @@ from widgets.ui.toolbar import Toolbar
 from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.tooltip import TooltipManager
+from widgets.ui.theme import get_theme_manager, set_theme, THEMES
 from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
 from utils import error_handler, error_context
@@ -539,6 +545,16 @@ class Editor:
         if self.tile_grid_widget:
             self.tile_grid_widget.show_grid = not self.tile_grid_widget.show_grid
 
+    def cycle_theme(self):
+        """Cycle through available themes."""
+        theme_names = list(THEMES.keys())
+        current = get_theme_manager().name
+        current_idx = theme_names.index(current) if current in theme_names else 0
+        next_idx = (current_idx + 1) % len(theme_names)
+        new_theme = theme_names[next_idx]
+        set_theme(new_theme)
+        self.notifications.notify(f"Theme: {new_theme}")
+
     def launch_external_automap(self):
         if hasattr(self.autotiler, "_launch_external_viewer"):
             self.autotiler._launch_external_viewer()
@@ -838,6 +854,9 @@ class Editor:
                     continue
                 elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
                     self.toggle_grid()
+                    continue
+                elif event.key == pygame.K_t and (ctrl_held or meta_held):
+                    self.cycle_theme()
                     continue
                 elif event.key == pygame.K_b and (ctrl_held or meta_held):
                     self.toggle_animation_panel()

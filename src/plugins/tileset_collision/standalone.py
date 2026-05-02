@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,12 @@ _src_dir = _current_file.parent.parent.parent
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
+# Fix HiDPI/Retina blur on macOS
+if sys.platform == "darwin":
+    os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
+
 import pygame
+import thorpy as tp
 
 from .editor import TilesetCollisionEditor
 from utils import error_handler, error_context
@@ -88,8 +94,11 @@ def main(argv: list[str] | None = None) -> None:
             window_size = parse_tile_size(args.window_size)
 
             pygame.init()
+            screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
             pygame.display.set_caption(f"Tileset Collision Editor — {args.image.name}")
-            pygame.display.set_mode(window_size, pygame.RESIZABLE)
+
+            tp.set_default_font("arial", 16)
+            tp.init(screen, tp.theme_game2)
 
             editor = TilesetCollisionEditor.from_path(
                 args.image,
