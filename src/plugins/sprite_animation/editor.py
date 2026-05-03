@@ -268,6 +268,7 @@ class SpriteAnimationEditor:
         image_path: Path,
         tile_size: Tuple[int, int] = (32, 32),
         window_size: Tuple[int, int] = (1100, 720),
+        data_root: Path = None,
     ) -> SpriteAnimationEditor:
         """Load a spritesheet from disk and create a standalone editor."""
         pygame.init()
@@ -276,6 +277,7 @@ class SpriteAnimationEditor:
         ed = cls.from_surface(surf, tile_size, window_size)
         ed.library.spritesheet_path = str(image_path)
         ed._sheet_name = image_path.name
+        ed._data_root = data_root
         return ed
 
     # ------------------------------------------------------------------
@@ -1823,8 +1825,7 @@ class SpriteAnimationEditor:
             initial_dir = Path(self.library.spritesheet_path).parent
             default_name = Path(self.library.spritesheet_path).stem + ".anim.json"
         else:
-            # Use data folder
-            initial_dir = BASE_PATH / "data"
+            initial_dir = self._data_root / "animations"
             default_name = "animations.anim.json"
 
         # Create file manager for save
@@ -1889,7 +1890,7 @@ class SpriteAnimationEditor:
         if self.library.spritesheet_path:
             initial_dir = Path(self.library.spritesheet_path).parent
         else:
-            initial_dir = BASE_PATH / "data"
+            initial_dir = self._data_root / "animations"
 
         # Create file manager for load
         screen = pygame.display.get_surface()
@@ -1960,7 +1961,7 @@ class SpriteAnimationEditor:
         if self.library.spritesheet_path:
             initial_dir = Path(self.library.spritesheet_path).parent
         else:
-            initial_dir = BASE_PATH / "data"
+            initial_dir = self._data_root / "animations"
 
         # Create file manager for loading spritesheet
         screen = cast(Surface, pygame.display.get_surface())

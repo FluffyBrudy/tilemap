@@ -1,0 +1,157 @@
+ERROR HANDLER REFACTOR INSTRUCTIONS (CRITICAL)
+
+OVERVIEW
+--------
+Refactor ErrorHandler to remove all direct dependency on:
+- settings singleton
+- BASE_PATH constant
+
+Replace with dependency injection from Editor at initialization time.
+
+This ensures:
+- no global config coupling
+- no hidden filesystem assumptions
+- full compliance with settings.json architecture
+
+
+------------------------------------------------------------
+1. REMOVE THESE DEPENDENCIES
+------------------------------------------------------------
+
+DELETE:
+- from constants import BASE_PATH
+- from .settings import settings
+
+ErrorHandler must NOT access:
+- settings.get(...)
+- BASE_PATH directly
+
+
+------------------------------------------------------------
+2. NEW INITIALIZATION CONTRACT
+------------------------------------------------------------
+
+ErrorHandler MUST be initialized like:
+
+    ErrorHandler(log_root: Path, config: dict)
+
+Where:
+
+log_root =
+    base_path / data_path / "logs"
+
+config =
+    settings["error_handler"]
+
+
+------------------------------------------------------------
+3. UPDATED __init__ SIGNATURE
+------------------------------------------------------------
+
+class ErrorHandler:
+
+    def __init__(self, log_root: Path, config: dict):
+
+        self._lock = threading.Lock()
+        self._recent_errors = []
+
+        self._config = config
+
+        self._max_recent_errors = config.get("max_recent_errors", 50)
+
+        self.log_file = log_root / config.get("log_path", "errors.log")
+        self.log_dir = self.log_file.parent
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        self._console_enabled = config.get("console_output", True)
+        self._file_logging = config.get("file_logging", True)
+        self._severity_levels = config.get(
+            "severity_levels",
+            ["error", "warning", "info"]
+        )
+
+        self._initialized = True
+
+
+------------------------------------------------------------
+4. CAPTURE() CHANGES
+------------------------------------------------------------
+
+Replace all:
+
+    settings.get("error_handler.xxx")
+
+WITH:
+
+    self._config.get("xxx")
+
+Remove all runtime calls to settings singleton.
+
+
+------------------------------------------------------------
+5. SEVERITY FILTER RULE
+------------------------------------------------------------
+
+Replace:
+
+    settings.get("error_handler.severity_levels", ...)
+
+WITH:
+
+    self._severity_levels
+
+
+------------------------------------------------------------
+6. LOG PATH RULE (IMPORTANT)
+
+DO NOT compute BASE_PATH here.
+
+log_root is already resolved by Editor:
+
+    log_root = base_path / data_path / "logs"
+
+So:
+
+    self.log_file = log_root / config["log_path"]
+
+NOTE:
+log_path is RELATIVE TO logs directory ONLY.
+
+
+------------------------------------------------------------
+7. SINGLETON BEHAVIOR (UNCHANGED)
+
+Keep:
+
+- threading-safe singleton pattern
+- error cache
+- console registration system
+
+DO NOT change runtime behavior logic.
+
+
+------------------------------------------------------------
+8. EDITOR RESPONSIBILITY (NEW REQUIREMENT)
+
+Editor MUST construct ErrorHandler like:
+
+    config = load_settings()
+
+    base_path = Path(config["base_path"])
+    data_root = base_path / config["data_path"]
+    log_root = data_root / "logs"
+
+    error_handler = ErrorHandler(
+        log_root=log_root,
+        config=config["error_handler"]
+    )
+
+
+------------------------------------------------------------
+9. DESIGN GUARANTEE AFTER REFACTOR
+
+✔ ErrorHandler has zero knowledge of settings.json
+✔ ErrorHandler has zero knowledge of BASE_PATH
+✔ ErrorHandler is fully reusable and testable
+✔ All filesystem resolution is centralized in Editor
+✔ No global state dependency remains

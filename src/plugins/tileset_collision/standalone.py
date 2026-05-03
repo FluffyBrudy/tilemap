@@ -25,7 +25,6 @@ if sys.platform == "darwin":
     os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
 import pygame
-import thorpy as tp
 
 from .editor import TilesetCollisionEditor
 from utils import error_handler, error_context
@@ -78,8 +77,16 @@ def main(argv: list[str] | None = None) -> None:
             default="1200x800",
             help="Window size as WxH (default: 1200x800)",
         )
+        parser.add_argument(
+            "--data-root",
+            type=Path,
+            required=True,
+            help="Path to project data root directory (REQUIRED)",
+        )
 
         args = parser.parse_args(argv)
+
+        data_root = args.data_root
 
         if not args.image.exists():
             error_handler.capture(
@@ -97,13 +104,11 @@ def main(argv: list[str] | None = None) -> None:
             screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
             pygame.display.set_caption(f"Tileset Collision Editor — {args.image.name}")
 
-            tp.set_default_font("arial", 16)
-            tp.init(screen, tp.theme_game2)
-
             editor = TilesetCollisionEditor.from_path(
                 args.image,
                 tile_size=tile_size,
                 window_size=window_size,
+                data_root=data_root,
             )
 
             if args.load and args.load.exists():

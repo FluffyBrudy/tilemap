@@ -72,8 +72,16 @@ def main(argv: list[str] | None = None) -> None:
             default="1000x800",
             help="Window size as WxH (default: 1000x800)",
         )
+        parser.add_argument(
+            "--data-root",
+            type=Path,
+            required=True,
+            help="Path to project data root directory (REQUIRED)",
+        )
 
         args = parser.parse_args(argv)
+
+        data_root = args.data_root
 
         if not args.image.exists():
             error_handler.capture(
@@ -94,6 +102,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.image,
                 window_size=window_size,
                 character_name=args.name,
+                data_root=data_root,
             )
 
             if args.load and args.load.exists():

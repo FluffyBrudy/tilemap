@@ -1,0 +1,119 @@
+Tilemap Editor – settings.json Generation Instruction (FINAL)
+
+OVERVIEW
+--------
+During `tilemap_editor init`, the system generates a `settings.json` file in the project root (Path.cwd()).
+
+This file defines:
+- Project root location (base_path)
+- User data root layout (data_path)
+- Runtime-safe logging subsystem defaults (error_handler)
+
+The file is created ONCE at initialization and is never modified automatically at runtime.
+
+
+------------------------------------------------------------
+GENERATED settings.json STRUCTURE
+------------------------------------------------------------
+
+{
+  "base_path": "/absolute/path/to/project",
+  "data_path": "data",
+
+  "error_handler": {
+    "log_path": "logs/errors.log",
+    "max_recent_errors": 50,
+    "console_output": true,
+    "file_logging": true,
+    "severity_levels": [
+      "error",
+      "warning",
+      "info"
+    ]
+  }
+}
+
+
+------------------------------------------------------------
+FIELD RULES
+------------------------------------------------------------
+
+1. base_path
+- Must be absolute path
+- Defines project root
+- Required
+
+2. data_path
+- Must be RELATIVE path only
+- Must NOT be absolute
+- Defines user data root folder under base_path
+
+Resolved runtime path:
+    data_root = base_path / data_path
+
+
+3. error_handler
+- Runtime subsystem configuration (logging only)
+- Does NOT define project structure
+- Safe for user editing
+
+IMPORTANT PATH RULE:
+- log_path is relative to data_root, NOT base_path
+
+Final resolved log path:
+    base_path / data_path / logs / errors.log
+
+
+------------------------------------------------------------
+INIT BEHAVIOR
+------------------------------------------------------------
+
+When `tilemap_editor init` is executed:
+
+1. Prompt user for base_path
+2. Set default data_path = "data"
+3. Write settings.json to project root (cwd)
+4. DO NOT create logs or runtime files yet
+
+After writing settings.json:
+
+5. Runtime system MUST:
+   - Load settings.json
+   - Resolve:
+         base_path
+         data_root = base_path / data_path
+   - Create directory structure:
+
+         data_root/
+             logs/
+             collision/
+             animation/
+
+6. error_handler config is stored as-is for runtime usage
+7. settings.json is never modified again automatically
+
+
+------------------------------------------------------------
+STRICT RULES
+------------------------------------------------------------
+
+R1: settings.json is created ONLY during init
+R2: settings.json is never modified at runtime
+R3: data_path is the ONLY filesystem layout control
+R4: error_handler is runtime configuration only (logging subsystem)
+R5: log_path is ALWAYS resolved relative to data_root
+R6: No internal module (standalone.py etc.) may read or depend on settings.json
+
+
+------------------------------------------------------------
+DESIGN INTENT
+------------------------------------------------------------
+
+This system ensures:
+
+- Single project identity (base_path)
+- Deterministic data layout (data_path)
+- Safe runtime logging configuration (error_handler)
+- No configuration sprawl
+- No coupling between engine internals and user config
+- Predictable filesystem initialization

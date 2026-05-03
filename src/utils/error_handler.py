@@ -3,17 +3,17 @@ Central error handling system for tilemap editor.
 
 Provides singleton error capture with context information,
 thread-safe operation, and unified logging.
+
+Initialized via dependency injection from Editor - no global config dependency.
 """
 
 import threading
 import json
 import traceback
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Any
 from contextlib import contextmanager
-
-from constants import BASE_PATH
-from .settings import settings
 
 
 class ErrorHandler:
@@ -22,30 +22,50 @@ class ErrorHandler:
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls, log_root: Path = None, config: dict = None):
         """Ensure singleton pattern with thread safety."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
+                    cls._instance._lock = None
+                    cls._instance._recent_errors = []
+                    cls._instance._config = {}
+                    cls._instance._max_recent_errors = 50
+                    cls._instance._console = None
+                    cls._instance._file_logging = True
+                    cls._instance._console_output_enabled = True
+                    cls._instance._severity_levels = ["error", "warning", "info"]
+                    cls._instance.log_file = None
+                    cls._instance.log_dir = None
         return cls._instance
 
-    def __init__(self):
-        """Initialize error handler with log file setup."""
+    def __init__(self, log_root: Path, config: dict):
+        """Initialize error handler with log file setup.
+
+        Args:
+            log_root: Path to logs directory (e.g., base_path/data_path/logs)
+            config: error_handler configuration dictionary from settings.json
+        """
         if self._initialized:
             return
 
         self._lock = threading.Lock()
-        self._recent_errors: List[Dict[str, Any]] = []
-        self._max_recent_errors = settings.get("error_handler.max_recent_errors", 50)
-        self._console = None  # Registered error console
+        self._recent_errors = []
+        self._config = config
 
-        # Setup log directory and file from settings
-        log_path = settings.get("error_handler.log_path", "data/logs/errors.log")
-        self.log_file = BASE_PATH / log_path
+        self._max_recent_errors = config.get("max_recent_errors", 50)
+        self._console = None
+
+        log_path = config.get("log_path", "errors.log")
+        self.log_file = log_root / log_path
         self.log_dir = self.log_file.parent
         self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        self._file_logging = config.get("file_logging", True)
+        self._console_output_enabled = config.get("console_output", True)
+        self._severity_levels = config.get("severity_levels", ["error", "warning", "info"])
 
         self._initialized = True
 
@@ -60,12 +80,10 @@ class ErrorHandler:
             context: Context string describing where error occurred
             severity: Error severity level (error, warning, info)
         """
-        # Check if this severity level is enabled in settings
-        allowed_levels = settings.get(
-            "error_handler.severity_levels", ["error", "warning", "info"]
-        )
-        if severity not in allowed_levels:
+        # Check if this severity level is enabled in config
+        if severity not in self._severity_levels:
             return
+
         error_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "error_type": type(error).__name__,
@@ -83,11 +101,11 @@ class ErrorHandler:
                 self._recent_errors.pop(0)
 
         # Write to log file if enabled
-        if settings.get("error_handler.file_logging", True):
+        if self._file_logging:
             self._write_to_log(error_data)
 
         # Console output if enabled
-        if settings.get("error_handler.console_output", True):
+        if self._console_output_enabled:
             self._console_output(error_data)
 
         # Notify error console if it's available
@@ -180,8 +198,47 @@ class ErrorHandler:
             self._console = None
 
 
-# Module-level singleton instance
-error_handler = ErrorHandler()
+# Module-level singleton instance - initialized by Editor via init_error_handler()
+_error_handler_instance: ErrorHandler = None
+
+
+def init_error_handler(log_root: Path, config: dict) -> ErrorHandler:
+    """Initialize the error handler singleton with proper configuration.
+
+    Must be called by Editor after loading settings.json.
+
+    Args:
+        log_root: Path to logs directory (e.g., base_path/data_path/logs)
+        config: error_handler configuration from settings.json
+    """
+    global _error_handler_instance
+    _error_handler_instance = ErrorHandler(log_root=log_root, config=config)
+    return _error_handler_instance
+
+
+def get_error_handler() -> ErrorHandler:
+    """Get the error handler singleton instance.
+
+    Raises RuntimeError if not initialized.
+    """
+    global _error_handler_instance
+    if _error_handler_instance is None:
+        raise RuntimeError("ErrorHandler not initialized. Editor must call init_error_handler() first.")
+    return _error_handler_instance
+
+
+# Backwards-compatible access via property
+class _ErrorHandlerProxy:
+    """Proxy class to provide backwards-compatible error_handler access."""
+    def __getattr__(self, name):
+        global _error_handler_instance
+        if _error_handler_instance is None:
+            # Fallback to print before Editor initializes - don't break
+            return lambda *args, **kwargs: None
+        return getattr(get_error_handler(), name)
+
+
+error_handler = _ErrorHandlerProxy()
 
 
 @contextmanager

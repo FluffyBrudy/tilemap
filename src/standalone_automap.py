@@ -109,6 +109,9 @@ class StandaloneAutomap:
                 pygame.draw.rect(screen, color, rect)
 
 if __name__ == "__main__":
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else BASE_PATH / "data" / "automap"
+    if len(sys.argv) < 2:
+        print("Usage: standalone_automap.py <target_path>", file=sys.stderr)
+        sys.exit(1)
+    target = Path(sys.argv[1])
     app = StandaloneAutomap(target)
     app.run()

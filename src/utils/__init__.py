@@ -1,4 +1,4 @@
 from .error_handler import error_handler, error_context
-from .settings import settings
+from .editor_preference import load_settings
 
-__all__ = ["error_handler", "error_context", "settings"]
+__all__ = ["error_handler", "error_context", "load_settings"]

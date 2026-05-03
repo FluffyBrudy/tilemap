@@ -598,22 +598,17 @@ class AutotileRuleDesigner:
                 self.scroll_offset = 0
 
     def _launch_external_viewer(self):
-        from constants import BASE_PATH
         from utils.standalone import launch_standalone
+        import tempfile
 
         project_path = self.editor.tilemap.active_project_path
 
         if not project_path:
-            temp_dir = BASE_PATH / "data" / "cache"
+            temp_dir = Path(tempfile.gettempdir()) / "tilemap_cache"
             temp_dir.mkdir(parents=True, exist_ok=True)
             project_path = temp_dir / "current_session.json"
-            try:
-                self.editor.tilemap.save_map(
-                    str(project_path.relative_to(BASE_PATH / "data"))
-                )
-            except Exception:
-                self.editor.tilemap.active_project_path = project_path
-                self.editor.tilemap.save_map()
+            self.editor.tilemap.active_project_path = project_path
+            self.editor.tilemap.save_map()
         else:
             try:
                 self.editor.tilemap.save_map()

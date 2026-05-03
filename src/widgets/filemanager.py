@@ -470,7 +470,9 @@ class FileManager:
         draw_overlay: bool = True,
         enable_window_drag: bool = True,
         enable_resize_handles: bool = True,
+        data_root: Path = None,
     ):
+        self.data_root = data_root
         self.rect = rect
         self.allowed_exts = allowed_exts
         self.on_select_callback = on_select
@@ -518,14 +520,14 @@ class FileManager:
         self.is_save_name_focused = False
         self.save_name_rect = pygame.Rect(0, 0, 0, 0)
 
-        self.recents_path = BASE_PATH / "data" / "recents.json"
+        self.recents_path = self.data_root / "recents.json" if self.data_root else BASE_PATH / "data" / "recents.json"
         self.recents: List[Path] = self._load_recents()
         self.view_mode = "files"
 
         self.resize_handler = ResizeHandler(self.rect, min_width=400, min_height=300)
         self.image_preview = ImagePreview(max_file_size_mb=50)
         self.dimension_persistence = DimensionPersistence(
-            BASE_PATH / "data" / "filemanager_prefs.json"
+            self.data_root / "filemanager_prefs.json" if self.data_root else BASE_PATH / "data" / "filemanager_prefs.json"
         )
 
         self.is_dragging_window = False

@@ -226,7 +226,11 @@ class Tilemap:
             if path_obj.is_absolute():
                 target_path = path_obj
             else:
-                target_path = BASE_PATH / "data" / path_obj
+                data_root = getattr(getattr(self, 'editor', None), 'data_root', None)
+                if data_root:
+                    target_path = data_root / path_obj
+                else:
+                    raise RuntimeError("Cannot determine data_root - Editor not initialized with settings.json")
 
             self.active_project_path = target_path
         elif self.active_project_path:
