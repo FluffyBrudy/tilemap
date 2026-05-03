@@ -5,6 +5,7 @@ import sys
 
 from editor import Editor
 from utils import error_handler, error_context
+from .settings import init_settings
 
 
 def _parse_size(text: str) -> tuple[int, int]:
@@ -18,7 +19,38 @@ def _parse_size(text: str) -> tuple[int, int]:
 
 
 def main() -> None:
-    # Global exception handler to catch everything
+    parser = argparse.ArgumentParser(description="Tilemap Editor")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    init_parser = subparsers.add_parser("init", help="Initialize a new Tilemap Editor project")
+    init_parser.add_argument(
+        "--with-main",
+        action="store_true",
+        help="Also create src/main.py boilerplate"
+    )
+
+    run_parser = subparsers.add_parser("run", help="Run the tilemap editor")
+    run_parser.add_argument(
+        "--size", default="1500x900", help="Window size as WIDTHxHEIGHT"
+    )
+    run_parser.add_argument(
+        "--fps", type=int, default=60, help="Editor FPS"
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "init":
+        init_settings(generate_main=args.with_main)
+        return
+
+    if args.command is None or args.command == "run":
+        _run_editor(args)
+        return
+
+    parser.print_help()
+
+
+def _run_editor(args) -> None:
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
@@ -29,13 +61,6 @@ def main() -> None:
     sys.excepthook = handle_exception
 
     try:
-        parser = argparse.ArgumentParser(description="Run tilemap editor")
-        parser.add_argument(
-            "--size", default="1500x900", help="Window size as WIDTHxHEIGHT"
-        )
-        parser.add_argument("--fps", type=int, default=60, help="Editor FPS")
-        args = parser.parse_args()
-
         with error_context("cli_main"):
             size = _parse_size(args.size)
             editor = Editor(size=size, fps=max(1, args.fps))

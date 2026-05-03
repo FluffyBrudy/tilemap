@@ -20,6 +20,7 @@ class FilenameInput:
         editor_rect: Rect,
         on_confirm: Callable[[str], None],
         on_cancel: Callable[[], None],
+        data_root: Path = None,
     ):
         self.rect = Rect(0, 0, 400, 40)
         self.rect.center = editor_rect.center
@@ -33,7 +34,7 @@ class FilenameInput:
 
         self.suggestions: List[str] = []
         self.selected_suggestion_idx = -1
-        self.data_root = BASE_PATH / "data"
+        self.data_root = data_root
 
     def show(self):
         self.active = True

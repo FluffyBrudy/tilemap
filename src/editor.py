@@ -70,12 +70,77 @@ def setup_error_logging():
 logger = setup_error_logging()
 
 
+def _load_project_config() -> tuple[Path, Path, dict]:
+    """Load and validate settings.json from current working directory.
+
+    Returns:
+        Tuple of (base_path, data_root, config)
+
+    Raises:
+        RuntimeError: If settings.json is invalid or missing
+    """
+    settings_file = Path.cwd() / "settings.json"
+
+    if not settings_file.exists():
+        raise RuntimeError(
+            "settings.json not found. Run 'tilemap-editor init' first."
+        )
+
+    try:
+        with open(settings_file, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Invalid settings.json: {e}")
+
+    # Validate required fields
+    required_fields = ["base_path", "data_path", "error_handler"]
+    for field in required_fields:
+        if field not in config:
+            raise RuntimeError(f"Invalid settings.json: missing '{field}'")
+
+    base_path = Path(config["base_path"]).expanduser()
+
+    if not base_path.is_absolute():
+        raise RuntimeError("base_path must be absolute")
+
+    base_path = base_path.resolve()
+
+    venv_path = Path(sys.prefix).resolve()
+    if venv_path in base_path.parents:
+        raise RuntimeError("base_path cannot be inside virtual environment")
+
+    # Validate data_path is relative, not absolute
+    data_path = config["data_path"]
+    if Path(data_path).is_absolute():
+        raise RuntimeError("data_path must be relative, not absolute")
+
+    data_root = base_path / data_path
+
+    if not data_root.exists():
+        raise RuntimeError(f"Data directory not found: {data_root}. Run 'tilemap-editor init' to create project structure.")
+
+    # Initialize error_handler with proper paths
+    log_root = data_root / "logs"
+
+    # Create logs directory only, don't create data root
+    log_root.mkdir(parents=True, exist_ok=True)
+
+    from utils.error_handler import init_error_handler
+    init_error_handler(log_root=log_root, config=config["error_handler"])
+
+    return base_path, data_root, config
+
+
 # Backwards-compatible alias for existing editor.py call sites
 _launch_standalone_module = launch_standalone
 
 
 class Editor:
     def __init__(self, size: Optional[Tuple[int, int]] = None, fps=60):
+        self.base_path, self.data_root, self.config = _load_project_config()
+        logger.info(f"Project base_path: {self.base_path}")
+        logger.info(f"Data root: {self.data_root}")
+
         pygame.init()
         pygame.display.set_caption("Pure Pygame Editor")
 
@@ -189,13 +254,12 @@ class Editor:
 
         if initial_dir:
             try:
-                rel_path = initial_dir.relative_to(BASE_PATH)
+                rel_path = initial_dir.relative_to(self.base_path)
                 args.extend(["--initial-dir", str(rel_path)])
             except ValueError:
-                # Not relative to BASE_PATH, use absolute
                 args.extend(["--initial-dir", str(initial_dir)])
         else:
-            args.extend(["--initial-dir", "data"])
+            args.extend(["--initial-dir", str(self.base_path / "data")])
 
         # Add allowed extensions
         if allowed_exts:
@@ -214,7 +278,7 @@ class Editor:
             self.file_manager_process = launch_standalone(
                 "standalone_filemanager",
                 args,
-                cwd=BASE_PATH,
+                cwd=self.base_path,
                 text=True,
             )
 
@@ -328,7 +392,7 @@ class Editor:
         if self.tilemap.active_project_path:
             default_name = self.tilemap.active_project_path.name
         self.open_file_manager(
-            initial_dir=BASE_PATH / "data",
+            initial_dir=self.base_path / "data",
             allowed_exts=[".json"],
             mode="save",
             default_name=default_name,
@@ -350,7 +414,7 @@ class Editor:
     def perform_load(self):
         self.open_file_manager(
             on_select=self.on_map_file_selected,
-            initial_dir=BASE_PATH / "data",
+            initial_dir=self.base_path / "data",
             allowed_exts=[".json"],
         )
 
@@ -596,7 +660,7 @@ class Editor:
 
         self.open_file_manager(
             on_select=self._launch_animation_editor_with_image,
-            initial_dir=BASE_PATH / "data",
+            initial_dir=self.base_path / "data",
             allowed_exts=[".png", ".jpg", ".jpeg"],
             mode="open",
         )
@@ -609,11 +673,11 @@ class Editor:
                 tw, th = self.tilemap.tile_size
                 tile_size = f"{tw}x{th}"
 
-            args = [str(path), "--tile-size", tile_size]
+            args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
             process = launch_standalone(
                 "plugins.sprite_animation.standalone",
                 args,
-                cwd=BASE_PATH,
+                cwd=self.base_path,
                 text=True,
             )
             self.child_processes.append(process)
@@ -645,17 +709,18 @@ class Editor:
                 tw, th = self.tilemap.tile_size
                 tile_size = f"{tw}x{th}"
 
-            args = [str(path), "--tile-size", tile_size]
+            args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
             
             # Check if collision data file exists and load it
-            collision_path = path.with_suffix('.collision.json')
+            collision_dir = self.data_root / self.config.get("collision_paths", {}).get("tileset", "collision")
+            collision_path = collision_dir / f"{path.stem}.collision.json"
             if collision_path.exists():
                 args.extend(["--load", str(collision_path)])
 
             process = launch_standalone(
                 "plugins.tileset_collision.standalone",
                 args,
-                cwd=BASE_PATH,
+                cwd=self.base_path,
                 text=True,
             )
             self.child_processes.append(process)
@@ -673,7 +738,7 @@ class Editor:
         """
         self.open_file_manager(
             on_select=self._launch_character_collision_editor_with_image,
-            initial_dir=BASE_PATH / "data",
+            initial_dir=self.base_path / "data",
             allowed_exts=[".png", ".jpg", ".jpeg"],
             mode="open",
         )
@@ -684,17 +749,18 @@ class Editor:
             # Use filename (without extension) as default character name
             character_name = path.stem
 
-            args = [str(path), "--name", character_name]
+            args = [str(path), "--name", character_name, "--data-root", str(self.data_root)]
             
             # Check if collision data file exists and load it
-            collision_path = path.with_suffix('.collision.json')
+            collision_dir = self.data_root / self.config.get("collision_paths", {}).get("character", "character_collision")
+            collision_path = collision_dir / f"{character_name}.collision.json"
             if collision_path.exists():
                 args.extend(["--load", str(collision_path)])
 
             process = launch_standalone(
                 "plugins.character_collision.standalone",
                 args,
-                cwd=BASE_PATH,
+                cwd=self.base_path,
                 text=True,
             )
             self.child_processes.append(process)
@@ -721,11 +787,12 @@ class Editor:
 
             window_size = f"{console_width}x{console_height}"
 
-            args = ["--window-size", window_size]
+            log_file = self.data_root / "logs" / "errors.log"
+            args = ["--window-size", window_size, "--log-file", str(log_file)]
             process = launch_standalone(
                 "standalone_error_console",
                 args,
-                cwd=BASE_PATH,
+                cwd=self.base_path,
                 text=True,
             )
             self.child_processes.append(process)
@@ -1023,10 +1090,6 @@ if __name__ == "__main__":
     sys.excepthook = handle_exception
 
     try:
-        log_path = setup_console_log(BASE_PATH)
-        if log_path:
-            print(f"Logging to {log_path}")
-
         with error_context("editor_main"):
             editor = Editor(size=(1500, 900))
             editor.run()

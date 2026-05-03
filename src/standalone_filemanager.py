@@ -57,9 +57,7 @@ class StandaloneFileManager:
             initial_dir = BASE_PATH / initial_dir
 
         if not initial_dir or not initial_dir.exists():
-            initial_dir = BASE_PATH / "data"
-            if not initial_dir.exists():
-                initial_dir = Path.cwd()
+            raise RuntimeError(f"Initial directory does not exist: {initial_dir}")
 
         # Create FileManager widget - fill entire window (no margins for standalone)
         rect = Rect(0, 0, window_size[0], window_size[1])

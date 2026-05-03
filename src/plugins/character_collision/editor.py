@@ -43,6 +43,7 @@ class CharacterCollisionEditor:
         self.rect = rect
         self.sprite_surface = sprite_surface
         self.character_name = character_name
+        self._data_root: Path = None
         self.visible = True
 
         # UI layout
@@ -141,6 +142,12 @@ class CharacterCollisionEditor:
         """Load collision data"""
         self.character_name = data.name
         self.shape_editor.load_shape_data(data.shape.to_dict())
+
+    def _get_collision_dir(self) -> Path:
+        """Get collision data directory (data_root/character_collision)"""
+        if self._data_root is None:
+            raise RuntimeError("data_root is required. Initialize via from_path() with data_root parameter.")
+        return self._data_root / "character_collision"
 
     def save_to_file(self, path: Path) -> None:
         """Save collision data to file"""
@@ -274,11 +281,14 @@ class CharacterCollisionEditor:
         sprite_path: Path,
         window_size: Tuple[int, int] = (1000, 800),
         character_name: str = "Character",
+        data_root: Path = None,
     ) -> "CharacterCollisionEditor":
         """Create editor from sprite image path (for standalone use)"""
         surface = pygame.image.load(sprite_path).convert_alpha()
         rect = Rect(0, 0, window_size[0], window_size[1])
-        return cls(rect, surface, character_name)
+        editor = cls(rect, surface, character_name)
+        editor._data_root = data_root
+        return editor
 
     def run(self) -> None:
         """Run standalone editor (for standalone use)"""
@@ -300,14 +310,17 @@ class CharacterCollisionEditor:
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
                         # Ctrl+S / Cmd+S to save
-                        save_path = Path("character_collision.json")
+                        collision_dir = self._get_collision_dir()
+                        collision_dir.mkdir(parents=True, exist_ok=True)
+                        save_path = collision_dir / "character_collision.json"
                         self.save_to_file(save_path)
                         print(f"Saved collision data to {save_path}")
                     elif event.key == pygame.K_l and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
                         # Ctrl+L / Cmd+L to load
-                        load_path = Path("character_collision.json")
+                        collision_dir = self._get_collision_dir()
+                        load_path = collision_dir / "character_collision.json"
                         if load_path.exists():
                             self.load_from_file(load_path)
                             print(f"Loaded collision data from {load_path}")

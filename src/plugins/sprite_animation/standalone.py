@@ -73,8 +73,17 @@ def main(argv: list[str] | None = None) -> None:
             default="1100x720",
             help="Window size as WxH (default: 1100x720)",
         )
+        parser.add_argument(
+            "--data-root",
+            type=Path,
+            default=None,
+            help="Path to project data root directory",
+        )
 
         args = parser.parse_args(argv)
+
+        # Resolve data_root - use provided path or default to cwd/data
+        data_root = args.data_root if args.data_root else Path.cwd() / "data"
 
         if not args.image.exists():
             error_handler.capture(
@@ -93,6 +102,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.image,
                 tile_size=tile_size,
                 window_size=window_size,
+                data_root=data_root,
             )
 
             if args.load and args.load.exists():

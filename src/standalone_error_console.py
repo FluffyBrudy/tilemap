@@ -59,11 +59,9 @@ C = PALETTE_DARK
 
 
 class StandaloneErrorConsole:
-    def __init__(self, window_size: tuple[int, int] = (1280, 500)):
+    def __init__(self, window_size: tuple[int, int] = (1280, 500), log_file: Path = None):
         pygame.init()
-        # Enable better font rendering
         pygame.font.init()
-        # Use centralized font manager
         self.font_family = self._auto_select_font()
 
         self.window_size = window_size
@@ -71,6 +69,9 @@ class StandaloneErrorConsole:
         pygame.display.set_caption("System Error Console")
         self.clock = pygame.time.Clock()
         self.running = True
+
+        # log_file is now required via argparse
+        self.log_file = log_file
 
         # UI Geometry
         self.x, self.y = 0, 0
@@ -102,7 +103,6 @@ class StandaloneErrorConsole:
         self._scroll_offset = 0
         self.mouse_pos = (0, 0)
 
-        self.log_file = BASE_PATH / "data" / "logs" / "errors.log"
         self.last_file_size = 0
         self._load_errors_from_file()
 
@@ -726,6 +726,26 @@ class StandaloneErrorConsole:
         pygame.quit()
 
 
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description="Standalone Error Console")
+    parser.add_argument("--window-size", type=str, default="1280x500",
+                        help="Window size as WIDTHxHEIGHT")
+    parser.add_argument("--log-file", type=str, required=True,
+                        help="Path to error log file (REQUIRED)")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    console = StandaloneErrorConsole()
+    args = parse_args()
+
+    window_size = (1280, 500)
+    if args.window_size:
+        parts = args.window_size.lower().split("x")
+        if len(parts) == 2:
+            window_size = (int(parts[0]), int(parts[1]))
+
+    log_file = Path(args.log_file) if args.log_file else None
+
+    console = StandaloneErrorConsole(window_size=window_size, log_file=log_file)
     console.run()

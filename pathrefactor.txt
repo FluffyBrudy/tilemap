@@ -1,0 +1,285 @@
+# Tilemap Editor – Project Initialization & Configuration Design
+
+## OVERVIEW
+
+This design strictly separates **user-managed files** from **internal package logic**.
+
+⚠️ Critical Constraint:
+
+* Internal modules (e.g., standalone.py or any internal resolution/engine code) MUST NOT be modified, repurposed, or coupled to this system.
+* This refactor applies ONLY to user-facing, user-generated, and user-readable files (JSON data, project config, etc.).
+* Internal systems must continue functioning unchanged.
+
+The goal is to make all user data deterministic, organized, and externally visible—without impacting internal architecture.
+
+---
+
+1. PROJECT INITIALIZATION (CLI ENTRYPOINT)
+
+---
+
+Command:
+
+```
+python3 -m tilemap_editor init
+```
+
+Optional flag:
+
+```
+python3 -m tilemap_editor init --with-main
+```
+
+Purpose:
+
+* Generate settings.json
+* Ask user for base data path
+* Optionally scaffold src/main.py
+* No runtime/editor involvement in setup
+
+---
+
+2. PACKAGE STRUCTURE
+
+---
+
+tilemap_editor/
+**init**.py
+**main**.py
+cli.py
+settings.py
+
+NOTE:
+
+* No changes required in internal modules like standalone.py
+* CLI + settings operate independently of internal engine logic
+
+---
+
+3. **main**.py
+
+---
+
+from .cli import main
+
+if **name** == "**main**":
+main()
+
+---
+
+4. CLI DISPATCHER (cli.py)
+
+---
+
+import sys
+from .settings import init_settings
+
+def main():
+if len(sys.argv) < 2:
+print("Usage: python -m tilemap_editor <command>")
+return
+
+```
+cmd = sys.argv[1]
+flags = sys.argv[2:]
+
+if cmd == "init":
+    with_main = "--with-main" in flags
+    init_settings(generate_main=with_main)
+else:
+    print(f"Unknown command: {cmd}")
+```
+
+---
+
+5. SETTINGS INITIALIZATION (settings.py)
+
+---
+
+from pathlib import Path
+import json
+
+def init_settings(generate_main=False):
+print("Initialize Tilemap Editor Project")
+
+```
+user_input = input("Enter base path (default: .): ").strip() or "."
+
+base_path = Path(user_input).expanduser().resolve()
+
+settings = {
+    "base_path": str(base_path)
+}
+
+settings_file = Path.cwd() / "settings.json"
+
+if settings_file.exists():
+    raise RuntimeError("settings.json already exists. Aborting.")
+
+with open(settings_file, "w") as f:
+    json.dump(settings, f, indent=4)
+
+print(f"Created settings.json at {settings_file}")
+
+if generate_main:
+    generate_main_file()
+```
+
+def generate_main_file():
+src_dir = Path.cwd() / "src"
+src_dir.mkdir(exist_ok=True)
+
+```
+main_file = src_dir / "main.py"
+
+if main_file.exists():
+    raise RuntimeError("src/main.py already exists. Aborting.")
+
+boilerplate = '''# Tilemap Editor Entry Point
+```
+
+def main():
+print("Start your game/editor here")
+
+if **name** == "**main**":
+main()
+'''
+
+```
+with open(main_file, "w") as f:
+    f.write(boilerplate)
+
+print(f"Created {main_file}")
+```
+
+---
+
+6. CONFIGURATION RULES
+
+---
+
+* settings.json MUST exist before Editor runs
+
+* Editor must NOT prompt user for configuration
+
+* If settings.json is missing → abort immediately
+
+* If explicit settings_path is provided:
+
+  * It must exist
+  * Otherwise → abort immediately
+
+* No fallback paths
+
+* No implicit file creation during runtime
+
+---
+
+7. PATH HANDLING
+
+---
+
+User input supports:
+
+* "." (current directory)
+* Relative paths (./data_root)
+* Absolute paths (/home/user/data)
+
+All paths are normalized using:
+
+```
+Path(input).expanduser().resolve()
+```
+
+Stored paths are ALWAYS absolute.
+
+---
+
+8. DATA DIRECTORY STRUCTURE
+
+---
+
+<base_path>/
+data/
+collision/
+animation/
+...
+
+Rules:
+
+* All user-generated files must live under:
+  <base_path>/data/
+* Subdirectories are deterministic
+* No scattered files outside this structure
+
+---
+
+9. RUNTIME BEHAVIOR (EDITOR)
+
+---
+
+* Resolve settings.json from:
+  Path.cwd()
+
+* Load base_path from config
+
+* Never write outside base_path
+
+STRICT ISOLATION:
+
+* Editor/runtime MUST NOT:
+
+  * Modify internal modules
+  * Depend on standalone.py for user path resolution
+  * Redirect internal file logic
+
+* Internal modules (e.g., standalone.py):
+
+  * Remain untouched
+  * Continue handling internal resource resolution only
+  * Are NOT part of user configuration flow
+
+* Fail fast on any invalid configuration
+
+---
+
+10. DESIGN PRINCIPLES
+
+---
+
+* Deterministic file system layout
+
+* Strict configuration enforcement
+
+* Zero interference with internal engine modules
+
+* Clear separation:
+
+  * CLI handles setup
+  * Editor handles execution
+  * Internal modules handle engine logic ONLY
+
+* User owns all data paths
+
+* Internal systems remain stable and unaffected
+
+---
+
+11. OPTIONAL IMPROVEMENT (FUTURE)
+
+---
+
+Expose CLI as system command:
+
+```
+tilemap-editor init
+```
+
+via pyproject.toml:
+
+[project.scripts]
+tilemap-editor = "tilemap_editor.cli:main"
+
+---
+
+## END

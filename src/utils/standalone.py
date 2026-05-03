@@ -85,6 +85,9 @@ def launch_standalone(
                 error_handler.capture(f"Module found: {module_name}", severity="info")
             cmd = [sys.executable, "-m", module_name] + args
             error_handler.capture(f"Command: {cmd}", severity="info")
+
+            # For GUI tools, don't wait - just launch and return immediately
+            # GUI apps don't produce stdout/stderr that we can read synchronously
             proc = subprocess.Popen(
                 cmd,
                 env=env,
@@ -94,17 +97,16 @@ def launch_standalone(
                 cwd=str(cwd) if cwd else None,
             )
 
-            stdout, stderr = proc.communicate(timeout=2)
-
-            error_handler.capture(f"[child stdout]\n{stdout}")
-            error_handler.capture(f"[child stderr]\n{stderr}")
-
+            # Don't call communicate() - GUI tools block on display, don't respond immediately
+            # Just return the process - it's running independently
             return proc
-        except ModuleNotFoundError:
-            error_handler.capture(f"Module not found: {module_name}", severity="info")
+        except ModuleNotFoundError as e:
+            error_handler.capture(f"Module not found: {module_name} - {e}", severity="info")
+        except ImportError as e:
+            error_handler.capture(f"Import error for {module_name}: {e}", severity="info")
         except Exception as e:
             error_handler.capture(
-                e, f"Error launching module {module_name}", severity="info"
+                e, f"Error launching {module_name}: {type(e).__name__}", severity="info"
             )
 
     # Strategy 2: direct script path from src/ (only for non-standalone modules)

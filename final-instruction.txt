@@ -1,0 +1,125 @@
+This version is tight, consistent, and architecturally sound. You’ve eliminated the earlier ambiguity and, more importantly, enforced boundaries explicitly. There are just a couple of final precision tweaks to prevent future edge-case bugs.
+
+✅ What’s Now Solid
+Single source of truth (settings.json) ✔
+No fallback leakage ✔
+Clear ownership (Editor vs internal modules) ✔
+Deterministic directory structure ✔
+Explicit lifecycle (init → run) ✔
+
+At this point, your design is production-grade, not just a refactor.
+
+⚠️ Final Corrections (Small but Important)
+1. Missing Validation of base_path
+
+Right now you load:
+
+base_path = Path(config["base_path"])
+
+But you don’t validate it.
+
+Required addition:
+if "base_path" not in config:
+    raise RuntimeError("Invalid settings.json: missing 'base_path'")
+
+base_path = Path(config["base_path"]).expanduser()
+
+if not base_path.is_absolute():
+    raise RuntimeError("base_path must be absolute")
+
+# Optional but recommended:
+base_path = base_path.resolve()
+Why this matters:
+Prevents corrupted or hand-edited configs from breaking silently
+Enforces your “deterministic” rule at runtime, not just design level
+2. Ensure base_path Is Not Inside Package / .venv
+
+You stated this as intent, but it’s not enforced.
+
+Add guard:
+import sys
+
+venv_path = Path(sys.prefix).resolve()
+
+if venv_path in base_path.parents:
+    raise RuntimeError("base_path cannot be inside virtual environment")
+Why:
+
+Prevents exactly the class of bugs you’re trying to eliminate.
+
+3. Clarify: Editor Writes ONLY Under base_path/data
+
+Right now you say:
+
+“All user data written under base_path/”
+
+That’s slightly loose.
+
+Tighten to:
+
+All user-generated data MUST be written under:
+
+base_path / "data"
+
+No exceptions. No top-level writes.
+
+4. Standalone Tools – One Edge Case
+
+You wrote:
+
+“They can accept user-provided paths via command-line”
+
+That’s fine—but here’s the constraint you should explicitly add:
+
+If a standalone tool is given a path, it must treat it as opaque input and must NOT attempt to infer or resolve project structure (e.g., must not assume presence of data/ or settings.json).
+
+This prevents accidental coupling later.
+
+5. settings.json Location Strictness
+
+You currently enforce:
+
+Path.cwd() / "settings.json"
+
+Good—but add one explicit rule:
+
+No upward directory search (no parent traversal).
+
+Otherwise someone will try to “improve” it later.
+
+6. Minor Wording Precision
+
+This line:
+
+“Editor can access (user data only)”
+
+Refine to:
+
+Editor is the only component allowed to:
+
+read settings.json
+resolve base_path
+manage user data directories
+
+This removes interpretation ambiguity.
+
+✅ Final Verdict
+Alignment: ~98% correct
+
+You now have:
+
+Clean separation of concerns
+Zero hidden state
+No filesystem ambiguity
+Strong invariants
+🔒 Final Version Addendum (Drop-in)
+
+Add this to your rules section:
+
+R7 base_path must be absolute, valid, and outside virtual environments
+R8 All user data MUST reside under base_path/data/
+R9 No directory traversal when resolving settings.json (cwd only)
+R10 Standalone tools must treat user-provided paths as opaque and must not infer project structure
+Bottom Line
+
+This is no longer just a refactor—it’s a stable contract.
