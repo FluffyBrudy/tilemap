@@ -80,6 +80,24 @@ class ErrorHandler:
             context: Context string describing where error occurred
             severity: Error severity level (error, warning, info)
         """
+        self._capture_impl(error, context, severity)
+
+    def capture_info(self, message: str, context: str = "") -> None:
+        """
+        Capture an informational message (not an error).
+
+        Args:
+            message: The info message to log
+            context: Context string describing where message originated
+        """
+        self._capture_impl(ValueError(message), context, "info")
+
+    def _capture_impl(
+        self, error: Exception, context: str = "", severity: str = "error"
+    ) -> None:
+        """
+        Internal implementation of error capture.
+        """
         # Check if this severity level is enabled in config
         if severity not in self._severity_levels:
             return

@@ -142,17 +142,22 @@ class TilesetCollisionEditor:
         """Save collision via toolbar button"""
         collision_dir = self._get_collision_dir()
         collision_dir.mkdir(parents=True, exist_ok=True)
-        save_path = collision_dir / "collision_data.json"
+        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+        save_path = collision_dir / f"{stem}.collision.json"
+        print(f"[SAVE] Saving to: {save_path}")
         self.save_to_file(save_path)
-        print(f"Saved collision data to {save_path}")
 
     def _load_collision(self) -> None:
         """Load collision via toolbar button"""
         collision_dir = self._get_collision_dir()
-        load_path = collision_dir / "collision_data.json"
+        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+        load_path = collision_dir / f"{stem}.collision.json"
+        print(f"[LOAD] Trying: {load_path}, exists={load_path.exists()}")
         if load_path.exists():
             self.load_from_file(load_path)
-            print(f"Loaded collision data from {load_path}")
+            print(f"[LOAD] Loaded: {load_path}")
+        else:
+            print(f"[LOAD] File not found")
 
     def _get_collision_dir(self) -> Path:
         """Get collision directory path"""
@@ -746,6 +751,9 @@ class TilesetCollisionEditor:
         rect = Rect(0, 0, window_size[0], window_size[1])
         editor = cls(rect, surface, tile_size)
         editor._data_root = data_root
+        editor._tileset_path_stem = tileset_path.stem
+        editor._tileset_name = tileset_path.stem  # Use actual filename, not "Tileset"
+        editor.library.tileset_name = tileset_path.stem
         return editor
 
     def run(self) -> None:
@@ -771,10 +779,11 @@ class TilesetCollisionEditor:
                     elif event.key == pygame.K_s and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
-                        # Ctrl+S / Cmd+S to save
-                        save_path = Path("collision_data.json")
+                        collision_dir = self._get_collision_dir()
+                        collision_dir.mkdir(parents=True, exist_ok=True)
+                        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+                        save_path = collision_dir / f"{stem}.collision.json"
                         self.save_to_file(save_path)
-                        print(f"Saved collision data to {save_path}")
                     elif event.key == pygame.K_l and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):

@@ -532,10 +532,13 @@ class CollisionPainter:
                 self.show_grid = not self.show_grid
                 return True
             
-            # S - toggle snap
+            # S - toggle snap (only if Ctrl is not held)
             elif event.key == pygame.K_s:
-                self.snap_to_grid = not self.snap_to_grid
-                return True
+                mods = pygame.key.get_mods()
+                ctrl_held = mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)
+                if not ctrl_held:
+                    self.snap_to_grid = not self.snap_to_grid
+                    return True
             
             # O - toggle one-way collision for selected polygon
             elif event.key == pygame.K_o:

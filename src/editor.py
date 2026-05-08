@@ -688,48 +688,82 @@ class Editor:
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
 
-    def launch_collision_editor(self):
-        """Launch the tileset collision editor in a new window.
+    def launch_collision_editor(self, tileset_type: str = "tile"):
+        """Launch the collision editor in a new window.
 
         Uses the active tileset image when one is loaded. If no tileset is
         selected, shows a notification.
+
+        Args:
+            tileset_type: "tile" for tileset collision editor, "object" for object tileset collision editor
         """
         sheet = self._active_tileset_image_path()
         if sheet is not None:
-            self._launch_collision_editor_with_image(sheet)
+            self._launch_collision_editor_with_image(sheet, tileset_type)
             return
 
         self.notifications.notify("No tileset loaded. Please load a tileset first.")
 
-    def _launch_collision_editor_with_image(self, path: Path):
+    def _launch_collision_editor_with_image(self, path: Path, tileset_type: str = "tile"):
         """Launch collision editor subprocess with selected tileset."""
         try:
-            tile_size = "32x32"
-            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
-                tw, th = self.tilemap.tile_size
-                tile_size = f"{tw}x{th}"
-
-            args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
-            
-            # Check if collision data file exists and load it
-            collision_dir = self.data_root / self.config.get("collision_paths", {}).get("tileset", "collision")
-            collision_path = collision_dir / f"{path.stem}.collision.json"
-            if collision_path.exists():
-                args.extend(["--load", str(collision_path)])
-
-            process = launch_standalone(
-                "plugins.tileset_collision.standalone",
-                args,
-                cwd=self.base_path,
-                text=True,
-            )
-            self.child_processes.append(process)
-
-            print(
-                f"Launched collision editor with: {path.name} (tile size: {tile_size})"
-            )
+            if tileset_type == "object":
+                self._launch_object_tileset_collision_editor_with_image(path)
+            else:
+                self._launch_tileset_collision_editor_with_image(path)
         except Exception as e:
             error_handler.capture(e, context="launch_collision_editor")
+
+    def _launch_tileset_collision_editor_with_image(self, path: Path):
+        """Launch tileset collision editor (tile-based)."""
+        logger = self.logger if hasattr(self, 'logger') else None
+        tile_size = "32x32"
+        if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
+            tw, th = self.tilemap.tile_size
+            tile_size = f"{tw}x{th}"
+
+        args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
+
+        collision_dir = self.data_root / self.config.get("collision_paths", {}).get("tileset", "collision")
+        collision_path = collision_dir / f"{path.stem}.collision.json"
+        if collision_path.exists():
+            args.extend(["--load", str(collision_path)])
+
+        process = launch_standalone(
+            "plugins.tileset_collision.standalone",
+            args,
+            cwd=self.base_path,
+            text=True,
+        )
+        self.child_processes.append(process)
+
+        msg = f"[COLLISION] Launched tileset collision editor for: {path.name} (tile size: {tile_size}) | Save path: {collision_path}"
+        print(msg)
+        if logger:
+            logger.info(msg)
+
+    def _launch_object_tileset_collision_editor_with_image(self, path: Path):
+        """Launch object tileset collision editor (region-based)."""
+        logger = self.logger if hasattr(self, 'logger') else None
+        args = [str(path), "--data-root", str(self.data_root)]
+
+        collision_dir = self.data_root / self.config.get("collision_paths", {}).get("object_tileset", "collision")
+        collision_path = collision_dir / f"{path.stem}.object_collision.json"
+        if collision_path.exists():
+            args.extend(["--load", str(collision_path)])
+
+        process = launch_standalone(
+            "plugins.object_tileset_collision.standalone",
+            args,
+            cwd=self.base_path,
+            text=True,
+        )
+        self.child_processes.append(process)
+
+        msg = f"[COLLISION] Launched object tileset collision editor for: {path.name} | Save path: {collision_path}"
+        print(msg)
+        if logger:
+            logger.info(msg)
 
     def launch_character_collision_editor(self):
         """Launch the character collision editor in a new window.
@@ -834,6 +868,17 @@ class Editor:
 
     def _cleanup_finished_processes(self):
         """Remove finished processes from the tracking list."""
+        # Read output from finished processes
+        for process in self.child_processes:
+            if process.poll() is not None:
+                try:
+                    stdout, stderr = process.communicate(timeout=1)
+                    if stdout:
+                        print(f"[SUBPROCESS OUTPUT] {stdout}")
+                    if stderr:
+                        print(f"[SUBPROCESS ERROR] {stderr}")
+                except Exception:
+                    pass
         self.child_processes = [p for p in self.child_processes if p.poll() is None]
 
     def handle_events(self):

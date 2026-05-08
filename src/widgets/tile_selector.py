@@ -4,6 +4,7 @@ from pathlib import Path
 from pygame import Rect, Surface
 
 from utils.validation import is_image_multipleof
+from utils.error_handler import error_handler
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 from widgets.ui.tileset_type_dialog import TilesetTypeDialog
@@ -423,14 +424,11 @@ class TileSelector:
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):
             self.editor.notifications.notify("No tileset selected")
             return
-        
+
         ts = self.tilesets[self.active_idx]
-        if ts.tileset_type != "tile":
-            self.editor.notifications.notify("Collision editor only works with tile tilesets")
-            return
-        
-        # Launch collision editor as subprocess
-        self.editor.launch_collision_editor()
+
+        # Launch collision editor as subprocess (routes based on tileset type)
+        self.editor.launch_collision_editor(ts.tileset_type)
 
     def check_tab_click(self, pos):
         idx = self._get_tab_at_pos(pos)

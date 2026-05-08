@@ -616,7 +616,6 @@ class Tilemap:
                         active_layer.tiles[pos] = tile_data
 
         self.initialized = True
-        error_handler.capture(None, context="load_map")
 
     def load_map(self, path: Path):
         try:
