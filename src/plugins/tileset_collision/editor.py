@@ -144,7 +144,6 @@ class TilesetCollisionEditor:
         collision_dir.mkdir(parents=True, exist_ok=True)
         stem = getattr(self, '_tileset_path_stem', self._tileset_name)
         save_path = collision_dir / f"{stem}.collision.json"
-        print(f"[SAVE] Saving to: {save_path}")
         self.save_to_file(save_path)
 
     def _load_collision(self) -> None:
@@ -152,12 +151,8 @@ class TilesetCollisionEditor:
         collision_dir = self._get_collision_dir()
         stem = getattr(self, '_tileset_path_stem', self._tileset_name)
         load_path = collision_dir / f"{stem}.collision.json"
-        print(f"[LOAD] Trying: {load_path}, exists={load_path.exists()}")
         if load_path.exists():
             self.load_from_file(load_path)
-            print(f"[LOAD] Loaded: {load_path}")
-        else:
-            print(f"[LOAD] File not found")
 
     def _get_collision_dir(self) -> Path:
         """Get collision directory path"""
@@ -787,8 +782,8 @@ class TilesetCollisionEditor:
                     elif event.key == pygame.K_l and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
-                        # Ctrl+L / Cmd+L to load
-                        load_path = Path("collision_data.json")
+                        collision_dir = self._get_collision_dir()
+                        load_path = collision_dir / f"{getattr(self, '_tileset_path_stem', self._tileset_name)}.collision.json"
                         if load_path.exists():
                             self.load_from_file(load_path)
                             print(f"Loaded collision data from {load_path}")

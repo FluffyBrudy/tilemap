@@ -53,6 +53,8 @@ PALETTE_DARK = {
     "info_bg": (20, 30, 60),
     "dot_live": (35, 209, 96),
     "scrollbar_thumb": (80, 80, 80),
+    "danger": (248, 81, 73),
+    "danger_bg": (62, 20, 20),
 }
 
 C = PALETTE_DARK
@@ -229,7 +231,10 @@ class StandaloneErrorConsole:
             bx += bw + 8
 
         # Clear Button
-        self._clear_btn = Rect(w - 90, self.TITLEBAR_H + 10, 75, 26)
+        self._clear_btn = Rect(w - 175, self.TITLEBAR_H + 10, 75, 26)
+
+        # Delete Logs Button
+        self._delete_logs_btn = Rect(w - 90, self.TITLEBAR_H + 10, 75, 26)
 
         # Content Area
         content_top = self.TITLEBAR_H + self.TOOLBAR_H
@@ -258,6 +263,21 @@ class StandaloneErrorConsole:
             error_handler.capture(e, severity="error")
         self._refresh_entries()
 
+    def _purge_logs(self) -> None:
+        """Permanently purge the log file (truncate to empty)."""
+        try:
+            if self.log_file and self.log_file.exists():
+                with open(self.log_file, "w", encoding="utf-8") as f:
+                    pass
+                self.last_file_size = 0
+            self._all_entries = []
+            self._visible_entries = []
+            self._expanded_ids = set()
+            self._scroll_offset = 0
+            self._refresh_entries()
+        except Exception as e:
+            error_handler.capture(e, context="error_console_purge_logs")
+
     def _monitor_file(self):
         while self.running:
             try:
@@ -285,7 +305,7 @@ class StandaloneErrorConsole:
 
     def _get_entry_layout(self, entry: Dict, width: int) -> Dict[str, Any]:
         """Calculates dynamic height and text wrapping for a specific entry."""
-        wrap_w = width - 200  # Space for timestamp and tags
+        wrap_w = width - 245  # Space for timestamp (YYYY-MM-DD HH:MM:SS) + tag + padding
         msg_text = entry.get("message", "No message")
         ctx_text = entry.get("context", "")
 
@@ -367,6 +387,10 @@ class StandaloneErrorConsole:
                 if self._clear_btn.collidepoint(event.pos):
                     self._all_entries = []
                     self._refresh_entries()
+
+                # Handle Delete Logs
+                if self._delete_logs_btn.collidepoint(event.pos):
+                    self._purge_logs()
 
                 # Handle Entry Expansion
                 if self.content_rect.collidepoint(event.pos):
@@ -518,14 +542,15 @@ class StandaloneErrorConsole:
                 sev_icon = icon_manager.get_icon(icon_name, 14, icon_color)
                 self.screen.blit(sev_icon, (8, curr_y + self.CELL_PADDING))
 
-                # 1. Timestamp
-                ts = entry.get("timestamp", "")[11:19]
+                # 1. Timestamp (full ISO: YYYY-MM-DD HH:MM:SS)
+                raw_ts = entry.get("timestamp", "")
+                ts = raw_ts[:10].replace("T", " ") + " " + raw_ts[11:19] if raw_ts else ""
                 ts_surf = self.f_small.render(ts, True, C["text_tertiary"])
-                self.screen.blit(ts_surf, (15, curr_y + self.CELL_PADDING))
+                self.screen.blit(ts_surf, (12, curr_y + self.CELL_PADDING))
 
                 # 2. Tag
                 tag_col = C[f"{sev}_stripe"]
-                tag_rect = Rect(85, curr_y + self.CELL_PADDING - 2, 65, 18)
+                tag_rect = Rect(165, curr_y + self.CELL_PADDING - 2, 65, 18)
                 pygame.draw.rect(self.screen, tag_col, tag_rect, 1, border_radius=3)
                 tag_txt = self.f_small.render(sev.upper(), True, tag_col)
                 self.screen.blit(
@@ -537,7 +562,7 @@ class StandaloneErrorConsole:
                 )
 
                 # 3. Message (Wrapped)
-                text_x = 165
+                text_x = 245
                 text_y = curr_y + self.CELL_PADDING
                 for i, line in enumerate(layout["msg_lines"]):
                     m_surf = self.f_main.render(line, True, C["text_primary"])
@@ -698,6 +723,21 @@ class StandaloneErrorConsole:
             (
                 self._clear_btn.centerx - ctxt.get_width() // 2,
                 self._clear_btn.centery - ctxt.get_height() // 2,
+            ),
+        )
+
+        # Delete Logs
+        is_hover_delete = self._delete_logs_btn.collidepoint(self.mouse_pos)
+        delete_bg = C["danger_bg"] if is_hover_delete else C["bg_secondary"]
+        pygame.draw.rect(
+            self.screen, delete_bg, self._delete_logs_btn, border_radius=4
+        )
+        dtxt = self.f_small.render("Delete Logs", True, C["danger"])
+        self.screen.blit(
+            dtxt,
+            (
+                self._delete_logs_btn.centerx - dtxt.get_width() // 2,
+                self._delete_logs_btn.centery - dtxt.get_height() // 2,
             ),
         )
 

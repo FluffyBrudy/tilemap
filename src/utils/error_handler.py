@@ -12,7 +12,7 @@ import json
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
 
 
@@ -90,10 +90,10 @@ class ErrorHandler:
             message: The info message to log
             context: Context string describing where message originated
         """
-        self._capture_impl(ValueError(message), context, "info")
+        self._capture_impl(None, context, "info", message=message)
 
     def _capture_impl(
-        self, error: Exception, context: str = "", severity: str = "error"
+        self, error: Optional[Exception], context: str = "", severity: str = "error", message: Optional[str] = None
     ) -> None:
         """
         Internal implementation of error capture.
@@ -104,11 +104,11 @@ class ErrorHandler:
 
         error_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
-            "error_type": type(error).__name__,
-            "message": str(error),
+            "error_type": type(error).__name__ if error else severity,
+            "message": str(error) if error else (message or ""),
             "context": context,
             "severity": severity,
-            "stack_trace": traceback.format_exc(),
+            "stack_trace": "".join(traceback.format_exception(type(error), error, error.__traceback__)) if error else None,
             "thread_id": threading.current_thread().ident,
         }
 

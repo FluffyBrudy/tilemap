@@ -745,10 +745,11 @@ class Editor:
     def _launch_object_tileset_collision_editor_with_image(self, path: Path):
         """Launch object tileset collision editor (region-based)."""
         logger = self.logger if hasattr(self, 'logger') else None
-        args = [str(path), "--data-root", str(self.data_root)]
 
         collision_dir = self.data_root / self.config.get("collision_paths", {}).get("object_tileset", "collision")
         collision_path = collision_dir / f"{path.stem}.object_collision.json"
+
+        args = [str(path), "--data-root", str(self.data_root), "--collision-dir", str(collision_dir)]
         if collision_path.exists():
             args.extend(["--load", str(collision_path)])
 

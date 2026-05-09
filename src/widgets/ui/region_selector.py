@@ -636,7 +636,7 @@ class RegionSelector:
     def set_regions(self, regions: List[Region]) -> None:
         """Set all regions at once"""
         self.regions = regions
-        self.selected_id = None
+        self.select_region(None)
     
     def get_regions(self) -> List[Region]:
         """Get all regions"""

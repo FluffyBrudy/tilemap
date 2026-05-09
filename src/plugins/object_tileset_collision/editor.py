@@ -81,6 +81,8 @@ class ObjectTilesetCollisionEditor:
         self._tileset_surface = tileset_surface
         self._tileset_name = "Object Tileset"
         self._data_root: Optional[Path] = None
+        self._collision_dir: Optional[Path] = None
+        self._tileset_path_stem: Optional[str] = None
 
         # Data model
         self.library = ObjectTilesetCollisionLibrary(tileset_name=self._tileset_name)
@@ -108,6 +110,10 @@ class ObjectTilesetCollisionEditor:
         self._show_help = False
         self._help_scroll = 0
         self._help_content_height = 0
+        
+        # Regions list state
+        self._regions_list_scroll = 0
+        self._regions_item_height = 50
         
         # Fonts
         self._font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
@@ -423,7 +429,7 @@ class ObjectTilesetCollisionEditor:
 
     def _on_polygon_added(self, vertices: List[Tuple[float, float]]) -> None:
         """Called when a polygon is added to the painter"""
-        print(f"[POLYGON_ADDED] {len(vertices)} vertices")
+        error_handler.capture_info(f"Polygon added with {len(vertices)} vertices", context="object_collision_painter")
         self._save_current_collision_data()
         self._update_status()
 
@@ -439,13 +445,12 @@ class ObjectTilesetCollisionEditor:
     def _save_current_collision_data(self) -> None:
         """Save current painter polygons to library"""
         if not self._current_region_id:
-            print("[SAVE_CURRENT] No current region selected")
             return
         
         polygons = self.painter.get_polygons()
         one_way_flags = self.painter.get_one_way_flags()
         
-        print(f"[SAVE_CURRENT] Region {self._current_region_id}: {len(polygons)} polygons from painter")
+        error_handler.capture_info(f"Saving collision for region {self._current_region_id}: {len(polygons)} polygons", context="object_collision_save")
         
         shapes = [
             CollisionPolygon(vertices=poly, one_way=one_way)
@@ -454,7 +459,6 @@ class ObjectTilesetCollisionEditor:
         
         region = self._get_current_region()
         if not region:
-            print("[SAVE_CURRENT] Could not get current region")
             return
         
         if self._current_region_id in self.library.regions:
@@ -492,6 +496,14 @@ class ObjectTilesetCollisionEditor:
 
     # === Toolbar Actions ===
 
+    def _get_collision_dir(self) -> Path:
+        """Get the collision directory path."""
+        if self._collision_dir:
+            return self._collision_dir
+        if self._data_root:
+            return self._data_root / "collision"
+        raise RuntimeError("No collision directory configured. Set collision_dir or data_root.")
+
     def _save_collision(self) -> None:
         """Save collision data to file"""
         if not self._data_root:
@@ -499,19 +511,18 @@ class ObjectTilesetCollisionEditor:
             return
         
         try:
-            collision_dir = self._data_root / "collision"
+            collision_dir = self._get_collision_dir()
             collision_dir.mkdir(parents=True, exist_ok=True)
-            save_path = collision_dir / f"{self._tileset_name}.object_collision.json"
+            stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+            save_path = collision_dir / f"{stem}.object_collision.json"
             
             # Sync current painter data
             if self._mode == EditorMode.PAINT_COLLISION:
                 self._save_current_collision_data()
             
-            # Debug: Print what we're saving
+            # Log what we're saving
             total_shapes = sum(len(data.shapes) for data in self.library.regions.values())
-            print(f"[SAVE] Saving {len(self.library.regions)} regions with {total_shapes} total shapes to {save_path}")
-            for region_id, data in self.library.regions.items():
-                print(f"  - {region_id} ({data.name}): {len(data.shapes)} shapes")
+            error_handler.capture_info(f"Saving {len(self.library.regions)} regions with {total_shapes} total shapes to {save_path}", context="object_collision_save")
             
             self.library.save(save_path)
             self.status_bar.success("Saved", f"{save_path.name}")
@@ -519,7 +530,6 @@ class ObjectTilesetCollisionEditor:
         except Exception as e:
             self.status_bar.error("Save failed", str(e))
             error_handler.capture(e, context="object_collision_editor_save")
-            print(f"[SAVE ERROR] {e}")
 
     def load_from_file(self, path: Path) -> None:
         """Load collision data from a specific file path"""
@@ -559,8 +569,9 @@ class ObjectTilesetCollisionEditor:
             self.status_bar.error("Cannot load", "No data root specified")
             return
         
-        collision_dir = self._data_root / "collision"
-        load_path = collision_dir / f"{self._tileset_name}.object_collision.json"
+        collision_dir = self._get_collision_dir()
+        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+        load_path = collision_dir / f"{stem}.object_collision.json"
         self.load_from_file(load_path)
 
     def _toggle_help(self) -> None:
@@ -593,7 +604,7 @@ class ObjectTilesetCollisionEditor:
         pygame.draw.rect(screen, COLORS.border, panel_rect, 2, border_radius=SHAPE.radius)
         
         # Title
-        title = self._font.render("Object Collision Editor Help", True, COLORS.text)
+        title = self._font.render("Object Tileset Collision Editor Help", True, COLORS.text)
         screen.blit(title, (panel_x + 15, panel_y + 15))
         
         # Close button
@@ -773,11 +784,11 @@ class ObjectTilesetCollisionEditor:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse = pygame.mouse.get_pos()
             if self.regions_list_rect.collidepoint(mouse):
-                # Calculate which region was clicked
-                list_y = mouse[1] - (self.regions_list_rect.y + 35)
-                item_height = 50
-                if list_y >= 0:
-                    idx = list_y // item_height
+                # Calculate which region was clicked (accounting for scroll)
+                rel_y = mouse[1] - (self.regions_list_rect.y + 35 - self._regions_list_scroll)
+                item_height = self._regions_item_height
+                if rel_y >= 0:
+                    idx = int(rel_y) // item_height
                     if idx < len(self.region_selector.regions):
                         region = self.region_selector.regions[idx]
                         # Check if clicking same region (might be renaming)
@@ -812,6 +823,15 @@ class ObjectTilesetCollisionEditor:
                 self._toggle_help()
                 return True
         
+        # Mouse wheel scrolling for regions list
+        if event.type == pygame.MOUSEWHEEL:
+            mouse = pygame.mouse.get_pos()
+            if self.regions_list_rect.collidepoint(mouse):
+                self._regions_list_scroll -= event.y * 30
+                max_scroll = max(0, len(self.region_selector.regions) * self._regions_item_height - (self.regions_list_rect.height - 35))
+                self._regions_list_scroll = max(0, min(self._regions_list_scroll, max_scroll))
+                return True
+
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
@@ -901,14 +921,21 @@ class ObjectTilesetCollisionEditor:
         header = self._font.render("Regions", True, COLORS.text)
         screen.blit(header, (self.regions_list_rect.x + 10, self.regions_list_rect.y + 10))
         
-        # List regions
-        y = self.regions_list_rect.y + 35
-        item_height = 50
+        # List regions (with scroll offset)
+        y = self.regions_list_rect.y + 35 - self._regions_list_scroll
+        item_height = self._regions_item_height
         
         clip = screen.get_clip()
         screen.set_clip(self.regions_list_rect)
         
         for region in self.region_selector.regions:
+            # Skip items outside visible area
+            if y + item_height < self.regions_list_rect.y:
+                y += item_height
+                continue
+            if y > self.regions_list_rect.bottom:
+                break
+
             is_selected = region.id == self._current_region_id
             is_renaming = region.id == self._renaming_region_id
             
@@ -1015,12 +1042,15 @@ class ObjectTilesetCollisionEditor:
         tileset_path: Path,
         window_size: Tuple[int, int] = (1200, 800),
         data_root: Path = None,
+        collision_dir: Path = None,
     ) -> "ObjectTilesetCollisionEditor":
         """Create editor from tileset image path"""
         surface = pygame.image.load(tileset_path).convert_alpha()
         rect = Rect(0, 0, window_size[0], window_size[1])
         editor = cls(rect, surface)
         editor._data_root = data_root
+        editor._collision_dir = collision_dir
+        editor._tileset_path_stem = tileset_path.stem
         editor._tileset_name = tileset_path.stem
         editor.library.tileset_name = tileset_path.stem
         return editor
