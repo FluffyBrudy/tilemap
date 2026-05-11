@@ -6,8 +6,8 @@ Layout:
     | [Save] [Load] | Define Regions | Paint Collision | [?]    |
     +---------------+--------------------------------+-------------+
     | Regions List  |   Collision Painter (Region)   |  StatusBar  |
-    | - Tree (✓)    |                                |             |
-    | - Rock (⚠)    |   [Region image, zoomed]       |  3 shapes   |
+    | - Tree (ok)   |                                |             |
+    | - Rock (warn) |   [Region image, zoomed]       |  3 shapes   |
     | - Player (?)|                                |  Complete   |
     +---------------+--------------------------------+-------------+
     |           Object Tileset (Region Selector)                   |
@@ -57,6 +57,36 @@ class RegionStatus:
     has_collision: bool = False
     collision_count: int = 0
     is_valid: bool = True
+
+
+def _render_fit_text(
+    font: pygame.font.Font,
+    text: str,
+    color: Tuple[int, int, int],
+    max_width: int,
+) -> Surface:
+    """Render text constrained to max_width with an ellipsis."""
+    if max_width <= 0:
+        return font.render("", True, color)
+
+    surf = font.render(text, True, color)
+    if surf.get_width() <= max_width:
+        return surf
+
+    ellipsis = "..."
+    if font.size(ellipsis)[0] > max_width:
+        return font.render("", True, color)
+
+    low, high = 0, len(text)
+    while low < high:
+        mid = (low + high + 1) // 2
+        candidate = text[:mid].rstrip() + ellipsis
+        if font.size(candidate)[0] <= max_width:
+            low = mid
+        else:
+            high = mid - 1
+
+    return font.render(text[:low].rstrip() + ellipsis, True, color)
 
 
 class ObjectTilesetCollisionEditor:
@@ -610,8 +640,8 @@ class ObjectTilesetCollisionEditor:
         # Close button
         close_btn = Rect(panel_rect.right - 35, panel_y + 10, 25, 25)
         pygame.draw.rect(screen, COLORS.danger, close_btn, border_radius=SHAPE.radius_sm)
-        close_text = self._font.render("×", True, COLORS.text)
-        screen.blit(close_text, (close_btn.centerx - close_text.get_width() // 2, close_btn.centery - close_text.get_height() // 2))
+        close_icon = icon_manager.get_icon("close", 15, COLORS.text)
+        screen.blit(close_icon, close_icon.get_rect(center=close_btn.center))
         
         # Content
         help_text = [
@@ -642,8 +672,8 @@ class ObjectTilesetCollisionEditor:
             ("   • Middle mouse drag: Pan (always works)", False),
             ("", False),
             ("Status Icons:", True),
-            ("   ✓ = Has collision shapes", False),
-            ("   ⚠ = No collision defined yet", False),
+            ("   Check icon = Has collision shapes", False),
+            ("   Warning icon = No collision defined yet", False),
             ("   ? = Unnamed region", False),
             ("", False),
             ("Shortcuts:", True),
@@ -900,11 +930,6 @@ class ObjectTilesetCollisionEditor:
         load_label = self._font.render("Load", True, COLORS.text)
         draw_button(screen, load_btn_rect, load_label, hover=load_hover)
         
-        # Title (centered, after mode indicator)
-        title = self._font.render(f"— {self._tileset_name}", True, COLORS.text_dim)
-        title_x = self.mode_indicator.rect.right + 20
-        screen.blit(title, (title_x, self.toolbar_rect.centery - title.get_height() // 2))
-        
         # Help button (info icon)
         help_btn_rect = Rect(self.toolbar_rect.right - 38, self.toolbar_rect.y + 8, 28, 28)
         help_hover = help_btn_rect.collidepoint(mouse)
@@ -912,6 +937,17 @@ class ObjectTilesetCollisionEditor:
         pygame.draw.rect(screen, COLORS.panel_alt if help_hover else COLORS.panel, help_btn_rect, border_radius=SHAPE.radius_sm)
         pygame.draw.rect(screen, COLORS.border_soft, help_btn_rect, 1, border_radius=SHAPE.radius_sm)
         screen.blit(help_icon, (help_btn_rect.centerx - 10, help_btn_rect.centery - 10))
+
+        # Title after mode indicator, clipped before the help button.
+        title_x = self.mode_indicator.rect.right + 20
+        title_max_w = help_btn_rect.x - title_x - 10
+        title = _render_fit_text(
+            self._font,
+            f"- {self._tileset_name}",
+            COLORS.text_dim,
+            title_max_w,
+        )
+        screen.blit(title, (title_x, self.toolbar_rect.centery - title.get_height() // 2))
 
     def _draw_regions_list(self, screen: Surface) -> None:
         """Draw the regions list panel"""
@@ -950,9 +986,9 @@ class ObjectTilesetCollisionEditor:
             icon_y = item_rect.centery - 6
             
             if status.has_collision:
-                icon = self._font_sm.render("✓", True, COLORS.success)
+                icon = icon_manager.get_icon("check", 12, COLORS.success)
             elif region.name and not region.name.startswith("Region "):
-                icon = self._font_sm.render("⚠", True, COLORS.warning)
+                icon = icon_manager.get_icon("warning", 12, COLORS.warning)
             else:
                 icon = self._font_sm.render("?", True, COLORS.text_dim)
             
@@ -974,10 +1010,20 @@ class ObjectTilesetCollisionEditor:
                 pygame.draw.rect(screen, (100, 120, 140), 
                     Rect(name_x, item_rect.y + 5, item_rect.width - 30, 20), border_radius=2)
                 
-                name_surf = self._font.render(display_name, True, COLORS.text)
+                name_surf = _render_fit_text(
+                    self._font,
+                    display_name,
+                    COLORS.text,
+                    item_rect.right - name_x - 8,
+                )
             else:
                 name = region.name or "Unnamed"
-                name_surf = self._font.render(name, True, COLORS.text)
+                name_surf = _render_fit_text(
+                    self._font,
+                    name,
+                    COLORS.text,
+                    item_rect.right - name_x - 8,
+                )
             
             screen.blit(name_surf, (name_x, item_rect.y + 8))
             

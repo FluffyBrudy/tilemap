@@ -22,7 +22,10 @@ if str(_src_dir) not in sys.path:
 
 import pygame
 
-from .editor import SpriteAnimationEditor
+try:
+    from .editor import SpriteAnimationEditor
+except ImportError:
+    from plugins.sprite_animation.editor import SpriteAnimationEditor
 from utils import error_handler, error_context
 
 
@@ -106,10 +109,14 @@ def main(argv: list[str] | None = None) -> None:
             )
 
             if args.load and args.load.exists():
-                from .models import AnimationLibrary
+                try:
+                    from .models import AnimationLibrary
+                except ImportError:
+                    from plugins.sprite_animation.models import AnimationLibrary
 
                 lib = AnimationLibrary.load(args.load)
                 editor.load_animation_data(lib.to_dict())
+                editor._resolve_library_paths(args.load)
                 print(f"Loaded animations from {args.load}")
 
             editor.run()

@@ -48,16 +48,21 @@
 - Editor resolves actual paths at runtime
 - Individual collision editors use resolved paths via `_data_root`
 
+### R9: Generated Data Paths
+- Generated project JSON stores file references relative to `base_path`
+- Runtime/editor code may resolve those references to absolute `Path` objects in memory
+- Absolute paths are accepted only for legacy input, not emitted in new generated data
+
 ## Implementation Requirements
 
 ### settings.json Structure
 ```json
 {
   "base_path": "<absolute_path_to_project_root>",
-  "data_path": "<base_path>/data",
+  "data_path": "data",
   "collision_paths": {
-    "tileset": "<data_path>/tileset_collision",
-    "character": "<data_path>/character_collision"
+    "tileset": "collision",
+    "character": "character_collision"
   },
   "error_handler": {
     "enabled": true,

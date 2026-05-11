@@ -21,7 +21,10 @@ if str(_src_dir) not in sys.path:
 
 import pygame
 
-from .editor import CharacterCollisionEditor
+try:
+    from .editor import CharacterCollisionEditor
+except ImportError:
+    from plugins.character_collision.editor import CharacterCollisionEditor
 from utils import error_handler, error_context
 
 

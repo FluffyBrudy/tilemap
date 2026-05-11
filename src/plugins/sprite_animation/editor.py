@@ -22,6 +22,7 @@ import pygame
 from pygame import Rect, Surface, Color
 from utils.font_manager import font_manager, FontWeight, FontStyle
 from utils.icon_manager import icon_manager
+from utils.project_paths import resolve_project_path
 from utils import error_handler
 from .clipboard_util import copy_plain_text
 from .frame_picker import FramePicker
@@ -103,7 +104,7 @@ class SpriteAnimationEditor:
     Layout::
 
         +----------------------------------------------------+
-        | Toolbar: [idle ▾] [+] [✕] | [Save] [Load]         |
+        | Toolbar: [idle] [+] [X] | [Save] [Load]           |
         +---------------+------------------------------------+
         |   Preview     |     Spritesheet Frame Picker       |
         |   (220px w)   |     (pan/zoom, click to add)       |
@@ -242,6 +243,7 @@ class SpriteAnimationEditor:
 
         # Track the last saved path for quick save (Ctrl+S)
         self._last_saved_path: Optional[Path] = None
+        self._data_root: Optional[Path] = Path.cwd() / "data"
 
         # Sync sub-widgets
         self._sync_active_animation()
@@ -867,7 +869,7 @@ class SpriteAnimationEditor:
         self._draw_toolbar_btn(screen, self._btn_new, "+", mouse)
         x += 32
 
-        # [✕ Delete]
+        # Delete
         self._btn_del = Rect(x, cy, 28, bh)
         # Close/X icon for delete
         close_icon = icon_manager.get_icon("close", 14, _COLORS["btn_danger_hover"])
@@ -1174,7 +1176,7 @@ class SpriteAnimationEditor:
         if self._info_tooltip_pinned:
             lines.append("Esc or click outside card to close")
         else:
-            lines.append("Click ⓘ to pin this panel")
+            lines.append("Click info to pin this panel")
 
         padding = 8
         line_height = 16
@@ -1674,8 +1676,8 @@ class SpriteAnimationEditor:
 
             pygame.draw.rect(screen, _COLORS["btn_danger"], del_rect, border_radius=3)
             pygame.draw.rect(screen, _COLORS["border"], del_rect, 1, border_radius=3)
-            x_lbl = self._font_sm.render("×", True, _COLORS["text"])
-            screen.blit(x_lbl, x_lbl.get_rect(center=del_rect.center))
+            close_icon = icon_manager.get_icon("close", 12, _COLORS["text"])
+            screen.blit(close_icon, close_icon.get_rect(center=del_rect.center))
 
             row_y += META_ROW_H
 
@@ -1802,13 +1804,12 @@ class SpriteAnimationEditor:
         # Import FileManager
         try:
             from widgets.filemanager import FileManager
-            from constants import BASE_PATH
         except ImportError as e:
             # Fallback to old behavior if FileManager not available
             print(f"Warning: Could not import FileManager: {e}")
             path = self._default_save_path()
             try:
-                self.library.save(path)
+                self.library.save(path, base_path=self._project_base_path())
                 self._last_saved_path = path
                 print(f"Animations saved to {path}")
             except Exception as e:
@@ -1821,12 +1822,12 @@ class SpriteAnimationEditor:
             initial_dir = self._last_saved_path.parent
             default_name = self._last_saved_path.name
         elif self.library.spritesheet_path:
-            # Use spritesheet location
-            initial_dir = Path(self.library.spritesheet_path).parent
+            initial_dir = self._data_root / "animations"
             default_name = Path(self.library.spritesheet_path).stem + ".anim.json"
         else:
             initial_dir = self._data_root / "animations"
             default_name = "animations.anim.json"
+        initial_dir.mkdir(parents=True, exist_ok=True)
 
         # Create file manager for save
         screen = pygame.display.get_surface()
@@ -1842,6 +1843,7 @@ class SpriteAnimationEditor:
             mode="save",
             default_name=default_name,
             on_cancel=self._close_file_manager,
+            data_root=self._data_root,
         )
 
     def _quick_save(self) -> None:
@@ -1852,7 +1854,10 @@ class SpriteAnimationEditor:
         if self._last_saved_path:
             # Save to existing path
             try:
-                self.library.save(self._last_saved_path)
+                self.library.save(
+                    self._last_saved_path,
+                    base_path=self._project_base_path(),
+                )
                 print(f"Animations saved to {self._last_saved_path}")
             except Exception as e:
                 error_handler.capture(e, context="save_animations_quick")
@@ -1867,13 +1872,13 @@ class SpriteAnimationEditor:
         # Import FileManager
         try:
             from widgets.filemanager import FileManager
-            from constants import BASE_PATH
         except ImportError:
             # Fallback to old behavior if FileManager not available
             path = self._default_save_path()
             if path.exists():
                 try:
                     self.library = AnimationLibrary.load(path)
+                    self._resolve_library_paths(path)
                     names = self.library.animation_names()
                     self._active_anim_name = names[0] if names else None
                     if not names:
@@ -1886,11 +1891,9 @@ class SpriteAnimationEditor:
                 print(f"No animation file found at {path}")
             return
 
-        # Get initial directory from spritesheet path or use data folder
-        if self.library.spritesheet_path:
-            initial_dir = Path(self.library.spritesheet_path).parent
-        else:
-            initial_dir = self._data_root / "animations"
+        # Load project animation files from the configured data folder.
+        initial_dir = self._data_root / "animations"
+        initial_dir.mkdir(parents=True, exist_ok=True)
 
         # Create file manager for load
         screen = pygame.display.get_surface()
@@ -1905,12 +1908,13 @@ class SpriteAnimationEditor:
             on_select=self._on_load_file_selected,
             mode="open",
             on_cancel=self._close_file_manager,
+            data_root=self._data_root,
         )
 
     def _on_save_file_selected(self, path: Path) -> None:
         """Callback when user selects a file to save to."""
         try:
-            self.library.save(path)
+            self.library.save(path, base_path=self._project_base_path())
             self._last_saved_path = path  # Track for quick save
             print(f"Animations saved to {path}")
         except Exception as e:
@@ -1928,6 +1932,7 @@ class SpriteAnimationEditor:
         if path.exists():
             try:
                 self.library = AnimationLibrary.load(path)
+                self._resolve_library_paths(path)
                 self._last_saved_path = path  # Track loaded file as save location
                 names = self.library.animation_names()
                 self._active_anim_name = names[0] if names else None
@@ -1952,16 +1957,12 @@ class SpriteAnimationEditor:
         # Import FileManager
         try:
             from widgets.filemanager import FileManager
-            from constants import BASE_PATH
         except ImportError as e:
             print(f"Warning: Could not import FileManager: {e}")
             return
 
-        # Get initial directory
-        if self.library.spritesheet_path:
-            initial_dir = Path(self.library.spritesheet_path).parent
-        else:
-            initial_dir = self._data_root / "animations"
+        initial_dir = self._data_root
+        initial_dir.mkdir(parents=True, exist_ok=True)
 
         # Create file manager for loading spritesheet
         screen = cast(Surface, pygame.display.get_surface())
@@ -1976,6 +1977,7 @@ class SpriteAnimationEditor:
             on_select=self._on_spritesheet_selected,
             mode="open",
             on_cancel=self._close_file_manager,
+            data_root=self._data_root,
         )
 
     def _on_spritesheet_selected(self, path: Union[Path, List[Path]]) -> None:
@@ -2021,6 +2023,26 @@ class SpriteAnimationEditor:
             base = Path(self.library.spritesheet_path).stem
             return Path(self.library.spritesheet_path).parent / f"{base}.anim.json"
         return Path.cwd() / "animations.anim.json"
+
+    def _project_base_path(self) -> Optional[Path]:
+        if self._data_root is None:
+            return None
+        return Path(self._data_root).parent
+
+    def _resolve_library_paths(self, json_path: Path) -> None:
+        if not self.library.spritesheet_path:
+            return
+        base_path = self._project_base_path()
+        if base_path is None:
+            return
+        self.library.spritesheet_path = str(
+            resolve_project_path(
+                self.library.spritesheet_path,
+                base_path,
+                fallback_roots=[json_path.parent],
+                must_exist=True,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Integration helpers

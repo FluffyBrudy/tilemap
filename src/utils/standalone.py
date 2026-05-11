@@ -77,14 +77,14 @@ def launch_standalone(
 
             spec = importlib.util.find_spec(module_name)
             if spec is None:
-                error_handler.capture(
-                    f"Module not found: {module_name}", severity="info"
+                error_handler.capture_info(
+                    f"Module not found: {module_name}", context="launch_standalone"
                 )
                 raise ModuleNotFoundError(f"Module not found: {module_name}")
             else:
-                error_handler.capture(f"Module found: {module_name}", severity="info")
+                error_handler.capture_info(f"Module found: {module_name}", context="launch_standalone")
             cmd = [sys.executable, "-m", module_name] + args
-            error_handler.capture(f"Command: {cmd}", severity="info")
+            error_handler.capture_info(f"Command: {cmd}", context="launch_standalone")
 
             # For GUI tools, don't wait - just launch and return immediately
             # GUI apps don't produce stdout/stderr that we can read synchronously
@@ -101,12 +101,12 @@ def launch_standalone(
             # Just return the process - it's running independently
             return proc
         except ModuleNotFoundError as e:
-            error_handler.capture(f"Module not found: {module_name} - {e}", severity="info")
+            error_handler.capture_info(f"Module not found: {module_name} - {e}", context="launch_standalone")
         except ImportError as e:
-            error_handler.capture(f"Import error for {module_name}: {e}", severity="info")
+            error_handler.capture_info(f"Import error for {module_name}: {e}", context="launch_standalone")
         except Exception as e:
             error_handler.capture(
-                e, f"Error launching {module_name}: {type(e).__name__}", severity="info"
+                e, context=f"Error launching {module_name}: {type(e).__name__}", severity="info"
             )
 
     # Strategy 2: direct script path from src/ (only for non-standalone modules)

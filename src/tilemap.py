@@ -3,11 +3,11 @@ from pygame import Rect
 from json import load as JSONLoad, dump as JSONDump
 from pathlib import Path
 
-from constants import BASE_PATH
 from utils.serialization import (
     deserialize_point,
     serialize_point,
 )
+from utils.project_paths import resolve_project_path, to_project_path
 from ttypes.tilemap import TypeObject
 from layers import create_default_layer_manager
 from utils.history import HistoryManager
@@ -241,6 +241,8 @@ class Tilemap:
         if not target_path.parent.exists():
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
+        base_path = self._project_base_path()
+
         save_data = {
             "meta": {
                 "tile_size": serialize_point(self.tile_size),
@@ -277,18 +279,7 @@ class Tilemap:
 
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
             for ts in self.editor.tileset_widget.tilesets:
-                try:
-                    # Try to save path relative to map file directory first
-                    rel = ts.path.relative_to(target_path.parent)
-                    path_str = str(rel)
-                except ValueError:
-                    # If that fails, try relative to BASE_PATH
-                    try:
-                        rel = ts.path.relative_to(BASE_PATH)
-                        path_str = str(rel)
-                    except ValueError:
-                        # If both fail, use absolute path
-                        path_str = str(ts.path)
+                path_str = to_project_path(ts.path, base_path)
 
                 ts_data: Dict[str, Any] = {"path": path_str, "type": ts.tileset_type}
                 if ts.properties:
@@ -306,12 +297,22 @@ class Tilemap:
                 save_data["project_state"]["groups"] = []
 
             for group in self.editor.autotiler.groups:
-                save_data["project_state"]["groups"].append(group.to_dict())
+                save_data["project_state"]["groups"].append(
+                    {
+                        "name": group.name,
+                        "rules": [
+                            self._serialize_autotile_rule(rule, base_path)
+                            for rule in group.rules
+                        ],
+                    }
+                )
 
             # For backward compatibility with simpler loaders, also save flat rules
             save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
-                save_data["project_state"]["rules"].append(rule.to_dict())
+                save_data["project_state"]["rules"].append(
+                    self._serialize_autotile_rule(rule, base_path)
+                )
 
         # Save automap pattern rules
         if (
@@ -386,6 +387,35 @@ class Tilemap:
 
         print(f"Saved to {target_path}")
 
+    def _project_base_path(self) -> Path:
+        base_path = getattr(getattr(self, "editor", None), "base_path", None)
+        if base_path is not None:
+            return Path(base_path)
+
+        data_root = getattr(getattr(self, "editor", None), "data_root", None)
+        if data_root is not None:
+            return Path(data_root).parent
+
+        raise RuntimeError(
+            "Cannot determine base_path - Editor not initialized with settings.json"
+        )
+
+    def _serialize_autotile_rule(self, rule: "AutotileRule", base_path: Path) -> dict:
+        data = rule.to_dict()
+        if data.get("tileset_path"):
+            data["tileset_path"] = to_project_path(data["tileset_path"], base_path)
+        return data
+
+    def _path_matches_project_path(self, stored_path: str, actual_path: Path) -> bool:
+        base_path = self._project_base_path()
+        stored = Path(stored_path).expanduser()
+        actual = Path(actual_path).expanduser()
+
+        if stored.is_absolute():
+            return stored.resolve() == actual.resolve()
+
+        return stored.as_posix() == to_project_path(actual, base_path)
+
     def _resolve_rule_resources(self, rule: "AutotileRule", ts_widget):
         resolved_ts = None
         if rule.tileset_index is not None:
@@ -395,13 +425,7 @@ class Tilemap:
         elif rule.tileset_path:
             for idx, ts in enumerate(ts_widget.tilesets):
                 try:
-                    if str(Path(rule.tileset_path)) == str(ts.path):
-                        rule.tileset_index = idx
-                        resolved_ts = ts
-                        break
-                    if str(Path(rule.tileset_path)) == str(
-                        ts.path.relative_to(BASE_PATH)
-                    ):
+                    if self._path_matches_project_path(rule.tileset_path, ts.path):
                         rule.tileset_index = idx
                         resolved_ts = ts
                         break
@@ -466,7 +490,9 @@ class Tilemap:
             self.editor.tileset_widget.tilesets.clear()
             self.editor.tileset_widget.tileset_map.clear()
 
-            for ts_entry in tilesets:
+            object_tileset_indices = self._object_tileset_indices_from_payload(payload)
+
+            for resource_idx, ts_entry in enumerate(tilesets):
 
                 if isinstance(ts_entry, str):
 
@@ -477,16 +503,15 @@ class Tilemap:
                     path_str = ts_entry.get("path", "")
                     tileset_type = ts_entry.get("type", "tile")
 
-                # Resolve tileset path relative to map file location
-                p = Path(path_str)
-                if not p.is_absolute():
-                    # First try relative to map file directory
-                    map_dir = path.parent
-                    p = map_dir / p
+                if tileset_type != "object" and resource_idx in object_tileset_indices:
+                    tileset_type = "object"
 
-                    # If that doesn't exist, try relative to BASE_PATH (for backward compatibility)
-                    if not p.exists():
-                        p = BASE_PATH / path_str
+                p = resolve_project_path(
+                    path_str,
+                    self._project_base_path(),
+                    fallback_roots=[path.parent],
+                    must_exist=True,
+                )
 
                 # Log error if tileset file not found
                 if not p.exists():
@@ -518,6 +543,8 @@ class Tilemap:
                     import logging
 
                     logging.error(error_msg)
+
+            self.editor.tileset_widget.load_object_tileset_companions()
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             from widgets.autotiler import AutotileGroup, AutotileRule
@@ -617,6 +644,24 @@ class Tilemap:
 
         self.initialized = True
 
+    def _object_tileset_indices_from_payload(self, payload: dict) -> set[int]:
+        """Infer legacy object tileset resources from object-layer references."""
+        indices: set[int] = set()
+        data_section = payload.get("data", {})
+
+        for layer_data in data_section.get("layers", []) or []:
+            if layer_data.get("type") != "object":
+                continue
+
+            for obj_data in (layer_data.get("objects", {}) or {}).values():
+                if obj_data.get("tileset_type") != "object":
+                    continue
+                ttype = obj_data.get("ttype")
+                if isinstance(ttype, int):
+                    indices.add(ttype)
+
+        return indices
+
     def load_map(self, path: Path):
         try:
             payload = self.read_map_payload(path)
@@ -687,10 +732,7 @@ class Tilemap:
                 matched_idx = None
                 for idx, ts in enumerate(ts_widget.tilesets):
                     try:
-                        if str(Path(ttype)) == str(ts.path):
-                            matched_idx = idx
-                            break
-                        if str(Path(ttype)) == str(ts.path.relative_to(BASE_PATH)):
+                        if self._path_matches_project_path(ttype, ts.path):
                             matched_idx = idx
                             break
                     except Exception:

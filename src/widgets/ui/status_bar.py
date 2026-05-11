@@ -20,6 +20,7 @@ from pygame import Rect, Surface
 
 from widgets.ui.theme import COLORS, SHAPE
 from utils.font_manager import font_manager, FontWeight
+from utils.icon_manager import icon_manager
 
 
 class StatusType(Enum):
@@ -94,15 +95,45 @@ class StatusBar:
         return colors.get(status_type, COLORS.text)
     
     def _get_status_icon(self, status_type: StatusType) -> str:
-        """Get icon character for status type"""
+        """Get icon asset name for status type."""
         icons = {
-            StatusType.INFO: "ℹ",
-            StatusType.SUCCESS: "✓",
-            StatusType.WARNING: "⚠",
-            StatusType.ERROR: "✗",
-            StatusType.NEUTRAL: "•",
+            StatusType.INFO: "info",
+            StatusType.SUCCESS: "check",
+            StatusType.WARNING: "warning",
+            StatusType.ERROR: "error",
+            StatusType.NEUTRAL: "radio",
         }
-        return icons.get(status_type, "•")
+        return icons.get(status_type, "radio")
+
+    def _render_fit_text(
+        self,
+        font: pygame.font.Font,
+        text: str,
+        color: Tuple[int, int, int],
+        max_width: int,
+    ) -> Surface:
+        """Render text, truncating with ellipsis when it must fit a fixed width."""
+        if max_width <= 0:
+            return font.render("", True, color)
+
+        surf = font.render(text, True, color)
+        if surf.get_width() <= max_width:
+            return surf
+
+        ellipsis = "..."
+        if font.size(ellipsis)[0] > max_width:
+            return font.render("", True, color)
+
+        low, high = 0, len(text)
+        while low < high:
+            mid = (low + high + 1) // 2
+            candidate = text[:mid].rstrip() + ellipsis
+            if font.size(candidate)[0] <= max_width:
+                low = mid
+            else:
+                high = mid - 1
+
+        return font.render(text[:low].rstrip() + ellipsis, True, color)
     
     def set_status(
         self,
@@ -172,24 +203,17 @@ class StatusBar:
         
         # Icon
         if self.show_icons:
-            icon = self._get_status_icon(self.current.status_type)
             icon_color = self._get_status_color(self.current.status_type)
-            icon_surf = self._font.render(icon, True, icon_color)
-            screen.blit(icon_surf, (x, y - icon_surf.get_height() // 2))
-            x += icon_surf.get_width() + 6
+            icon_surf = icon_manager.get_icon(
+                self._get_status_icon(self.current.status_type),
+                self.icon_size,
+                icon_color,
+            )
+            screen.blit(icon_surf, (x, y - self.icon_size // 2))
+            x += self.icon_size + 6
         
-        # Main message
-        msg_color = self._get_status_color(self.current.status_type)
-        msg_surf = self._font_bold.render(self.current.message, True, msg_color)
-        screen.blit(msg_surf, (x, y - msg_surf.get_height() // 2))
-        x += msg_surf.get_width() + self.message_spacing
-        
-        # Detail
-        if self.current.detail:
-            detail_surf = self._font.render(self.current.detail, True, COLORS.text_dim)
-            screen.blit(detail_surf, (x, y - detail_surf.get_height() // 2))
-        
-        # Timestamp for history items (if showing history)
+        right_limit = self.rect.right - self.padding
+        time_surf = None
         if self.show_timestamp:
             age = time.time() - self.current.timestamp
             if age < 60:
@@ -198,8 +222,37 @@ class StatusBar:
                 time_str = f"{int(age / 60)}m ago"
             else:
                 time_str = f"{int(age / 3600)}h ago"
-            
+
             time_surf = self._font_sm.render(time_str, True, COLORS.text_muted)
+            right_limit -= time_surf.get_width() + self.message_spacing
+
+        # Main message
+        msg_color = self._get_status_color(self.current.status_type)
+        available = right_limit - x
+        detail_reserved = 0
+        if self.current.detail and available > 80:
+            detail_reserved = min(available // 2, 140)
+        msg_surf = self._render_fit_text(
+            self._font_bold,
+            self.current.message,
+            msg_color,
+            max(0, available - detail_reserved),
+        )
+        screen.blit(msg_surf, (x, y - msg_surf.get_height() // 2))
+        x += msg_surf.get_width() + self.message_spacing
+        
+        # Detail
+        if self.current.detail:
+            detail_surf = self._render_fit_text(
+                self._font,
+                self.current.detail,
+                COLORS.text_dim,
+                max(0, right_limit - x),
+            )
+            screen.blit(detail_surf, (x, y - detail_surf.get_height() // 2))
+        
+        # Timestamp for history items (if showing history)
+        if time_surf is not None:
             time_x = self.rect.right - time_surf.get_width() - self.padding
             screen.blit(time_surf, (time_x, y - time_surf.get_height() // 2))
     

@@ -22,7 +22,10 @@ if sys.platform == "darwin":
 
 import pygame
 
-from .editor import ObjectTilesetCollisionEditor
+try:
+    from .editor import ObjectTilesetCollisionEditor
+except ImportError:
+    from plugins.object_tileset_collision.editor import ObjectTilesetCollisionEditor
 from utils import error_handler, error_context
 
 

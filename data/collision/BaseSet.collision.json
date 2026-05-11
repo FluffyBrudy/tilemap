@@ -1,0 +1,37 @@
+{
+  "tileset_name": "BaseSet",
+  "tile_size": [
+    32,
+    32
+  ],
+  "tiles": {
+    "0": {
+      "tile_id": 0,
+      "shapes": [
+        {
+          "type": "polygon",
+          "vertices": [
+            [
+              0,
+              0
+            ],
+            [
+              29.5,
+              29.5
+            ],
+            [
+              0,
+              29.5
+            ],
+            [
+              30.5,
+              0
+            ]
+          ],
+          "one_way": false
+        }
+      ],
+      "properties": {}
+    }
+  }
+}

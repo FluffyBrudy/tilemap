@@ -26,6 +26,8 @@ class TilesetData:
         self.properties: Dict[str, Any] = {}
         # Map of variant_id (int) to property dict
         self.tile_properties: Dict[int, Dict[str, Any]] = {}
+        self.object_collision_path: Optional[Path] = None
+        self.object_collision_data: Optional[Dict[str, Any]] = None
 
 
 class TileSelector:
@@ -251,7 +253,7 @@ class TileSelector:
     def request_add_tileset(self):
         self.editor.open_file_manager(
             on_select=self.on_files_selected,
-            initial_dir=Path.cwd(),
+            initial_dir=getattr(self.editor, "data_root", Path.cwd()),
             allowed_exts=[".png", ".jpg"],
             multi_select=True,
         )
@@ -342,6 +344,7 @@ class TileSelector:
                     tileset_data.tile_properties = {
                         int(k): v for k, v in tile_properties.items()
                     }
+                    self._load_collision_data_for_tileset(tileset_data)
 
                     self.tilesets.append(tileset_data)
                     self.active_idx = len(self.tilesets) - 1
@@ -385,6 +388,7 @@ class TileSelector:
             return
 
         tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
+        self._load_collision_data_for_tileset(tileset_data)
         self.tilesets.append(tileset_data)
         self.active_idx = len(self.tilesets) - 1
         self.tileset_map[self.active_idx] = tileset_data
@@ -405,6 +409,84 @@ class TileSelector:
             self._queue_timer_active = True
         else:
             print("DEBUG: Queue processing complete")
+
+    def _load_collision_data_for_tileset(self, tileset_data: TilesetData) -> None:
+        """Attach existing collision data for tilesets that have sidecar files."""
+        if tileset_data.tileset_type != "object":
+            return
+
+        collision_path = self._object_collision_path_for(tileset_data.path)
+        tileset_data.object_collision_path = collision_path
+
+        if not collision_path.exists():
+            tileset_data.object_collision_data = None
+            return
+
+        try:
+            from plugins.object_tileset_collision.models import (
+                ObjectTilesetCollisionLibrary,
+            )
+
+            library = ObjectTilesetCollisionLibrary.load(collision_path)
+            tileset_data.object_collision_data = library.to_dict()
+            print(f"Loaded object collision data: {collision_path}")
+        except Exception as e:
+            tileset_data.object_collision_data = None
+            error_handler.capture(e, context="load_object_tileset_collision")
+
+    def _object_collision_path_for(self, tileset_path: Path) -> Path:
+        data_root = getattr(self.editor, "data_root", None)
+        if data_root is None:
+            return tileset_path.with_suffix(".object_collision.json")
+
+        config = getattr(self.editor, "config", {}) or {}
+        collision_dir_name = config.get("collision_paths", {}).get(
+            "object_tileset",
+            "collision",
+        )
+        return (
+            Path(data_root)
+            / collision_dir_name
+            / f"{tileset_path.stem}.object_collision.json"
+        )
+
+    def load_object_tileset_companions(self) -> None:
+        """Auto-add object tileset tabs for tile images with object collision data."""
+        previous_active_idx = self.active_idx
+        previous_selected_tile = self.selected_tile
+
+        existing = {
+            (ts.path.resolve(), ts.tileset_type)
+            for ts in self.tilesets
+            if ts.path.exists()
+        }
+
+        for ts in list(self.tilesets):
+            if ts.tileset_type != "tile":
+                continue
+
+            try:
+                resolved_path = ts.path.resolve()
+            except OSError:
+                continue
+
+            if (resolved_path, "object") in existing:
+                continue
+
+            collision_path = self._object_collision_path_for(ts.path)
+            if not collision_path.exists():
+                continue
+
+            print(
+                "Auto-loading object tileset companion from collision sidecar: "
+                f"{collision_path}"
+            )
+            self.load_tileset_from_path(ts.path, "object")
+            existing.add((resolved_path, "object"))
+
+        if 0 <= previous_active_idx < len(self.tilesets):
+            self.active_idx = previous_active_idx
+            self.selected_tile = previous_selected_tile
 
     def remove_tileset(self):
         if 0 <= self.active_idx < len(self.tilesets):
@@ -520,6 +602,8 @@ class TileSelector:
 
         self.draw_tileset_image(screen, ts, img_x, img_y)
 
+        self._draw_object_collision_regions(screen, ts, img_x, img_y)
+
         self._draw_rule_hints(screen, ts, img_x, img_y)
 
         self.draw_hover(screen, ts, img_x, img_y)
@@ -558,6 +642,60 @@ class TileSelector:
 
     def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int):
         screen.blit(ts.surface, (img_x, img_y))
+
+    def _draw_object_collision_regions(
+        self,
+        screen: pygame.Surface,
+        ts: TilesetData,
+        img_x: int,
+        img_y: int,
+    ) -> None:
+        if ts.tileset_type != "object" or not ts.object_collision_data:
+            return
+
+        regions = ts.object_collision_data.get("regions", {})
+        if not isinstance(regions, dict):
+            return
+
+        for region_data in regions.values():
+            if not isinstance(region_data, dict):
+                continue
+            rect_data = region_data.get("region_rect")
+            if not isinstance(rect_data, (list, tuple)) or len(rect_data) != 4:
+                continue
+
+            rx, ry, rw, rh = (int(v) for v in rect_data)
+            region_rect = Rect(img_x + rx, img_y + ry, rw, rh)
+            if not self.view_rect.colliderect(region_rect):
+                continue
+
+            shapes = region_data.get("shapes", [])
+            color = COLORS.success if shapes else COLORS.warning
+            pygame.draw.rect(screen, color, region_rect, 2)
+
+            name = str(region_data.get("name") or region_data.get("region_id") or "")
+            if name:
+                max_label_w = max(0, region_rect.width - 10)
+                display_name = name
+                while display_name and self.font.size(display_name)[0] > max_label_w:
+                    display_name = display_name[:-1].rstrip()
+                if display_name != name and max_label_w > self.font.size("...")[0]:
+                    while (
+                        display_name
+                        and self.font.size(display_name + "...")[0] > max_label_w
+                    ):
+                        display_name = display_name[:-1].rstrip()
+                    display_name += "..."
+                label = self.font.render(display_name, True, COLORS.text)
+                label_bg = Rect(
+                    region_rect.x + 2,
+                    region_rect.y + 2,
+                    label.get_width() + 6,
+                    label.get_height() + 4,
+                )
+                if label_bg.width > 0:
+                    pygame.draw.rect(screen, COLORS.panel, label_bg)
+                    screen.blit(label, (label_bg.x + 3, label_bg.y + 2))
 
     def draw_hover(self, screen, ts: TilesetData, img_x: int, img_y: int):
         if self.hover_pos is None:

@@ -253,13 +253,10 @@ class Editor:
         ]
 
         if initial_dir:
-            try:
-                rel_path = initial_dir.relative_to(self.base_path)
-                args.extend(["--initial-dir", str(rel_path)])
-            except ValueError:
-                args.extend(["--initial-dir", str(initial_dir)])
+            args.extend(["--initial-dir", str(initial_dir.resolve())])
         else:
-            args.extend(["--initial-dir", str(self.base_path / "data")])
+            args.extend(["--initial-dir", str(self.data_root.resolve())])
+        args.extend(["--data-root", str(self.data_root.resolve())])
 
         # Add allowed extensions
         if allowed_exts:
@@ -392,7 +389,7 @@ class Editor:
         if self.tilemap.active_project_path:
             default_name = self.tilemap.active_project_path.name
         self.open_file_manager(
-            initial_dir=self.base_path / "data",
+            initial_dir=self.data_root,
             allowed_exts=[".json"],
             mode="save",
             default_name=default_name,
@@ -414,7 +411,7 @@ class Editor:
     def perform_load(self):
         self.open_file_manager(
             on_select=self.on_map_file_selected,
-            initial_dir=self.base_path / "data",
+            initial_dir=self.data_root,
             allowed_exts=[".json"],
         )
 
@@ -595,6 +592,7 @@ class Editor:
                 tile_size=(32, 32),  # Default tile size
                 consumer=consumer,
             )
+            self.animation_panel._data_root = self.data_root
         except Exception as e:
             error_handler.capture(e, context="init_animation_panel")
             self.notifications.notify(f"Failed to init animation panel: {e}")
@@ -650,17 +648,12 @@ class Editor:
     def launch_animation_editor(self):
         """Launch the sprite animation editor in a new window.
 
-        Uses the active tileset image when one is loaded so the editor opens
-        immediately. If no tileset is selected, a file picker asks for a sheet.
+        Always asks for a spritesheet instead of assuming the active tileset is
+        the animation source.
         """
-        sheet = self._active_tileset_image_path()
-        if sheet is not None:
-            self._launch_animation_editor_with_image(sheet)
-            return
-
         self.open_file_manager(
             on_select=self._launch_animation_editor_with_image,
-            initial_dir=self.base_path / "data",
+            initial_dir=self.data_root,
             allowed_exts=[".png", ".jpg", ".jpeg"],
             mode="open",
         )
@@ -773,7 +766,7 @@ class Editor:
         """
         self.open_file_manager(
             on_select=self._launch_character_collision_editor_with_image,
-            initial_dir=self.base_path / "data",
+            initial_dir=self.data_root,
             allowed_exts=[".png", ".jpg", ".jpeg"],
             mode="open",
         )

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tilemap-editor"
-version = "2.0.9"
+version = "3.0.0"
 description = "Pygame tilemap editor with SVG icons, professional UI, and sprite animation tools"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,8 +12,6 @@ license = { text = "Proprietary" }
 authors = [{ name = "tilemap editor contributors" }]
 dependencies = [
   "pygame-ce>=2.5",
-  "numpy>=1.0",
-  "Pillow>=10.0",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -54,5 +52,18 @@ include = [
 ]
 namespaces = true
 
+[tool.setuptools.package-data]
+"tilemap_editor.assets" = [
+  "icons/*.svg",
+  "fonts/noto/*.ttf",
+  "fonts/jetbrain-fonts/*.ttf"
+]
+
 [tool.setuptools.exclude-package-data]
 "*" = ["*.spec", "*.sh"]
+
+# Keep data-files for backward compatibility (one release cycle)
+[tool.setuptools.data-files]
+"share/tilemap_editor/assets/icons" = ["assets/icons/*.svg"]
+"share/tilemap_editor/assets/fonts/noto" = ["assets/fonts/noto/*.ttf"]
+"share/tilemap_editor/assets/fonts/jetbrain-fonts" = ["assets/fonts/jetbrain-fonts/*.ttf"]

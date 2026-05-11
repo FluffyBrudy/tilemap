@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from utils.project_paths import to_project_path
+
 
 @dataclass
 class AnimationMarker:
@@ -189,9 +191,13 @@ class AnimationLibrary:
     def animation_names(self) -> List[str]:
         return list(self.animations.keys())
 
-    def to_dict(self) -> dict:
+    def to_dict(self, *, base_path: Optional[Path] = None) -> dict:
+        spritesheet_path = self.spritesheet_path
+        if spritesheet_path and base_path is not None:
+            spritesheet_path = to_project_path(spritesheet_path, base_path)
+
         return {
-            "spritesheet_path": self.spritesheet_path,
+            "spritesheet_path": spritesheet_path,
             "tile_size": list(self.tile_size),
             "animations": {
                 name: anim.to_dict() for name, anim in self.animations.items()
@@ -208,10 +214,10 @@ class AnimationLibrary:
             lib.animations[name] = Animation.from_dict(anim_data)
         return lib
 
-    def save(self, path: Path) -> None:
+    def save(self, path: Path, *, base_path: Optional[Path] = None) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(self.to_dict(base_path=base_path), f, indent=2)
 
     @staticmethod
     def load(path: Path) -> AnimationLibrary:

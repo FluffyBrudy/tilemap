@@ -198,17 +198,16 @@ class SpriteAnimRuntime:
 
         img_path = Path(sheet_ref)
         if not img_path.is_absolute():
-            cand = (p.parent / img_path).resolve()
-            if cand.is_file():
-                img_path = cand
-            elif extra_search_base is not None:
-                cand2 = (Path(extra_search_base) / sheet_ref).resolve()
-                if cand2.is_file():
-                    img_path = cand2
-                else:
-                    img_path = cand
-            else:
-                img_path = cand
+            candidates = [(p.parent / img_path).resolve()]
+            if extra_search_base is not None:
+                candidates.append((Path(extra_search_base) / sheet_ref).resolve())
+            candidates.extend((parent / img_path).resolve() for parent in p.parents)
+
+            img_path = candidates[0]
+            for candidate in candidates:
+                if candidate.is_file():
+                    img_path = candidate
+                    break
 
         if not img_path.is_file():
             raise AnimationParseError(f"Spritesheet not found: {sheet_ref!r} (tried {img_path})")

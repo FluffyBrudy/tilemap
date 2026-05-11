@@ -519,6 +519,11 @@ class FileManager:
         self.save_input = InlineTextInput("save", default_name)
         self.is_save_name_focused = False
         self.save_name_rect = pygame.Rect(0, 0, 0, 0)
+        self.new_folder_button_rect = pygame.Rect(0, 0, 0, 0)
+
+        # Rename functionality
+        self.rename_input = InlineTextInput("rename", "")
+        self.renaming_item_idx: Optional[int] = None
 
         self.recents_path = self.data_root / "recents.json" if self.data_root else BASE_PATH / "data" / "recents.json"
         self.recents: List[Path] = self._load_recents()
@@ -658,6 +663,32 @@ class FileManager:
         self.recents = self.recents[:20]
         self._save_recents()
 
+    def _assert_within_data_root(self, path: Path) -> None:
+        """Ensure path is within data_root boundary to prevent arbitrary filesystem writes.
+        
+        Args:
+            path: Path to validate
+            
+        Raises:
+            ValueError: If path is outside data_root when data_root is set
+        """
+        if self.data_root is None:
+            # No data_root set, allow any path (backward compatibility)
+            return
+        
+        try:
+            # Resolve both paths to canonical form to prevent symlink/traversal escapes
+            resolved_path = path.resolve()
+            resolved_root = self.data_root.resolve()
+            
+            # Check if path is relative to data_root
+            resolved_path.relative_to(resolved_root)
+        except ValueError:
+            # Path is outside data_root
+            raise ValueError(
+                f"Operation denied: path '{path}' is outside data_root '{self.data_root}'"
+            )
+
     def go_up(self):
         self.view_mode = "files"
         if self.current_path.parent != self.current_path:
@@ -671,6 +702,133 @@ class FileManager:
                 self._add_to_recents(path)
             self.current_path = path
             self.refresh_items()
+
+    def _create_folder(self):
+        if self.view_mode != "files" or not self.current_path.exists():
+            return
+
+        base_name = "New Folder"
+        candidate = self.current_path / base_name
+        idx = 2
+        while candidate.exists():
+            candidate = self.current_path / f"{base_name} {idx}"
+            idx += 1
+
+        try:
+            # Security: Ensure folder creation is within data_root boundary
+            self._assert_within_data_root(candidate)
+            
+            candidate.mkdir()
+            self.refresh_items()
+            for i, item in enumerate(self.items):
+                if item.path == candidate:
+                    self.selected_index = i
+                    self.selected_indices = [i]
+                    # Automatically enter rename mode for new folder
+                    self._start_rename(i)
+                    break
+        except ValueError as e:
+            # Security violation
+            print(f"Security error: {e}")
+            error_handler.capture(e, context="filemanager_create_folder_security")
+        except Exception as e:
+            error_handler.capture(e, context="filemanager_create_folder")
+
+    def _start_rename(self, item_idx: int) -> None:
+        """Start renaming a file or folder."""
+        if item_idx < 0 or item_idx >= len(self.items):
+            return
+        
+        item = self.items[item_idx]
+        self.renaming_item_idx = item_idx
+        self.rename_input.text = item.name
+        self.rename_input.cursor_pos = len(item.name)
+        self.rename_input.is_focused = True
+        
+        # Deselect search and save inputs
+        self.is_search_focused = False
+        self.search_input.is_focused = False
+        self.is_save_name_focused = False
+        self.save_input.is_focused = False
+
+    def _confirm_rename(self) -> None:
+        """Confirm and apply the rename."""
+        if self.renaming_item_idx is None:
+            return
+        
+        if self.renaming_item_idx < 0 or self.renaming_item_idx >= len(self.items):
+            self._cancel_rename()
+            return
+        
+        item = self.items[self.renaming_item_idx]
+        old_path = item.path
+        new_name = self.rename_input.text.strip()
+        
+        # Validate new name
+        if not new_name:
+            self._cancel_rename()
+            return
+        
+        # Check for invalid characters
+        invalid_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+        if any(char in new_name for char in invalid_chars):
+            print(f"Invalid characters in filename: {new_name}")
+            self._cancel_rename()
+            return
+        
+        # Don't rename if name hasn't changed
+        if new_name == item.name:
+            self._cancel_rename()
+            return
+        
+        new_path = old_path.parent / new_name
+        
+        # Check if target already exists
+        if new_path.exists():
+            print(f"File or folder already exists: {new_name}")
+            self._cancel_rename()
+            return
+        
+        try:
+            # Security: Ensure both old and new paths are within data_root boundary
+            self._assert_within_data_root(old_path)
+            self._assert_within_data_root(new_path)
+            
+            old_path.rename(new_path)
+            
+            # Update recents if this file was in recents
+            if old_path in self.recents:
+                idx = self.recents.index(old_path)
+                self.recents[idx] = new_path
+                self._save_recents()
+            
+            # Refresh and reselect the renamed item
+            old_selected = self.selected_index
+            self.refresh_items()
+            
+            # Try to find and reselect the renamed item
+            for i, refreshed_item in enumerate(self.items):
+                if refreshed_item.path == new_path:
+                    self.selected_index = i
+                    self.selected_indices = [i]
+                    break
+        
+        except ValueError as e:
+            # Security violation
+            print(f"Security error: {e}")
+            error_handler.capture(e, context="filemanager_rename_security")
+        except Exception as e:
+            error_handler.capture(e, context="filemanager_rename")
+            print(f"Failed to rename: {e}")
+        
+        self.renaming_item_idx = None
+        self.rename_input.is_focused = False
+
+    def _cancel_rename(self) -> None:
+        """Cancel rename and revert to original name."""
+        self.renaming_item_idx = None
+        self.rename_input.text = ""
+        self.rename_input.is_focused = False
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse_pos = pygame.mouse.get_pos()
@@ -693,6 +851,11 @@ class FileManager:
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             if not self.is_search_focused and not self.is_save_name_focused:
+                # Cancel rename if active
+                if self.renaming_item_idx is not None:
+                    self._cancel_rename()
+                    return True
+                
                 self.on_cancel_callback()
                 return True
 
@@ -801,6 +964,25 @@ class FileManager:
             if self.save_input.handle_event(event, self.font_main):
                 return True
 
+        # Handle rename input
+        if event.type == pygame.KEYDOWN and self.renaming_item_idx is not None:
+            if event.key == pygame.K_RETURN:
+                self._confirm_rename()
+                return True
+            elif event.key == pygame.K_ESCAPE:
+                self._cancel_rename()
+                return True
+            else:
+                if self.rename_input.handle_event(event, self.font_main):
+                    return True
+
+        # Handle F2 key for rename
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
+            if self.selected_index >= 0 and self.renaming_item_idx is None:
+                if not self.is_search_focused and not self.is_save_name_focused:
+                    self._start_rename(self.selected_index)
+                    return True
+
         if event.type == pygame.KEYDOWN and self.is_search_focused:
             if event.key == pygame.K_ESCAPE:
                 self.is_search_focused = False
@@ -857,6 +1039,8 @@ class FileManager:
                 if ly < self.header_height:
                     if lx < self.sidebar_width + 40:
                         self.go_up()
+                    elif self.new_folder_button_rect.collidepoint(mouse_pos):
+                        self._create_folder()
                     return True
 
                 if ly > self.rect.height - self.footer_height:
@@ -866,6 +1050,12 @@ class FileManager:
                 if file_list_rect.collidepoint(mouse_pos) and self.hover_index != -1:
                     idx = self.hover_index
                     item = self.items[idx]
+
+                    # If currently renaming, clicking elsewhere confirms the rename
+                    if self.renaming_item_idx is not None and idx != self.renaming_item_idx:
+                        self._confirm_rename()
+                        # Don't process the click further, just confirm rename
+                        return True
 
                     current_time = pygame.time.get_ticks()
 
@@ -1277,6 +1467,38 @@ class FileManager:
         else:
             display_parts = list(parts)
         path_str = " / ".join(display_parts)
+        self.new_folder_button_rect = pygame.Rect(rect.right - 110, rect.y + 6, 100, 28)
+        mx, my = pygame.mouse.get_pos()
+        folder_bg = (
+            COLORS["selected"]
+            if self.new_folder_button_rect.collidepoint(mx, my)
+            else COLORS["highlight"]
+        )
+        pygame.draw.rect(screen, folder_bg, self.new_folder_button_rect, border_radius=4)
+        folder_icon = icon_manager.get_icon("folder", 16, COLORS["folder"])
+        screen.blit(
+            folder_icon,
+            folder_icon.get_rect(
+                midleft=(
+                    self.new_folder_button_rect.x + 8,
+                    self.new_folder_button_rect.centery,
+                )
+            ),
+        )
+        folder_text = self.font_bold.render("New", True, COLORS["text_main"])
+        screen.blit(
+            folder_text,
+            folder_text.get_rect(
+                midleft=(
+                    self.new_folder_button_rect.x + 30,
+                    self.new_folder_button_rect.centery,
+                )
+            ),
+        )
+
+        path_max_w = max(30, self.new_folder_button_rect.x - (rect.x + 45) - 10)
+        while path_str and self.font_main.size(path_str)[0] > path_max_w:
+            path_str = "..." + path_str[4:]
         txt = self.font_main.render(path_str, True, COLORS["text_dim"])
         screen.blit(txt, (rect.x + 45, rect.y + 12))
 
@@ -1296,12 +1518,17 @@ class FileManager:
 
             row_rect = pygame.Rect(rect.x, y, rect.width, self.item_height)
 
+            # Highlight selected or hovered items
             if i == self.selected_index or (
                 self.multi_select and i in self.selected_indices
             ):
                 pygame.draw.rect(screen, COLORS["selected"], row_rect)
             elif i == self.hover_index:
                 pygame.draw.rect(screen, COLORS["highlight"], row_rect)
+            
+            # Highlight renaming item with different color
+            if i == self.renaming_item_idx:
+                pygame.draw.rect(screen, (70, 90, 110), row_rect)
 
             icon_size = (20, 20)
             icon_x = rect.x + 10
@@ -1316,11 +1543,53 @@ class FileManager:
 
             screen.blit(icon, (icon_x, icon_y))
 
-            col = (
-                COLORS["text_main"] if i == self.selected_index else COLORS["text_main"]
-            )
-            txt = self.font_main.render(item.name, True, col)
-            screen.blit(txt, (rect.x + 35, y + 7))
+            # Draw item name or rename input
+            if i == self.renaming_item_idx:
+                text_x = rect.x + 35
+                text_y = y + 7
+                
+                # Draw selection highlight if text is selected
+                if self.rename_input.selection_start is not None:
+                    start = min(self.rename_input.selection_start, self.rename_input.cursor_pos)
+                    end = max(self.rename_input.selection_start, self.rename_input.cursor_pos)
+                    
+                    if start != end:
+                        # Calculate pixel positions for selection
+                        prefix = self.rename_input.text[:start]
+                        selected = self.rename_input.text[start:end]
+                        
+                        prefix_width = self.font_main.size(prefix)[0]
+                        selected_width = self.font_main.size(selected)[0]
+                        
+                        # Draw selection background
+                        selection_rect = pygame.Rect(
+                            text_x + prefix_width,
+                            text_y - 2,
+                            selected_width,
+                            self.item_height - 10
+                        )
+                        pygame.draw.rect(screen, COLORS["accent"], selection_rect)
+                
+                # Draw the text
+                display_name = self.rename_input.text
+                cursor_offset = self.rename_input.cursor_pos
+                prefix = display_name[:cursor_offset]
+                
+                # Blinking cursor (only show if no selection or cursor at edge)
+                show_cursor = self.rename_input.selection_start is None or \
+                             self.rename_input.selection_start == self.rename_input.cursor_pos
+                
+                if show_cursor and (pygame.time.get_ticks() // 500) % 2:
+                    display_name = prefix + "|" + display_name[cursor_offset:]
+                
+                txt = self.font_main.render(display_name, True, COLORS["text_main"])
+                screen.blit(txt, (text_x, text_y))
+            else:
+                col = (
+                    COLORS["text_main"] if i == self.selected_index else COLORS["text_main"]
+                )
+                txt = self.font_main.render(item.name, True, col)
+                screen.blit(txt, (rect.x + 35, y + 7))
 
         screen.set_clip(clip)
 

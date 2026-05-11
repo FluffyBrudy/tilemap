@@ -169,4 +169,5 @@ class LayerTypeDialog:
             pygame.draw.circle(surface, self.radio_color, center, radius - 4)
 
         label_surf = self.font_text.render(label, True, self.text_color)
-        surface.blit(label_surf, label_rect)
+        label_pos = label_surf.get_rect(midleft=(label_rect.x, radio_rect.centery))
+        surface.blit(label_surf, label_pos)

@@ -29,7 +29,6 @@ _src_dir = _current_file.parent
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
-from constants import BASE_PATH
 from widgets.filemanager import FileManager
 
 
@@ -43,6 +42,7 @@ class StandaloneFileManager:
         allowed_exts: List[str] = [],
         default_name: str = "",
         multi_select: bool = False,
+        data_root: Optional[Path] = None,
         window_size: tuple[int, int] = (800, 600),
     ):
         pygame.init()
@@ -52,11 +52,17 @@ class StandaloneFileManager:
         self.running = True
         self.window_size = window_size
 
-        # Resolve initial directory relative to BASE_PATH if it's relative
+        # Resolve initial directory relative to the caller cwd if it's relative.
         if initial_dir and not initial_dir.is_absolute():
-            initial_dir = BASE_PATH / initial_dir
+            initial_dir = Path.cwd() / initial_dir
 
-        if not initial_dir or not initial_dir.exists():
+        if data_root and not data_root.is_absolute():
+            data_root = Path.cwd() / data_root
+
+        if initial_dir is None:
+            initial_dir = data_root if data_root else Path.cwd()
+
+        if not initial_dir.exists():
             raise RuntimeError(f"Initial directory does not exist: {initial_dir}")
 
         # Create FileManager widget - fill entire window (no margins for standalone)
@@ -74,6 +80,7 @@ class StandaloneFileManager:
             draw_overlay=False,  # No overlay in standalone mode
             enable_window_drag=False,  # OS handles window dragging
             enable_resize_handles=False,  # OS handles window resizing
+            data_root=data_root,
         )
 
     def _on_select(self, path):
@@ -188,6 +195,12 @@ def main(argv: List[str] | None = None) -> None:
         default="800x600",
         help="Window size as WxH (default: 800x600)",
     )
+    parser.add_argument(
+        "--data-root",
+        type=str,
+        default=None,
+        help="Project data root for file manager preferences/recents",
+    )
 
     args = parser.parse_args(argv)
 
@@ -208,6 +221,7 @@ def main(argv: List[str] | None = None) -> None:
     initial_dir = None
     if args.initial_dir:
         initial_dir = Path(args.initial_dir)
+    data_root = Path(args.data_root) if args.data_root else None
 
     # Create and run standalone file manager
     fm = StandaloneFileManager(
@@ -216,6 +230,7 @@ def main(argv: List[str] | None = None) -> None:
         allowed_exts=allowed_exts,
         default_name=args.default_name,
         multi_select=args.multi_select,
+        data_root=data_root,
         window_size=window_size,
     )
     fm.run()

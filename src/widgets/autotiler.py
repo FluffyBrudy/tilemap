@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, List, Tuple, Set, Optional
 import time
 
 from utils.error_handler import error_handler
+from utils.icon_manager import icon_manager
 from .autotile_template import AutotileTemplateApplier
 from .input import InlineTextInput
 
@@ -770,16 +771,19 @@ class AutotileRuleDesigner:
 
         if total_rules > self.max_visible_rules:
             if self.scroll_offset > 0:
-                arrow_up = "▲"
-                arrow_surf = self.font.render(arrow_up, True, (150, 200, 255))
+                arrow_surf = icon_manager.get_icon(
+                    "arrow-down", 14, (150, 200, 255)
+                )
+                arrow_surf = pygame.transform.rotate(arrow_surf, 180)
                 screen.blit(
                     arrow_surf,
                     (self.rule_list_area.right - 20, self.rule_list_area.y + 5),
                 )
 
             if self.scroll_offset < max_scroll:
-                arrow_down = "▼"
-                arrow_surf = self.font.render(arrow_down, True, (150, 200, 255))
+                arrow_surf = icon_manager.get_icon(
+                    "arrow-down", 14, (150, 200, 255)
+                )
                 screen.blit(
                     arrow_surf,
                     (self.rule_list_area.right - 20, self.rule_list_area.bottom - 20),

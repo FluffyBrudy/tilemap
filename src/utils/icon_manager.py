@@ -5,6 +5,7 @@ Uses pygame's built-in SVG loading (pygame-ce 2.2.0+)
 
 import pygame
 from pathlib import Path
+import sys
 from typing import Dict, Optional, Tuple
 
 
@@ -21,12 +22,59 @@ class IconManager:
 
     def __init__(self):
         if not self._initialized:
-            self._icons_path = Path(__file__).parent.parent.parent / "assets" / "icons"
+            self._icons_path = self._resolve_icons_path()
             self._surface_cache: Dict[
                 Tuple[str, int, Tuple[int, int, int]], pygame.Surface
             ] = {}
             self._available_icons = self._scan_icons()
             IconManager._initialized = True
+
+    def _resolve_icons_path(self) -> Path:
+        """Find bundled icons in package data or fallback locations."""
+        
+        # Strategy 1: Use importlib.resources (Python 3.9+, most reliable)
+        try:
+            from importlib.resources import files
+            pkg_path = files("tilemap_editor.assets") / "icons"
+            # Convert to Path and check if it exists
+            if hasattr(pkg_path, '__fspath__'):
+                path = Path(pkg_path)
+            else:
+                # For older importlib.resources, use str conversion
+                path = Path(str(pkg_path))
+            
+            if path.exists() and any(path.glob("*.svg")):
+                return path
+        except (ImportError, AttributeError, TypeError):
+            pass
+        
+        # Strategy 2: Direct package import (fallback for older Python)
+        try:
+            import tilemap_editor.assets
+            pkg_assets_path = Path(tilemap_editor.assets.__file__).parent / "icons"
+            if pkg_assets_path.exists() and any(pkg_assets_path.glob("*.svg")):
+                return pkg_assets_path
+        except (ImportError, AttributeError):
+            pass
+        
+        # Strategy 3: Old data-files locations (backward compatibility)
+        for prefix in [sys.prefix, sys.base_prefix]:
+            data_files_path = Path(prefix) / "share" / "tilemap_editor" / "assets" / "icons"
+            if data_files_path.exists() and any(data_files_path.glob("*.svg")):
+                return data_files_path
+        
+        # Strategy 4: Development fallback (source tree)
+        dev_path = Path(__file__).parent.parent.parent / "assets" / "icons"
+        if dev_path.exists():
+            return dev_path
+        
+        # Ultimate fallback: return package path even if it doesn't exist yet
+        # (allows graceful degradation with fallback icons)
+        try:
+            import tilemap_editor.assets
+            return Path(tilemap_editor.assets.__file__).parent / "icons"
+        except ImportError:
+            return Path(__file__).parent.parent.parent / "assets" / "icons"
 
     def _scan_icons(self) -> set:
         """Scan available icon files."""

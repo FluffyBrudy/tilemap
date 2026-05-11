@@ -20,6 +20,7 @@ from enum import Enum
 import pygame
 from pygame import Rect
 from utils.font_manager import font_manager, FontWeight
+from utils.icon_manager import icon_manager
 from utils.error_handler import error_handler, error_context
 
 
@@ -718,8 +719,8 @@ class CollisionPainter:
         close_bg = _COLORS["polygon_stroke"] if close_hover else _COLORS["bg"]
         pygame.draw.rect(screen, close_bg, close_btn)
         pygame.draw.rect(screen, _COLORS["border"], close_btn, 1)
-        close_x = self._font.render("×", True, _COLORS["text"])
-        screen.blit(close_x, close_x.get_rect(center=close_btn.center))
+        close_icon = icon_manager.get_icon("close", 14, _COLORS["text"])
+        screen.blit(close_icon, close_icon.get_rect(center=close_btn.center))
         
         # Divider
         pygame.draw.line(

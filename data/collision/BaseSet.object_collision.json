@@ -1,0 +1,36 @@
+{
+  "tileset_name": "BaseSet",
+  "regions": {
+    "region_a07213a2": {
+      "region_id": "region_a07213a2",
+      "region_rect": [
+        171,
+        92,
+        198,
+        86
+      ],
+      "name": "Region",
+      "shapes": [
+        {
+          "type": "polygon",
+          "vertices": [
+            [
+              27.0,
+              37.75
+            ],
+            [
+              150.5,
+              42.25
+            ],
+            [
+              102.0,
+              71.25
+            ]
+          ],
+          "one_way": false
+        }
+      ],
+      "properties": {}
+    }
+  }
+}
