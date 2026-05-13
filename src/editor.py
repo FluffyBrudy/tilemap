@@ -253,10 +253,28 @@ class Editor:
         ]
 
         if initial_dir:
-            args.extend(["--initial-dir", str(initial_dir.resolve())])
+            # Ensure directory exists before resolving to avoid errors
+            if initial_dir.exists():
+                args.extend(["--initial-dir", str(initial_dir.resolve())])
+            else:
+                # Pass as-is if it doesn't exist; StandaloneFileManager will handle the error
+                args.extend(["--initial-dir", str(initial_dir)])
         else:
-            args.extend(["--initial-dir", str(self.data_root.resolve())])
-        args.extend(["--data-root", str(self.data_root.resolve())])
+            # Ensure data_root exists before resolving
+            if self.data_root.exists():
+                args.extend(["--initial-dir", str(self.data_root.resolve())])
+            else:
+                # Create data_root if it doesn't exist
+                self.data_root.mkdir(parents=True, exist_ok=True)
+                args.extend(["--initial-dir", str(self.data_root.resolve())])
+        
+        # Ensure data_root exists before resolving
+        if self.data_root.exists():
+            args.extend(["--data-root", str(self.data_root.resolve())])
+        else:
+            # Create data_root if it doesn't exist
+            self.data_root.mkdir(parents=True, exist_ok=True)
+            args.extend(["--data-root", str(self.data_root.resolve())])
 
         # Add allowed extensions
         if allowed_exts:
