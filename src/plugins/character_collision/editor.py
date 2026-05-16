@@ -29,6 +29,7 @@ from utils.icon_manager import icon_manager
 from utils.error_handler import error_handler, error_context
 from widgets.ui.theme import COLORS, FONTS
 from widgets.ui.draw_utils import draw_panel, draw_button
+from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
 
 
 class CharacterCollisionEditor:
@@ -59,6 +60,14 @@ class CharacterCollisionEditor:
 
         # Shape editor
         self.shape_editor = ShapeEditor(shape_editor_rect, sprite_surface)
+
+        # Collision layer/mask sidebar (toggleable overlay)
+        self.layer_sidebar = CollisionLayerSidebar(
+            rect,
+            max_layers=16,
+            initial_layer=1,
+            initial_mask=0xFFFF,
+        )
 
         # Fonts
         self._font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
@@ -93,6 +102,8 @@ class CharacterCollisionEditor:
         )
 
         self.shape_editor.resize(shape_editor_rect)
+        self.layer_sidebar.resize(rect)
+
         self._init_shape_buttons()
 
     def get_collision_data(self) -> CharacterCollisionData:
@@ -136,12 +147,20 @@ class CharacterCollisionEditor:
         return CharacterCollisionData(
             name=self.character_name,
             shape=shape,
+            properties={
+                "collision_layer": self.layer_sidebar.get_layer(),
+                "collision_mask": self.layer_sidebar.get_mask(),
+            },
         )
 
     def load_collision_data(self, data: CharacterCollisionData) -> None:
         """Load collision data"""
         self.character_name = data.name
         self.shape_editor.load_shape_data(data.shape.to_dict())
+        layer = data.properties.get("collision_layer", 1)
+        mask = data.properties.get("collision_mask", 0xFFFF)
+        self.layer_sidebar.set_layer(layer)
+        self.layer_sidebar.set_mask(mask)
 
     def _get_collision_dir(self) -> Path:
         """Get collision data directory (data_root/character_collision)"""
@@ -175,7 +194,22 @@ class CharacterCollisionEditor:
         if not self.visible:
             return False
 
-        # Let shape editor handle events first
+        # Layer/mask sidebar handles events when open
+        if self.layer_sidebar.handle_event(event):
+            return True
+
+        # Toggle button
+        if self.layer_sidebar.handle_toggle_event(event):
+            return True
+
+        # Keyboard shortcut: L to toggle sidebar
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+            mods = pygame.key.get_mods()
+            if not (mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)):
+                self.layer_sidebar.toggle()
+                return True
+
+        # Let shape editor handle events next
         if self.shape_editor.handle_event(event):
             return True
 
@@ -200,6 +234,12 @@ class CharacterCollisionEditor:
 
         # Draw shape editor
         self.shape_editor.draw(screen)
+
+        # Draw toggle button
+        self.layer_sidebar.draw_toggle_button(screen)
+
+        # Draw collision layer/mask sidebar (only when visible)
+        self.layer_sidebar.draw(screen)
 
         # Draw properties panel
         self._draw_properties(screen)

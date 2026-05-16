@@ -1,0 +1,16 @@
+{
+  "name": "Lancer_Down_Attack",
+  "shape": {
+    "type": "rectangle",
+    "width": 32,
+    "height": 32,
+    "offset": [
+      0,
+      0
+    ]
+  },
+  "properties": {
+    "collision_layer": 1024,
+    "collision_mask": 65527
+  }
+}

@@ -30,7 +30,44 @@
           "one_way": false
         }
       ],
-      "properties": {}
+      "properties": {
+        "collision_layer": 16,
+        "collision_mask": 65535
+      }
+    },
+    "region_f852bbc9": {
+      "region_id": "region_f852bbc9",
+      "region_rect": [
+        269,
+        13,
+        145,
+        66
+      ],
+      "name": "Region 2",
+      "shapes": [
+        {
+          "type": "polygon",
+          "vertices": [
+            [
+              70.5,
+              1.75
+            ],
+            [
+              134.5,
+              0
+            ],
+            [
+              120.5,
+              40.75
+            ]
+          ],
+          "one_way": false
+        }
+      ],
+      "properties": {
+        "collision_layer": 2,
+        "collision_mask": 65535
+      }
     }
   }
 }

@@ -39,6 +39,7 @@ from widgets.ui.status_bar import StatusBar, StatusType
 from widgets.ui.mode_indicator import ModeIndicator, Mode
 from widgets.ui.draw_utils import draw_panel, draw_button
 from widgets.ui.theme import COLORS, FONTS, SHAPE
+from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
 from widgets.input import InlineTextInput
 from utils.font_manager import font_manager, FontWeight
 from utils.icon_manager import icon_manager
@@ -190,6 +191,15 @@ class ObjectTilesetCollisionEditor:
             show_icons=True,
         )
 
+        # Collision layer/mask sidebar (toggleable overlay)
+        self.layer_sidebar = CollisionLayerSidebar(
+            self.rect,
+            max_layers=16,
+            initial_layer=1,
+            initial_mask=0xFFFF,
+            on_changed=self._on_layer_mask_changed,
+        )
+
         # Collision painter (middle area)
         self.painter = CollisionPainter(
             self.painter_rect,
@@ -245,6 +255,8 @@ class ObjectTilesetCollisionEditor:
             self.status_bar.resize(self.status_bar_rect)
         if hasattr(self, 'painter'):
             self.painter.resize(self.painter_rect)
+        if hasattr(self, 'layer_sidebar'):
+            self.layer_sidebar.resize(self.rect)
         
         # Mode indicator position (in toolbar, centered)
         if hasattr(self, 'mode_indicator'):
@@ -332,6 +344,14 @@ class ObjectTilesetCollisionEditor:
         """Called when region selection changes"""
         self._current_region_id = region_id
         
+        # Load layer/mask from region properties
+        if region_id and region_id in self.library.regions:
+            data = self.library.regions[region_id]
+            layer = data.properties.get("collision_layer", 1)
+            mask = data.properties.get("collision_mask", 0xFFFF)
+            self.layer_sidebar.set_layer(layer)
+            self.layer_sidebar.set_mask(mask)
+        
         # Update painter to show selected region
         if self._mode == EditorMode.PAINT_COLLISION:
             self._update_painter_for_current_region()
@@ -365,6 +385,12 @@ class ObjectTilesetCollisionEditor:
             status.collision_count = len(data.shapes)
         
         return status
+
+    def _on_layer_mask_changed(self, layer: int, mask: int) -> None:
+        """Called when collision layer/mask widget changes."""
+        if self._current_region_id and self._current_region_id in self.library.regions:
+            self.library.regions[self._current_region_id].properties["collision_layer"] = layer
+            self.library.regions[self._current_region_id].properties["collision_mask"] = mask
 
     # === Rename Functionality ===
 
@@ -805,6 +831,19 @@ class ObjectTilesetCollisionEditor:
             if self.region_selector.handle_event(event):
                 return True
         
+        # Priority 5.5: Collision layer/mask sidebar (toggle + events when open)
+        if self.layer_sidebar.handle_event(event):
+            return True
+        if self.layer_sidebar.handle_toggle_event(event):
+            return True
+        
+        # Keyboard shortcut: L to toggle sidebar
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+            mods = pygame.key.get_mods()
+            if not (mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)):
+                self.layer_sidebar.toggle()
+                return True
+        
         # Priority 6: Collision painter (paint collision mode)
         if self._mode == EditorMode.PAINT_COLLISION:
             if self.painter.handle_event(event):
@@ -901,6 +940,12 @@ class ObjectTilesetCollisionEditor:
         
         # Draw status bar
         self.status_bar.draw(screen)
+        
+        # Draw toggle button
+        self.layer_sidebar.draw_toggle_button(screen)
+        
+        # Draw collision layer/mask sidebar (only when visible)
+        self.layer_sidebar.draw(screen)
         
         # Draw region selector (bottom)
         self.region_selector.draw(screen)

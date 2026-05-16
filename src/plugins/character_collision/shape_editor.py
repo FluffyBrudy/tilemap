@@ -18,6 +18,7 @@ import pygame
 from pygame import Rect
 from utils.font_manager import font_manager, FontWeight
 from utils.error_handler import error_handler
+from utils.icon_manager import icon_manager
 
 
 ShapeType = Literal["rectangle", "circle", "capsule", "polygon"]
@@ -82,8 +83,14 @@ class ShapeEditor:
         self.dragging_handle: Optional[str] = None
         self.hover_handle: Optional[str] = None
         self._panning = False
+        self._pan_mode = False
         self._pan_start = (0, 0)
         self._pan_start_offset = (0.0, 0.0)
+        self._move_icon_pos: Tuple[int, int] = (0, 0)
+        self._move_icon_hover = False
+        self._dragging_shape = False
+        self._drag_start = (0, 0)
+        self._drag_start_positions: dict = {}
         
         # Settings
         self.show_grid = True
@@ -95,12 +102,34 @@ class ShapeEditor:
         
         # Center the sprite
         self._center_view()
+        self._center_shape()
     
     def _center_view(self) -> None:
         """Center the sprite in the viewport"""
         sw, sh = self.sprite_surface.get_size()
         self.offset_x = (self.rect.w - sw * self.zoom) / 2
         self.offset_y = (self.rect.h - sh * self.zoom) / 2
+    
+    def _center_shape(self) -> None:
+        """Center all shape types on the sprite"""
+        sw, sh = self.sprite_surface.get_size()
+        
+        # Rectangle: 50% of sprite, centered
+        self.rect_w = sw * 0.5
+        self.rect_h = sh * 0.5
+        self.rect_x = (sw - self.rect_w) / 2
+        self.rect_y = (sh - self.rect_h) / 2
+        
+        # Circle: 25% of min dimension, centered
+        self.circle_radius = min(sw, sh) * 0.25
+        self.circle_x = sw / 2
+        self.circle_y = sh / 2
+        
+        # Capsule: 50% height, 15% width radius, centered
+        self.capsule_height = sh * 0.5
+        self.capsule_radius = sw * 0.15
+        self.capsule_x = sw / 2
+        self.capsule_y = (sh - self.capsule_height) / 2
     
     def _ensure_fonts(self) -> None:
         """Initialize fonts"""
@@ -182,6 +211,7 @@ class ShapeEditor:
     def resize(self, rect: Rect) -> None:
         """Update rect"""
         self.rect = rect
+        self._center_view()
     
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle input events"""
@@ -190,6 +220,7 @@ class ShapeEditor:
         if not self.rect.collidepoint(mouse) and event.type not in (
             pygame.MOUSEBUTTONUP,
             pygame.MOUSEMOTION,
+            pygame.KEYDOWN,
         ):
             return False
         
@@ -214,14 +245,25 @@ class ShapeEditor:
                 self.offset_y = self._pan_start_offset[1] + dy
                 return True
             
-            # Update hover state
-            if self.rect.collidepoint(mouse):
-                self.hover_handle = self._find_handle_at(mouse)
-            
-            # Drag handle
+            # Drag handle — always takes priority over shape drag
             if self.dragging_handle:
                 self._drag_handle(mouse)
                 return True
+            
+            # Drag entire shape via move icon
+            if self._dragging_shape:
+                dx = (mouse[0] - self._drag_start[0]) / self.zoom
+                dy = (mouse[1] - self._drag_start[1]) / self.zoom
+                self._apply_shape_delta(dx, dy)
+                return True
+            
+            # Update hover state
+            if self.rect.collidepoint(mouse):
+                handle = self._find_handle_at(mouse)
+                if handle:
+                    self.hover_handle = handle
+                else:
+                    self.hover_handle = None
         
         # Mouse wheel to zoom
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
@@ -238,10 +280,25 @@ class ShapeEditor:
         # Left click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse):
+                # Pan mode — start dragging
+                if self._pan_mode:
+                    self._panning = True
+                    self._pan_start = mouse
+                    self._pan_start_offset = (self.offset_x, self.offset_y)
+                    return True
+                
                 # Check if clicking on handle
                 handle = self._find_handle_at(mouse)
                 if handle:
                     self.dragging_handle = handle
+                    self._dragging_shape = False
+                    return True
+                
+                # Check if clicking on move icon
+                if self._is_on_move_icon(mouse) and not self._pan_mode:
+                    self._dragging_shape = True
+                    self._drag_start = mouse
+                    self._save_shape_positions()
                     return True
                 
                 # Polygon mode - add vertex
@@ -256,6 +313,12 @@ class ShapeEditor:
                     return True
         
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._panning:
+                self._panning = False
+                return True
+            if self._dragging_shape:
+                self._dragging_shape = False
+                return True
             if self.dragging_handle:
                 self.dragging_handle = None
                 return True
@@ -270,7 +333,13 @@ class ShapeEditor:
         
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_g:
+            if event.key == pygame.K_SPACE:
+                self._pan_mode = not self._pan_mode
+                if self._pan_mode:
+                    self._pan_start = mouse
+                    self._pan_start_offset = (self.offset_x, self.offset_y)
+                return True
+            elif event.key == pygame.K_g:
                 self.show_grid = not self.show_grid
                 return True
             elif event.key == pygame.K_r:
@@ -374,6 +443,94 @@ class ShapeEditor:
             elif self.dragging_handle == "radius":
                 self.capsule_radius = max(1, abs(sprite_pos[0] - self.capsule_x))
     
+    def _get_move_icon_pos(self) -> Tuple[int, int]:
+        """Get screen position for the move icon at mid-top of the shape"""
+        if self.shape_type == "rectangle":
+            mid_x = self.rect_x + self.rect_w / 2
+            top_y = self.rect_y
+            return self._sprite_to_screen((mid_x, top_y))
+        elif self.shape_type == "circle":
+            return self._sprite_to_screen((self.circle_x, self.circle_y - self.circle_radius))
+        elif self.shape_type == "capsule":
+            return self._sprite_to_screen((self.capsule_x, self.capsule_y))
+        elif self.shape_type == "polygon" and len(self.polygon_vertices) >= 3:
+            # Top-center of polygon bounding box
+            min_y = min(v[1] for v in self.polygon_vertices)
+            mid_x = (min(v[0] for v in self.polygon_vertices) + max(v[0] for v in self.polygon_vertices)) / 2
+            return self._sprite_to_screen((mid_x, min_y))
+        return (0, 0)
+    
+    def _is_on_move_icon(self, screen_pos: Tuple[int, int]) -> bool:
+        """Check if a screen position is on the move icon (16x16 hit area)"""
+        icon_pos = self._get_move_icon_pos()
+        self._move_icon_pos = icon_pos
+        hit_size = 16
+        half = hit_size // 2
+        return (icon_pos[0] - half <= screen_pos[0] <= icon_pos[0] + half and
+                icon_pos[1] - half <= screen_pos[1] <= icon_pos[1] + half)
+    
+    def _is_inside_shape(self, screen_pos: Tuple[int, int]) -> bool:
+        """Check if a screen position is inside the current shape (for hover detection)"""
+        if self.shape_type == "rectangle":
+            tl = self._sprite_to_screen((self.rect_x, self.rect_y))
+            br = self._sprite_to_screen((self.rect_x + self.rect_w, self.rect_y + self.rect_h))
+            return (tl[0] <= screen_pos[0] <= br[0] and tl[1] <= screen_pos[1] <= br[1])
+        
+        elif self.shape_type == "circle":
+            center = self._sprite_to_screen((self.circle_x, self.circle_y))
+            radius = int(self.circle_radius * self.zoom)
+            return math.hypot(screen_pos[0] - center[0], screen_pos[1] - center[1]) <= radius
+        
+        elif self.shape_type == "capsule":
+            top = self._sprite_to_screen((self.capsule_x, self.capsule_y))
+            bottom = self._sprite_to_screen((self.capsule_x, self.capsule_y + self.capsule_height))
+            radius = int(self.capsule_radius * self.zoom)
+            if math.hypot(screen_pos[0] - top[0], screen_pos[1] - top[1]) <= radius:
+                return True
+            if math.hypot(screen_pos[0] - bottom[0], screen_pos[1] - bottom[1]) <= radius:
+                return True
+            left = top[0] - radius
+            right = top[0] + radius
+            return left <= screen_pos[0] <= right and top[1] <= screen_pos[1] <= bottom[1]
+        
+        elif self.shape_type == "polygon" and len(self.polygon_vertices) >= 3:
+            px, py = self._screen_to_sprite(screen_pos)
+            n = len(self.polygon_vertices)
+            inside = False
+            j = n - 1
+            for i in range(n):
+                vi = self.polygon_vertices[i]
+                vj = self.polygon_vertices[j]
+                if ((vi[1] > py) != (vj[1] > py)) and (
+                    px < (vj[0] - vi[0]) * (py - vi[1]) / (vj[1] - vi[1]) + vi[0]
+                ):
+                    inside = not inside
+                j = i
+            return inside
+        
+        return False
+    
+    def _save_shape_positions(self) -> None:
+        """Store current shape positions for delta calculation"""
+        self._drag_start_positions = {
+            "rect": (self.rect_x, self.rect_y),
+            "circle": (self.circle_x, self.circle_y),
+            "capsule": (self.capsule_x, self.capsule_y),
+        }
+    
+    def _apply_shape_delta(self, dx: float, dy: float) -> None:
+        """Move shape by delta in sprite-local coordinates"""
+        sw, sh = self.sprite_surface.get_size()
+        if self.shape_type == "rectangle":
+            self.rect_x = max(0, min(sw - self.rect_w, self._drag_start_positions["rect"][0] + dx))
+            self.rect_y = max(0, min(sh - self.rect_h, self._drag_start_positions["rect"][1] + dy))
+        elif self.shape_type == "circle":
+            self.circle_x = max(0, min(sw, self._drag_start_positions["circle"][0] + dx))
+            self.circle_y = max(0, min(sh, self._drag_start_positions["circle"][1] + dy))
+        elif self.shape_type == "capsule":
+            self.capsule_x = max(0, min(sw, self._drag_start_positions["capsule"][0] + dx))
+            self.capsule_y = max(0, min(sh - self.capsule_height, self._drag_start_positions["capsule"][1] + dy))
+    
     def draw(self, screen: pygame.Surface) -> None:
         """Draw the shape editor"""
         self._ensure_fonts()
@@ -405,6 +562,14 @@ class ShapeEditor:
         
         # Draw shape
         self._draw_shape(screen)
+        
+        # Draw move icon at mid-top when hovering over shape body
+        if not self._pan_mode and not self.hover_handle:
+            mouse = pygame.mouse.get_pos()
+            if self.rect.collidepoint(mouse) and self._is_inside_shape(mouse):
+                icon_pos = self._get_move_icon_pos()
+                icon = icon_manager.get_icon("ToolMove", 16, _COLORS["shape_stroke"])
+                screen.blit(icon, (icon_pos[0] - 8, icon_pos[1] - 8))
         
         # Draw status
         self._draw_status(screen)
@@ -544,6 +709,10 @@ class ShapeEditor:
     def _draw_status(self, screen: pygame.Surface) -> None:
         """Draw status text"""
         lines = []
+        
+        if self._pan_mode:
+            lines.append("PANNING MODE — drag to pan | Space to exit")
+        
         lines.append(f"Shape: {self.shape_type.upper()} | Zoom: {self.zoom:.1f}x")
         
         if self.shape_type == "polygon":
@@ -554,7 +723,7 @@ class ShapeEditor:
             else:
                 lines.append("Click to add vertices")
         
-        lines.append("G: toggle grid | R: reset view | Mouse wheel: zoom")
+        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: zoom")
         
         y = self.rect.y + 5
         for line in lines:
