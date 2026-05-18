@@ -33,7 +33,6 @@ py-modules = [
   "event_map",
   "layers",
   "tilemap",
-  "tilemap_parser",
   "standalone_filemanager",
   "standalone_image_viewer",
   "standalone_automap",

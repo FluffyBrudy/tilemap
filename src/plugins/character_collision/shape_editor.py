@@ -413,14 +413,22 @@ class ShapeEditor:
         
         if self.shape_type == "rectangle":
             if self.dragging_handle == "tl":
+                old_right = self.rect_x + self.rect_w
+                old_bottom = self.rect_y + self.rect_h
                 self.rect_x = max(0, min(sw, sprite_pos[0]))
                 self.rect_y = max(0, min(sh, sprite_pos[1]))
+                self.rect_w = max(1, old_right - self.rect_x)
+                self.rect_h = max(1, old_bottom - self.rect_y)
             elif self.dragging_handle == "tr":
+                old_bottom = self.rect_y + self.rect_h
                 self.rect_w = max(1, sprite_pos[0] - self.rect_x)
                 self.rect_y = max(0, min(sh, sprite_pos[1]))
+                self.rect_h = max(1, old_bottom - self.rect_y)
             elif self.dragging_handle == "bl":
+                old_right = self.rect_x + self.rect_w
                 self.rect_x = max(0, min(sw, sprite_pos[0]))
                 self.rect_h = max(1, sprite_pos[1] - self.rect_y)
+                self.rect_w = max(1, old_right - self.rect_x)
             elif self.dragging_handle == "br":
                 self.rect_w = max(1, sprite_pos[0] - self.rect_x)
                 self.rect_h = max(1, sprite_pos[1] - self.rect_y)
@@ -437,7 +445,9 @@ class ShapeEditor:
         
         elif self.shape_type == "capsule":
             if self.dragging_handle == "top":
+                old_bottom = self.capsule_y + self.capsule_height
                 self.capsule_y = max(0, min(sh, sprite_pos[1]))
+                self.capsule_height = max(1, old_bottom - self.capsule_y)
             elif self.dragging_handle == "bottom":
                 self.capsule_height = max(1, sprite_pos[1] - self.capsule_y)
             elif self.dragging_handle == "radius":
