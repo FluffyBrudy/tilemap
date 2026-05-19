@@ -117,7 +117,7 @@ def _load_project_config() -> tuple[Path, Path, dict]:
     data_root = base_path / data_path
 
     if not data_root.exists():
-        raise RuntimeError(f"Data directory not found: {data_root}. Run 'tilemap-editor init' to create project structure.")
+        raise RuntimeError(f"Data directory not found: {data_root}. Run 'tilemap-editor init' to create the project structure.")
 
     # Initialize error_handler with proper paths
     log_root = data_root / "logs"

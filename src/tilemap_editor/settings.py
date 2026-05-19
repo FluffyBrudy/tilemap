@@ -42,6 +42,10 @@ def init_settings(generate_main: bool = False) -> None:
 
     print(f"Created settings.json at {settings_file}")
 
+    data_dir = base_path / settings["data_path"]
+    data_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Created data directory: {data_dir}")
+
     if generate_main:
         generate_main_file()
 
