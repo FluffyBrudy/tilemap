@@ -226,11 +226,13 @@ class Tilemap:
             if path_obj.is_absolute():
                 target_path = path_obj
             else:
-                data_root = getattr(getattr(self, 'editor', None), 'data_root', None)
+                data_root = getattr(getattr(self, "editor", None), "data_root", None)
                 if data_root:
                     target_path = data_root / path_obj
                 else:
-                    raise RuntimeError("Cannot determine data_root - Editor not initialized with settings.json")
+                    raise RuntimeError(
+                        "Cannot determine data_root - Editor not initialized with settings.json"
+                    )
 
             self.active_project_path = target_path
         elif self.active_project_path:
@@ -241,7 +243,7 @@ class Tilemap:
         if not target_path.parent.exists():
             target_path.parent.mkdir(parents=True, exist_ok=True)
 
-        base_path = self._project_base_path()
+        map_dir = target_path.parent
 
         save_data = {
             "meta": {
@@ -279,7 +281,7 @@ class Tilemap:
 
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
             for ts in self.editor.tileset_widget.tilesets:
-                path_str = to_project_path(ts.path, base_path)
+                path_str = to_project_path(ts.path, map_dir)
 
                 ts_data: Dict[str, Any] = {"path": path_str, "type": ts.tileset_type}
                 if ts.properties:
@@ -301,7 +303,7 @@ class Tilemap:
                     {
                         "name": group.name,
                         "rules": [
-                            self._serialize_autotile_rule(rule, base_path)
+                            self._serialize_autotile_rule(rule, map_dir)
                             for rule in group.rules
                         ],
                     }
@@ -407,14 +409,16 @@ class Tilemap:
         return data
 
     def _path_matches_project_path(self, stored_path: str, actual_path: Path) -> bool:
-        base_path = self._project_base_path()
+        map_dir = (
+            self.active_project_path.parent if self.active_project_path else Path()
+        )
         stored = Path(stored_path).expanduser()
         actual = Path(actual_path).expanduser()
 
         if stored.is_absolute():
             return stored.resolve() == actual.resolve()
 
-        return stored.as_posix() == to_project_path(actual, base_path)
+        return stored.as_posix() == to_project_path(actual, map_dir)
 
     def _resolve_rule_resources(self, rule: "AutotileRule", ts_widget):
         resolved_ts = None
