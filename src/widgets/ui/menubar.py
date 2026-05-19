@@ -44,6 +44,7 @@ class MenuBar:
                     MenuAction(
                         "Save As...", self.editor.open_save_as_dialog, "Ctrl+Shift+S"
                     ),
+                    MenuAction("Map Properties", self.editor.open_map_properties),
                     MenuAction("Exit", self.editor.exit_editor),
                 ],
             ),

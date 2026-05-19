@@ -21,6 +21,7 @@ from tilemap import Tilemap
 from widgets.autotiler import AutotileRuleDesigner
 from widgets.regex_automap_designer import RegexAutomapDesigner
 from widgets.mapsetup import MapSetup
+from widgets.map_properties import MapPropertiesDialog
 from widgets.tile_selector import TileSelector
 from widgets.tile_grid import TileGrid
 from widgets.layer_selector import LayerSelector
@@ -166,6 +167,7 @@ class Editor:
         self.tileset_h = 300
         self.layer_h = 150
         self.map_setup_widget: Optional[MapSetup] = None
+        self.map_properties_dialog: Optional[MapPropertiesDialog] = None
         self.tileset_widget: Optional[TileSelector] = None
         self.layer_widget: Optional[LayerSelector] = None
         self.tile_grid_widget: Optional[TileGrid] = None
@@ -231,6 +233,7 @@ class Editor:
         center_y = (self.height - 400) // 2
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
         self.map_setup_widget.visible = False
+        self.map_properties_dialog = MapPropertiesDialog(self, Rect(center_x, center_y, 400, 260))
 
     def open_file_manager(
         self,
@@ -542,6 +545,8 @@ class Editor:
             center_x = (width - 400) // 2
             center_y = (height - 400) // 2
             self.map_setup_widget.resize(Rect(center_x, center_y, 400, 400))
+            if self.map_properties_dialog:
+                self.map_properties_dialog.resize(Rect(center_x, center_y, 400, 260))
 
     def toggle_auto_autotile(self):
         self.autotile_mode = not self.autotile_mode
@@ -554,6 +559,12 @@ class Editor:
             logger.warning({"msg": "map_setup_widget is not initialized"})
             return
         self.map_setup_widget.visible = True
+
+    def open_map_properties(self):
+        if self.map_properties_dialog is None:
+            logger.warning({"msg": "map_properties_dialog is not initialized"})
+            return
+        self.map_properties_dialog.open()
 
     def toggle_autotiler(self):
         if self.autotiler.visible:
@@ -919,6 +930,10 @@ class Editor:
                 if self.map_setup_widget.handle_event(event):
                     continue
 
+            if self.map_properties_dialog and self.map_properties_dialog.visible:
+                if self.map_properties_dialog.handle_event(event):
+                    continue
+
             if self.property_editor and self.property_editor.active:
                 if self.property_editor.handle_event(event):
                     continue
@@ -1088,6 +1103,9 @@ class Editor:
                 overlay.fill((0, 0, 0, 150))
                 self.screen.blit(overlay, (0, 0))
                 self.map_setup_widget.draw(self.screen)
+
+            if self.map_properties_dialog and self.map_properties_dialog.visible:
+                self.map_properties_dialog.draw(self.screen)
 
             if self.save_input.active:
                 self.save_input.draw(self.screen)

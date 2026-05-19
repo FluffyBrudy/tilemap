@@ -40,6 +40,7 @@ class Tilemap:
         self.map_size = (50, 50)
         self.initial_map_size = (50, 50)
         self.initialized = False
+        self.render_scale = 1.0
 
         self.active_project_path: Optional[Path] = None
         self.history = HistoryManager()
@@ -59,11 +60,12 @@ class Tilemap:
         if active_layer:
             active_layer.tiles = value
 
-    def init_size(self, tile_size: "TCoor", map_size: "TCoor"):
+    def init_size(self, tile_size: "TCoor", map_size: "TCoor", render_scale: float = 1.0):
         self.tile_size = tile_size
         self.map_size = map_size
         self.initial_map_size = map_size  # Store what user initially setup
         self.initialized = True
+        self.render_scale = render_scale
         self.active_project_path = None
 
         # Clear and create default layer
@@ -85,6 +87,7 @@ class Tilemap:
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size,
+            "render_scale": self.render_scale,
         }
         self.history.save_state(state, description)
 
@@ -101,6 +104,7 @@ class Tilemap:
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size,
+            "render_scale": self.render_scale,
         }
         prev_state = self.history.undo(current_state)
         if prev_state:
@@ -119,6 +123,7 @@ class Tilemap:
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size,
+            "render_scale": self.render_scale,
         }
         next_state = self.history.redo(current_state)
         if next_state:
@@ -181,6 +186,7 @@ class Tilemap:
         self.layer_manager.active_layer_idx = state["active_layer_idx"]
         self.tile_size = state["tile_size"]
         self.map_size = state["map_size"]
+        self.render_scale = state.get("render_scale", 1.0)
 
         if hasattr(self.editor, "autotiler"):
             designer = self.editor.autotiler
@@ -269,6 +275,7 @@ class Tilemap:
                     )
                 ),
                 "initial_map_size": serialize_point(self.initial_map_size),
+                "render_scale": self.render_scale,
                 "version": "1.1",
             },
             "resources": {"tilesets": []},
@@ -470,6 +477,7 @@ class Tilemap:
                 self.initial_map_size = deserialize_point(self.initial_map_size)
             else:
                 self.initial_map_size = self.map_size
+            self.render_scale = float(payload["meta"].get("render_scale", 1.0))
         except (KeyError, ValueError) as e:
             raise ValueError(f"Error loading map metadata: {e}") from e
 

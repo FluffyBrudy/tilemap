@@ -44,6 +44,12 @@ class TileGrid:
     def tile_size(self):
         return self.editor.tilemap.tile_size
 
+    @property
+    def effective_tile_size(self):
+        tw, th = self.editor.tilemap.tile_size
+        rs = self.editor.tilemap.render_scale
+        return (tw * rs, th * rs)
+
     def screen_to_world(self, pos: Tuple[int, int]) -> Tuple[int, int]:
         wx = (pos[0] - self.rect.x) / self.zoom_level + self.scroll_x
         wy = (pos[1] - self.rect.y) / self.zoom_level + self.scroll_y
@@ -51,8 +57,8 @@ class TileGrid:
 
     def get_grid_pos(self, pos: Tuple[int, int]) -> Tuple[int, int]:
         wx, wy = self.screen_to_world(pos)
-        tile_w, tile_h = self.tile_size
-        return int(wx // tile_w), int(wy // tile_h)
+        eff_w, eff_h = self.effective_tile_size
+        return int(wx // eff_w), int(wy // eff_h)
 
     def update(self):
         event_blocked = not self.editor.save_input.active
@@ -117,8 +123,9 @@ class TileGrid:
         self.scroll_y = 0
 
     def fit_to_map(self):
-        world_w = self.editor.tilemap.map_size[0] * self.tile_size[0]
-        world_h = self.editor.tilemap.map_size[1] * self.tile_size[1]
+        eff_w, eff_h = self.effective_tile_size
+        world_w = self.editor.tilemap.map_size[0] * eff_w
+        world_h = self.editor.tilemap.map_size[1] * eff_h
         if world_w <= 0 or world_h <= 0:
             return
         zoom_x = self.rect.width / world_w
@@ -129,8 +136,9 @@ class TileGrid:
 
     def clamp_view(self):
         self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level))
-        world_w = self.editor.tilemap.map_size[0] * self.tile_size[0]
-        world_h = self.editor.tilemap.map_size[1] * self.tile_size[1]
+        eff_w, eff_h = self.effective_tile_size
+        world_w = self.editor.tilemap.map_size[0] * eff_w
+        world_h = self.editor.tilemap.map_size[1] * eff_h
         view_w = self.rect.width / self.zoom_level
         view_h = self.rect.height / self.zoom_level
 
@@ -631,16 +639,18 @@ class TileGrid:
             if not self.hover_cell:
                 return
 
+            eff_w, eff_h = self.effective_tile_size
+
             if is_erasing:
                 # Eraser preview for tiles: show a red box based on eraser_size
                 screen_x = (
-                    self.hover_cell[0] * tile_w - self.scroll_x
+                    self.hover_cell[0] * eff_w - self.scroll_x
                 ) * self.zoom_level + self.rect.x
                 screen_y = (
-                    self.hover_cell[1] * tile_h - self.scroll_y
+                    self.hover_cell[1] * eff_h - self.scroll_y
                 ) * self.zoom_level + self.rect.y
-                size_w = int(tile_w * self.eraser_size * self.zoom_level)
-                size_h = int(tile_h * self.eraser_size * self.zoom_level)
+                size_w = int(eff_w * self.eraser_size * self.zoom_level)
+                size_h = int(eff_h * self.eraser_size * self.zoom_level)
                 dest_rect = Rect(screen_x, screen_y, size_w, size_h)
                 pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
                 return
@@ -654,14 +664,14 @@ class TileGrid:
                     row = self.hover_cell[1] + y_off
 
                     screen_x = (
-                        col * tile_w - self.scroll_x
+                        col * eff_w - self.scroll_x
                     ) * self.zoom_level + self.rect.x
                     screen_y = (
-                        row * tile_h - self.scroll_y
+                        row * eff_h - self.scroll_y
                     ) * self.zoom_level + self.rect.y
 
-                    dest_w = int(tile_w * self.zoom_level)
-                    dest_h = int(tile_h * self.zoom_level)
+                    dest_w = int(eff_w * self.zoom_level)
+                    dest_h = int(eff_h * self.zoom_level)
                     dest_rect = Rect(screen_x, screen_y, dest_w, dest_h)
 
                     pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
@@ -683,12 +693,12 @@ class TileGrid:
                         pass
 
     def _draw_grid(self, screen):
-        tile_w, tile_h = self.tile_size
+        eff_w, eff_h = self.effective_tile_size
         map_w, map_h = self.editor.tilemap.map_size
 
         # World coordinates of map boundaries
-        map_world_w = map_w * tile_w
-        map_world_h = map_h * tile_h
+        map_world_w = map_w * eff_w
+        map_world_h = map_h * eff_h
 
         # Screen coordinates of map top-left
         map_screen_x = (0 - self.scroll_x) * self.zoom_level + self.rect.x
@@ -703,15 +713,15 @@ class TileGrid:
         visible_world_w = self.rect.width / self.zoom_level
         visible_world_h = self.rect.height / self.zoom_level
 
-        start_col = max(0, int(self.scroll_x // tile_w))
-        end_col = min(map_w, int((self.scroll_x + visible_world_w) // tile_w) + 1)
+        start_col = max(0, int(self.scroll_x // eff_w))
+        end_col = min(map_w, int((self.scroll_x + visible_world_w) // eff_w) + 1)
 
-        start_row = max(0, int(self.scroll_y // tile_h))
-        end_row = min(map_h, int((self.scroll_y + visible_world_h) // tile_h) + 1)
+        start_row = max(0, int(self.scroll_y // eff_h))
+        end_row = min(map_h, int((self.scroll_y + visible_world_h) // eff_h) + 1)
 
         # Draw vertical lines (at column positions)
         for col in range(start_col, end_col + 1):
-            x = (col * tile_w - self.scroll_x) * self.zoom_level + self.rect.x
+            x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
             # Line goes from top of map to bottom of map (clipping handled by surface clip)
             pygame.draw.line(
                 screen,
@@ -722,7 +732,7 @@ class TileGrid:
 
         # Draw horizontal lines (at row positions)
         for row in range(start_row, end_row + 1):
-            y = (row * tile_h - self.scroll_y) * self.zoom_level + self.rect.y
+            y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
             # Line goes from left of map to right of map
             pygame.draw.line(
                 screen,
@@ -782,20 +792,21 @@ class TileGrid:
             return
 
         tile_w, tile_h = self.tile_size
+        rs = tilemap.render_scale
+        eff_w = tile_w * rs
+        eff_h = tile_h * rs
+
         map_w, map_h = tilemap.map_size
 
-        # visible world bounds
+        # visible world bounds (in effective world space)
         visible_world_w = self.rect.width / self.zoom_level
         visible_world_h = self.rect.height / self.zoom_level
 
-        start_col = max(0, int(self.scroll_x // tile_w))
-        end_col = min(map_w, int((self.scroll_x + visible_world_w) // tile_w) + 1)
+        start_col = max(0, int(self.scroll_x // eff_w))
+        end_col = min(map_w, int((self.scroll_x + visible_world_w) // eff_w) + 1)
 
-        start_row = max(0, int(self.scroll_y // tile_h))
-        end_row = min(map_h, int((self.scroll_y + visible_world_h) // tile_h) + 1)
-
-        # Debug boundaries
-        # print(f"DEBUG: Rendering rows {start_row}-{end_row}, cols {start_col}-{end_col} | Scroll: ({self.scroll_x}, {self.scroll_y}) | Zoom: {self.zoom_level}")
+        start_row = max(0, int(self.scroll_y // eff_h))
+        end_row = min(map_h, int((self.scroll_y + visible_world_h) // eff_h) + 1)
 
         assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
@@ -836,29 +847,28 @@ class TileGrid:
                         variant_id = tile["variant"]
                         sheet_w = base_surf.get_width()
 
+                        # Source rect always uses logical tile size
                         sheet_cols = sheet_w // tile_w
-
                         src_x = (variant_id % sheet_cols) * tile_w
                         src_y = (variant_id // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
+                        # Dest position uses effective (scaled) tile size
                         dest_x = (
-                            (x * tile_w - self.scroll_x) * self.zoom_level
+                            (x * eff_w - self.scroll_x) * self.zoom_level
                             + self.rect.x
                             + draw_offset_x
                         )
                         dest_y = (
-                            (y * tile_h - self.scroll_y) * self.zoom_level
+                            (y * eff_h - self.scroll_y) * self.zoom_level
                             + self.rect.y
                             + draw_offset_y
                         )
 
-                        # Scale if zooming
-                        if self.zoom_level != 1.0:
-                            scaled_w = int(tile_w * self.zoom_level)
-                            scaled_h = int(tile_h * self.zoom_level)
-
-                            # Bounds check
+                        # Scale if zoomed or render_scaled
+                        if self.zoom_level != 1.0 or rs != 1.0:
+                            scaled_w = int(eff_w * self.zoom_level)
+                            scaled_h = int(eff_h * self.zoom_level)
                             if base_surf.get_rect().contains(src_rect):
                                 sub = base_surf.subsurface(src_rect)
                                 scaled_sub = pygame.transform.scale(
@@ -895,19 +905,19 @@ class TileGrid:
                         src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
                     dest_x = (
-                        (obj_x - self.scroll_x) * self.zoom_level
+                        (obj_x * rs - self.scroll_x) * self.zoom_level
                         + self.rect.x
                         + draw_offset_x
                     )
                     dest_y = (
-                        (obj_y - self.scroll_y) * self.zoom_level
+                        (obj_y * rs - self.scroll_y) * self.zoom_level
                         + self.rect.y
                         + draw_offset_y
                     )
 
-                    if self.zoom_level != 1.0:
-                        scaled_w = int(obj_w * self.zoom_level)
-                        scaled_h = int(obj_h * self.zoom_level)
+                    if self.zoom_level != 1.0 or rs != 1.0:
+                        scaled_w = int(obj_w * rs * self.zoom_level)
+                        scaled_h = int(obj_h * rs * self.zoom_level)
                         if base_surf.get_rect().contains(src_rect):
                             sub = base_surf.subsurface(src_rect)
                             scaled_sub = pygame.transform.scale(
