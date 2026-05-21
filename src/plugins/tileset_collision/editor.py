@@ -65,6 +65,13 @@ class TilesetCollisionEditor:
             self._tile_size = tile_size
             self._tileset_name = "No Tileset"
 
+        # Clipboard for copy/paste
+        self._clipboard_polygons: List[List[Tuple[float, float]]] = []
+        self._clipboard_one_way_flags: List[bool] = []
+        self._toast_message: Optional[str] = None
+        self._toast_timer: float = 0.0
+        self._toast_start: int = 0
+
         # Collision library
         self.library = TilesetCollisionLibrary(
             tileset_name=self._tileset_name,
@@ -99,6 +106,7 @@ class TilesetCollisionEditor:
         # Painted tiles list state
         self.painted_tiles_scroll = 0
         self.painted_tiles_hover = -1
+        self._painted_tiles_focused = False
 
         # Collision painter
         self.painter = CollisionPainter(
@@ -127,6 +135,8 @@ class TilesetCollisionEditor:
         buttons_config = [
             {"label": "Save", "action": self._save_collision},
             {"label": "Load", "action": self._load_collision},
+            {"label": "Copy", "action": self._copy_collision},
+            {"label": "Paste", "action": self._paste_collision},
             {"label": "Clear", "action": self._clear_current},
         ]
 
@@ -163,6 +173,29 @@ class TilesetCollisionEditor:
     def _clear_current(self) -> None:
         """Clear collision for selected tiles via toolbar button"""
         self.clear_current_selection()
+
+    def _copy_collision(self) -> None:
+        """Copy collision shapes from current tile to clipboard"""
+        polygons = self.painter.get_polygons()
+        one_way_flags = self.painter.get_one_way_flags()
+        self._clipboard_polygons = [list(p) for p in polygons]
+        self._clipboard_one_way_flags = list(one_way_flags)
+        count = len(self._clipboard_polygons)
+        self._show_toast(f"Copied {count} shape{'s' if count != 1 else ''}")
+
+    def _paste_collision(self) -> None:
+        """Paste collision shapes from clipboard to selected tiles"""
+        if not self._clipboard_polygons:
+            self._show_toast("Clipboard is empty")
+            return
+        self.painter.set_polygons(
+            [list(p) for p in self._clipboard_polygons],
+            list(self._clipboard_one_way_flags),
+        )
+        self._save_tile_collision_for_selection()
+        tile_count = len(self._selected_tiles)
+        shape_count = len(self._clipboard_polygons)
+        self._show_toast(f"Pasted {shape_count} shape{'s' if shape_count != 1 else ''} to {tile_count} tile{'s' if tile_count != 1 else ''}")
 
     def _position_toolbar_buttons(self) -> None:
         """Position toolbar buttons in the toolbar area"""
@@ -332,6 +365,38 @@ class TilesetCollisionEditor:
         """Callback when polygon is modified"""
         self._save_tile_collision_for_selection()
 
+    def _show_toast(self, message: str, duration: float = 2.5) -> None:
+        """Show a temporary status toast on screen"""
+        self._toast_message = message
+        self._toast_timer = duration * 1000.0
+        self._toast_start = pygame.time.get_ticks()
+
+    def _draw_toast(self, screen: Surface) -> None:
+        """Draw the toast message with fade-out"""
+        if self._toast_message is None:
+            return
+
+        elapsed = pygame.time.get_ticks() - self._toast_start
+        remaining = self._toast_timer - elapsed
+        fade_ms = 500.0
+        alpha = 255 if remaining >= fade_ms else max(0, min(255, int((remaining / fade_ms) * 255)))
+        label = self._font.render(self._toast_message, True, (255, 255, 255))
+        padding = 12
+        bg_rect = Rect(
+            self.rect.centerx - label.get_width() // 2 - padding,
+            self.rect.centery - 60,
+            label.get_width() + padding * 2,
+            label.get_height() + padding,
+        )
+
+        bg = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, min(200, alpha)))
+        pygame.draw.rect(bg, (80, 180, 255, alpha), bg.get_rect(), 1)
+        screen.blit(bg, bg_rect)
+
+        label.set_alpha(alpha)
+        screen.blit(label, label.get_rect(center=bg_rect.center))
+
     def clear_current_selection(self) -> None:
         """Clear collision for currently selected tiles"""
         self.painter.set_polygons([], [])
@@ -446,6 +511,7 @@ class TilesetCollisionEditor:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self._space_held:
                 tile_id = self._get_tile_at_mouse(mouse)
                 if tile_id is not None:
+                    self._painted_tiles_focused = False
                     # Ctrl/Cmd for multi-select
                     mods = pygame.key.get_mods()
                     if mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA):
@@ -484,6 +550,7 @@ class TilesetCollisionEditor:
         # Painted tiles list interaction
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.painted_tiles_rect.collidepoint(mouse):
+                self._painted_tiles_focused = True
                 painted_tiles = sorted(self.library.tiles.keys())
                 rel_y = mouse[1] - self.painted_tiles_rect.y + self.painted_tiles_scroll
                 tile_height = 64
@@ -503,13 +570,22 @@ class TilesetCollisionEditor:
 
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
+            mods = pygame.key.get_mods()
+            ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
+
+            if ctrl:
+                if event.key == pygame.K_c:
+                    self._copy_collision()
+                    return True
+                elif event.key == pygame.K_v:
+                    self._paste_collision()
+                    return True
+
             if event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
-                if pygame.key.get_mods() & (pygame.KMOD_LSHIFT):
-                    # Shift+Delete: clear current selection
+                if mods & (pygame.KMOD_LSHIFT) or self._painted_tiles_focused:
                     self.clear_current_selection()
                     return True
             elif event.key == pygame.K_h:
-                # H: Recenter tileset view
                 self._recenter_tileset_view()
                 return True
 
@@ -577,6 +653,15 @@ class TilesetCollisionEditor:
         # Draw tileset selector
         self._draw_tileset_selector(screen)
 
+        # Draw toast overlay
+        self._draw_toast(screen)
+
+        # Update toast timer
+        if self._toast_message is not None:
+            elapsed = pygame.time.get_ticks() - self._toast_start
+            if elapsed >= self._toast_timer:
+                self._toast_message = None
+
     def _draw_toolbar(self, screen: Surface) -> None:
         """Draw the toolbar"""
         draw_panel(screen, self.toolbar_rect, COLORS.header, COLORS.border)
@@ -590,18 +675,19 @@ class TilesetCollisionEditor:
         )
         screen.blit(title, (self.toolbar_rect.x + 10, self.toolbar_rect.y + 10))
 
-        # Collision count
+        # Draw toolbar buttons
+        if hasattr(self, '_toolbar_buttons'):
+            self._draw_toolbar_buttons(screen)
+
+        # Collision count (after buttons to avoid overlap)
         collision_count = len(self.library.tiles)
         count_text = self._font_sm.render(
             f"{collision_count} painted",
             True,
             COLORS.text_dim
         )
-        screen.blit(count_text, (self.toolbar_rect.right - count_text.get_width() - 10, self.toolbar_rect.y + 12))
-
-        # Draw toolbar buttons
-        if hasattr(self, '_toolbar_buttons'):
-            self._draw_toolbar_buttons(screen)
+        start_x = self.toolbar_rect.right - (len(self._toolbar_buttons) * 90) - 10
+        screen.blit(count_text, (start_x - count_text.get_width() - 15, self.toolbar_rect.y + 12))
 
     def _draw_painted_tiles_list(self, screen: Surface) -> None:
         """Draw the list of tiles with collision"""
@@ -610,6 +696,9 @@ class TilesetCollisionEditor:
         # Header
         header_text = self._font_sm.render("Painted Tiles", True, COLORS.text)
         screen.blit(header_text, (self.painted_tiles_rect.x + 8, self.painted_tiles_rect.y + 8))
+        if self._painted_tiles_focused:
+            hint = self._font_sm.render("Backspace to clear", True, COLORS.accent)
+            screen.blit(hint, (self.painted_tiles_rect.right - hint.get_width() - 8, self.painted_tiles_rect.y + 8))
 
         clip = screen.get_clip()
         screen.set_clip(self.painted_tiles_rect)
