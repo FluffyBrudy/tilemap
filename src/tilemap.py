@@ -302,7 +302,7 @@ class Tilemap:
                 save_data["resources"]["tilesets"].append(ts_data)
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
-            if not hasattr(save_data["project_state"], "groups"):
+            if "groups" not in save_data["project_state"]:
                 save_data["project_state"]["groups"] = []
 
             for group in self.editor.autotiler.groups:
@@ -320,7 +320,7 @@ class Tilemap:
             save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(
-                    self._serialize_autotile_rule(rule, base_path)
+                    self._serialize_autotile_rule(rule, map_dir)
                 )
 
         # Save automap pattern rules
@@ -409,10 +409,10 @@ class Tilemap:
             "Cannot determine base_path - Editor not initialized with settings.json"
         )
 
-    def _serialize_autotile_rule(self, rule: "AutotileRule", base_path: Path) -> dict:
+    def _serialize_autotile_rule(self, rule: "AutotileRule", save_dir: Path) -> dict:
         data = rule.to_dict()
         if data.get("tileset_path"):
-            data["tileset_path"] = to_project_path(data["tileset_path"], base_path)
+            data["tileset_path"] = to_project_path(data["tileset_path"], save_dir)
         return data
 
     def _path_matches_project_path(self, stored_path: str, actual_path: Path) -> bool:
@@ -520,8 +520,8 @@ class Tilemap:
 
                 p = resolve_project_path(
                     path_str,
-                    self._project_base_path(),
-                    fallback_roots=[path.parent],
+                    path.parent,
+                    fallback_roots=[self._project_base_path()],
                     must_exist=True,
                 )
 
