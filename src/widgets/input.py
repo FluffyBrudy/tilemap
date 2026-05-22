@@ -269,6 +269,25 @@ class InlineTextInput:
         self.cursor_pos = 0
         self.selection_start = None
 
+    def delete_word_left(self) -> None:
+        """Delete from cursor to the start of the current or previous word."""
+        if self.selection_start is not None:
+            start = min(self.selection_start, self.cursor_pos)
+            end = max(self.selection_start, self.cursor_pos)
+            self.text = self.text[:start] + self.text[end:]
+            self.cursor_pos = start
+            self.selection_start = None
+            return
+        if self.cursor_pos == 0:
+            return
+        idx = self.cursor_pos - 1
+        while idx >= 0 and self.text[idx] == ' ':
+            idx -= 1
+        while idx >= 0 and self.text[idx] != ' ':
+            idx -= 1
+        self.text = self.text[:idx + 1] + self.text[self.cursor_pos:]
+        self.cursor_pos = idx + 1
+
     def handle_event(self, event: pygame.event.Event, font: pygame.font.Font) -> bool:
         if not self.is_focused:
             return False
@@ -280,6 +299,9 @@ class InlineTextInput:
 
             if ctrl_held and event.key == pygame.K_a:
                 self.select_all()
+                return True
+            if ctrl_held and event.key == pygame.K_BACKSPACE:
+                self.delete_word_left()
                 return True
 
             if event.key == pygame.K_LEFT:

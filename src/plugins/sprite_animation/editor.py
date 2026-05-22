@@ -24,6 +24,7 @@ from utils.font_manager import font_manager, FontWeight, FontStyle
 from utils.icon_manager import icon_manager
 from utils.project_paths import resolve_project_path
 from utils import error_handler
+from widgets.input import InlineTextInput
 from .clipboard_util import copy_plain_text
 from .frame_picker import FramePicker
 from .models import Animation, AnimationLibrary, AnimationMarker
@@ -178,7 +179,7 @@ class SpriteAnimationEditor:
 
         # Rename state
         self._renaming = False
-        self._rename_text = ""
+        self._rename_input = InlineTextInput("anim_rename", "")
 
         # Toolbar button rects (calculated in draw)
         self._btn_new = Rect(0, 0, 0, 0)
@@ -439,16 +440,13 @@ class SpriteAnimationEditor:
                     return True
                 elif event.key == pygame.K_ESCAPE:
                     self._renaming = False
+                    self._rename_input.is_focused = False
                     return True
-                elif event.key == pygame.K_BACKSPACE:
-                    self._rename_text = self._rename_text[:-1]
-                    return True
-                elif event.unicode and len(self._rename_text) < 30:
-                    self._rename_text += event.unicode
+                elif self._rename_input.handle_event(event, self._font):
                     return True
 
         # Frame width input
-        if self._editing_frame_width:
+        elif self._editing_frame_width:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
@@ -486,7 +484,7 @@ class SpriteAnimationEditor:
                     return True
 
         # Frame height input
-        if self._editing_frame_height:
+        elif self._editing_frame_height:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
@@ -523,7 +521,7 @@ class SpriteAnimationEditor:
                     return True
 
         # Offset X input
-        if self._editing_offset_x:
+        elif self._editing_offset_x:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
@@ -567,7 +565,7 @@ class SpriteAnimationEditor:
                     return True
 
         # Offset Y input
-        if self._editing_offset_y:
+        elif self._editing_offset_y:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
@@ -693,6 +691,8 @@ class SpriteAnimationEditor:
             if self._btn_frame_width.collidepoint(mouse):
                 self._editing_frame_width = True
                 self._editing_frame_height = False
+                self._editing_offset_x = False
+                self._editing_offset_y = False
                 self._renaming = False
                 return True
 
@@ -832,10 +832,32 @@ class SpriteAnimationEditor:
         )
 
         if self._renaming:
-            display_text = self._rename_text + (
-                "|" if (pygame.time.get_ticks() // 400) % 2 else ""
-            )
-            lbl = self._font.render(display_text, True, (255, 220, 100))
+            if self._renaming:
+                display_name = self._rename_input.text
+                cursor_offset = self._rename_input.cursor_pos
+
+                # Draw selection highlight
+                if self._rename_input.selection_start is not None:
+                    start = min(self._rename_input.selection_start, cursor_offset)
+                    end = max(self._rename_input.selection_start, cursor_offset)
+                    if start != end:
+                        prefix = display_name[:start]
+                        selected = display_name[start:end]
+                        prefix_w = self._font.size(prefix)[0]
+                        select_w = self._font.size(selected)[0]
+                        sel_rect = Rect(
+                            self._btn_anim_selector.x + 4 + prefix_w,
+                            self._btn_anim_selector.y + 5,
+                            select_w,
+                            self._btn_anim_selector.height - 10,
+                        )
+                        pygame.draw.rect(screen, (60, 100, 160), sel_rect)
+
+                # Blinking cursor
+                if (pygame.time.get_ticks() // 400) % 2:
+                    display_name = display_name[:cursor_offset] + "|" + display_name[cursor_offset:]
+
+                lbl = self._font.render(display_name, True, (255, 220, 100))
         else:
             display_name = self._active_anim_name or "(none)"
             if len(display_name) > 16:
@@ -1297,15 +1319,23 @@ class SpriteAnimationEditor:
     def _start_rename(self) -> None:
         if self._active_anim_name:
             self._renaming = True
-            self._rename_text = self._active_anim_name
+            self._rename_input.text = self._active_anim_name
+            self._rename_input.cursor_pos = len(self._active_anim_name)
+            self._rename_input.selection_start = None
+            self._rename_input.is_focused = True
+            self._editing_frame_width = False
+            self._editing_frame_height = False
+            self._editing_offset_x = False
+            self._editing_offset_y = False
             self._dropdown_open = False
 
     def _commit_rename(self) -> None:
-        new_name = self._rename_text.strip()
+        new_name = self._rename_input.text.strip()
         if new_name and self._active_anim_name and new_name != self._active_anim_name:
             if self.library.rename_animation(self._active_anim_name, new_name):
                 self._active_anim_name = new_name
         self._renaming = False
+        self._rename_input.is_focused = False
 
     def _apply_frame_size(self) -> None:
         """Apply the frame size from input fields and update the frame picker."""
@@ -1558,10 +1588,12 @@ class SpriteAnimationEditor:
         if self._btn_meta_key.collidepoint(mouse):
             self._clear_text_editing_focus()
             self._editing_meta_key = True
+            self._editing_meta_value = False
             return True
         if self._btn_meta_value.collidepoint(mouse):
             self._clear_text_editing_focus()
             self._editing_meta_value = True
+            self._editing_meta_key = False
             return True
 
         return True
@@ -1572,6 +1604,8 @@ class SpriteAnimationEditor:
         self._editing_frame_height = False
         self._editing_offset_x = False
         self._editing_offset_y = False
+        self._editing_meta_key = False
+        self._editing_meta_value = False
 
     def _handle_meta_key_keydown(self, event: pygame.event.Event) -> bool:
         if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
@@ -1809,7 +1843,7 @@ class SpriteAnimationEditor:
             print(f"Warning: Could not import FileManager: {e}")
             path = self._default_save_path()
             try:
-                self.library.save(path, base_path=self._project_base_path())
+                self.library.save(path, base_path=path.parent)
                 self._last_saved_path = path
                 print(f"Animations saved to {path}")
             except Exception as e:
@@ -1856,7 +1890,7 @@ class SpriteAnimationEditor:
             try:
                 self.library.save(
                     self._last_saved_path,
-                    base_path=self._project_base_path(),
+                    base_path=self._last_saved_path.parent,
                 )
                 print(f"Animations saved to {self._last_saved_path}")
             except Exception as e:
@@ -1914,7 +1948,7 @@ class SpriteAnimationEditor:
     def _on_save_file_selected(self, path: Path) -> None:
         """Callback when user selects a file to save to."""
         try:
-            self.library.save(path, base_path=self._project_base_path())
+            self.library.save(path, base_path=path.parent)
             self._last_saved_path = path  # Track for quick save
             print(f"Animations saved to {path}")
         except Exception as e:
@@ -2032,14 +2066,12 @@ class SpriteAnimationEditor:
     def _resolve_library_paths(self, json_path: Path) -> None:
         if not self.library.spritesheet_path:
             return
-        base_path = self._project_base_path()
-        if base_path is None:
-            return
+        project_root = self._project_base_path()
         self.library.spritesheet_path = str(
             resolve_project_path(
                 self.library.spritesheet_path,
-                base_path,
-                fallback_roots=[json_path.parent],
+                json_path.parent,
+                fallback_roots=[project_root] if project_root else None,
                 must_exist=True,
             )
         )

@@ -1381,6 +1381,7 @@ class FileManager:
         if not search_text and not self.is_search_focused:
             search_text = "Search files..."
             search_col = COLORS["text_dim"]
+            txt = self.font_main.render(search_text, True, search_col)
         else:
             search_col = COLORS["text_main"]
             if self.is_search_focused:
@@ -1391,12 +1392,14 @@ class FileManager:
                     display_text = prefix + "|" + display_text[cursor_offset:]
                 else:
                     display_text = prefix + " " + display_text[cursor_offset:]
-                txt = self.font_main.render(display_text, True, search_col)
+                txt = self.font_main.render(display_text or " ", True, search_col)
             else:
                 txt = self.font_main.render(search_text, True, search_col)
 
-        txt = self.font_main.render(search_text, True, search_col)
+        clip = screen.get_clip()
+        screen.set_clip(self.search_rect)
         screen.blit(txt, (self.search_rect.x + 8, self.search_rect.y + 4))
+        screen.set_clip(clip)
 
         file_list_rect = self._get_file_list_rect()
         self._draw_file_list(screen, file_list_rect)
@@ -1657,7 +1660,10 @@ class FileManager:
                 else:
                     display_name = prefix + " " + display_name[cursor_offset:]
             txt = self.font_main.render(display_name, True, COLORS["text_main"])
+            clip = screen.get_clip()
+            screen.set_clip(self.save_name_rect)
             screen.blit(txt, (self.save_name_rect.x + 6, self.save_name_rect.y + 6))
+            screen.set_clip(clip)
 
     def _draw_icon_arrow_up(self, surface, cx, cy, color):
         points = [(cx, cy - 5), (cx - 5, cy + 2), (cx + 5, cy + 2)]
