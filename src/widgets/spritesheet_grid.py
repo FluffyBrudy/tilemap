@@ -319,41 +319,64 @@ class SpritesheetGrid:
 
     def paste_at(self, target_idx: int, tiles: Dict[int, Surface]) -> None:
         """Write previously copied tiles preserving 2D layout.
-        
+
         Each source tile's row/col offset from the selection origin is
-        preserved at the target grid position. Out-of-bounds writes are
-        skipped.
+        preserved at the target grid position. The canvas auto-expands
+        if pasted tiles exceed the current bounds.
         """
         if not tiles or target_idx < 0 or target_idx >= self.total_frames:
             return
-        self.snapshot()
-        # Origin of the copied selection (min row & col across all source indices)
+
         src_origin_col = min(idx % self.cols for idx in tiles)
         src_origin_row = min(idx // self.cols for idx in tiles)
         target_col = target_idx % self.cols
         target_row = target_idx // self.cols
 
+        # Pre-compute all destination positions using current grid dimensions
+        dst_positions: List[Tuple[int, int, Surface]] = []
         for src_idx, tile in tiles.items():
-            src_col = src_idx % self.cols - src_origin_col
-            src_row = src_idx // self.cols - src_origin_row
-            dst_col = target_col + src_col
-            dst_row = target_row + src_row
-            if dst_col < 0 or dst_col >= self.cols or dst_row < 0 or dst_row >= self.rows:
+            src_c = src_idx % self.cols - src_origin_col
+            src_r = src_idx // self.cols - src_origin_row
+            dst_c = target_col + src_c
+            dst_r = target_row + src_r
+            dst_positions.append((dst_r, dst_c, tile))
+
+        # Expand canvas if needed
+        need_rows = max(r for r, _, _ in dst_positions) + 1
+        need_cols = max(c for _, c, _ in dst_positions) + 1
+        if need_rows > self.rows or need_cols > self.cols:
+            self._expand_canvas(max(self.cols, need_cols), max(self.rows, need_rows))
+
+        self.snapshot()
+        for dst_row, dst_col, tile in dst_positions:
+            if dst_row >= self.rows or dst_col >= self.cols:
                 continue
             dst = dst_row * self.cols + dst_col
-            if dst >= self.total_frames:
-                continue
             self.write_tile(dst, tile)
 
         # Select the newly pasted tiles
         self.selected_indices = set()
-        for src_idx in tiles:
-            src_col = src_idx % self.cols - src_origin_col
-            src_row = src_idx // self.cols - src_origin_row
-            dst_col = target_col + src_col
-            dst_row = target_row + src_row
-            if 0 <= dst_col < self.cols and 0 <= dst_row < self.rows:
+        for dst_row, dst_col, _ in dst_positions:
+            if dst_row < self.rows and dst_col < self.cols:
                 self.selected_indices.add(dst_row * self.cols + dst_col)
+
+    def _expand_canvas(self, new_cols: int, new_rows: int) -> None:
+        """Enlarge the spritesheet surface to fit new_cols x new_rows tiles."""
+        tw, th = self.tile_size
+        new_w = new_cols * tw + self.grid_offset_x
+        new_h = new_rows * th + self.grid_offset_y
+        new_surf = Surface((new_w, new_h), SRCALPHA)
+        new_surf.fill((0, 0, 0, 0))
+        new_surf.blit(self.surface, (0, 0))
+        self.surface = new_surf
+        self.cols = new_cols
+        self.rows = new_rows
+        self.total_frames = new_cols * new_rows
+        # Reset view so the new area is visible
+        if self.offset_x < 0:
+            self.offset_x = 0
+        if self.offset_y < 0:
+            self.offset_y = 0
 
     def save_png(self, path: Path) -> None:
         """Write current surface to a PNG file."""
