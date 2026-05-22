@@ -241,8 +241,8 @@ class CharacterCollisionEditor:
         if self.layer_sidebar.handle_toggle_event(event):
             return True
 
-        # Keyboard shortcut: L to toggle sidebar
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+        # Keyboard shortcut: L to toggle sidebar (skip when name input is focused)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_l and not self._name_input.is_focused:
             mods = pygame.key.get_mods()
             if not (mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)):
                 self.layer_sidebar.toggle()
