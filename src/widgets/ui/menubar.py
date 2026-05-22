@@ -67,6 +67,7 @@ class MenuBar:
                         "Ctrl+M",
                     ),
                     MenuAction("Animation Editor", self.editor.launch_animation_editor),
+                    MenuAction("Sprite Editor", self.editor.launch_sprite_editor),
                     MenuAction("Character Collision Editor", self.editor.launch_character_collision_editor),
                     MenuAction(
                         "Autotile Active Layer", self.editor.autotile_active, "Ctrl+A"

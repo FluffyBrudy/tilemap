@@ -1,8 +1,10 @@
 import pygame
 from pygame import Surface, Rect, Color
 from typing import TYPE_CHECKING, List, Tuple, Set, Optional
+from pathlib import Path
 import time
 
+from constants import BASE_PATH
 from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
 from .autotile_template import AutotileTemplateApplier

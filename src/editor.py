@@ -40,6 +40,7 @@ from utils import error_handler, error_context
 
 if TYPE_CHECKING:
     from plugins.sprite_animation import SpriteAnimationEditor
+    from plugins.sprite_editor import SpriteEditor
 
 
 def setup_error_logging():
@@ -709,6 +710,29 @@ class Editor:
             )
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
+
+    def launch_sprite_editor(self):
+        """Launch the sprite editor in a new window."""
+        self.open_file_manager(
+            on_select=self._launch_sprite_editor_with_image,
+            initial_dir=self.data_root,
+            allowed_exts=[".png", ".jpg", ".jpeg"],
+            mode="open",
+        )
+
+    def _launch_sprite_editor_with_image(self, path: Path):
+        """Launch sprite editor subprocess with selected image."""
+        try:
+            args = [str(path), "--data-root", str(self.data_root)]
+            process = launch_standalone(
+                "plugins.sprite_editor.standalone",
+                args,
+                cwd=self.base_path,
+                text=True,
+            )
+            self.child_processes.append(process)
+        except Exception as e:
+            error_handler.capture(e, context="launch_sprite_editor")
 
     def launch_collision_editor(self, tileset_type: str = "tile"):
         """Launch the collision editor in a new window.

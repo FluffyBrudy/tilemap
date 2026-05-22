@@ -58,6 +58,8 @@ class TileSelector:
         self._pending_tileset_queue: List[Tuple[Path, pygame.Surface]] = []
         self._queue_timer_active = False
 
+        self.zoom: float = 1.0
+
         btn_y = y + h - 35
         self.btn_collision = Rect(x + w - 105, btn_y, 30, 30)
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
@@ -201,8 +203,8 @@ class TileSelector:
                 img_x = self.view_rect.x + ts.offset[0]
                 img_y = self.view_rect.y + ts.offset[1]
 
-                rel_x = mouse_pos[0] - img_x
-                rel_y = mouse_pos[1] - img_y
+                rel_x = (mouse_pos[0] - img_x) / self.zoom
+                rel_y = (mouse_pos[1] - img_y) / self.zoom
 
                 if (
                     0 <= rel_x < ts.surface.get_width()
@@ -224,8 +226,21 @@ class TileSelector:
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 mods = pygame.key.get_mods()
                 shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
                 ts = self.tilesets[self.active_idx]
-                if shift_held:
+                if ctrl_held or meta_held:
+                    old_zoom = self.zoom
+                    self.zoom = max(0.25, min(self.zoom * (1.0 + event.y * 0.15), 8.0))
+                    # Zoom toward mouse
+                    mx, my = pygame.mouse.get_pos()
+                    img_x = self.view_rect.x + ts.offset[0]
+                    img_y = self.view_rect.y + ts.offset[1]
+                    img_rel_x = (mx - img_x) / old_zoom
+                    img_rel_y = (my - img_y) / old_zoom
+                    ts.offset[0] = int(mx - self.view_rect.x - img_rel_x * self.zoom)
+                    ts.offset[1] = int(my - self.view_rect.y - img_rel_y * self.zoom)
+                elif shift_held:
                     ts.offset[0] += event.y * 20
                 else:
                     ts.offset[1] += event.y * 20
@@ -600,7 +615,7 @@ class TileSelector:
         img_x = self.view_rect.x + ts.offset[0]
         img_y = self.view_rect.y + ts.offset[1]
 
-        self.draw_tileset_image(screen, ts, img_x, img_y)
+        self.draw_tileset_image(screen, ts, img_x, img_y, self.zoom)
 
         self._draw_object_collision_regions(screen, ts, img_x, img_y)
 
@@ -620,28 +635,37 @@ class TileSelector:
         sheet_w = ts.surface.get_width()
         cols = sheet_w // tw
 
+        ztw = int(tw * self.zoom)
+        zth = int(th * self.zoom)
+
         for vid in self.rule_hints:
             col = vid % cols
             row = vid // cols
 
-            x = img_x + col * tw
-            y = img_y + row * th
+            x = img_x + col * ztw
+            y = img_y + row * zth
 
             if (
                 x > self.view_rect.right
-                or x + tw < self.view_rect.x
+                or x + ztw < self.view_rect.x
                 or y > self.view_rect.bottom
-                or y + th < self.view_rect.y
+                or y + zth < self.view_rect.y
             ):
                 continue
 
             points = [(x, y), (x + 10, y), (x, y + 10)]
             pygame.draw.polygon(screen, (0, 255, 255), points)
 
-            pygame.draw.rect(screen, (0, 255, 255), Rect(x, y, tw, th), 1)
+            pygame.draw.rect(screen, (0, 255, 255), Rect(x, y, ztw, zth), 1)
 
-    def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int):
-        screen.blit(ts.surface, (img_x, img_y))
+    def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int, zoom: float = 1.0):
+        if zoom != 1.0:
+            w = int(ts.surface.get_width() * zoom)
+            h = int(ts.surface.get_height() * zoom)
+            scaled = pygame.transform.smoothscale(ts.surface, (w, h))
+            screen.blit(scaled, (img_x, img_y))
+        else:
+            screen.blit(ts.surface, (img_x, img_y))
 
     def _draw_object_collision_regions(
         self,
@@ -665,7 +689,12 @@ class TileSelector:
                 continue
 
             rx, ry, rw, rh = (int(v) for v in rect_data)
-            region_rect = Rect(img_x + rx, img_y + ry, rw, rh)
+            region_rect = Rect(
+                int(img_x + rx * self.zoom),
+                int(img_y + ry * self.zoom),
+                int(rw * self.zoom),
+                int(rh * self.zoom),
+            )
             if not self.view_rect.colliderect(region_rect):
                 continue
 
@@ -702,14 +731,21 @@ class TileSelector:
             return
         tw, th = self.editor.tilemap.tile_size
         col, row = self.hover_pos
-        hover_rect = Rect(img_x + col * tw, img_y + row * th, tw, th)
+        ztw = int(tw * self.zoom)
+        zth = int(th * self.zoom)
+        hover_rect = Rect(img_x + col * ztw, img_y + row * zth, ztw, zth)
         pygame.draw.rect(screen, COLORS.warning, hover_rect, 2)
 
     def draw_selection(self, screen, img_x: int, img_y: int):
         if not self.selected_tile:
             return
         sx, sy, sw, sh = self.selected_tile
-        sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
+        sel_rect = Rect(
+            int(img_x + sx * self.zoom),
+            int(img_y + sy * self.zoom),
+            int(sw * self.zoom),
+            int(sh * self.zoom),
+        )
         pygame.draw.rect(screen, COLORS.success, sel_rect, 2)
 
     def draw_tileset_name(self, screen, ts: TilesetData):
