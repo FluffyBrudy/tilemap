@@ -723,7 +723,12 @@ class Editor:
     def _launch_sprite_editor_with_image(self, path: Path):
         """Launch sprite editor subprocess with selected image."""
         try:
-            args = [str(path), "--data-root", str(self.data_root)]
+            tile_size = "32x32"
+            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
+                tw, th = self.tilemap.tile_size
+                tile_size = f"{tw}x{th}"
+
+            args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
             process = launch_standalone(
                 "plugins.sprite_editor.standalone",
                 args,

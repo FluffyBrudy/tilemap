@@ -318,27 +318,42 @@ class SpritesheetGrid:
         return result
 
     def paste_at(self, target_idx: int, tiles: Dict[int, Surface]) -> None:
-        """Write previously copied tiles starting at target grid position.
+        """Write previously copied tiles preserving 2D layout.
         
-        Tiles are written in sorted source-index order, filling left-to-right
-        top-to-bottom from the target cell. Out-of-bounds writes are skipped.
+        Each source tile's row/col offset from the selection origin is
+        preserved at the target grid position. Out-of-bounds writes are
+        skipped.
         """
         if not tiles or target_idx < 0 or target_idx >= self.total_frames:
             return
         self.snapshot()
-        sorted_src = sorted(tiles.keys())
-        for offset, src_idx in enumerate(sorted_src):
-            dst = target_idx + offset
+        # Origin of the copied selection (min row & col across all source indices)
+        src_origin_col = min(idx % self.cols for idx in tiles)
+        src_origin_row = min(idx // self.cols for idx in tiles)
+        target_col = target_idx % self.cols
+        target_row = target_idx // self.cols
+
+        for src_idx, tile in tiles.items():
+            src_col = src_idx % self.cols - src_origin_col
+            src_row = src_idx // self.cols - src_origin_row
+            dst_col = target_col + src_col
+            dst_row = target_row + src_row
+            if dst_col < 0 or dst_col >= self.cols or dst_row < 0 or dst_row >= self.rows:
+                continue
+            dst = dst_row * self.cols + dst_col
             if dst >= self.total_frames:
-                break
-            tile = tiles[src_idx]
+                continue
             self.write_tile(dst, tile)
+
         # Select the newly pasted tiles
-        self.selected_indices = {
-            target_idx + offset
-            for offset in range(len(sorted_src))
-            if target_idx + offset < self.total_frames
-        }
+        self.selected_indices = set()
+        for src_idx in tiles:
+            src_col = src_idx % self.cols - src_origin_col
+            src_row = src_idx // self.cols - src_origin_row
+            dst_col = target_col + src_col
+            dst_row = target_row + src_row
+            if 0 <= dst_col < self.cols and 0 <= dst_row < self.rows:
+                self.selected_indices.add(dst_row * self.cols + dst_col)
 
     def save_png(self, path: Path) -> None:
         """Write current surface to a PNG file."""
