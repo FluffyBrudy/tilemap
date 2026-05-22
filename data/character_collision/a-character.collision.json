@@ -1,0 +1,16 @@
+{
+  "name": "a",
+  "shape": {
+    "type": "rectangle",
+    "width": 92.66666666666666,
+    "height": 93.0,
+    "offset": [
+      27.33333333333333,
+      59.0
+    ]
+  },
+  "properties": {
+    "collision_layer": 1,
+    "collision_mask": 65535
+  }
+}
