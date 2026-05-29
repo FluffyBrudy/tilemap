@@ -140,6 +140,10 @@ class Timeline:
             self.tile_size = tile_size
         self._thumb_cache.clear()
 
+    def invalidate_cache(self) -> None:
+        """Clear the thumbnail cache. Call after external changes to surface, tile_size, or grid offset."""
+        self._thumb_cache.clear()
+
     def resize(self, rect: Rect) -> None:
         self.rect = rect
 

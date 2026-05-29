@@ -593,6 +593,44 @@ class TileSelector:
             return None
         return self.tilesets[self.active_idx]
 
+    def select_tile_by_variant(self, tileset_index: int, variant_id: int) -> bool:
+        """Select a specific tile in the tileset panel by tileset index and variant ID.
+
+        Switches to the specified tileset tab and selects the tile region
+        corresponding to the variant ID.
+
+        Returns True if the selection was successful.
+        """
+        if tileset_index < 0 or tileset_index >= len(self.tilesets):
+            return False
+
+        ts = self.tilesets[tileset_index]
+        if ts.tileset_type == "object":
+            # For object tilesets, select the whole image
+            self.active_idx = tileset_index
+            self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+            return True
+
+        tw, th = self.editor.tilemap.tile_size
+        if tw <= 0 or th <= 0:
+            return False
+
+        sheet_w = ts.surface.get_width()
+        cols = sheet_w // tw
+        if cols <= 0:
+            return False
+
+        col = variant_id % cols
+        row = variant_id // cols
+
+        # Verify the variant is within the tileset bounds
+        if col * tw >= sheet_w or row * th >= ts.surface.get_height():
+            return False
+
+        self.active_idx = tileset_index
+        self.selected_tile = (col * tw, row * th, tw, th)
+        return True
+
     def draw(self, screen: pygame.Surface):
         self.draw_background(screen)
         self.draw_view_area(screen)

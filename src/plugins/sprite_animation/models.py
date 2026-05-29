@@ -167,6 +167,7 @@ class AnimationLibrary:
     animations: Dict[str, Animation] = field(default_factory=dict)
     spritesheet_path: Optional[str] = None
     tile_size: Tuple[int, int] = (32, 32)
+    grid_offset: Tuple[int, int] = (0, 0)
 
     def add_animation(self, anim: Animation) -> None:
         self.animations[anim.name] = anim
@@ -199,6 +200,7 @@ class AnimationLibrary:
         return {
             "spritesheet_path": spritesheet_path,
             "tile_size": list(self.tile_size),
+            "grid_offset": list(self.grid_offset),
             "animations": {
                 name: anim.to_dict() for name, anim in self.animations.items()
             },
@@ -209,6 +211,7 @@ class AnimationLibrary:
         lib = AnimationLibrary(
             spritesheet_path=data.get("spritesheet_path"),
             tile_size=tuple(data.get("tile_size", [32, 32])),
+            grid_offset=tuple(data.get("grid_offset", [0, 0])),
         )
         for name, anim_data in data.get("animations", {}).items():
             lib.animations[name] = Animation.from_dict(anim_data)
