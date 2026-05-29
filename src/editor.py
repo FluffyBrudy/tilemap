@@ -150,6 +150,9 @@ class Editor:
         self.running = False
         self.pan_mode = False
         self.autotile_mode = False
+        self.eraser_mode = False
+        self.select_mode = False
+        self._prev_tool = None
 
         if isinstance(size, tuple) and len(size) == 2:
             self.screen = pygame.display.set_mode(size, pygame.RESIZABLE)
@@ -684,13 +687,17 @@ class Editor:
         self.open_file_manager(
             on_select=self._launch_animation_editor_with_image,
             initial_dir=self.data_root,
-            allowed_exts=[".png", ".jpg", ".jpeg"],
+            allowed_exts=[".png", ".jpg", ".jpeg", ".json"],
             mode="open",
         )
 
     def _launch_animation_editor_with_image(self, path: Path):
-        """Launch animation editor subprocess with selected image."""
+        """Launch animation editor subprocess with selected image or JSON."""
         try:
+            if path.suffix.lower() == ".json":
+                self._launch_animation_editor_with_json(path)
+                return
+
             tile_size = "32x32"
             if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
                 tw, th = self.tilemap.tile_size
@@ -708,6 +715,47 @@ class Editor:
             print(
                 f"Launched animation editor with: {path.name} (tile size: {tile_size})"
             )
+        except Exception as e:
+            error_handler.capture(e, context="launch_animation_editor")
+
+    def _launch_animation_editor_with_json(self, path: Path) -> None:
+        """Launch animation editor from a saved .anim.json file."""
+        try:
+            from plugins.sprite_animation.models import AnimationLibrary
+            from utils.project_paths import resolve_project_path
+
+            lib = AnimationLibrary.load(path)
+            spritesheet_path = lib.spritesheet_path
+            tile_size = lib.tile_size
+
+            if spritesheet_path:
+                resolved = resolve_project_path(
+                    spritesheet_path,
+                    path.parent,
+                    fallback_roots=[self.base_path] if self.base_path else None,
+                    must_exist=True,
+                )
+            else:
+                resolved = None
+
+            if not resolved or not resolved.exists():
+                print(f"Could not locate spritesheet for animation file: {path.name}")
+                return
+
+            args = [
+                str(resolved),
+                "--tile-size", f"{tile_size[0]}x{tile_size[1]}",
+                "--load", str(path),
+                "--data-root", str(self.data_root),
+            ]
+            process = launch_standalone(
+                "plugins.sprite_animation.standalone",
+                args,
+                cwd=self.base_path,
+                text=True,
+            )
+            self.child_processes.append(process)
+            print(f"Launched animation editor with: {path.name} (spritesheet: {resolved.name})")
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
 
@@ -1018,7 +1066,24 @@ class Editor:
                     self.perform_load()
                     continue
                 elif event.key == pygame.K_SPACE:
-                    self.pan_mode = not self.pan_mode
+                    if self.pan_mode:
+                        # Restoring: turn off pan, re-enable previous tool
+                        self.pan_mode = False
+                        if getattr(self, "_prev_tool", None) == "select":
+                            self.select_mode = True
+                        elif getattr(self, "_prev_tool", None) == "eraser":
+                            self.eraser_mode = True
+                    else:
+                        # Entering pan: save current tool, turn off others
+                        if self.select_mode:
+                            self._prev_tool = "select"
+                        elif self.eraser_mode:
+                            self._prev_tool = "eraser"
+                        else:
+                            self._prev_tool = None
+                        self.pan_mode = True
+                        self.select_mode = False
+                        self.eraser_mode = False
                     continue
                 elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
                     self.toggle_grid()

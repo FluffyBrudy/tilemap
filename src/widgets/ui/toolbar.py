@@ -35,6 +35,8 @@ class Toolbar:
             x += btn_w + gap
 
         add_btn("pan", "Pan")
+        add_btn("select", "Select")
+        add_btn("eraser", "Eraser")
         add_btn("grid", "Grid")
         add_btn("auto", "Auto")
         x += 6
@@ -49,6 +51,19 @@ class Toolbar:
                 if r.collidepoint(event.pos):
                     if key == "pan":
                         self.editor.pan_mode = not self.editor.pan_mode
+                        if self.editor.pan_mode:
+                            self.editor.select_mode = False
+                            self.editor.eraser_mode = False
+                    elif key == "select":
+                        self.editor.select_mode = not self.editor.select_mode
+                        if self.editor.select_mode:
+                            self.editor.pan_mode = False
+                            self.editor.eraser_mode = False
+                    elif key == "eraser":
+                        self.editor.eraser_mode = not self.editor.eraser_mode
+                        if self.editor.eraser_mode:
+                            self.editor.pan_mode = False
+                            self.editor.select_mode = False
                     elif key == "grid":
                         self.editor.toggle_grid()
                     elif key == "auto":
@@ -78,6 +93,10 @@ class Toolbar:
             is_active = False
             if key == "pan":
                 is_active = self.editor.pan_mode
+            elif key == "select":
+                is_active = self.editor.select_mode
+            elif key == "eraser":
+                is_active = self.editor.eraser_mode
             elif key == "grid":
                 is_active = bool(
                     self.editor.tile_grid_widget
@@ -109,6 +128,10 @@ class Toolbar:
                 tip = label
                 if key == "pan":
                     tip = "Pan Mode (Space)"
+                elif key == "select":
+                    tip = "Select/Move Tool (Rect select, drag to move)"
+                elif key == "eraser":
+                    tip = "Eraser Tool (Left-click to erase)"
                 elif key == "grid":
                     tip = "Toggle Grid (G)"
                 elif key == "auto":

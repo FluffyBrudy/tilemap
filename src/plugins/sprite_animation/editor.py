@@ -1367,7 +1367,7 @@ class SpriteAnimationEditor:
             self.preview.set_surface(self._surface, self._tile_size)
             self.timeline.surface = self._surface
             self.timeline.tile_size = self._tile_size
-            self.timeline._thumb_cache.clear()
+            self.timeline.invalidate_cache()
 
             # Update input fields to show clamped values
             self._frame_width_input = str(width)
@@ -1404,7 +1404,7 @@ class SpriteAnimationEditor:
             if hasattr(self.timeline, "grid_offset_x"):
                 self.timeline.grid_offset_x = offset_x
                 self.timeline.grid_offset_y = offset_y
-                self.timeline._thumb_cache.clear()
+                self.timeline.invalidate_cache()
 
             # Update preview with offset (if it has the attribute)
             if hasattr(self.preview, "grid_offset_x"):
@@ -1419,6 +1419,43 @@ class SpriteAnimationEditor:
             # Reset to current values on invalid input
             self._offset_x_input = str(self._grid_offset_x)
             self._offset_y_input = str(self._grid_offset_y)
+
+    def _apply_library_grid_settings(self) -> None:
+        """Sync tile_size and grid_offset from the loaded library to all widgets."""
+        tw, th = self.library.tile_size
+        self._tile_size = (tw, th)
+        self.library.tile_size = (tw, th)
+
+        # Update frame picker
+        self.frame_picker.set_surface(self._surface, self._tile_size)
+
+        # Update preview and timeline
+        self.preview.set_surface(self._surface, self._tile_size)
+        self.timeline.surface = self._surface
+        self.timeline.tile_size = self._tile_size
+        self.timeline.invalidate_cache()
+
+        # Update frame size input fields
+        self._frame_width_input = str(tw)
+        self._frame_height_input = str(th)
+
+        # Sync grid offset from library
+        gx, gy = self.library.grid_offset
+        self._grid_offset_x = gx
+        self._grid_offset_y = gy
+        self._offset_x_input = str(gx)
+        self._offset_y_input = str(gy)
+
+        # Propagate offset to all widgets
+        if hasattr(self.frame_picker, "set_grid_offset"):
+            self.frame_picker.set_grid_offset(gx, gy)
+        if hasattr(self.timeline, "grid_offset_x"):
+            self.timeline.grid_offset_x = gx
+            self.timeline.grid_offset_y = gy
+            self.timeline.invalidate_cache()
+        if hasattr(self.preview, "grid_offset_x"):
+            self.preview.grid_offset_x = gx
+            self.preview.grid_offset_y = gy
 
     def _sync_active_animation(self) -> None:
         """Push current animation data to sub-widgets."""
@@ -1843,6 +1880,7 @@ class SpriteAnimationEditor:
             print(f"Warning: Could not import FileManager: {e}")
             path = self._default_save_path()
             try:
+                self.library.grid_offset = (self._grid_offset_x, self._grid_offset_y)
                 self.library.save(path, base_path=path.parent)
                 self._last_saved_path = path
                 print(f"Animations saved to {path}")
@@ -1888,6 +1926,7 @@ class SpriteAnimationEditor:
         if self._last_saved_path:
             # Save to existing path
             try:
+                self.library.grid_offset = (self._grid_offset_x, self._grid_offset_y)
                 self.library.save(
                     self._last_saved_path,
                     base_path=self._last_saved_path.parent,
@@ -1913,6 +1952,7 @@ class SpriteAnimationEditor:
                 try:
                     self.library = AnimationLibrary.load(path)
                     self._resolve_library_paths(path)
+                    self._apply_library_grid_settings()
                     names = self.library.animation_names()
                     self._active_anim_name = names[0] if names else None
                     if not names:
@@ -1948,6 +1988,8 @@ class SpriteAnimationEditor:
     def _on_save_file_selected(self, path: Path) -> None:
         """Callback when user selects a file to save to."""
         try:
+            # Sync current grid offset into library before saving
+            self.library.grid_offset = (self._grid_offset_x, self._grid_offset_y)
             self.library.save(path, base_path=path.parent)
             self._last_saved_path = path  # Track for quick save
             print(f"Animations saved to {path}")
@@ -1968,6 +2010,7 @@ class SpriteAnimationEditor:
                 self.library = AnimationLibrary.load(path)
                 self._resolve_library_paths(path)
                 self._last_saved_path = path  # Track loaded file as save location
+                self._apply_library_grid_settings()
                 names = self.library.animation_names()
                 self._active_anim_name = names[0] if names else None
                 if not names:
@@ -2110,6 +2153,7 @@ class SpriteAnimationEditor:
     def load_animation_data(self, data: dict) -> None:
         """Load animation library from a dict (e.g. from project JSON)."""
         self.library = AnimationLibrary.from_dict(data)
+        self._apply_library_grid_settings()
         names = self.library.animation_names()
         self._active_anim_name = names[0] if names else None
         if not names:
