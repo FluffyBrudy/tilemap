@@ -823,6 +823,11 @@ class Editor:
 
         args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
 
+        # Collect auto-tile variant groups for this tileset and pass as --propagation-groups
+        propagation_groups_path = self._write_propagation_groups(path)
+        if propagation_groups_path:
+            args.extend(["--propagation-groups", str(propagation_groups_path)])
+
         collision_dir = self.data_root / self.config.get("collision_paths", {}).get("tileset", "collision")
         collision_path = collision_dir / f"{path.stem}.collision.json"
         if collision_path.exists():
@@ -840,6 +845,54 @@ class Editor:
         print(msg)
         if logger:
             logger.info(msg)
+
+    def _write_propagation_groups(self, tileset_path: Path) -> Optional[Path]:
+        """Collect auto-tile variant groups for a tileset and write to temp JSON.
+
+        Returns the path to the temp file, or None if no autotiler data is available.
+        """
+        if not hasattr(self, "autotiler") or not self.autotiler:
+            return None
+
+        tw = getattr(self, "tileset_widget", None)
+        if not tw or not tw.tilesets:
+            return None
+
+        # Find the tileset index matching the given path
+        resolved_path = Path(tileset_path).resolve()
+        tileset_index = None
+        for idx, ts in enumerate(tw.tilesets):
+            try:
+                if Path(ts.path).resolve() == resolved_path:
+                    tileset_index = idx
+                    break
+            except (OSError, ValueError):
+                continue
+
+        if tileset_index is None:
+            return None
+
+        # Collect variant_ids grouped by group_id from autotile rules matching this tileset
+        groups: Dict[str, List[int]] = {}
+        for group in self.autotiler.groups:
+            for rule in group.rules:
+                if rule.tileset_index == tileset_index and rule.variant_ids:
+                    gid = rule.group_id or group.name
+                    if gid not in groups:
+                        groups[gid] = []
+                    groups[gid].extend(rule.variant_ids)
+
+        if not groups:
+            return None
+
+        import json
+        import tempfile
+        fd, tmp_path = tempfile.mkstemp(suffix=".json", prefix="propagation_groups_")
+        with os.fdopen(fd, "w") as f:
+            json.dump(groups, f)
+
+        print(f"[COLLISION] Wrote {len(groups)} propagation groups to {tmp_path}")
+        return Path(tmp_path)
 
     def _launch_object_tileset_collision_editor_with_image(self, path: Path):
         """Launch object tileset collision editor (region-based)."""

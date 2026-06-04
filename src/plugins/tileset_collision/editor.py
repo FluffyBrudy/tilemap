@@ -72,6 +72,9 @@ class TilesetCollisionEditor:
         self._toast_timer: float = 0.0
         self._toast_start: int = 0
 
+        # Auto-tile propagation: group_id -> [variant_ids]
+        self._propagation_groups: Dict[str, List[int]] = {}
+
         # Collision library
         self.library = TilesetCollisionLibrary(
             tileset_name=self._tileset_name,
@@ -436,12 +439,52 @@ class TilesetCollisionEditor:
             error_handler.capture(e, context="load_collision_data")
 
     def save_to_file(self, path: Path) -> None:
-        """Save collision data to file"""
+        """Save collision data to file, auto-propagating within auto-tile groups."""
         try:
             self._save_tile_collision_for_selection()
+            self._propagate_collision_to_groups()
             self.library.save(path)
         except Exception as e:
             error_handler.capture(e, context="save_collision_file")
+
+    def _propagate_collision_to_groups(self) -> None:
+        """Propagate collision shapes within each auto-tile group.
+
+        If any tile in a propagation group has collision shapes, those shapes
+        are copied to all other tiles in the same group that don't already
+        have their own collision data.
+        """
+        if not self._propagation_groups:
+            return
+
+        propagated_count = 0
+        for group_id, variant_ids in self._propagation_groups.items():
+            # Find the first tile in this group that has collision shapes
+            source_shapes = None
+            for vid in variant_ids:
+                tile_data = self.library.tiles.get(vid)
+                if tile_data and tile_data.shapes:
+                    source_shapes = tile_data.shapes
+                    break
+
+            if source_shapes is None:
+                continue
+
+            # Propagate to all variants in the group that lack collision
+            for vid in variant_ids:
+                existing = self.library.tiles.get(vid)
+                if existing is None:
+                    self.library.tiles[vid] = TileCollisionData(
+                        tile_id=vid,
+                        shapes=[CollisionPolygon(
+                            vertices=list(s.vertices),
+                            one_way=s.one_way,
+                        ) for s in source_shapes],
+                    )
+                    propagated_count += 1
+
+        if propagated_count:
+            self._show_toast(f"Propagated collision to {propagated_count} auto-tile variants")
 
     def load_from_file(self, path: Path) -> None:
         """Load collision data from file"""
@@ -829,6 +872,7 @@ class TilesetCollisionEditor:
         tile_size: Tuple[int, int] = (32, 32),
         window_size: Tuple[int, int] = (1200, 800),
         data_root: Path = None,
+        propagation_groups: Optional[Dict[str, List[int]]] = None,
     ) -> "TilesetCollisionEditor":
         """Create editor from tileset image path (for standalone use)"""
         surface = pygame.image.load(tileset_path).convert_alpha()
@@ -838,6 +882,7 @@ class TilesetCollisionEditor:
         editor._tileset_path_stem = tileset_path.stem
         editor._tileset_name = tileset_path.stem  # Use actual filename, not "Tileset"
         editor.library.tileset_name = tileset_path.stem
+        editor._propagation_groups = propagation_groups or {}
         return editor
 
     def run(self) -> None:

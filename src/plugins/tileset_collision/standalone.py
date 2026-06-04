@@ -86,6 +86,12 @@ def main(argv: list[str] | None = None) -> None:
             required=True,
             help="Path to project data root directory (REQUIRED)",
         )
+        parser.add_argument(
+            "--propagation-groups",
+            type=Path,
+            default=None,
+            help="Path to JSON file mapping auto-tile group IDs to variant ID lists",
+        )
 
         args = parser.parse_args(argv)
 
@@ -107,11 +113,23 @@ def main(argv: list[str] | None = None) -> None:
             screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
             pygame.display.set_caption(f"Tileset Collision Editor — {args.image.name}")
 
+            propagation_groups = None
+            if args.propagation_groups and args.propagation_groups.exists():
+                import json
+                with open(args.propagation_groups) as f:
+                    propagation_groups = json.load(f)
+                print(f"Loaded {len(propagation_groups)} auto-tile propagation groups")
+                try:
+                    args.propagation_groups.unlink()
+                except OSError:
+                    pass
+
             editor = TilesetCollisionEditor.from_path(
                 args.image,
                 tile_size=tile_size,
                 window_size=window_size,
                 data_root=data_root,
+                propagation_groups=propagation_groups,
             )
 
             if args.load and args.load.exists():
