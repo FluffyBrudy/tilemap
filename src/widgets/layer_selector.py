@@ -382,13 +382,6 @@ class LayerSelector:
             pygame.draw.rect(screen, color, item_rect)
             pygame.draw.rect(screen, COLORS.border_soft, item_rect, 1)
 
-            if i == self.renaming_layer_idx:
-                pygame.draw.rect(
-                    screen,
-                    COLORS.selected,
-                    Rect(item_rect.x + 4, item_rect.y + 4, 120, 20),
-                    border_radius=SHAPE.radius_sm,
-                )
             mx, my = pygame.mouse.get_pos()
             eye_rect = self._get_eye_icon_rect(i, (mx, my))
             lock_rect = self._get_lock_icon_rect(i, (mx, my))
@@ -396,13 +389,20 @@ class LayerSelector:
                 self.editor.tooltip.show("Toggle Visibility", (mx + 10, my + 10))
             elif lock_rect and lock_rect.collidepoint(mx, my):
                 self.editor.tooltip.show("Toggle Lock", (mx + 10, my + 10))
+
+            if i == self.renaming_layer_idx:
+                pygame.draw.rect(
+                    screen,
+                    COLORS.selected,
+                    Rect(item_rect.x + 4, item_rect.y + 4, 120, 20),
+                    border_radius=SHAPE.radius_sm,
+                )
                 name_txt = self.font_layer.render(
                     self.rename_text + "|", True, self.text_color
                 )
-                screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
             else:
                 name_txt = self.font_layer.render(layer.name, True, self.text_color)
-                screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
+            screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
 
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
