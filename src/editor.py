@@ -27,6 +27,7 @@ from widgets.tile_grid import TileGrid
 from widgets.layer_selector import LayerSelector
 from widgets.ui.fileinput import FilenameInput
 from widgets.ui.tileset_type_dialog import TilesetTypeDialog
+from widgets.ui.confirm_dialog import ConfirmDialog
 from widgets.ui.layer_type_dialog import LayerTypeDialog
 from widgets.ui.menubar import MenuBar
 from widgets.ui.toolbar import Toolbar
@@ -208,6 +209,7 @@ class Editor:
             on_cancel=lambda: None,
         )
         self.tileset_type_dialog = TilesetTypeDialog(editor_rect)
+        self.confirm_dialog = ConfirmDialog(editor_rect)
         self.layer_type_dialog = LayerTypeDialog(editor_rect)
 
         self.menubar = MenuBar(self, self.width, 30)
@@ -542,6 +544,8 @@ class Editor:
 
         if hasattr(self, "tileset_type_dialog") and self.tileset_type_dialog:
             self.tileset_type_dialog.editor_rect = rect_full
+        if hasattr(self, "confirm_dialog") and self.confirm_dialog:
+            self.confirm_dialog.editor_rect = rect_full
         if hasattr(self, "layer_type_dialog") and self.layer_type_dialog:
             self.layer_type_dialog.editor_rect = rect_full
 
@@ -1052,6 +1056,10 @@ class Editor:
                 self.tileset_type_dialog.handle_event(event)
                 continue
 
+            if self.confirm_dialog.active:
+                self.confirm_dialog.handle_event(event)
+                continue
+
             if self.layer_type_dialog.active:
                 self.layer_type_dialog.handle_event(event)
                 continue
@@ -1261,6 +1269,11 @@ class Editor:
                 overlay.fill((0, 0, 0, 150))
                 self.screen.blit(overlay, (0, 0))
                 self.tileset_type_dialog.draw(self.screen)
+            if self.confirm_dialog.active:
+                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.screen.blit(overlay, (0, 0))
+                self.confirm_dialog.draw(self.screen)
             if self.layer_type_dialog.active:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 150))

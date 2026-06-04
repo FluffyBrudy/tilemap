@@ -348,66 +348,56 @@ class TileSelector:
         if path.exists():
             try:
                 surf = pygame.image.load(path).convert_alpha()
-                if tileset_type == "object" or is_image_multipleof(
-                    surf.get_size(), self.editor.tilemap.tile_size
-                ):
-                    tileset_data = TilesetData(
-                        path.name, path, surf, tileset_type=tileset_type
-                    )
-                    tileset_data.properties = properties
-                    # Convert string keys back to int if necessary
-                    tileset_data.tile_properties = {
-                        int(k): v for k, v in tile_properties.items()
-                    }
-                    self._load_collision_data_for_tileset(tileset_data)
+                tileset_data = TilesetData(
+                    path.name, path, surf, tileset_type=tileset_type
+                )
+                tileset_data.properties = properties
+                tileset_data.tile_properties = {
+                    int(k): v for k, v in tile_properties.items()
+                }
+                self._load_collision_data_for_tileset(tileset_data)
 
-                    self.tilesets.append(tileset_data)
-                    self.active_idx = len(self.tilesets) - 1
-                    self.tileset_map[self.active_idx] = tileset_data
-                    if tileset_type == "object":
-                        self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
-                else:
-                    print("Tileset isnt multiple of tile size")
+                self.tilesets.append(tileset_data)
+                self.active_idx = len(self.tilesets) - 1
+                self.tileset_map[self.active_idx] = tileset_data
+                if tileset_type == "object":
+                    self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
             except Exception as e:
                 error_handler.capture(e, context="load_tileset_surface")
 
     def _on_tileset_type_selected(self, tileset_type: str):
         """Callback when user selects tileset type from dialog."""
-        print(f"DEBUG: Tileset type selected: {tileset_type}")
         if not hasattr(self, "_pending_tileset_path"):
-            print("DEBUG: No pending tileset path!")
             return
 
-        path = self._pending_tileset_path
         surf = self._pending_tileset_surf
 
         if tileset_type == "tile" and not is_image_multipleof(
             surf.get_size(), self.editor.tilemap.tile_size
         ):
-            self.editor.notifications.error(
-                "Tileset size must be multiple of tile size"
+            w, h = surf.get_size()
+            tw, th = self.editor.tilemap.tile_size
+            self.editor.confirm_dialog.show(
+                title="Tileset Size Warning",
+                message=f"Image size ({w}x{h}) is not an exact multiple of tile size ({tw}x{th}). "
+                f"Some pixels at the edges will be ignored. Proceed?",
+                on_confirm=lambda: self._commit_tileset_load(tileset_type),
+                on_cancel=self._on_tileset_type_cancel,
             )
-            delattr(self, "_pending_tileset_path")
-            delattr(self, "_pending_tileset_surf")
-            if self._pending_tileset_queue:
-                error_handler.capture(
-                    Exception(
-                        f"Queue error continuation: {len(self._pending_tileset_queue)} items"
-                    ),
-                    context="tileset_queue_error",
-                    severity="info",
-                )
-                # Delay slightly to allow dialog to fully close
-                pygame.time.set_timer(pygame.USEREVENT + 1, 100, 1)
-                self._queue_timer_active = True
             return
+
+        self._commit_tileset_load(tileset_type)
+
+    def _commit_tileset_load(self, tileset_type: str):
+        path = self._pending_tileset_path
+        surf = self._pending_tileset_surf
 
         tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
         self._load_collision_data_for_tileset(tileset_data)
         self.tilesets.append(tileset_data)
         self.active_idx = len(self.tilesets) - 1
         self.tileset_map[self.active_idx] = tileset_data
-        print(f"DEBUG: Added tileset {path.name}, total tilesets: {len(self.tilesets)}")
+
         if tileset_type == "object":
             self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
         else:
@@ -416,14 +406,8 @@ class TileSelector:
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
         if self._pending_tileset_queue:
-            print(
-                f"DEBUG: Continuing queue, {len(self._pending_tileset_queue)} items remaining"
-            )
-            # Delay slightly to allow dialog to fully close
             pygame.time.set_timer(pygame.USEREVENT + 1, 100, 1)
             self._queue_timer_active = True
-        else:
-            print("DEBUG: Queue processing complete")
 
     def _load_collision_data_for_tileset(self, tileset_data: TilesetData) -> None:
         """Attach existing collision data for tilesets that have sidecar files."""
