@@ -58,10 +58,13 @@ class AnimationPreview:
         self.frames: List[AnimationFrame] = []
         self.playing = False
         self.loop = True
+        self.grid_offset_x: int = 0
+        self.grid_offset_y: int = 0
         self.playback_fps: float = 60.0
         self.show_onion = False
 
         self.on_playback_fps_changed: Optional[Callable[[float], None]] = None
+        self.on_loop_changed: Optional[Callable[[bool], None]] = None
         self.authoring_fps: float = 60.0
 
         self.current_frame: int = 0
@@ -221,6 +224,8 @@ class AnimationPreview:
                 return True
             if self._btn_loop.collidepoint(mouse):
                 self.loop = not self.loop
+                if self.on_loop_changed:
+                    self.on_loop_changed(self.loop)
                 return True
             if self._btn_onion.collidepoint(mouse):
                 self.show_onion = not self.show_onion
@@ -411,10 +416,12 @@ class AnimationPreview:
 
     def _extract_tile(self, variant_id: int) -> Optional[pygame.Surface]:
         tw, th = self.tile_size
-        cols = max(1, self.surface.get_width() // tw)
+        ox, oy = self.grid_offset_x, self.grid_offset_y
+        available_w = self.surface.get_width() - ox
+        cols = max(1, available_w // tw)
         col = variant_id % cols
         row = variant_id // cols
-        src = Rect(col * tw, row * th, tw, th)
+        src = Rect(ox + col * tw, oy + row * th, tw, th)
         if self.surface.get_rect().contains(src):
             return self.surface.subsurface(src).copy()
         return None

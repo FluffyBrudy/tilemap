@@ -168,6 +168,7 @@ class SpriteAnimationEditor:
         self.timeline.on_frames_changed = self._on_frames_changed
         self.timeline.on_markers_changed = self._on_markers_changed
         self.preview.on_playback_fps_changed = self._on_preview_fps_changed
+        self.preview.on_loop_changed = self._on_preview_loop_changed
 
         # Create a default animation (now safe — widgets exist)
         self._create_new_animation("idle")
@@ -1564,6 +1565,12 @@ class SpriteAnimationEditor:
         if anim:
             anim.fps = float(fps)
             self.preview.authoring_fps = float(fps)
+            self._notify_animation_modified()
+
+    def _on_preview_loop_changed(self, loop: bool) -> None:
+        anim = self._get_active()
+        if anim:
+            anim.loop = loop
             self._notify_animation_modified()
 
     def _metadata_apply_add(self, anim: Animation) -> None:

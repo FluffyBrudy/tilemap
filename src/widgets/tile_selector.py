@@ -61,6 +61,7 @@ class TileSelector:
         self.zoom: float = 1.0
 
         btn_y = y + h - 35
+        self.btn_export = Rect(x + w - 140, btn_y, 30, 30)
         self.btn_collision = Rect(x + w - 105, btn_y, 30, 30)
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
@@ -80,6 +81,7 @@ class TileSelector:
             x, y + self.top_bar_h, w, h - self.top_bar_h - self.btm_bar_h
         )
         btn_y = y + h - 35
+        self.btn_export = Rect(x + w - 140, btn_y, 30, 30)
         self.btn_collision = Rect(x + w - 105, btn_y, 30, 30)
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
@@ -162,6 +164,9 @@ class TileSelector:
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.btn_export.collidepoint(mouse_pos):
+                self._export_selected_as_png_dialog()
+                return True
             if self.btn_collision.collidepoint(mouse_pos):
                 self.open_collision_editor()
                 return True
@@ -244,6 +249,11 @@ class TileSelector:
                     ts.offset[0] += event.y * 20
                 else:
                     ts.offset[1] += event.y * 20
+                return True
+
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+            if self.selected_tile and self.active_idx != -1:
+                self._export_selected_as_png_dialog()
                 return True
 
         return False
@@ -615,6 +625,27 @@ class TileSelector:
         self.selected_tile = (col * tw, row * th, tw, th)
         return True
 
+    def _export_selected_as_png_dialog(self):
+        if not self.selected_tile or self.active_idx == -1:
+            return
+        ts = self.tilesets[self.active_idx]
+        default = Path(ts.name).stem + "_extracted.png"
+        self.editor.open_file_manager(
+            on_save=self._on_export_selected_path,
+            allowed_exts=[".png"],
+            mode="save",
+            default_name=default,
+        )
+
+    def _on_export_selected_path(self, path: Path):
+        try:
+            sx, sy, sw, sh = self.selected_tile
+            ts = self.tilesets[self.active_idx]
+            extracted = ts.surface.subsurface(Rect(sx, sy, sw, sh)).copy()
+            pygame.image.save(extracted, str(path))
+        except Exception as e:
+            error_handler.capture(e, context="export_selected_png")
+
     def draw(self, screen: pygame.Surface):
         self.draw_background(screen)
         self.draw_view_area(screen)
@@ -775,6 +806,15 @@ class TileSelector:
         screen.blit(name_surf, (self.rect.x + 5, self.rect.bottom - 30))
 
     def draw_buttons(self, screen):
+        # Export selection as PNG button
+        pygame.draw.rect(
+            screen, COLORS.header, self.btn_export, border_radius=SHAPE.radius_sm
+        )
+        screen.blit(
+            self.font.render("E", True, COLORS.text),
+            (self.btn_export.x + 9, self.btn_export.y + 5),
+        )
+
         # Collision editor button
         pygame.draw.rect(
             screen, COLORS.header, self.btn_collision, border_radius=SHAPE.radius_sm
@@ -799,7 +839,9 @@ class TileSelector:
             (self.btn_rem.x + 10, self.btn_rem.y + 5),
         )
         mx, my = pygame.mouse.get_pos()
-        if self.btn_collision.collidepoint(mx, my):
+        if self.btn_export.collidepoint(mx, my):
+            self.editor.tooltip.show("E: Export selection as PNG", (mx + 10, my + 10))
+        elif self.btn_collision.collidepoint(mx, my):
             self.editor.tooltip.show("Edit Collision Shapes", (mx + 10, my + 10))
         elif self.btn_add.collidepoint(mx, my):
             self.editor.tooltip.show("Add Tileset", (mx + 10, my + 10))

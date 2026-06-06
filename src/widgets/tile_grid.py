@@ -499,8 +499,10 @@ class TileGrid:
         start_sy = src_rect[1] // tile_h
 
         if active_layer.layer_type == "object":
-            pixel_x = self.hover_cell[0] * tile_w
-            pixel_y = self.hover_cell[1] * tile_h
+            mouse_pos = pygame.mouse.get_pos()
+            world_x, world_y = self.screen_to_world(mouse_pos)
+            pixel_x = world_x
+            pixel_y = world_y
             pixel_w = sel_w_tiles * tile_w
             pixel_h = sel_h_tiles * tile_h
 
@@ -1040,13 +1042,14 @@ class TileGrid:
 
         if active_layer.layer_type == "object":
             mouse_pos = pygame.mouse.get_pos()
-            self.screen_to_world(mouse_pos)
+            world_x, world_y = self.screen_to_world(mouse_pos)
+            rs = self.editor.tilemap.render_scale
 
-            sel_width = int(src_rect[2] * self.zoom_level)
-            sel_height = int(src_rect[3] * self.zoom_level)
+            sel_width = int(src_rect[2] * rs * self.zoom_level)
+            sel_height = int(src_rect[3] * rs * self.zoom_level)
 
-            screen_x = mouse_pos[0]
-            screen_y = mouse_pos[1]
+            screen_x = (world_x - self.scroll_x) * self.zoom_level + self.rect.x
+            screen_y = (world_y - self.scroll_y) * self.zoom_level + self.rect.y
 
             dest_rect = Rect(screen_x, screen_y, sel_width, sel_height)
             pygame.draw.rect(screen, (255, 255, 0), dest_rect, 2)
@@ -1336,12 +1339,12 @@ class TileGrid:
                         src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
                     dest_x = (
-                        (obj_x * rs - self.scroll_x) * self.zoom_level
+                        (obj_x - self.scroll_x) * self.zoom_level
                         + self.rect.x
                         + draw_offset_x
                     )
                     dest_y = (
-                        (obj_y * rs - self.scroll_y) * self.zoom_level
+                        (obj_y - self.scroll_y) * self.zoom_level
                         + self.rect.y
                         + draw_offset_y
                     )
@@ -1565,11 +1568,11 @@ class TileGrid:
                 new_x = area["x"] + dx
                 new_y = area["y"] + dy
                 dest_x = (
-                    (new_x * rs - self.scroll_x) * self.zoom_level
+                    (new_x - self.scroll_x) * self.zoom_level
                     + self.rect.x
                 )
                 dest_y = (
-                    (new_y * rs - self.scroll_y) * self.zoom_level
+                    (new_y - self.scroll_y) * self.zoom_level
                     + self.rect.y
                 )
 

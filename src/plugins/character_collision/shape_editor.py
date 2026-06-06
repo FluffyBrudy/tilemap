@@ -294,8 +294,8 @@ class ShapeEditor:
                     self._dragging_shape = False
                     return True
                 
-                # Check if clicking on move icon
-                if self._is_on_move_icon(mouse) and not self._pan_mode:
+                # Check if clicking inside the shape body (but not on a handle)
+                if self._is_inside_shape(mouse) and not self._pan_mode:
                     self._dragging_shape = True
                     self._drag_start = mouse
                     self._save_shape_positions()
@@ -462,7 +462,7 @@ class ShapeEditor:
         elif self.shape_type == "circle":
             return self._sprite_to_screen((self.circle_x, self.circle_y - self.circle_radius))
         elif self.shape_type == "capsule":
-            return self._sprite_to_screen((self.capsule_x, self.capsule_y))
+            return self._sprite_to_screen((self.capsule_x, self.capsule_y + self.capsule_height / 2))
         elif self.shape_type == "polygon" and len(self.polygon_vertices) >= 3:
             # Top-center of polygon bounding box
             min_y = min(v[1] for v in self.polygon_vertices)
