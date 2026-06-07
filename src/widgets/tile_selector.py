@@ -46,6 +46,10 @@ class TileSelector:
             x, y + self.top_bar_h, w, h - self.top_bar_h - self.btm_bar_h
         )
         self.tab_scroll_x = 0
+        arrow_h = self.top_bar_h - 4
+        arrow_y = y + (self.top_bar_h - arrow_h) // 2
+        self._tab_arrow_left = Rect(x + 2, arrow_y, 18, arrow_h)
+        self._tab_arrow_right = Rect(x + w - 20, arrow_y, 18, arrow_h)
         self.is_panning = False
         self.pan_start = (0, 0)
         self.pan_start_offset = (0, 0)
@@ -86,6 +90,10 @@ class TileSelector:
         self.btn_collision = Rect(x + w - 105, btn_y, 30, 30)
         self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
         self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
+        arrow_h = self.top_bar_h - 4
+        arrow_y = y + (self.top_bar_h - arrow_h) // 2
+        self._tab_arrow_left = Rect(x + 2, arrow_y, 18, arrow_h)
+        self._tab_arrow_right = Rect(x + w - 20, arrow_y, 18, arrow_h)
 
     def set_rule_hints(self, hints: Set[int]):
         self.rule_hints = hints
@@ -179,6 +187,13 @@ class TileSelector:
                 return True
 
             if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
+                # Check arrow buttons first
+                if self._tab_arrow_left.collidepoint(mouse_pos):
+                    self._scroll_tabs(100)
+                    return True
+                if self._tab_arrow_right.collidepoint(mouse_pos):
+                    self._scroll_tabs(-100)
+                    return True
                 self.check_tab_click(mouse_pos)
                 return True
 
@@ -561,8 +576,8 @@ class TileSelector:
     def _get_tab_at_pos(self, pos) -> Optional[int]:
         if not self.tilesets:
             return None
-        tab_w = min(100, self.rect.width // len(self.tilesets))
-        idx = (pos[0] - self.rect.x) // tab_w
+        tab_w = 100
+        idx = (pos[0] - self.rect.x + self.tab_scroll_x) // tab_w
         if 0 <= idx < len(self.tilesets):
             return int(idx)
         return None
@@ -875,14 +890,19 @@ class TileSelector:
         clip = screen.get_clip()
         tab_area = Rect(self.rect.x, self.rect.y, self.rect.width, self.top_bar_h)
         screen.set_clip(tab_area)
+
+        pygame.draw.rect(screen, COLORS.header, tab_area)
+
         tab_w = 100
         total_w = tab_w * len(self.tilesets)
-        if total_w > self.rect.width:
+        has_overflow = total_w > self.rect.width
+        if has_overflow:
             self.tab_scroll_x = max(
                 0, min(self.tab_scroll_x, total_w - self.rect.width)
             )
         else:
             self.tab_scroll_x = 0
+
         for i, ts in enumerate(self.tilesets):
             r = Rect(
                 self.rect.x + i * tab_w - self.tab_scroll_x,
@@ -895,13 +915,25 @@ class TileSelector:
             is_active = i == self.active_idx
             col = COLORS.selected if is_active else COLORS.header
             pygame.draw.rect(screen, col, r)
-            pygame.draw.rect(screen, COLORS.border, r, 1)
+            if not is_active:
+                pygame.draw.line(screen, COLORS.border, r.bottomleft, r.bottomright, 1)
             t = ts.name[:8] + ".." if len(ts.name) > 10 else ts.name
             screen.blit(self.font.render(t, True, COLORS.text), (r.x + 5, r.y + 5))
-            mx, my = pygame.mouse.get_pos()
-            if r.collidepoint(mx, my):
-                self.editor.tooltip.show(ts.name, (mx + 10, my + 10))
-        if total_w > self.rect.width:
+
+        mx, my = pygame.mouse.get_pos()
+        show_arrows = has_overflow and tab_area.collidepoint(mx, my)
+
+        if show_arrows:
+            for arrow_rect, label in [
+                (self._tab_arrow_left, "<"),
+                (self._tab_arrow_right, ">"),
+            ]:
+                pygame.draw.rect(screen, COLORS.selected, arrow_rect)
+                pygame.draw.rect(screen, COLORS.border, arrow_rect, 1)
+                arrow_surf = self.font.render(label, True, COLORS.text)
+                arrow_rect_text = arrow_surf.get_rect(center=arrow_rect.center)
+                screen.blit(arrow_surf, arrow_rect_text)
+
             bar_w = max(30, int(self.rect.width * (self.rect.width / total_w)))
             bar_x = self.rect.x + int(
                 (self.tab_scroll_x / (total_w - self.rect.width))
@@ -909,6 +941,20 @@ class TileSelector:
             )
             bar_rect = Rect(bar_x, self.rect.y + self.top_bar_h - 4, bar_w, 3)
             pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
+
+        # Tooltip for tab name
+        if tab_area.collidepoint(mx, my) and not (
+            show_arrows and (
+                self._tab_arrow_left.collidepoint(mx, my) or
+                self._tab_arrow_right.collidepoint(mx, my)
+            )
+        ):
+            idx = self._get_tab_at_pos((mx, my))
+            if idx is not None and 0 <= idx < len(self.tilesets):
+                self.editor.tooltip.show(
+                    self.tilesets[idx].name, (mx + 10, my + 10)
+                )
+
         screen.set_clip(clip)
 
     def _scroll_tabs(self, delta: float):
