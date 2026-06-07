@@ -39,6 +39,7 @@ class Toolbar:
         add_btn("eraser", "Eraser")
         add_btn("grid", "Grid")
         add_btn("auto", "Auto")
+        add_btn("nodes", "Nodes")
         x += 6
         add_btn("zoom_out", "Zoom -")
         add_btn("zoom_in", "Zoom +")
@@ -68,6 +69,12 @@ class Toolbar:
                         self.editor.toggle_grid()
                     elif key == "auto":
                         self.editor.toggle_auto_autotile()
+                    elif key == "nodes":
+                        self.editor.node_editing_mode = not self.editor.node_editing_mode
+                        if self.editor.node_editing_mode:
+                            self.editor.pan_mode = False
+                            self.editor.select_mode = False
+                            self.editor.eraser_mode = False
                     elif key == "zoom_in":
                         if self.editor.tile_grid_widget:
                             self.editor.tile_grid_widget.zoom_by(0.1)
@@ -104,6 +111,8 @@ class Toolbar:
                 )
             elif key == "auto":
                 is_active = self.editor.autotile_mode
+            elif key == "nodes":
+                is_active = self.editor.node_editing_mode
 
             hover = r.collidepoint(mouse_pos)
             bg = (
@@ -127,7 +136,7 @@ class Toolbar:
             if hover:
                 tip = label
                 if key == "pan":
-                    tip = "Pan Mode (Space)"
+                    tip = "Pan Mode (Ctrl+Space)"
                 elif key == "select":
                     tip = "Select/Move Tool (Rect select, drag to move)"
                 elif key == "eraser":
@@ -136,6 +145,8 @@ class Toolbar:
                     tip = "Toggle Grid (G)"
                 elif key == "auto":
                     tip = "Auto-Autotile"
+                elif key == "nodes":
+                    tip = "Node Mode (Ctrl+Shift+N)"
                 elif key == "zoom_in":
                     tip = "Zoom In (Ctrl+Wheel)"
                 elif key == "zoom_out":

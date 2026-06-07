@@ -31,6 +31,8 @@ from widgets.ui.confirm_dialog import ConfirmDialog
 from widgets.ui.layer_type_dialog import LayerTypeDialog
 from widgets.ui.menubar import MenuBar
 from widgets.ui.toolbar import Toolbar
+from widgets.ui.node_selector import NodeSelector
+from widgets.ui.node_editor import NodeEditor
 from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.tooltip import TooltipManager
@@ -38,6 +40,7 @@ from widgets.ui.theme import get_theme_manager, set_theme, THEMES
 from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
 from utils import error_handler, error_context
+from node_manager import NodeManager
 
 if TYPE_CHECKING:
     from plugins.sprite_animation import SpriteAnimationEditor
@@ -153,6 +156,7 @@ class Editor:
         self.autotile_mode = False
         self.eraser_mode = False
         self.select_mode = False
+        self.node_editing_mode = False
         self._prev_tool = None
 
         if isinstance(size, tuple) and len(size) == 2:
@@ -240,6 +244,9 @@ class Editor:
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
         self.map_setup_widget.visible = False
         self.map_properties_dialog = MapPropertiesDialog(self, Rect(center_x, center_y, 400, 260))
+        self.node_manager = NodeManager(self)
+        self.node_selector = NodeSelector(self, 0, 65, 260, 240)
+        self.node_editor = NodeEditor(self, 0, 310, 260, 190)
 
     def open_file_manager(
         self,
@@ -1126,7 +1133,7 @@ class Editor:
                 elif event.key == pygame.K_o and (ctrl_held or meta_held):
                     self.perform_load()
                     continue
-                elif event.key == pygame.K_SPACE:
+                elif event.key == pygame.K_SPACE and (ctrl_held or meta_held):
                     if self.pan_mode:
                         # Restoring: turn off pan, re-enable previous tool
                         self.pan_mode = False
@@ -1134,17 +1141,22 @@ class Editor:
                             self.select_mode = True
                         elif getattr(self, "_prev_tool", None) == "eraser":
                             self.eraser_mode = True
+                        elif getattr(self, "_prev_tool", None) == "nodes":
+                            self.node_editing_mode = True
                     else:
                         # Entering pan: save current tool, turn off others
                         if self.select_mode:
                             self._prev_tool = "select"
                         elif self.eraser_mode:
                             self._prev_tool = "eraser"
+                        elif self.node_editing_mode:
+                            self._prev_tool = "nodes"
                         else:
                             self._prev_tool = None
                         self.pan_mode = True
                         self.select_mode = False
                         self.eraser_mode = False
+                        self.node_editing_mode = False
                     continue
                 elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
                     self.toggle_grid()
@@ -1156,13 +1168,20 @@ class Editor:
                     self.toggle_animation_panel()
                     continue
                 elif pygame.K_1 <= event.key <= pygame.K_9:
-                    idx = event.key - pygame.K_1
-                    if idx < self.tilemap.layer_manager.get_layer_count():
-                        self.tilemap.layer_manager.set_active_layer(idx)
-                    continue
+                    if not (self.node_editor and self.node_editor.visible and self.node_editor.editing_field):
+                        idx = event.key - pygame.K_1
+                        if idx < self.tilemap.layer_manager.get_layer_count():
+                            self.tilemap.layer_manager.set_active_layer(idx)
+                        continue
 
             # Priority 5: Toolbar
             if self.toolbar and self.toolbar.handle_event(event):
+                continue
+
+            # Priority 5.5: Node selector & editor (when node mode active)
+            if self.node_selector and self.node_selector.handle_event(event):
+                continue
+            if self.node_editor and self.node_editor.handle_event(event):
                 continue
 
             # Priority 6: Dockable animation panel
@@ -1303,6 +1322,10 @@ class Editor:
 
             if self.toolbar:
                 self.toolbar.draw(self.screen)
+            if self.node_selector:
+                self.node_selector.draw(self.screen)
+            if self.node_editor:
+                self.node_editor.draw(self.screen)
             self.menubar.draw(self.screen)
             self.tooltip.draw(self.screen)
 

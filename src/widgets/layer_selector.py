@@ -44,6 +44,8 @@ class LayerSelector:
         self.rename_text: str = ""
         self.rename_original_name: str = ""
 
+        self._adjusting_opacity_idx: Optional[int] = None
+
         btn_h = 25
         btn_w = 25
         btn_y = self.footer_rect.y + 5
@@ -113,6 +115,19 @@ class LayerSelector:
                                 layer.locked = not layer.locked
                                 return True
 
+                        opacity_rect = self._get_opacity_bar_rect(layer_idx)
+                        if opacity_rect and opacity_rect.collidepoint(mouse_pos):
+                            layer = self.editor.tilemap.layer_manager.get_layer(
+                                layer_idx
+                            )
+                            if layer:
+                                self._adjusting_opacity_idx = layer_idx
+                                rel_x = mouse_pos[0] - opacity_rect.x
+                                layer.opacity = max(
+                                    0.0, min(1.0, rel_x / opacity_rect.width)
+                                )
+                                return True
+
                         self.dragging_layer_idx = layer_idx
                         self.drag_start_y = mouse_pos[1]
 
@@ -153,6 +168,9 @@ class LayerSelector:
                     return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                self._adjusting_opacity_idx = None
+
             if event.button == 1 and self.dragging_layer_idx is not None:
                 layer_idx = self._get_layer_at_pos(mouse_pos)
                 if layer_idx is not None and layer_idx != self.dragging_layer_idx:
@@ -164,6 +182,19 @@ class LayerSelector:
                 return True
 
         elif event.type == pygame.MOUSEMOTION:
+            if self._adjusting_opacity_idx is not None:
+                layer = self.editor.tilemap.layer_manager.get_layer(
+                    self._adjusting_opacity_idx
+                )
+                if layer:
+                    opacity_rect = self._get_opacity_bar_rect(
+                        self._adjusting_opacity_idx
+                    )
+                    if opacity_rect:
+                        rel_x = max(0, min(opacity_rect.width, mouse_pos[0] - opacity_rect.x))
+                        layer.opacity = max(0.0, min(1.0, rel_x / opacity_rect.width))
+                return True
+
             if self.list_rect.collidepoint(mouse_pos):
                 if self.dragging_layer_idx is None:
                     self.hover_idx = self._get_layer_at_pos(mouse_pos)
@@ -188,7 +219,13 @@ class LayerSelector:
                     self._cancel_rename()
                     return True
                 elif event.key == pygame.K_BACKSPACE:
-                    self.rename_text = self.rename_text[:-1]
+                    pressed = pygame.key.get_pressed()
+                    meta_down = pressed[pygame.K_LMETA] or pressed[pygame.K_RMETA]
+                    ctrl_down = pressed[pygame.K_LCTRL] or pressed[pygame.K_RCTRL]
+                    if meta_down or ctrl_down:
+                        self.rename_text = ""
+                    else:
+                        self.rename_text = self.rename_text[:-1]
                     return True
                 else:
                     if event.unicode.isprintable():
@@ -218,6 +255,19 @@ class LayerSelector:
             return idx
 
         return None
+
+    def _get_opacity_bar_rect(self, layer_idx: int) -> Optional[Rect]:
+        """Get the clickable rect for the opacity bar of a layer."""
+        item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
+
+        if item_y + self.item_h < self.list_rect.y or item_y > self.list_rect.bottom:
+            return None
+
+        bar_w = 46
+        bar_h = 6
+        bar_x = self.list_rect.x + self.list_rect.width - 80
+        bar_y = item_y + self.item_h - bar_h - 3
+        return Rect(bar_x, bar_y, bar_w, bar_h)
 
     def _get_eye_icon_rect(self, layer_idx: int, mouse_pos) -> Optional[Rect]:
         """Get the clickable rect for the eye icon of a layer."""
@@ -403,6 +453,18 @@ class LayerSelector:
             else:
                 name_txt = self.font_layer.render(layer.name, True, self.text_color)
             screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
+
+            opacity_bar = self._get_opacity_bar_rect(i)
+            if opacity_bar:
+                bg_rect = Rect(opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height)
+                pygame.draw.rect(screen, (60, 60, 60), bg_rect, border_radius=2)
+                fill_w = int(opacity_bar.width * layer.opacity)
+                if fill_w > 0:
+                    fill_rect = Rect(opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height)
+                    green = int(180 * layer.opacity) + 40
+                    pygame.draw.rect(screen, (40, green, 40), fill_rect, border_radius=2)
+                pct_txt = self.font_layer.render(f"{int(layer.opacity * 100)}%", True, self.text_muted)
+                screen.blit(pct_txt, (opacity_bar.x - 32, opacity_bar.y - 2))
 
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7

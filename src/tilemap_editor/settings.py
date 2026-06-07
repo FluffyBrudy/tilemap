@@ -23,6 +23,7 @@ def init_settings(generate_main: bool = False) -> None:
             "tileset": "collision",
             "character": "character_collision"
         },
+        "nodes_path": "nodes",
         "error_handler": {
             "log_path": "errors.log",
             "max_recent_errors": 50,

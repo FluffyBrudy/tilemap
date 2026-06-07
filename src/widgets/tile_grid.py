@@ -4,6 +4,7 @@ from pygame import Rect, Surface, K_UP, K_LEFT, K_RIGHT
 
 from ttypes.tilemap import TypeTile, TypeObject
 from widgets.ui.theme import COLORS
+from nodes import NodeRect
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -54,6 +55,12 @@ class TileGrid:
 
         # Clipboard
         self.clipboard = None  # copied tile/object data
+
+        # Node editing state (moved here so _handle_node_event can access)
+        self._node_drag_state: Optional[str] = None
+        self._node_drag_handle: Optional[str] = None
+        self._node_drag_start: Tuple[int, int] = (0, 0)
+        self._node_original_rect = None
 
     @property
     def tile_size(self):
@@ -163,6 +170,9 @@ class TileGrid:
         self.scroll_y = max(0, min(self.scroll_y, max_scroll_y))
 
     def handle_event(self, event: pygame.event.Event) -> bool:
+        if self.editor.node_editing_mode:
+            return self._handle_node_event(event)
+
         mouse_pos = pygame.mouse.get_pos()
         is_hovering = self.rect.collidepoint(mouse_pos)
         if event.type == pygame.KEYDOWN:
@@ -999,6 +1009,7 @@ class TileGrid:
         self._draw_preview(screen)
         self._draw_move_preview(screen)
         self._draw_selection_rect(screen)
+        self._draw_nodes(screen)
 
         # 4. Restore global clip and draw widget-level decorations
         screen.set_clip(prev_clip)
@@ -1454,6 +1465,230 @@ class TileGrid:
                 end = min(y + dash_len, sel_rect.bottom)
                 pygame.draw.line(screen, border_color, (edge_x, y), (edge_x, end), 2)
                 y += dash_len + gap_len
+
+    def _node_to_screen(self, nx: int, ny: int) -> Tuple[int, int]:
+        sx = (nx - self.scroll_x) * self.zoom_level + self.rect.x
+        sy = (ny - self.scroll_y) * self.zoom_level + self.rect.y
+        return int(sx), int(sy)
+
+    def _node_screen_size(self, nw: int, nh: int) -> Tuple[int, int]:
+        rs = self.editor.tilemap.render_scale
+        return int(nw * rs * self.zoom_level), int(nh * rs * self.zoom_level)
+
+    def _draw_nodes(self, screen):
+        nm = getattr(self.editor, "node_manager", None)
+        if not nm or not nm.nodes:
+            return
+
+        editing = self.editor.node_editing_mode
+
+        node_type_colors = {
+            "area": (80, 220, 120),       # Green / Emerald
+            "spawn": (80, 140, 240),      # Blue / Sky
+            "portal": (180, 80, 220),     # Purple / Violet
+            "npc": (240, 140, 60),        # Orange
+            "checkpoint": (60, 200, 200),  # Teal
+            "item": (220, 200, 60),       # Yellow
+        }
+
+        active = nm.get_active_node() if editing else None
+        for node in nm.nodes.values():
+            sx, sy = self._node_to_screen(node.area.x, node.area.y)
+            sw, sh = self._node_screen_size(node.area.w, node.area.h)
+
+            if not self.rect.colliderect(Rect(sx, sy, sw, sh)):
+                continue
+
+            is_active = editing and active is not None and active.node_id == node.node_id
+            alpha = 180 if is_active else (80 if editing else 40)
+            
+            color = node_type_colors.get(node.node_type, (80, 220, 120))
+
+            fill = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            fill.fill((*color, alpha // 2))
+            screen.blit(fill, (sx, sy))
+
+            border_color = (*color, alpha)
+            pygame.draw.rect(screen, border_color, Rect(sx, sy, sw, sh), max(1, int(2 * self.zoom_level)))
+
+            if editing:
+                label = self.font_status.render(node.name, True, (255, 255, 255))
+                label_bg = pygame.Surface((label.get_width() + 4, label.get_height() + 2), pygame.SRCALPHA)
+                label_bg.fill((0, 0, 0, 160))
+                screen.blit(label_bg, (sx, sy - label.get_height() - 2))
+                screen.blit(label, (sx + 2, sy - label.get_height() - 1))
+
+            if is_active:
+                self._draw_node_handles(screen, Rect(sx, sy, sw, sh), color)
+
+    def _draw_node_handles(self, screen, rect: Rect, border_color: Tuple[int, int, int] = (80, 220, 80)):
+        hs = 6
+        hsize = max(4, int(hs * self.zoom_level))
+        positions = [
+            (rect.left, rect.top),
+            (rect.centerx, rect.top),
+            (rect.right, rect.top),
+            (rect.left, rect.centery),
+            (rect.right, rect.centery),
+            (rect.left, rect.bottom),
+            (rect.centerx, rect.bottom),
+            (rect.right, rect.bottom),
+        ]
+        for px, py in positions:
+            hr = Rect(px - hsize, py - hsize, hsize * 2, hsize * 2)
+            pygame.draw.rect(screen, (255, 255, 255), hr)
+            pygame.draw.rect(screen, border_color, hr, 1)
+
+    def _get_node_handle_at(self, node, screen_pos) -> Optional[str]:
+        sx, sy = self._node_to_screen(node.area.x, node.area.y)
+        sw, sh = self._node_screen_size(node.area.w, node.area.h)
+        r = Rect(sx, sy, sw, sh)
+        hs = max(4, int(6 * self.zoom_level))
+        d = hs * 2
+        handles = {
+            "tl": Rect(r.left - hs, r.top - hs, d, d),
+            "t": Rect(r.centerx - hs, r.top - hs, d, d),
+            "tr": Rect(r.right - hs, r.top - hs, d, d),
+            "l": Rect(r.left - hs, r.centery - hs, d, d),
+            "r": Rect(r.right - hs, r.centery - hs, d, d),
+            "bl": Rect(r.left - hs, r.bottom - hs, d, d),
+            "b": Rect(r.centerx - hs, r.bottom - hs, d, d),
+            "br": Rect(r.right - hs, r.bottom - hs, d, d),
+        }
+        sp = pygame.Vector2(screen_pos)
+        for name, hrect in handles.items():
+            if hrect.collidepoint(sp):
+                return name
+        return None
+
+    def _handle_node_event(self, event) -> bool:
+        nm = getattr(self.editor, "node_manager", None)
+        if not nm:
+            return False
+
+        mouse_pos = pygame.mouse.get_pos()
+        is_hover = self.rect.collidepoint(mouse_pos)
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1 and is_hover:
+                wx, wy = self.screen_to_world(mouse_pos)
+                active = nm.get_active_node()
+
+                if active:
+                    handle = self._get_node_handle_at(active, mouse_pos)
+                    if handle:
+                        self._node_drag_state = "resizing"
+                        self._node_drag_handle = handle
+                        self._node_drag_start = (wx, wy)
+                        self._node_original_rect = NodeRect(
+                            active.area.x, active.area.y,
+                            active.area.w, active.area.h,
+                        )
+                        return True
+
+                    sw, sh = self._node_screen_size(active.area.w, active.area.h)
+                    sx, sy = self._node_to_screen(active.area.x, active.area.y)
+                    body = Rect(sx, sy, sw, sh)
+                    if body.collidepoint(mouse_pos):
+                        self._node_drag_state = "moving"
+                        self._node_drag_start = (wx, wy)
+                        self._node_original_rect = NodeRect(
+                            active.area.x, active.area.y,
+                            active.area.w, active.area.h,
+                        )
+                        return True
+
+                    for node in nm.nodes.values():
+                        if node.node_id == active.node_id:
+                            continue
+                        nsx, nsy = self._node_to_screen(node.area.x, node.area.y)
+                        nsw, nsh = self._node_screen_size(node.area.w, node.area.h)
+                        if Rect(nsx, nsy, nsw, nsh).collidepoint(mouse_pos):
+                            nm.set_active_node(node.node_id)
+                            return True
+
+                else:
+                    for node in nm.nodes.values():
+                        nsx, nsy = self._node_to_screen(node.area.x, node.area.y)
+                        nsw, nsh = self._node_screen_size(node.area.w, node.area.h)
+                        if Rect(nsx, nsy, nsw, nsh).collidepoint(mouse_pos):
+                            nm.set_active_node(node.node_id)
+                            return True
+
+                    self.editor.tilemap.capture_history("Add Node")
+                    layer = self.editor.tilemap.layer_manager.get_active_layer()
+                    layer_name = layer.name if layer else "Default"
+                    node = nm.create_default_node(layer_name, node_type=nm.default_node_type)
+                    node.area.x = wx - 32
+                    node.area.y = wy - 32
+                    nm.add_node(node)
+                    nm.set_active_node(node.node_id)
+                    self._node_drag_state = "moving"
+                    self._node_drag_start = (wx, wy)
+                    self._node_original_rect = NodeRect(
+                        node.area.x, node.area.y, node.area.w, node.area.h,
+                    )
+                return True
+
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                if self._node_drag_state is not None:
+                    self._node_drag_state = None
+                    self._node_drag_handle = None
+                    self._node_original_rect = None
+                    return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self._node_drag_state is not None and is_hover:
+                active = nm.get_active_node()
+                if active and self._node_original_rect:
+                    orig = self._node_original_rect
+                    wx, wy = self.screen_to_world(mouse_pos)
+                    dx = wx - self._node_drag_start[0]
+                    dy = wy - self._node_drag_start[1]
+
+                    if self._node_drag_state == "moving":
+                        active.area.x = orig.x + dx
+                        active.area.y = orig.y + dy
+                    elif self._node_drag_state == "resizing":
+                        h = self._node_drag_handle
+                        x, y, w, hh = orig.x, orig.y, orig.w, orig.h
+                        if h and "l" in h:
+                            nx = x + dx
+                            nw = w - dx
+                            if nw >= 8:
+                                active.area.x = int(nx)
+                                active.area.w = int(nw)
+                        if h and "r" in h:
+                            nw = w + dx
+                            if nw >= 8:
+                                active.area.w = int(nw)
+                        if h and "t" in h:
+                            ny = y + dy
+                            nh = hh - dy
+                            if nh >= 8:
+                                active.area.y = int(ny)
+                                active.area.h = int(nh)
+                        if h and "b" in h:
+                            nh = hh + dy
+                            if nh >= 8:
+                                active.area.h = int(nh)
+                return True
+
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                nm.set_active_node(None)
+                self._node_drag_state = None
+                self._node_drag_handle = None
+                return True
+            if event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
+                active = nm.get_active_node()
+                if active:
+                    self.editor.tilemap.capture_history("Remove Node")
+                    nm.remove_node(active.node_id)
+                return True
+
+        return False
 
     def _draw_move_preview(self, screen):
         """Draw semi-transparent preview of selected content at the move offset position.

@@ -394,6 +394,9 @@ class Tilemap:
         with open(target_path, "w") as f:
             JSONDump(save_data, f, indent=2)
 
+        if hasattr(self.editor, "node_manager"):
+            self.editor.node_manager.save(target_path)
+
         print(f"Saved to {target_path}")
 
     def _project_base_path(self) -> Path:
@@ -653,6 +656,11 @@ class Tilemap:
                     self._normalize_ttype(tile_data)
                     if active_layer:
                         active_layer.tiles[pos] = tile_data
+
+        if hasattr(self.editor, "node_manager"):
+            self.editor.node_manager.load(path)
+            if hasattr(self.editor, "node_selector"):
+                self.editor.node_selector._rebuild_filter()
 
         self.initialized = True
 
