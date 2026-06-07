@@ -28,6 +28,7 @@ class TilesetData:
         self.tile_properties: Dict[int, Dict[str, Any]] = {}
         self.object_collision_path: Optional[Path] = None
         self.object_collision_data: Optional[Dict[str, Any]] = None
+        self.animation: Optional[dict] = None
 
 
 class TileSelector:
@@ -335,6 +336,10 @@ class TileSelector:
             self._pending_tileset_queue.pop(0)
         )
         print(f"DEBUG: Processing tileset: {self._pending_tileset_path}")
+        tw, th = self.editor.tilemap.tile_size
+        sheet_cols = self._pending_tileset_surf.get_width() // tw
+        sheet_rows = self._pending_tileset_surf.get_height() // th
+        self.editor.tileset_type_dialog.set_sheet_dimensions(sheet_cols, sheet_rows)
         self.editor.tileset_type_dialog.show(
             on_confirm=self._on_tileset_type_selected,
             on_cancel=self._on_tileset_type_cancel,
@@ -346,6 +351,7 @@ class TileSelector:
         tileset_type: str,
         properties: dict = {},
         tile_properties: dict = {},
+        animation: Optional[dict] = None,
     ):
         """Load tileset from path without showing dialog (used when loading maps).
 
@@ -354,6 +360,7 @@ class TileSelector:
             tileset_type: Type of tileset ("tile" or "object") - already known from saved map
             properties: Custom properties for the tileset
             tile_properties: Custom properties for individual tiles in the tileset (variant_id str -> dict)
+            animation: Animation config dict (frame_count, frame_duration_ms, frame_stride, loop, animation_mode)
         """
         if path.exists():
             try:
@@ -365,6 +372,7 @@ class TileSelector:
                 tileset_data.tile_properties = {
                     int(k): v for k, v in tile_properties.items()
                 }
+                tileset_data.animation = animation
                 self._load_collision_data_for_tileset(tileset_data)
 
                 self.tilesets.append(tileset_data)
@@ -403,6 +411,19 @@ class TileSelector:
         surf = self._pending_tileset_surf
 
         tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
+        animation = self.editor.tileset_type_dialog.get_animation_config()
+        if animation:
+            tw, th = self.editor.tilemap.tile_size
+            sheet_cols = surf.get_width() // tw
+            sheet_rows = surf.get_height() // th
+            frame_count = animation["frame_count"]
+            if sheet_cols % frame_count == 0:
+                animation["frame_stride"] = sheet_cols // frame_count
+            elif sheet_rows % frame_count == 0:
+                animation["frame_stride"] = (sheet_rows // frame_count) * sheet_cols
+            else:
+                animation["frame_stride"] = (sheet_cols * sheet_rows) // frame_count
+        tileset_data.animation = animation
         self._load_collision_data_for_tileset(tileset_data)
         self.tilesets.append(tileset_data)
         self.active_idx = len(self.tilesets) - 1

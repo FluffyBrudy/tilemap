@@ -298,6 +298,8 @@ class Tilemap:
                     ts_data["tile_properties"] = {
                         str(k): v for k, v in ts.tile_properties.items()
                     }
+                if ts.animation:
+                    ts_data["animation"] = ts.animation
 
                 save_data["resources"]["tilesets"].append(ts_data)
 
@@ -547,6 +549,7 @@ class Tilemap:
                         tileset_type,
                         properties=ts_entry.get("properties", {}),
                         tile_properties=ts_entry.get("tile_properties", {}),
+                        animation=ts_entry.get("animation"),
                     )
                 except Exception as e:
                     error_msg = f"Error loading tileset {path_str}: {e}"

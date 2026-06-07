@@ -1290,6 +1290,15 @@ class TileGrid:
                         base_surf = tileset_data.surface
 
                         variant_id = tile["variant"]
+                        if tileset_data.animation:
+                            anim = tileset_data.animation
+                            frame_ms = pygame.time.get_ticks()
+                            frame_idx = int(frame_ms / anim["frame_duration_ms"]) % anim["frame_count"]
+                            if anim.get("animation_mode") == "random_start_times":
+                                phase = hash((x, y, ttype)) % anim["frame_count"]
+                                frame_idx = (frame_idx + phase) % anim["frame_count"]
+                            variant_id += frame_idx * anim["frame_stride"]
+
                         sheet_w = base_surf.get_width()
 
                         # Source rect always uses logical tile size
