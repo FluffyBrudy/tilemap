@@ -287,6 +287,10 @@ class RegexAutomapDesigner:
         mouse_pos = pygame.mouse.get_pos()
         self._update_preview_from_selector()
 
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.hide()
+            return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
                 # Header dragging

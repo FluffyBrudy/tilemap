@@ -1167,7 +1167,7 @@ class Editor:
                     else:
                         self.perform_quick_save()
                     continue
-                elif event.key == pygame.K_BACKQUOTE and ctrl_held:
+                elif event.key == pygame.K_BACKQUOTE and (ctrl_held or meta_held):
                     self.launch_error_console()
                     continue
                 elif event.key == pygame.K_z and (ctrl_held or meta_held):
@@ -1210,10 +1210,10 @@ class Editor:
                         self.eraser_mode = False
                         self.node_editing_mode = False
                     continue
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
+                elif event.key == pygame.K_g and (ctrl_held or meta_held):
                     self.toggle_grid()
                     continue
-                elif event.key == pygame.K_e and ctrl_held and shift_held:
+                elif event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held:
                     self.export_selection_as_png()
                     continue
                 elif event.key == pygame.K_t and (ctrl_held or meta_held):
@@ -1245,14 +1245,14 @@ class Editor:
                     if self.animation_panel.handle_event(event):
                         continue
 
-            # Priority 7: Side panels (tileset and layer widgets)
+            # Priority 7: Side panels (layer widget first so rename captures keys)
             consumed = False
-            if self.tileset_widget and self.tileset_widget.handle_event(event):
+            if self.layer_widget and self.layer_widget.handle_event(event):
                 consumed = True
             if (
                 not consumed
-                and self.layer_widget
-                and self.layer_widget.handle_event(event)
+                and self.tileset_widget
+                and self.tileset_widget.handle_event(event)
             ):
                 consumed = True
             

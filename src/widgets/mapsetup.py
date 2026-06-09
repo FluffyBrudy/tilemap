@@ -14,6 +14,7 @@ COLOR_BORDER = (80, 80, 80)
 COLOR_ACCENT = (60, 100, 160)
 COLOR_TEXT = (220, 220, 220)
 COLOR_ERROR = (200, 60, 60)
+COLOR_DIM = (140, 140, 140)
 
 
 class MapSetup:
@@ -42,8 +43,10 @@ class MapSetup:
             r = Rect(start_x + col * cell_w, start_y + row * cell_h, cell_w - 10, 60)
             self.inputs.append(DigitInput(r, lbl, key, default, tab_index=i))
 
-        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
+        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 105, 120, 35)
+        self.btn_open_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
         self.font = pygame.font.SysFont("Arial", 20, bold=True)
+        self.font_sm = pygame.font.SysFont("Arial", 13)
 
     def resize(self, center_rect: Rect):
         self.rect = center_rect
@@ -59,17 +62,25 @@ class MapSetup:
             inp.rect_area = r
             inp.rect_input = Rect(r.x, r.y + 20, r.width, 30)
 
-        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
+        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 105, 120, 35)
+        self.btn_open_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
             return False
 
-        if event.type == pygame.MOUSEBUTTONDOWN and self.btn_rect.collidepoint(
-            event.pos
-        ):
-            self.submit()
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.visible = False
             return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.btn_rect.collidepoint(event.pos):
+                self.submit()
+                return True
+            if self.btn_open_rect.collidepoint(event.pos):
+                self.visible = False
+                self.editor.perform_load()
+                return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB:
             focused = [i for i in self.inputs if i.is_focused]
@@ -133,6 +144,14 @@ class MapSetup:
         pygame.draw.rect(screen, COLOR_ACCENT, self.btn_rect)
         btn_txt = self.font.render("Create", True, COLOR_TEXT)
         screen.blit(btn_txt, btn_txt.get_rect(center=self.btn_rect.center))
+
+        or_surf = self.font_sm.render("─ OR ─", True, COLOR_DIM)
+        or_rect = or_surf.get_rect(center=(self.rect.centerx, self.btn_rect.bottom + 10))
+        screen.blit(or_surf, or_rect)
+
+        pygame.draw.rect(screen, COLOR_ACCENT, self.btn_open_rect)
+        open_txt = self.font_sm.render("Open map", True, COLOR_TEXT)
+        screen.blit(open_txt, open_txt.get_rect(center=self.btn_open_rect.center))
 
         if self.error_message:
             err = pygame.font.SysFont("Arial", 12).render(

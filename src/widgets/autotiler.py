@@ -271,7 +271,9 @@ class AutotileRuleDesigner:
         self._update_preview_from_selector()
 
         if event.type == pygame.KEYDOWN:
-            pass
+            if event.key == pygame.K_ESCAPE:
+                self.hide()
+                return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
