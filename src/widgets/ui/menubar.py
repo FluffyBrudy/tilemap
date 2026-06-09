@@ -77,6 +77,11 @@ class MenuBar:
                         "Toggle Auto-Autotile", self.editor.toggle_auto_autotile
                     ),
                     MenuAction(
+                        "Export Selection as PNG",
+                        self.editor.export_selection_as_png,
+                        "Ctrl+Shift+E",
+                    ),
+                    MenuAction(
                         "Launch External Viewer", self.editor.launch_external_automap
                     ),
                 ],

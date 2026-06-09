@@ -71,7 +71,7 @@ class TilesetTypeDialog:
         """Position child controls from the current dialog rect."""
         self.rect.center = self.editor_rect.center
 
-        h = 220
+        h = 260
         if self.animated or self._editing_field is not None:
             h = 420
         self.rect.h = h
@@ -97,7 +97,7 @@ class TilesetTypeDialog:
         )
 
         # Animated checkbox
-        anim_y = first_y + (row_h + gap) * 2 + 6
+        anim_y = first_y + (row_h + gap) * 2 + 16
         self.anim_check_rect = Rect(radio_x, anim_y, 16, 16)
 
         # Animation fields (collapsible)

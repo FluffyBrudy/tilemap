@@ -1449,10 +1449,11 @@ class TileGrid:
 
         sel_rect = Rect(int(sx), int(sy), int(sw), int(sh))
 
-        # Semi-transparent fill
-        fill_surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)
-        fill_surf.fill((100, 180, 255, 40))
-        screen.blit(fill_surf, (int(sx), int(sy)))
+        # Semi-transparent fill (skip during drag to avoid visual noise)
+        if not self.is_selecting:
+            fill_surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)
+            fill_surf.fill((100, 180, 255, 40))
+            screen.blit(fill_surf, (int(sx), int(sy)))
 
         # Dashed border (draw segments)
         border_color = (100, 180, 255) if not self.is_moving else (255, 200, 50)

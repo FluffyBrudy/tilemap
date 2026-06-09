@@ -242,7 +242,7 @@ class Editor:
         center_x = (self.width - 400) // 2
         center_y = (self.height - 400) // 2
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
-        self.map_setup_widget.visible = False
+        self.map_setup_widget.visible = True
         self.map_properties_dialog = MapPropertiesDialog(self, Rect(center_x, center_y, 400, 260))
         self.node_manager = NodeManager(self)
         self.node_selector = NodeSelector(self, 0, 65, 260, 240)
@@ -441,6 +441,67 @@ class Editor:
             self.tilemap.save_map(path)
         except Exception as e:
             error_handler.capture(e, context="save_map_selected")
+
+    def export_selection_as_png(self):
+        rect = self.tile_grid_widget.selection_rect
+        if rect is None:
+            self.notifications.notify("No region selected", duration=2.0)
+            return
+        self.open_file_manager(
+            on_save=self._on_export_selection_png,
+            allowed_exts=[".png"],
+            mode="save",
+            default_name="selection.png",
+        )
+
+    def _on_export_selection_png(self, path: Path):
+        rect = self.tile_grid_widget.selection_rect
+        if rect is None:
+            return
+        x1, y1, x2, y2 = rect
+        tw, th = self.tilemap.tile_size
+        pw = (x2 - x1 + 1) * tw
+        ph = (y2 - y1 + 1) * th
+        if pw <= 0 or ph <= 0:
+            return
+
+        export_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        layers = self.tilemap.layer_manager.get_rendered_layers()
+        tileset_map = self.tileset_widget.tileset_map
+
+        for layer in layers:
+            if layer.layer_type != "tile":
+                continue
+            if layer.opacity < 1.0:
+                layer_surf = pygame.Surface((pw, ph), pygame.SRCALPHA)
+            else:
+                layer_surf = export_surf
+
+            for (gx, gy), tile in layer.tiles.items():
+                if not (x1 <= gx <= x2 and y1 <= gy <= y2):
+                    continue
+                dx = (gx - x1) * tw
+                dy = (gy - y1) * th
+                ttype = int(tile["ttype"])
+                if ttype not in tileset_map:
+                    continue
+                ts = tileset_map[ttype]
+                variant_id = tile["variant"]
+                sheet_w = ts.surface.get_width()
+                sheet_cols = sheet_w // tw
+                src_x = (variant_id % sheet_cols) * tw
+                src_y = (variant_id // sheet_cols) * th
+                src_rect = Rect(src_x, src_y, tw, th)
+                if not ts.surface.get_rect().contains(src_rect):
+                    continue
+                layer_surf.blit(ts.surface, (dx, dy), src_rect)
+
+            if layer.opacity < 1.0:
+                layer_surf.set_alpha(int(layer.opacity * 255))
+                export_surf.blit(layer_surf, (0, 0))
+
+        pygame.image.save(export_surf, str(path))
+        self.notifications.notify(f"Exported selection to {path.name}", duration=2.0)
 
     def perform_load(self):
         self.open_file_manager(
@@ -1151,6 +1212,9 @@ class Editor:
                     continue
                 elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_g:
                     self.toggle_grid()
+                    continue
+                elif event.key == pygame.K_e and ctrl_held and shift_held:
+                    self.export_selection_as_png()
                     continue
                 elif event.key == pygame.K_t and (ctrl_held or meta_held):
                     self.cycle_theme()
