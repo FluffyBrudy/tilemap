@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tilemap-editor"
-version = "3.2.10"
+version = "3.3.0"
 description = "Pygame tilemap editor with SVG icons, professional UI, and sprite animation tools"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,6 +32,8 @@ py-modules = [
   "editor",
   "event_map",
   "layers",
+  "node_manager",
+  "nodes",
   "tilemap",
   "standalone_filemanager",
   "standalone_image_viewer",

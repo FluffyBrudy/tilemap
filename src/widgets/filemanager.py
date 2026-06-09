@@ -503,6 +503,7 @@ class FileManager:
 
         self.font_main = pygame.font.SysFont("Arial", 14)
         self.font_bold = pygame.font.SysFont("Arial", 14, bold=True)
+        self.font_small = pygame.font.SysFont("Arial", 11)
         self.font_icon = pygame.font.SysFont("Consolas", 20)
 
         self.search_input = InlineTextInput("search", "")
@@ -1606,13 +1607,21 @@ class FileManager:
             pygame.draw.rect(screen, COLORS["border"], bar_rect, border_radius=2)
 
     def _draw_footer(self, screen, rect):
-        sel_txt = "No file selected"
-        if self.selected_index != -1:
+        sel_txt: str
+        if self.multi_select and len(self.selected_indices) > 1:
+            sel_txt = f"{len(self.selected_indices)} files selected"
+        elif self.selected_index != -1:
             sel_txt = self.items[self.selected_index].name
+        else:
+            sel_txt = "No file selected"
 
-        txt_surf = self.font_main.render(sel_txt, True, COLORS["text_dim"])
         if self.mode == "open":
-            screen.blit(txt_surf, (rect.x + 10, rect.y + 17))
+            txt_surf = self.font_main.render(sel_txt, True, COLORS["text_dim"])
+            screen.blit(txt_surf, (rect.x + 10, rect.y + 12))
+            if self.multi_select:
+                hint = "[Ctrl+Click] toggle  [Shift+Click] range  [Open] confirm"
+                hint_surf = self.font_small.render(hint, True, COLORS["text_dim"])
+                screen.blit(hint_surf, (rect.x + 10, rect.y + 28))
 
         btn_w, btn_h = 80, 30
         margin = 10

@@ -2,16 +2,16 @@
 SpriteEditor — standalone widget wrapping SpritesheetGrid with editing toolbar.
 
 Toolbar:
-  [Flip X] [Flip Y] [Copy] [Paste] [Undo] [Redo] [Scale...] [Save PNG]
+  [Flip X] [Flip Y] [Copy] [Paste] [Undo] [Redo] [Scale...] [Grid WxH] [Open] [Save PNG]
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Union
 
 import pygame
-from pygame import Rect, Surface
+from pygame import Rect, Surface, SRCALPHA
 
 from widgets.spritesheet_grid import SpritesheetGrid
 from widgets.ui.theme import COLORS
@@ -34,6 +34,8 @@ _BUTTON_ICONS: dict[str, str | None] = {
     "Undo": None,
     "Redo": None,
     "Scale": None,
+    "Grid": None,
+    "Open": None,
     "Save": "save",
 }
 
@@ -42,8 +44,8 @@ class SpriteEditor:
     def __init__(
         self,
         rect: Rect,
-        surface: Surface,
-        tile_size: tuple[int, int],
+        surface: Optional[Surface] = None,
+        tile_size: tuple[int, int] = (32, 32),
         image_path: Optional[Path] = None,
         data_root: Optional[Path] = None,
     ):
@@ -51,9 +53,17 @@ class SpriteEditor:
         self.image_path = image_path
         self._data_root = data_root or (image_path.parent if image_path else Path.cwd())
 
+        # Start blank if no surface provided; track real sheets separately
+        if surface is None:
+            placeholder = Surface((1, 1), SRCALPHA)
+            self._sheet_surfaces: List[Surface] = []
+        else:
+            placeholder = surface
+            self._sheet_surfaces = [surface]
+
         # Grid
         grid_rect = Rect(rect.x, rect.y + TOOLBAR_H, rect.w, rect.h - TOOLBAR_H - STATUS_H)
-        self.grid = SpritesheetGrid(grid_rect, surface, tile_size)
+        self.grid = SpritesheetGrid(grid_rect, placeholder, tile_size)
 
         # Clipboard for copy/paste
         self._clipboard: Dict[int, Surface] = {}
@@ -63,6 +73,11 @@ class SpriteEditor:
         self._scale_active: bool = False
         self._scale_text: str = "2.0"
         self._scale_error: Optional[str] = None
+
+        # Grid dialog state
+        self._grid_active: bool = False
+        self._grid_text: str = f"{tile_size[0]}x{tile_size[1]}"
+        self._grid_error: Optional[str] = None
 
         # Save path — never auto-overwrite original
         self._save_path: Optional[Path] = None
@@ -81,13 +96,19 @@ class SpriteEditor:
         ty = self.rect.y + (TOOLBAR_H - BTN_H) // 2
         gap = 6
         x = self.rect.x + gap
-        labels = ["Flip X", "Flip Y", "Copy", "Paste", "Undo", "Redo", "Scale", "Save"]
+        labels = ["Flip X", "Flip Y", "Copy", "Paste", "Undo", "Redo", "Scale", "Grid", "Open", "Save"]
         for lbl in labels:
             self._btn_rects[lbl] = Rect(x, ty, BTN_W, BTN_H)
             x += BTN_W + gap
 
     def _get_status_text(self) -> str:
-        parts = [f"Zoom: {self.grid.zoom:.1f}x"]
+        n = len(self._sheet_surfaces)
+        if n == 0:
+            return "  No spritesheets loaded  —  Click [Open] to load one or more sheets"
+        tw, th = self.grid.tile_size
+        parts = [f"Tile: {tw}×{th}  Zoom: {self.grid.zoom:.1f}x"]
+        if n > 1:
+            parts.append(f"Sheets: {n}")
         sel = len(self.grid.selected_indices)
         if sel:
             parts.append(f"Selected: {sel}")
@@ -108,6 +129,9 @@ class SpriteEditor:
 
         if self._scale_active:
             return self._handle_scale_dialog(event)
+
+        if self._grid_active:
+            return self._handle_grid_dialog(event)
 
         mouse = pygame.mouse.get_pos()
 
@@ -182,6 +206,15 @@ class SpriteEditor:
             self._scale_text = "2.0"
             self._scale_error = None
             return True
+        elif lbl == "Grid":
+            self._grid_active = True
+            tw, th = self.grid.tile_size
+            self._grid_text = f"{tw}x{th}"
+            self._grid_error = None
+            return True
+        elif lbl == "Open":
+            self._open_add_sheets_dialog()
+            return True
         elif lbl == "Save":
             self._open_save_dialog()
             return True
@@ -212,6 +245,44 @@ class SpriteEditor:
                 self._scale_text += event.unicode
                 return True
         return False
+
+    def _handle_grid_dialog(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                parts = self._grid_text.lower().split("x")
+                try:
+                    tw = int(parts[0])
+                    th = int(parts[1]) if len(parts) > 1 else tw
+                    if tw < 1 or th < 1:
+                        self._grid_error = "Must be >= 1"
+                    else:
+                        self.grid.set_tile_size(tw, th)
+                        self._grid_active = False
+                        self._grid_error = None
+                except ValueError:
+                    self._grid_error = "Use format: WxH or N"
+                return True
+            elif event.key == pygame.K_ESCAPE:
+                self._grid_active = False
+                self._grid_error = None
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                self._grid_text = self._grid_text[:-1]
+                return True
+            elif event.unicode and event.unicode in "0123456789xX" and len(self._grid_text) < 10:
+                self._grid_text += event.unicode
+                return True
+        return False
+
+    @staticmethod
+    def _detect_tile_size(surface: Surface) -> tuple[int, int]:
+        w, h = surface.get_size()
+        candidates = [8, 12, 16, 24, 32, 48, 64, 128]
+        best = 8
+        for s in candidates:
+            if w % s == 0 and h % s == 0:
+                best = s
+        return (best, best)
 
     def _open_save_dialog(self) -> None:
         """Open FileManager in save mode to pick a PNG path."""
@@ -252,6 +323,64 @@ class SpriteEditor:
 
     def set_save_path(self, path: Path) -> None:
         self._save_path = path
+
+    # ------------------------------------------------------------------
+    # Multi-sheet: stack sheets vertically into one combined surface
+    # ------------------------------------------------------------------
+
+    def _build_combined_surface(self) -> None:
+        """Rebuild the combined surface from all loaded sheets (stacked vertically)."""
+        n = len(self._sheet_surfaces)
+        if n == 0:
+            return
+        if n == 1:
+            self.grid.set_surface(self._sheet_surfaces[0])
+            return
+
+        max_w = max(s.get_width() for s in self._sheet_surfaces)
+        total_h = sum(s.get_height() for s in self._sheet_surfaces)
+        combined = Surface((max_w, total_h), SRCALPHA)
+        combined.fill((0, 0, 0, 0))
+        y = 0
+        for surf in self._sheet_surfaces:
+            combined.blit(surf, (0, y))
+            y += surf.get_height()
+        self.grid.set_surface(combined)
+
+    def _open_add_sheets_dialog(self) -> None:
+        """Open FileManager in multi-select mode to pick one or more sheets."""
+        from widgets.filemanager import FileManager
+
+        fm_rect = self._file_manager_rect()
+        self._file_manager = FileManager(
+            rect=fm_rect,
+            initial_dir=self._data_root,
+            allowed_exts=[".png", ".jpg", ".jpeg", ".bmp", ".gif"],
+            on_select=self._on_add_sheets,
+            mode="open",
+            on_cancel=self._close_file_manager,
+            multi_select=True,
+            data_root=self._data_root,
+        )
+
+    def _on_add_sheets(self, selection: Union[Path, List[Path]]) -> None:
+        if isinstance(selection, Path):
+            selection = [selection]
+        was_empty = len(self._sheet_surfaces) == 0
+        loaded = 0
+        for path in selection:
+            try:
+                surf = pygame.image.load(str(path)).convert_alpha()
+                self._sheet_surfaces.append(surf)
+                loaded += 1
+            except Exception as e:
+                print(f"Failed to load {path.name}: {e}")
+        if loaded:
+            if was_empty:
+                detected = self._detect_tile_size(self._sheet_surfaces[0])
+                self.grid.set_tile_size(*detected)
+            self._build_combined_surface()
+        self._close_file_manager()
 
     # ------------------------------------------------------------------
     # Drawing
@@ -295,6 +424,8 @@ class SpriteEditor:
 
         if self._scale_active:
             self._draw_scale_dialog(screen)
+        if self._grid_active:
+            self._draw_grid_dialog(screen)
 
         # File manager overlay
         if self._file_manager is not None:
@@ -317,6 +448,28 @@ class SpriteEditor:
 
         if self._scale_error:
             err = self._font_sm.render(self._scale_error, True, COLORS.danger)
+            screen.blit(err, (dlg.x + 20, dlg.bottom - 22))
+
+        hint = self._font_sm.render("Enter / Esc", True, COLORS.text_dim)
+        screen.blit(hint, (dlg.right - 90, dlg.bottom - 22))
+
+    def _draw_grid_dialog(self, screen: Surface) -> None:
+        dw, dh = 260, 100
+        cx, cy = self.rect.center
+        dlg = Rect(cx - dw // 2, cy - dh // 2, dw, dh)
+        draw_panel(screen, dlg, COLORS.panel, COLORS.border)
+
+        title = self._font.render("Tile Size (WxH)", True, COLORS.text)
+        screen.blit(title, title.get_rect(centerx=dlg.centerx, top=dlg.top + 10))
+
+        inp = Rect(dlg.x + 20, dlg.top + 36, dw - 40, 28)
+        pygame.draw.rect(screen, COLORS.selected, inp, border_radius=4)
+        pygame.draw.rect(screen, COLORS.accent, inp, 2, border_radius=4)
+        txt = self._grid_text + ("|" if (pygame.time.get_ticks() // 400) % 2 else "")
+        screen.blit(self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5))
+
+        if self._grid_error:
+            err = self._font_sm.render(self._grid_error, True, COLORS.danger)
             screen.blit(err, (dlg.x + 20, dlg.bottom - 22))
 
         hint = self._font_sm.render("Enter / Esc", True, COLORS.text_dim)

@@ -771,23 +771,14 @@ class Editor:
             error_handler.capture(e, context="launch_animation_editor")
 
     def launch_sprite_editor(self):
-        """Launch the sprite editor in a new window."""
-        self.open_file_manager(
-            on_select=self._launch_sprite_editor_with_image,
-            initial_dir=self.data_root,
-            allowed_exts=[".png", ".jpg", ".jpeg"],
-            mode="open",
-        )
-
-    def _launch_sprite_editor_with_image(self, path: Path):
-        """Launch sprite editor subprocess with selected image."""
+        """Launch the sprite editor (blank) in a new window. Use [Open] inside to load sheets."""
         try:
             tile_size = "32x32"
             if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
                 tw, th = self.tilemap.tile_size
                 tile_size = f"{tw}x{th}"
 
-            args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
+            args = ["--tile-size", tile_size, "--data-root", str(self.data_root)]
             process = launch_standalone(
                 "plugins.sprite_editor.standalone",
                 args,
