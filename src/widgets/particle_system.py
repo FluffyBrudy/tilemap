@@ -9,6 +9,9 @@ from pygame import Rect, Surface
 
 PARTICLE_TEXTURE_SIZE = 24
 MAX_PREVIEW_PARTICLES = 200
+# Base texture is 24px; dividing by this factor normalizes it to ~4px,
+# matching the middle of the particle_size_min..particle_size_max range.
+PARTICLE_TEXTURE_SCALE_FACTOR = 6
 MAX_DT = 0.05
 
 
@@ -42,7 +45,7 @@ DEFAULT_PARTICLE_CONFIG: Dict[str, object] = {
 }
 
 EMISSION_SHAPES = ["point", "rect", "circle", "line"]
-PARTICLE_SHAPES = ["circle", "square", "diamond", "star", "sparkle", "smoke", "heart"]
+PARTICLE_SHAPES = ["circle", "square", "diamond", "star", "sparkle", "smoke", "heart", "line"]
 ALPHA_FADE_MODES = ["none", "fade_out", "fade_in", "fade_both"]
 
 FLOAT_FIELDS = {
@@ -165,6 +168,15 @@ def _make_heart_texture() -> Surface:
     return s
 
 
+def _make_line_texture() -> Surface:
+    s = Surface((PARTICLE_TEXTURE_SIZE, PARTICLE_TEXTURE_SIZE), pygame.SRCALPHA)
+    cx = PARTICLE_TEXTURE_SIZE // 2
+    thickness = 3
+    half = thickness // 2
+    pygame.draw.rect(s, (255, 255, 255, 255), Rect(cx - half, 2, thickness, PARTICLE_TEXTURE_SIZE - 4))
+    return s
+
+
 def get_particle_texture(shape: str) -> Surface:
     if shape not in _TEXTURE_CACHE:
         makers = {
@@ -175,6 +187,7 @@ def get_particle_texture(shape: str) -> Surface:
             "sparkle": _make_sparkle_texture,
             "smoke": _make_smoke_texture,
             "heart": _make_heart_texture,
+            "line": _make_line_texture,
         }
         maker = makers.get(shape, _make_circle_texture)
         _TEXTURE_CACHE[shape] = maker()
@@ -187,12 +200,11 @@ def get_default_config() -> Dict[str, object]:
 
 class Particle:
     __slots__ = (
-        "x", "y", "vx", "vy",
+        "alpha_fade", "end_color", "end_size",
         "life", "max_life",
-        "size", "start_size", "end_size",
-        "start_color", "end_color",
         "rotation", "rotation_speed",
-        "alpha_fade",
+        "size", "start_color", "start_size",
+        "vx", "vy", "x", "y",
     )
 
     def __init__(
@@ -273,6 +285,7 @@ class ParticlePreview:
         self.particles: List[Particle] = []
         self.spawn_timer: float = 0.0
         self.texture = get_particle_texture(str(self.config.get("particle_shape", "circle")))
+        self._current_shape = str(self.config.get("particle_shape", "circle"))
 
     def _get(self, key: str, default: object = 0) -> float:
         val = self.config.get(key, default)
@@ -288,8 +301,9 @@ class ParticlePreview:
 
         if "particle_shape" in cfg:
             shape = str(cfg["particle_shape"])
-            if shape != self.texture.get_locked():
+            if shape != self._current_shape:
                 self.texture = get_particle_texture(shape)
+                self._current_shape = shape
 
         capped_max = min(max_particles, MAX_PREVIEW_PARTICLES)
         self.spawn_timer += dt * spawn_rate
@@ -395,7 +409,9 @@ class ParticlePreview:
             if color[3] <= 0:
                 continue
 
-            draw_surf = pygame.transform.scale(tex, (max(1, int(tex_w * p.current_size * zoom / 6)), max(1, int(tex_h * p.current_size * zoom / 6))))
+            scaled_w = max(1, int(tex_w * p.current_size * zoom / PARTICLE_TEXTURE_SCALE_FACTOR))
+            scaled_h = max(1, int(tex_h * p.current_size * zoom / PARTICLE_TEXTURE_SCALE_FACTOR))
+            draw_surf = pygame.transform.scale(tex, (scaled_w, scaled_h))
             cw, ch = draw_surf.get_width(), draw_surf.get_height()
 
             tint = pygame.Surface(draw_surf.get_size(), pygame.SRCALPHA)
@@ -417,3 +433,4 @@ class ParticlePreview:
         self.clear()
         shape = str(config.get("particle_shape", "circle"))
         self.texture = get_particle_texture(shape)
+        self._current_shape = shape

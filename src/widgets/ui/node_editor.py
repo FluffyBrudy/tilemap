@@ -8,7 +8,8 @@ from nodes import NodeRect
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 from widgets.ui.draw_utils import draw_panel
 from widgets.ui.property_editor import PropertyEditor
-from widgets.ui.particle_config_dialog import ParticleConfigDialog
+from widgets.ui.particle_config_dialog import ParticleConfigDialog, Dropdown
+from widgets.particle_presets import PRESETS, get_preset_names, get_preset_config
 from utils.font_manager import font_manager, FontWeight
 
 
@@ -28,6 +29,10 @@ class NodeEditor:
         self._is_dragging = False
         self._drag_offset = (0, 0)
         self._last_node_id: Optional[str] = None
+
+        self._preset_dd: Optional[Dropdown] = None
+        self._preset_names: List[str] = get_preset_names()
+        self._is_particle = False
 
     def resize(self, x: int, y: int, w: int):
         self.rect = Rect(x, y, w, self.rect.height)
@@ -107,6 +112,35 @@ class NodeEditor:
                 return key
         return None
 
+    def _preset_rect(self) -> Optional[Rect]:
+        if not self._is_particle:
+            return None
+        y = self.rect.y + 24 + len(self._fields()) * 22 + 4
+        w = self.rect.width - 74
+        return Rect(self.rect.x + 64, y, w, 22)
+
+    def _buttons(self):
+        if not self.visible or self.editor.node_manager.active_group_name is not None:
+            return []
+        node = self.editor.node_manager.get_active_node()
+        if not node:
+            return []
+        rows = len(self._fields())
+        if node.node_type == "particle_emitter":
+            rows += 1
+        y_base = self.rect.y + 24 + rows * 22 + 4
+        buttons = []
+        self._is_particle = node.node_type == "particle_emitter"
+        if self._is_particle:
+            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
+            buttons.append((r, "particle"))
+            r2 = Rect(self.rect.x + 8, y_base + 26, self.rect.width - 16, 22)
+            buttons.append((r2, "props"))
+        else:
+            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
+            buttons.append((r, "props"))
+        return buttons
+
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
             return False
@@ -118,6 +152,18 @@ class NodeEditor:
             return False
 
         mouse_pos = pygame.mouse.get_pos()
+
+        # Check preset dropdown first (before field commit logic)
+        if self._is_particle and self._preset_dd is not None:
+            result = self._preset_dd.handle_event(event)
+            if result is not None:
+                if result != "Custom":
+                    cfg = get_preset_config(result)
+                    node.properties.clear()
+                    node.properties.update(cfg)
+                    self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
+                self._preset_dd.selected = result
+                return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if not self.rect.collidepoint(mouse_pos):
@@ -297,25 +343,6 @@ class NodeEditor:
             node.properties.clear()
             node.properties.update(cfg)
 
-    def _buttons(self):
-        if not self.visible or self.editor.node_manager.active_group_name is not None:
-            return []
-        node = self.editor.node_manager.get_active_node()
-        if not node:
-            return []
-        y_base = self.rect.y + 24 + len(self._fields()) * 22 + 4
-        buttons = []
-        is_particle = node.node_type == "particle_emitter"
-        if is_particle:
-            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
-            buttons.append((r, "particle"))
-            r2 = Rect(self.rect.x + 8, y_base + 26, self.rect.width - 16, 22)
-            buttons.append((r2, "props"))
-        else:
-            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
-            buttons.append((r, "props"))
-        return buttons
-
     def draw(self, screen: pygame.Surface):
         if not self.visible:
             return
@@ -358,6 +385,30 @@ class NodeEditor:
 
             screen.blit(txt, (input_rect.x + 3, input_rect.y + 2))
 
+        # Preset dropdown for particle emitters
+        node = mgr.get_active_node()
+        is_particle = node is not None and node.node_type == "particle_emitter"
+        self._is_particle = is_particle
+
+        if is_particle:
+            pr = self._preset_rect()
+            if pr:
+                lbl = self.font.render("Preset", True, COLORS.text_dim)
+                screen.blit(lbl, (pr.x - 58, pr.y + 2))
+
+                # Build or update the dropdown
+                if self._preset_dd is None or self._preset_dd.rect != pr:
+                    current = "Custom"
+                    if node and node.properties:
+                        for p in PRESETS:
+                            if node.properties == p["config"]:
+                                current = p["name"]
+                                break
+                    opts = ["Custom"] + self._preset_names
+                    self._preset_dd = Dropdown(pr, opts, current, max_visible=12)
+
+                self._preset_dd.draw(screen, (40, 44, 50), (60, 64, 69))
+
         for rect, action in self._buttons():
             if action == "particle":
                 pygame.draw.rect(screen, (200, 100, 160), rect, border_radius=SHAPE.radius_sm)
@@ -366,3 +417,7 @@ class NodeEditor:
                 pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
                 txt = self.font.render("Properties...", True, COLORS.text)
             screen.blit(txt, txt.get_rect(center=rect.center))
+
+        # Draw dropdown options on top
+        if self._preset_dd is not None and self._preset_dd.open:
+            self._preset_dd.draw_options(screen)

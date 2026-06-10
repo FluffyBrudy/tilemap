@@ -29,28 +29,68 @@ CONTENT_W = 480
 
 
 class Dropdown:
-    def __init__(self, rect: Rect, options: List[str], initial: str):
+    def __init__(self, rect: Rect, options: List[str], initial: str, max_visible: int = 10):
+        if not options:
+            raise ValueError("options must be a non-empty list")
         self.rect = rect
         self.options = options
         self.selected = initial if initial in options else options[0]
         self.open = False
         self.hover_idx: Optional[int] = None
         self.option_h = 22
+        self.max_visible = max_visible
+        self.scroll_offset = 0
+
+    def _get_option_rect(self, idx: int) -> Rect:
+        visible_idx = idx - self.scroll_offset
+        return Rect(self.rect.x, self.rect.y + self.rect.height + visible_idx * self.option_h, self.rect.width, self.option_h)
+
+    def _total_height(self) -> int:
+        return len(self.options) * self.option_h
+
+    def _visible_range(self) -> Tuple[int, int]:
+        last = min(len(self.options), self.scroll_offset + self.max_visible)
+        return self.scroll_offset, last
 
     def handle_event(self, event: pygame.event.Event) -> Optional[str]:
         mouse = pygame.mouse.get_pos()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse):
                 self.open = not self.open
+                if self.open:
+                    self.scroll_offset = 0
+                    if self.selected in self.options:
+                        sel_idx = self.options.index(self.selected)
+                        if sel_idx >= self.max_visible:
+                            self.scroll_offset = sel_idx - self.max_visible + 1
                 return None
             if self.open:
-                for i, opt in enumerate(self.options):
-                    r = Rect(self.rect.x, self.rect.y + self.rect.height + i * self.option_h, self.rect.width, self.option_h)
+                lo, hi = self._visible_range()
+                for i in range(lo, hi):
+                    r = self._get_option_rect(i)
                     if r.collidepoint(mouse):
-                        self.selected = opt
+                        self.selected = self.options[i]
                         self.open = False
-                        return opt
+                        return self.selected
                 self.open = False
+                return None
+
+        if self.open and event.type == pygame.MOUSEWHEEL:
+            max_offset = max(0, len(self.options) - self.max_visible)
+            if event.y > 0:
+                self.scroll_offset = max(0, self.scroll_offset - 3)
+            else:
+                self.scroll_offset = min(max_offset, self.scroll_offset + 3)
+            return None
+
+        if event.type == pygame.MOUSEMOTION and self.open:
+            self.hover_idx = None
+            lo, hi = self._visible_range()
+            for i in range(lo, hi):
+                if self._get_option_rect(i).collidepoint(mouse):
+                    self.hover_idx = i
+                    break
+
         return None
 
     def draw(self, screen: Surface, bg: Tuple[int, int, int], border: Tuple[int, int, int]):
@@ -69,12 +109,41 @@ class Dropdown:
         if not self.open:
             return
         font = pygame.font.SysFont("Arial", 13)
-        for i, opt in enumerate(self.options):
-            r = Rect(self.rect.x, self.rect.y + self.rect.height + i * self.option_h, self.rect.width, self.option_h)
-            opt_bg = (60, 70, 90) if self.hover_idx == i else (50, 55, 65) if opt == self.selected else (40, 44, 50)
+        lo, hi = self._visible_range()
+
+        # clip the options area
+        full_h = self._total_height()
+        visible_h = min(full_h, self.max_visible * self.option_h)
+        clip = Rect(self.rect.x, self.rect.y + self.rect.height, self.rect.width, visible_h)
+        old_clip = screen.get_clip()
+        screen.set_clip(clip)
+
+        for i in range(lo, hi):
+            r = self._get_option_rect(i)
+            opt = self.options[i]
+            is_selected = opt == self.selected
+            opt_bg = (60, 70, 90) if self.hover_idx == i else (50, 55, 65) if is_selected else (40, 44, 50)
             pygame.draw.rect(screen, opt_bg, r, border_radius=2)
             txt = font.render(opt, True, (220, 220, 220))
             screen.blit(txt, (r.x + 4, r.y + 3))
+
+        screen.set_clip(old_clip)
+
+        # scroll indicators
+        if self.scroll_offset > 0:
+            arrow_y = clip.y
+            pygame.draw.polygon(screen, (160, 160, 160), [
+                (clip.x + clip.width // 2, arrow_y + 4),
+                (clip.x + clip.width // 2 - 5, arrow_y + 10),
+                (clip.x + clip.width // 2 + 5, arrow_y + 10),
+            ])
+        if hi < len(self.options):
+            arrow_y = clip.bottom - 10
+            pygame.draw.polygon(screen, (160, 160, 160), [
+                (clip.x + clip.width // 2, arrow_y + 6),
+                (clip.x + clip.width // 2 - 5, arrow_y),
+                (clip.x + clip.width // 2 + 5, arrow_y),
+            ])
 
 
 class Slider:
@@ -179,28 +248,36 @@ class ColorField:
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
+        field_w = self.rect.width - 20
+        field_h = self.rect.height
+        strip_x = field_w + 4
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if not self.rect.collidepoint(mouse):
                 return False
             lx = mouse[0] - self.rect.x
             ly = mouse[1] - self.rect.y
-            if lx >= 0 and ly >= 0 and lx < self.rect.width and ly < self.rect.height:
-                if lx < self.rect.width - 20:
-                    self.hue = (lx / (self.rect.width - 20)) * 360
-                    self.sat = 1.0 - ly / self.rect.height
+            if lx >= 0 and ly >= 0 and lx < self.rect.width and ly < field_h:
+                if lx < strip_x and field_w > 0:
+                    hue_lx = min(lx, field_w - 1)
+                    self.hue = (hue_lx / field_w) * 360
+                    self.sat = 1.0 - ly / field_h
                     self.dragging_part = "field"
-                else:
-                    self.bri = 1.0 - ly / self.rect.height
+                elif lx >= strip_x:
+                    self.bri = 1.0 - ly / field_h
                     self.dragging_part = "brightness"
+                else:
+                    return False
                 return True
         if event.type == pygame.MOUSEMOTION and self.dragging_part:
             lx = max(0, min(mouse[0] - self.rect.x, self.rect.width))
-            ly = max(0, min(mouse[1] - self.rect.y, self.rect.height))
-            if self.dragging_part == "field":
-                self.hue = (lx / (self.rect.width - 20)) * 360
-                self.sat = 1.0 - ly / self.rect.height
+            ly = max(0, min(mouse[1] - self.rect.y, field_h))
+            if self.dragging_part == "field" and field_w > 0:
+                hue_lx = min(lx, field_w - 1)
+                self.hue = (hue_lx / field_w) * 360
+                self.sat = 1.0 - ly / field_h
             elif self.dragging_part == "brightness":
-                self.bri = 1.0 - ly / self.rect.height
+                self.bri = 1.0 - ly / field_h
             return True
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.dragging_part = None
@@ -225,13 +302,13 @@ class ColorField:
             self._cache_surf = self._build_hue_sat_surf(field_w, field_h)
             self._cache_key = cache_key
 
-        # Apply brightness overlay
+        # Apply brightness overlay to a copy — never mutate the cache
+        surf = self._cache_surf.copy()
         bri_surf = Surface((field_w, field_h), pygame.SRCALPHA)
         dark = int((1.0 - self.bri) * 255)
         bri_surf.fill((0, 0, 0, dark))
-        self._cache_surf.blit(bri_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-
-        screen.blit(self._cache_surf, self.rect.topleft)
+        surf.blit(bri_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        screen.blit(surf, self.rect.topleft)
 
         # Cursor on field
         cx = int((self.hue / 360) * field_w)
@@ -472,8 +549,6 @@ class ParticleConfigDialog:
             self.sliders.append((key, sl))
             self._slider_base_y[key] = y
             l = self.font_label.render(lbl, True, (180, 180, 180))
-            self._label_cache: Dict[str, Surface] = {}
-            self._label_cache[key] = l
             y += ROW_H
 
         def add_dropdown(key: str, opts: List[str]):

@@ -422,6 +422,8 @@ class TileSelector:
         self._commit_tileset_load(tileset_type)
 
     def _commit_tileset_load(self, tileset_type: str):
+        import math
+
         path = self._pending_tileset_path
         surf = self._pending_tileset_surf
 
@@ -429,15 +431,22 @@ class TileSelector:
         animation = self.editor.tileset_type_dialog.get_animation_config()
         if animation:
             tw, th = self.editor.tilemap.tile_size
-            sheet_cols = surf.get_width() // tw
-            sheet_rows = surf.get_height() // th
-            frame_count = animation["frame_count"]
-            if sheet_cols % frame_count == 0:
-                animation["frame_stride"] = sheet_cols // frame_count
-            elif sheet_rows % frame_count == 0:
-                animation["frame_stride"] = (sheet_rows // frame_count) * sheet_cols
+            if tw <= 0 or th <= 0:
+                animation = None
             else:
-                animation["frame_stride"] = (sheet_cols * sheet_rows) // frame_count
+                frame_count = animation.get("frame_count", 0)
+                if frame_count <= 0:
+                    animation = None
+                else:
+                    sheet_cols = surf.get_width() // tw
+                    sheet_rows = surf.get_height() // th
+                    if sheet_cols % frame_count == 0:
+                        animation["frame_stride"] = sheet_cols // frame_count
+                    elif sheet_rows % frame_count == 0:
+                        animation["frame_stride"] = (sheet_rows // frame_count) * sheet_cols
+                    else:
+                        total = sheet_cols * sheet_rows
+                        animation["frame_stride"] = math.ceil(total / frame_count)
         tileset_data.animation = animation
         self._load_collision_data_for_tileset(tileset_data)
         self.tilesets.append(tileset_data)
