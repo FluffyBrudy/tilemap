@@ -445,6 +445,9 @@ class Editor:
             error_handler.capture(e, context="save_map_selected")
 
     def export_selection_as_png(self):
+        if self.tile_grid_widget is None:
+            self.notifications.notify("No tile grid available", duration=2.0)
+            return
         rect = self.tile_grid_widget.selection_rect
         if rect is None:
             self.notifications.notify("No region selected", duration=2.0)
@@ -459,6 +462,9 @@ class Editor:
     def _on_export_selection_png(self, path: Path):
         rect = self.tile_grid_widget.selection_rect
         if rect is None:
+            return
+        if self.tileset_widget is None:
+            self.notifications.notify("No tileset available", duration=2.0)
             return
         x1, y1, x2, y2 = rect
         tw, th = self.tilemap.tile_size
@@ -813,7 +819,7 @@ class Editor:
                 resolved = None
 
             if not resolved or not resolved.exists():
-                print(f"Could not locate spritesheet for animation file: {path.name}")
+                self.notifications.notify(f"Could not locate spritesheet: {path.name}", duration=2.0)
                 return
 
             args = [

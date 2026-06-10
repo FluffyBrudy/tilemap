@@ -60,7 +60,9 @@ class Tilemap:
         if active_layer:
             active_layer.tiles = value
 
-    def init_size(self, tile_size: "TCoor", map_size: "TCoor", render_scale: float = 1.0):
+    def init_size(
+        self, tile_size: "TCoor", map_size: "TCoor", render_scale: float = 1.0
+    ):
         self.tile_size = tile_size
         self.map_size = map_size
         self.initial_map_size = map_size  # Store what user initially setup
@@ -298,7 +300,7 @@ class Tilemap:
                     ts_data["tile_properties"] = {
                         str(k): v for k, v in ts.tile_properties.items()
                     }
-                if ts.animation:
+                if ts.animation is not None:
                     ts_data["animation"] = ts.animation
 
                 save_data["resources"]["tilesets"].append(ts_data)

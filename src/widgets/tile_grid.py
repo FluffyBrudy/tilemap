@@ -5,7 +5,7 @@ from pygame import Rect, Surface, K_UP, K_LEFT, K_RIGHT
 from ttypes.tilemap import TypeTile, TypeObject
 from widgets.ui.theme import COLORS
 from nodes import NodeRect
-from widgets.particle_system import MAX_DT, ParticlePreview, get_default_config
+from widgets.particle_system import MAX_DT, ParticlePreview
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -1300,12 +1300,15 @@ class TileGrid:
                         variant_id = tile["variant"]
                         if tileset_data.animation:
                             anim = tileset_data.animation
-                            frame_ms = pygame.time.get_ticks()
-                            frame_idx = int(frame_ms / anim["frame_duration_ms"]) % anim["frame_count"]
-                            if anim.get("animation_mode") == "random_start_times":
-                                phase = hash((x, y, ttype)) % anim["frame_count"]
-                                frame_idx = (frame_idx + phase) % anim["frame_count"]
-                            variant_id += frame_idx * anim["frame_stride"]
+                            duration = anim.get("frame_duration_ms", 0)
+                            frame_count = anim.get("frame_count", 1)
+                            if duration > 0 and frame_count > 0:
+                                frame_ms = pygame.time.get_ticks()
+                                frame_idx = int(frame_ms / duration) % frame_count
+                                if anim.get("animation_mode") == "random_start_times":
+                                    phase = hash((x, y, ttype)) % frame_count
+                                    frame_idx = (frame_idx + phase) % frame_count
+                                variant_id += frame_idx * anim.get("frame_stride", 1)
 
                         sheet_w = base_surf.get_width()
 
@@ -1561,9 +1564,6 @@ class TileGrid:
                 self._particle_previews[active_id] = ParticlePreview(dict(active.properties))
             preview = self._particle_previews[active_id]
             preview.config = active.properties
-            shape = str(active.properties.get("particle_shape", "circle"))
-            if preview.texture.get_at((0, 0))[3] == 0:
-                pass
             preview.update(dt, active.area.x, active.area.y, active.area.w, active.area.h)
             self._last_active_node_id = active_id
         else:
@@ -1582,6 +1582,13 @@ class TileGrid:
         preview = self._particle_previews.get(active.node_id)
         if preview:
             preview.draw(screen, self.scroll_x, self.scroll_y, self.zoom_level, self.rect)
+
+    def reset_particle_preview(self, node_id: str, config: dict) -> None:
+        pv = self._particle_previews.get(node_id)
+        if pv:
+            pv.reset(dict(config))
+        else:
+            self._particle_previews[node_id] = ParticlePreview(dict(config))
 
     def _draw_node_handles(self, screen, rect: Rect, border_color: Tuple[int, int, int] = (80, 220, 80)):
         hs = 6
@@ -1810,11 +1817,9 @@ class TileGrid:
                     new_gy = gy + dy
                     dest_x = (
                         (new_gx * eff_w - self.scroll_x) * self.zoom_level
-                        + self.rect.x
                     )
                     dest_y = (
                         (new_gy * eff_h - self.scroll_y) * self.zoom_level
-                        + self.rect.y
                     )
 
                     if self.zoom_level != 1.0 or rs != 1.0:
@@ -1866,11 +1871,9 @@ class TileGrid:
                 new_y = area["y"] + dy
                 dest_x = (
                     (new_x - self.scroll_x) * self.zoom_level
-                    + self.rect.x
                 )
                 dest_y = (
                     (new_y - self.scroll_y) * self.zoom_level
-                    + self.rect.y
                 )
 
                 if self.zoom_level != 1.0 or rs != 1.0:
@@ -1888,7 +1891,7 @@ class TileGrid:
                         preview_surf.blit(tile_copy, (dest_x, dest_y))
 
         # Blit the preview onto the screen
-        screen.blit(preview_surf, (0, 0))
+        screen.blit(preview_surf, self.rect.topleft)
 
     def _get_group_for_tile(self, tile: TypeTile) -> Optional[str]:
         if not hasattr(self.editor, "autotiler"):

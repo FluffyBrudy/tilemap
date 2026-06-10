@@ -140,6 +140,8 @@ class NodeManager:
     def reorder_node(self, node_id: str, target_node_id: str, before: bool = True) -> None:
         if node_id not in self.nodes or target_node_id not in self.nodes:
             return
+        if node_id == target_node_id:
+            return
         node = self.nodes[node_id]
         keys = list(self.nodes.keys())
         keys.remove(node_id)
