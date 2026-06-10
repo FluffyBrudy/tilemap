@@ -628,6 +628,11 @@ class ParticleConfigDialog:
                 self.scroll_y = min(max_scroll, self.scroll_y + 20)
                 return True
 
+        if event.type == pygame.MOUSEWHEEL:
+            max_scroll = max(0, self._get_content_height() - (self.rect.height - 80))
+            self.scroll_y = max(0, min(max_scroll, self.scroll_y - event.y * 20))
+            return True
+
         for dd_key, dd in self.dropdowns:
             result = dd.handle_event(event)
             if result is not None:
