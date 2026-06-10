@@ -8,6 +8,7 @@ from nodes import NodeRect
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 from widgets.ui.draw_utils import draw_panel
 from widgets.ui.property_editor import PropertyEditor
+from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from utils.font_manager import font_manager, FontWeight
 
 
@@ -146,18 +147,28 @@ class NodeEditor:
                         self._editing_field = None
                         self.text_selected = False
 
-                props_rect = self._props_button_rect()
-                if props_rect and props_rect.collidepoint(mouse_pos):
-                    node = mgr.get_active_node()
-                    if node:
-                        self.editor.property_editor = PropertyEditor(
-                            self.editor,
-                            f"Node Properties: {node.name}",
-                            dict(node.properties),
-                            on_save=lambda props: self._save_props(props),
-                            on_close=lambda: None,
-                        )
-                    return True
+                for rect, action in self._buttons():
+                    if rect and rect.collidepoint(mouse_pos):
+                        if action == "props":
+                            node = mgr.get_active_node()
+                            if node:
+                                self.editor.property_editor = PropertyEditor(
+                                    self.editor,
+                                    f"Node Properties: {node.name}",
+                                    dict(node.properties),
+                                    on_save=lambda props: self._save_props(props),
+                                    on_close=lambda: None,
+                                )
+                        elif action == "particle":
+                            node = mgr.get_active_node()
+                            if node:
+                                self.editor.particle_config_dialog = ParticleConfigDialog(
+                                    self.editor,
+                                    dict(node.properties),
+                                    node.node_id,
+                                    on_save=lambda cfg: self._save_particle_config(cfg),
+                                )
+                        return True
 
                 return True
 
@@ -280,13 +291,30 @@ class NodeEditor:
         if node:
             node.properties = props
 
-    def _props_button_rect(self) -> Optional[Rect]:
-        if not self.visible:
-            return None
-        if self.editor.node_manager.active_group_name is not None:
-            return None
-        y = self.rect.y + 24 + len(self._fields()) * 22 + 4
-        return Rect(self.rect.x + 8, y, self.rect.width - 16, 22)
+    def _save_particle_config(self, cfg: dict):
+        node = self.editor.node_manager.get_active_node()
+        if node:
+            node.properties.clear()
+            node.properties.update(cfg)
+
+    def _buttons(self):
+        if not self.visible or self.editor.node_manager.active_group_name is not None:
+            return []
+        node = self.editor.node_manager.get_active_node()
+        if not node:
+            return []
+        y_base = self.rect.y + 24 + len(self._fields()) * 22 + 4
+        buttons = []
+        is_particle = node.node_type == "particle_emitter"
+        if is_particle:
+            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
+            buttons.append((r, "particle"))
+            r2 = Rect(self.rect.x + 8, y_base + 26, self.rect.width - 16, 22)
+            buttons.append((r2, "props"))
+        else:
+            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
+            buttons.append((r, "props"))
+        return buttons
 
     def draw(self, screen: pygame.Surface):
         if not self.visible:
@@ -330,8 +358,11 @@ class NodeEditor:
 
             screen.blit(txt, (input_rect.x + 3, input_rect.y + 2))
 
-        props_btn = self._props_button_rect()
-        if props_btn:
-            pygame.draw.rect(screen, COLORS.accent, props_btn, border_radius=SHAPE.radius_sm)
-            props_txt = self.font.render("Properties...", True, COLORS.text)
-            screen.blit(props_txt, props_txt.get_rect(center=props_btn.center))
+        for rect, action in self._buttons():
+            if action == "particle":
+                pygame.draw.rect(screen, (200, 100, 160), rect, border_radius=SHAPE.radius_sm)
+                txt = self.font.render("Particle Config...", True, COLORS.text)
+            else:
+                pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
+                txt = self.font.render("Properties...", True, COLORS.text)
+            screen.blit(txt, txt.get_rect(center=rect.center))

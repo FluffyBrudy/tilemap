@@ -35,6 +35,7 @@ from widgets.ui.node_selector import NodeSelector
 from widgets.ui.node_editor import NodeEditor
 from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
+from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from widgets.ui.tooltip import TooltipManager
 from widgets.ui.theme import get_theme_manager, set_theme, THEMES
 from utils.log_capture import setup_console_log
@@ -192,6 +193,7 @@ class Editor:
         self.tooltip = TooltipManager()
         self.error_console_process: Optional[subprocess.Popen] = None
         self.property_editor: Optional[PropertyEditor] = None
+        self.particle_config_dialog: Optional[ParticleConfigDialog] = None
 
         self.child_processes: List[subprocess.Popen] = []
         self.file_manager_process: Optional[subprocess.Popen] = None
@@ -246,7 +248,7 @@ class Editor:
         self.map_properties_dialog = MapPropertiesDialog(self, Rect(center_x, center_y, 400, 260))
         self.node_manager = NodeManager(self)
         self.node_selector = NodeSelector(self, 0, 65, 260, 240)
-        self.node_editor = NodeEditor(self, 0, 310, 260, 190)
+        self.node_editor = NodeEditor(self, 0, 310, 260, 230)
 
     def open_file_manager(
         self,
@@ -1135,6 +1137,10 @@ class Editor:
                 if self.property_editor.handle_event(event):
                     continue
 
+            if self.particle_config_dialog and self.particle_config_dialog.active:
+                if self.particle_config_dialog.handle_event(event):
+                    continue
+
             # Priority 2: Autotiler and Regex Designer (block all events when visible)
             if self.autotiler.visible:
                 if self.autotiler.handle_event(event):
@@ -1354,8 +1360,6 @@ class Editor:
                 self.screen.blit(overlay, (0, 0))
                 self.layer_type_dialog.draw(self.screen)
 
-            if self.property_editor and self.property_editor.active:
-                self.property_editor.draw(self.screen)
             if self.loading_state["active"]:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 180))
@@ -1381,6 +1385,11 @@ class Editor:
                 self.node_selector.draw(self.screen)
             if self.node_editor:
                 self.node_editor.draw(self.screen)
+            # Modal dialogs draw on top of everything
+            if self.property_editor and self.property_editor.active:
+                self.property_editor.draw(self.screen)
+            if self.particle_config_dialog and self.particle_config_dialog.active:
+                self.particle_config_dialog.draw(self.screen)
             self.menubar.draw(self.screen)
             self.tooltip.draw(self.screen)
 
