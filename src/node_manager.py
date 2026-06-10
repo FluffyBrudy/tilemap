@@ -100,12 +100,20 @@ class NodeManager:
 
     def create_default_node(self, layer_name: str, node_type: str = "area") -> Node:
         count = len(self.nodes) + 1
+        props: Dict[str, Any] = {}
+        if node_type == "particle_emitter":
+            from widgets.particle_system import get_default_config
+            props = get_default_config()
+            name = f"Emitter {count}"
+        else:
+            name = f"{node_type.capitalize()} {count}"
         return Node(
             node_id=create_node_id(),
-            name=f"{node_type.capitalize()} {count}",
+            name=name,
             node_type=node_type,
             area=NodeRect(x=0, y=0, w=64, h=64),
             layer_name=layer_name,
+            properties=props,
         )
 
     def rename_group(self, old_name: str, new_name: str) -> bool:

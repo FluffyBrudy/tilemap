@@ -39,6 +39,7 @@ class NodeSelector:
         self._node_types: List[Tuple[str, str, Tuple[int, int, int]]] = [
             ("area", "Area Zone", (80, 220, 120)),
             ("group", "Group / Folder", (220, 180, 80)),
+            ("particle_emitter", "Particle Emitter", (240, 140, 200)),
         ]
         self._add_dropdown_open: bool = False
         
@@ -535,8 +536,17 @@ class NodeSelector:
 
                 indent_offset = 16 if row["indent"] else 0
                 
-                # Bullet Badge Dot (Area = green)
-                pygame.draw.circle(screen, (80, 220, 120), (item_rect.x + indent_offset + 10, item_rect.centery), 4)
+                node_type_colors = {
+                    "area": (80, 220, 120),
+                    "spawn": (80, 140, 240),
+                    "portal": (180, 80, 220),
+                    "npc": (240, 140, 60),
+                    "checkpoint": (60, 200, 200),
+                    "item": (220, 200, 60),
+                    "particle_emitter": (240, 140, 200),
+                }
+                bullet_color = node_type_colors.get(node.node_type, (80, 220, 120))
+                pygame.draw.circle(screen, bullet_color, (item_rect.x + indent_offset + 10, item_rect.centery), 4)
 
                 # Node name
                 lbl = self.font.render(node.name, True, COLORS.text)
@@ -573,7 +583,17 @@ class NodeSelector:
             else:
                 node = mgr.get_node(drag_row["node_id"])
                 lbl_text = node.name if node else "Node"
-                pygame.draw.circle(screen, (80, 220, 120), (preview_rect.x + 10, preview_rect.centery), 4)
+                node_type_colors = {
+                    "area": (80, 220, 120),
+                    "spawn": (80, 140, 240),
+                    "portal": (180, 80, 220),
+                    "npc": (240, 140, 60),
+                    "checkpoint": (60, 200, 200),
+                    "item": (220, 200, 60),
+                    "particle_emitter": (240, 140, 200),
+                }
+                bullet_color = node_type_colors.get(node.node_type, (80, 220, 120)) if node else (80, 220, 120)
+                pygame.draw.circle(screen, bullet_color, (preview_rect.x + 10, preview_rect.centery), 4)
 
             txt_lbl = self.font.render(lbl_text, True, (255, 255, 255))
             screen.blit(txt_lbl, (preview_rect.x + 32 if drag_row["type"] == "group" else preview_rect.x + 20, preview_rect.y + 6))

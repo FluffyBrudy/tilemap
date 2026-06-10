@@ -1,10 +1,11 @@
 import pygame
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 from pygame import Rect, Surface, K_UP, K_LEFT, K_RIGHT
 
 from ttypes.tilemap import TypeTile, TypeObject
 from widgets.ui.theme import COLORS
 from nodes import NodeRect
+from widgets.particle_system import MAX_DT, ParticlePreview, get_default_config
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -61,6 +62,11 @@ class TileGrid:
         self._node_drag_handle: Optional[str] = None
         self._node_drag_start: Tuple[int, int] = (0, 0)
         self._node_original_rect = None
+
+        # Particle preview state
+        self._particle_previews: Dict[str, ParticlePreview] = {}
+        self._last_preview_time: float = 0.0
+        self._last_active_node_id: Optional[str] = None
 
     @property
     def tile_size(self):
@@ -123,6 +129,8 @@ class TileGrid:
                         self.eraser_size = max(1, min(100, self.eraser_size + adj))
                         self.last_eraser_adj_time = current_time
                         self.eraser_overlay_timer = 1500  # Show for 1.5 seconds
+
+        self._update_particle_previews()
 
         self.clamp_view()
 
@@ -1499,6 +1507,7 @@ class TileGrid:
             "npc": (240, 140, 60),        # Orange
             "checkpoint": (60, 200, 200),  # Teal
             "item": (220, 200, 60),       # Yellow
+            "particle_emitter": (240, 140, 200),  # Pink / Magenta
         }
 
         active = nm.get_active_node() if editing else None
@@ -1530,6 +1539,49 @@ class TileGrid:
 
             if is_active:
                 self._draw_node_handles(screen, Rect(sx, sy, sw, sh), color)
+
+        self._draw_particle_previews(screen)
+
+    def _update_particle_previews(self):
+        now = pygame.time.get_ticks()
+        dt = min((now - self._last_preview_time) / 1000.0, MAX_DT) if self._last_preview_time > 0 else 0.016
+        self._last_preview_time = now
+
+        nm = getattr(self.editor, "node_manager", None)
+        if not nm or not self.editor.node_editing_mode:
+            self._particle_previews.clear()
+            self._last_active_node_id = None
+            return
+
+        active = nm.get_active_node()
+        active_id = active.node_id if active else None
+
+        if active_id and active.node_type == "particle_emitter":
+            if active_id not in self._particle_previews:
+                self._particle_previews[active_id] = ParticlePreview(dict(active.properties))
+            preview = self._particle_previews[active_id]
+            preview.config = active.properties
+            shape = str(active.properties.get("particle_shape", "circle"))
+            if preview.texture.get_at((0, 0))[3] == 0:
+                pass
+            preview.update(dt, active.area.x, active.area.y, active.area.w, active.area.h)
+            self._last_active_node_id = active_id
+        else:
+            self._particle_previews.clear()
+            self._last_active_node_id = None
+
+    def _draw_particle_previews(self, screen):
+        if not self.editor.node_editing_mode:
+            return
+        nm = getattr(self.editor, "node_manager", None)
+        if not nm:
+            return
+        active = nm.get_active_node()
+        if not active or active.node_type != "particle_emitter":
+            return
+        preview = self._particle_previews.get(active.node_id)
+        if preview:
+            preview.draw(screen, self.scroll_x, self.scroll_y, self.zoom_level, self.rect)
 
     def _draw_node_handles(self, screen, rect: Rect, border_color: Tuple[int, int, int] = (80, 220, 80)):
         hs = 6
