@@ -31,6 +31,7 @@ class NodeEditor:
         self._last_node_id: Optional[str] = None
 
         self._preset_dd: Optional[Dropdown] = None
+        self._preset_owner: Optional[str] = None
         self._preset_names: List[str] = get_preset_names()
         self._is_particle = False
 
@@ -342,6 +343,7 @@ class NodeEditor:
         if node:
             node.properties.clear()
             node.properties.update(cfg)
+            self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
 
     def draw(self, screen: pygame.Surface):
         if not self.visible:
@@ -397,7 +399,8 @@ class NodeEditor:
                 screen.blit(lbl, (pr.x - 58, pr.y + 2))
 
                 # Build or update the dropdown
-                if self._preset_dd is None or self._preset_dd.rect != pr:
+                owner = node.node_id if node else None
+                if self._preset_dd is None or self._preset_dd.rect != pr or self._preset_owner != owner:
                     current = "Custom"
                     if node and node.properties:
                         for p in PRESETS:
@@ -406,6 +409,7 @@ class NodeEditor:
                                 break
                     opts = ["Custom"] + self._preset_names
                     self._preset_dd = Dropdown(pr, opts, current, max_visible=12)
+                    self._preset_owner = owner
 
                 self._preset_dd.draw(screen, (40, 44, 50), (60, 64, 69))
 

@@ -440,7 +440,9 @@ class TileSelector:
                 else:
                     sheet_cols = surf.get_width() // tw
                     sheet_rows = surf.get_height() // th
-                    if sheet_cols % frame_count == 0:
+                    if sheet_cols == 0 or sheet_rows == 0:
+                        animation = None
+                    elif sheet_cols % frame_count == 0:
                         animation["frame_stride"] = sheet_cols // frame_count
                     elif sheet_rows % frame_count == 0:
                         animation["frame_stride"] = (sheet_rows // frame_count) * sheet_cols

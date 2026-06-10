@@ -416,8 +416,8 @@ class AnimationPreview:
 
     def _extract_tile(self, variant_id: int) -> Optional[pygame.Surface]:
         tw, th = self.tile_size
-        ox = max(0, self.grid_offset_x)
-        oy = max(0, self.grid_offset_y)
+        ox = self.grid_offset_x
+        oy = self.grid_offset_y
         available_w = self.surface.get_width() - ox
         cols = max(1, available_w // tw)
         col = variant_id % cols
