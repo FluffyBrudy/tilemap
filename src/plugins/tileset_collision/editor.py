@@ -30,6 +30,17 @@ from utils.icon_manager import icon_manager
 from utils.error_handler import error_handler, error_context
 from widgets.ui.theme import COLORS, FONTS
 from widgets.ui.draw_utils import draw_panel, draw_button
+from widgets.ui.checkbox import Checkbox
+
+# Widget panel layout constants
+WP_PADDING_X = 12
+WP_PADDING_Y = 38
+WP_SECTION_HEIGHT = 28
+WP_CHECKBOX_ROW = 30
+WP_GRID_ROW = 36
+WP_GRID_BTN = 28
+WP_GRID_GAP = 68
+WP_TITLE_Y = 10
 
 
 class TilesetCollisionEditor:
@@ -75,6 +86,9 @@ class TilesetCollisionEditor:
         # Auto-tile propagation: group_id -> [variant_ids]
         self._propagation_groups: Dict[str, List[int]] = {}
 
+        # Tiles the user explicitly cleared — propagation won't re-add to these
+        self._user_cleared_tiles: Set[int] = set()
+
         # Collision library
         self.library = TilesetCollisionLibrary(
             tileset_name=self._tileset_name,
@@ -91,6 +105,7 @@ class TilesetCollisionEditor:
         self.toolbar_height = 40
         self.tileset_selector_height = 250  # Resizable
         self.painted_tiles_width = 200
+        self.widget_panel_width = 200
         self._resizing_selector = False
         self._resize_start_y = 0
         self._resize_start_height = 0
@@ -128,6 +143,9 @@ class TilesetCollisionEditor:
         # Toolbar buttons
         self._setup_toolbar_buttons()
 
+        # Widget panel buttons
+        self._setup_widget_buttons()
+
         # Load collision data for first tile
         self._load_tile_collision_for_selection()
 
@@ -150,6 +168,40 @@ class TilesetCollisionEditor:
                 "rect": Rect(0, 0, 80, 28),
                 "hovered": False,
             })
+
+    def _setup_widget_buttons(self) -> None:
+        """Setup widget panel buttons"""
+        self._chk_one_way = Checkbox(
+            Rect(0, 0, 0, 0), "One-Way",
+            disabled=True,
+            on_changed=lambda _: self.painter.toggle_one_way(),
+        )
+        self._chk_angle = Checkbox(
+            Rect(0, 0, 0, 0), "Angle Hints",
+            on_changed=lambda v: setattr(self.painter, "show_angle_hints", v),
+        )
+        self._chk_grid = Checkbox(
+            Rect(0, 0, 0, 0), "Grid",
+            checked=True,
+            on_changed=lambda v: setattr(self.painter, "show_grid", v),
+        )
+        self._chk_snap = Checkbox(
+            Rect(0, 0, 0, 0), "Snap to Grid",
+            on_changed=lambda v: setattr(self.painter, "snap_to_grid", v),
+        )
+
+        self._widget_items: List[tuple] = [
+            ("section", "POLYGON"),
+            ("checkbox", self._chk_one_way),
+            ("checkbox", self._chk_angle),
+            ("section", "DISPLAY"),
+            ("checkbox", self._chk_grid),
+            ("section", "GRID SNAP"),
+            ("grid_dec", None),
+            ("grid_val", None),
+            ("grid_inc", None),
+            ("checkbox", self._chk_snap),
+        ]
 
     def _save_collision(self) -> None:
         """Save collision via toolbar button"""
@@ -200,6 +252,64 @@ class TilesetCollisionEditor:
         shape_count = len(self._clipboard_polygons)
         self._show_toast(f"Pasted {shape_count} shape{'s' if shape_count != 1 else ''} to {tile_count} tile{'s' if tile_count != 1 else ''}")
 
+    def _layout_widget_panel(self) -> None:
+        """Pre-compute clickable widget rects (checkbox + grid buttons)"""
+        panel = self.widget_panel_rect
+        px = panel.x + WP_PADDING_X
+        pw = panel.w - WP_PADDING_X * 2
+        y = panel.y + WP_PADDING_Y
+        for kind, data in self._widget_items:
+            if kind == "section":
+                y += WP_SECTION_HEIGHT
+            elif kind == "checkbox":
+                data.rect = Rect(px, y, pw, WP_CHECKBOX_ROW)
+                y += WP_CHECKBOX_ROW
+            elif kind == "grid_dec":
+                self._grid_dec_rect = Rect(px, y, WP_GRID_BTN, WP_GRID_BTN)
+            elif kind == "grid_val":
+                self._grid_val_rect = Rect(px, y, 0, WP_GRID_BTN)
+            elif kind == "grid_inc":
+                self._grid_inc_rect = Rect(px + WP_GRID_GAP, y, WP_GRID_BTN, WP_GRID_BTN)
+                y += WP_GRID_ROW
+
+    def _sync_widget_state(self) -> None:
+        """Sync checkbox states from painter attributes before draw"""
+        p = self.painter
+        self._chk_grid.checked = p.show_grid
+        self._chk_snap.checked = p.snap_to_grid
+        self._chk_angle.checked = p.show_angle_hints
+        sel = p.selected_polygon_idx
+        if sel is not None and 0 <= sel < len(p.polygon_one_way):
+            self._chk_one_way.checked = p.polygon_one_way[sel]
+            self._chk_one_way.disabled = False
+        else:
+            self._chk_one_way.checked = False
+            self._chk_one_way.disabled = True
+
+    def _handle_widget_button_clicks(self, events: List[pygame.event.Event]) -> None:
+        """Handle widget panel button clicks"""
+        self._sync_widget_state()
+        self._layout_widget_panel()
+        painter = self.painter
+        mouse = pygame.mouse.get_pos()
+
+        # Pass click events to checkboxes
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                pos = event.pos
+                if self._chk_one_way.handle_event(event):
+                    continue
+                if self._chk_angle.handle_event(event):
+                    continue
+                if self._chk_grid.handle_event(event):
+                    continue
+                if self._chk_snap.handle_event(event):
+                    continue
+                if self._grid_dec_rect.collidepoint(pos):
+                    painter.grid_size = max(1, painter.grid_size - 1)
+                elif self._grid_inc_rect.collidepoint(pos):
+                    painter.grid_size = min(64, painter.grid_size + 1)
+
     def _position_toolbar_buttons(self) -> None:
         """Position toolbar buttons in the toolbar area"""
         if not hasattr(self, '_toolbar_buttons'):
@@ -225,6 +335,68 @@ class TilesetCollisionEditor:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if button["rect"].collidepoint(mouse_pos):
                         button["action"]()
+
+    def _draw_widget_panel(self, surface: Surface) -> None:
+        """Draw the widget panel on the right side"""
+        self._sync_widget_state()
+        panel = self.widget_panel_rect
+        pygame.draw.rect(surface, COLORS.panel_alt, panel)
+        pygame.draw.rect(surface, COLORS.border_soft, panel, 1)
+
+        px = panel.x + WP_PADDING_X
+        pw = panel.w - WP_PADDING_X * 2
+        y = panel.y + WP_PADDING_Y
+
+        title = self._font.render("Tools", True, COLORS.text)
+        surface.blit(title, (px, panel.y + WP_TITLE_Y))
+
+        painter = self.painter
+        mouse = pygame.mouse.get_pos()
+
+        for kind, data in self._widget_items:
+            if kind == "section":
+                lbl = self._font_sm.render(data, True, (140, 140, 160))
+                surface.blit(lbl, (px, y + 4))
+                sep_y = y + lbl.get_height() + 8
+                pygame.draw.line(surface, (50, 50, 55), (px, sep_y), (px + pw, sep_y))
+                y += WP_SECTION_HEIGHT
+
+            elif kind == "checkbox":
+                data.rect = Rect(px, y, pw, WP_CHECKBOX_ROW)
+                data.draw(surface)
+                y += WP_CHECKBOX_ROW
+
+            elif kind == "grid_dec":
+                r = Rect(px, y, WP_GRID_BTN, WP_GRID_BTN)
+                self._grid_dec_rect = r
+                hovered = r.collidepoint(mouse)
+                bg = (55, 55, 62) if hovered else (45, 45, 50)
+                pygame.draw.rect(surface, bg, r, border_radius=4)
+                pygame.draw.rect(surface, (65, 65, 72), r, 1, border_radius=4)
+                lbl = self._font_sm.render("-", True, COLORS.text)
+                tx = r.centerx - lbl.get_width() // 2
+                ty = r.centery - lbl.get_height() // 2
+                surface.blit(lbl, (tx, ty))
+
+            elif kind == "grid_val":
+                self._grid_val_rect = Rect(px, y, 0, WP_GRID_BTN)
+                val_surf = self._font_sm.render(str(painter.grid_size), True, COLORS.text)
+                vx = px + WP_GRID_BTN + 8
+                vy = y + (WP_GRID_BTN - val_surf.get_height()) // 2
+                surface.blit(val_surf, (vx, vy))
+
+            elif kind == "grid_inc":
+                r = Rect(px + WP_GRID_GAP, y, WP_GRID_BTN, WP_GRID_BTN)
+                self._grid_inc_rect = r
+                hovered = r.collidepoint(mouse)
+                bg = (55, 55, 62) if hovered else (45, 45, 50)
+                pygame.draw.rect(surface, bg, r, border_radius=4)
+                pygame.draw.rect(surface, (65, 65, 72), r, 1, border_radius=4)
+                lbl = self._font_sm.render("+", True, COLORS.text)
+                tx = r.centerx - lbl.get_width() // 2
+                ty = r.centery - lbl.get_height() // 2
+                surface.blit(lbl, (tx, ty))
+                y += WP_GRID_ROW
 
     def _draw_toolbar_buttons(self, surface: Surface) -> None:
         """Draw toolbar buttons"""
@@ -272,7 +444,14 @@ class TilesetCollisionEditor:
         self.painter_rect = Rect(
             self.rect.x + self.painted_tiles_width,
             middle_y,
-            self.rect.w - self.painted_tiles_width,
+            self.rect.w - self.painted_tiles_width - self.widget_panel_width,
+            middle_h
+        )
+
+        self.widget_panel_rect = Rect(
+            self.rect.right - self.widget_panel_width,
+            middle_y,
+            self.widget_panel_width,
             middle_h
         )
 
@@ -342,7 +521,11 @@ class TilesetCollisionEditor:
                     del self.library.tiles[tile_id]
                     if self.consumer:
                         self.consumer.on_collision_deleted(tile_id)
+                # Mark as user-cleared so propagation doesn't re-add it
+                self._user_cleared_tiles.add(tile_id)
             else:
+                # User painted collision — remove from cleared set
+                self._user_cleared_tiles.discard(tile_id)
                 # Create collision shapes
                 shapes = [
                     CollisionPolygon(vertices=poly, one_way=one_way)
@@ -471,7 +654,10 @@ class TilesetCollisionEditor:
                 continue
 
             # Propagate to all variants in the group that lack collision
+            # Skip tiles the user explicitly cleared
             for vid in variant_ids:
+                if vid in self._user_cleared_tiles:
+                    continue
                 existing = self.library.tiles.get(vid)
                 if existing is None:
                     self.library.tiles[vid] = TileCollisionData(
@@ -695,6 +881,9 @@ class TilesetCollisionEditor:
 
         # Draw tileset selector
         self._draw_tileset_selector(screen)
+
+        # Draw widget panel
+        self._draw_widget_panel(screen)
 
         # Draw toast overlay
         self._draw_toast(screen)
@@ -924,8 +1113,9 @@ class TilesetCollisionEditor:
 
                 self.handle_event(event)
 
-            # Handle toolbar button clicks
+            # Handle toolbar and widget button clicks
             self._handle_toolbar_button_clicks(events)
+            self._handle_widget_button_clicks(events)
 
             screen.fill((20, 20, 20))
             self.draw(screen)

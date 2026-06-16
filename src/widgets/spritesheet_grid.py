@@ -72,6 +72,15 @@ class SpritesheetGrid:
         # Paste mode (external manager sets this)
         self.paste_preview_idx: int = -1
 
+        # Drag-move state
+        self._drag_move_anchor: Optional[Tuple[int, int]] = None
+        self._drag_moving: bool = False
+        self._drag_move_originals: Dict[int, Surface] = {}
+        self._drag_move_ghost_offset: Tuple[int, int] = (0, 0)
+
+        # Clipboard for cut/copy
+        self._clipboard: Dict[int, Surface] = {}
+
         # Undo / Redo stacks (surface copies)
         self._undo_stack: List[Surface] = []
         self._redo_stack: List[Surface] = []
@@ -360,6 +369,63 @@ class SpritesheetGrid:
             if dst_row < self.rows and dst_col < self.cols:
                 self.selected_indices.add(dst_row * self.cols + dst_col)
 
+    def cut_selected(self) -> Dict[int, Surface]:
+        """Cut selected tiles: copy + clear with snapshot. Returns {idx: Surface}."""
+        tiles = self.copy_selected()
+        if tiles:
+            self.snapshot()
+            empty = Surface(self.tile_size, SRCALPHA)
+            empty.fill((0, 0, 0, 0))
+            for idx in sorted(tiles.keys()):
+                self.write_tile(idx, empty)
+            self.selected_indices.clear()
+        return tiles
+
+    def _clear_drag_move_state(self) -> None:
+        self._drag_moving = False
+        self._drag_move_anchor = None
+        self._drag_move_originals = {}
+        self._drag_move_ghost_offset = (0, 0)
+
+    def _finish_drag_move(self) -> None:
+        """Execute the pending drag-move: write ghost originals at new positions."""
+        if not self._drag_moving or not self._drag_move_originals:
+            self._clear_drag_move_state()
+            return
+
+        off_col, off_row = self._drag_move_ghost_offset
+        if off_col == 0 and off_row == 0:
+            for src_idx, tile in self._drag_move_originals.items():
+                self.write_tile(src_idx, tile)
+            self._clear_drag_move_state()
+            return
+
+        old_cols = self.cols
+        dst_positions: List[Tuple[int, int, Surface]] = []
+        for src_idx, tile in self._drag_move_originals.items():
+            src_col = src_idx % old_cols
+            src_row = src_idx // old_cols
+            dst_col = src_col + off_col
+            dst_row = src_row + off_row
+            dst_positions.append((dst_row, dst_col, tile))
+
+        need_cols = max(max(c for _, c, _ in dst_positions) + 1, old_cols)
+        need_rows = max(max(r for r, _, _ in dst_positions) + 1, self.rows)
+        if need_cols > old_cols or need_rows > self.rows:
+            self._expand_canvas(need_cols, need_rows)
+
+        for dst_row, dst_col, tile in dst_positions:
+            if 0 <= dst_row < self.rows and 0 <= dst_col < self.cols:
+                dst_idx = dst_row * self.cols + dst_col
+                self.write_tile(dst_idx, tile)
+
+        self.selected_indices = set()
+        for dst_row, dst_col, _ in dst_positions:
+            if 0 <= dst_row < self.rows and 0 <= dst_col < self.cols:
+                self.selected_indices.add(dst_row * self.cols + dst_col)
+
+        self._clear_drag_move_state()
+
     def _expand_canvas(self, new_cols: int, new_rows: int) -> None:
         """Enlarge the spritesheet surface to fit new_cols x new_rows tiles."""
         tw, th = self.tile_size
@@ -369,9 +435,7 @@ class SpritesheetGrid:
         new_surf.fill((0, 0, 0, 0))
         new_surf.blit(self.surface, (0, 0))
         self.surface = new_surf
-        self.cols = new_cols
-        self.rows = new_rows
-        self.total_frames = new_cols * new_rows
+        self._recalc_grid()
         # Reset view so the new area is visible
         if self.offset_x < 0:
             self.offset_x = 0
@@ -408,50 +472,102 @@ class SpritesheetGrid:
             self.offset_y = self._pan_start_offset[1] + dy
             return True
 
+        # ------------------------------------------------------------------
+        # Left-click: single-select (no modifier) / toggle (Ctrl/Cmd)
+        # ------------------------------------------------------------------
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse) and mouse[1] >= self.rect.y + TOP_BAR_H:
                 idx = self.index_at_pos(mouse)
                 mods = pygame.key.get_mods()
-                if mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA):
+                ctrl = bool(mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA))
+
+                if ctrl:
                     if idx >= 0:
                         self.toggle_select(idx)
                     return True
+
                 if idx >= 0:
-                    # Start drag selection
-                    self._drag_selecting = True
-                    col, row = self.grid_coords(idx)
-                    self._drag_start_col = col
-                    self._drag_start_row = row
-                    self._drag_end_col = col
-                    self._drag_end_row = row
-                    self.selected_indices = {idx}
+                    if idx in self.selected_indices:
+                        # Click on already-selected tile — prepare for drag-move
+                        self._drag_move_anchor = self.grid_coords(idx)
+                    else:
+                        # Single-select this tile
+                        self.selected_indices = {idx}
+                        self._drag_move_anchor = self.grid_coords(idx)
                 else:
                     self.clear_selection()
+                    self._drag_move_anchor = None
                 return True
 
-        if event.type == pygame.MOUSEMOTION and self._drag_selecting:
-            idx = self.index_at_pos(mouse)
-            if idx >= 0:
-                col, row = self.grid_coords(idx)
-                self._drag_end_col = col
-                self._drag_end_row = row
-                min_c = min(self._drag_start_col, self._drag_end_col)
-                max_c = max(self._drag_start_col, self._drag_end_col)
-                min_r = min(self._drag_start_row, self._drag_end_row)
-                max_r = max(self._drag_start_row, self._drag_end_row)
-                sel = set()
-                for r in range(min_r, max_r + 1):
-                    for c in range(min_c, max_c + 1):
-                        if 0 <= r < self.rows and 0 <= c < self.cols:
-                            sel.add(r * self.cols + c)
-                self.selected_indices = sel
-            return True
+        # ------------------------------------------------------------------
+        # Drag: Ctrl = rubber-band selection, plain = drag-move
+        # ------------------------------------------------------------------
+        if event.type == pygame.MOUSEMOTION and event.buttons[0]:
+            mods = pygame.key.get_mods()
+            ctrl = bool(mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA))
 
+            if ctrl:
+                idx = self.index_at_pos(mouse)
+                if idx >= 0:
+                    if not self._drag_selecting:
+                        self._drag_selecting = True
+                        self.selected_indices.clear()
+                        col, row = self.grid_coords(idx)
+                        self._drag_start_col = col
+                        self._drag_start_row = row
+                    col, row = self.grid_coords(idx)
+                    self._drag_end_col = col
+                    self._drag_end_row = row
+                    min_c = min(self._drag_start_col, self._drag_end_col)
+                    max_c = max(self._drag_start_col, self._drag_end_col)
+                    min_r = min(self._drag_start_row, self._drag_end_row)
+                    max_r = max(self._drag_start_row, self._drag_end_row)
+                    sel = set()
+                    for r in range(min_r, max_r + 1):
+                        for c in range(min_c, max_c + 1):
+                            if 0 <= r < self.rows and 0 <= c < self.cols:
+                                sel.add(r * self.cols + c)
+                    self.selected_indices = sel
+                return True
+
+            # Plain drag-move (compute grid position from pixel coords so
+            # it works even when mouse is past the current grid edge)
+            if self._drag_move_anchor is not None and len(self.selected_indices) > 0:
+                if not self._drag_moving:
+                    self._drag_moving = True
+                    self.snapshot()
+                    self._drag_move_originals = self.copy_selected()
+                    empty = Surface(self.tile_size, SRCALPHA)
+                    empty.fill((0, 0, 0, 0))
+                    for sel_idx in self.selected_indices:
+                        self.write_tile(sel_idx, empty)
+                _tw, _th = self.tile_size
+                _z = self.zoom
+                rel_x = (mouse[0] - self.rect.x - self.offset_x) / _z
+                rel_y = (mouse[1] - self.rect.y - TOP_BAR_H - self.offset_y) / _z
+                gx = int(math.floor((rel_x - self.grid_offset_x) / _tw))
+                gy = int(math.floor((rel_y - self.grid_offset_y) / _th))
+                anchor_col, anchor_row = self._drag_move_anchor
+                self._drag_move_ghost_offset = (
+                    gx - anchor_col,
+                    gy - anchor_row,
+                )
+                return True
+
+        # ------------------------------------------------------------------
+        # Mouse-up (left button)
+        # ------------------------------------------------------------------
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._drag_moving:
+                self._finish_drag_move()
+                return True
             if self._drag_selecting:
                 self._drag_selecting = False
                 return True
 
+        # ------------------------------------------------------------------
+        # Mouse wheel
+        # ------------------------------------------------------------------
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
             if mouse[1] < self.rect.y + TOP_BAR_H:
                 return True
@@ -475,10 +591,31 @@ class SpritesheetGrid:
                     self.offset_x += event.x * 30
             return True
 
+        # ------------------------------------------------------------------
+        # Keyboard
+        # ------------------------------------------------------------------
         if event.type == pygame.KEYDOWN and self.rect.collidepoint(mouse):
             mods = pygame.key.get_mods()
-            if not (mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL |
-                            pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)):
+            ctrl = bool(mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA))
+            shift = bool(mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT))
+
+            if event.key == pygame.K_ESCAPE:
+                if self._drag_moving:
+                    self.undo()
+                    self._clear_drag_move_state()
+                    return True
+
+            if ctrl:
+                if event.key == pygame.K_c:
+                    self._clipboard = self.copy_selected()
+                    self.paste_preview_idx = -1
+                    return True
+                elif event.key == pygame.K_x:
+                    self._clipboard = self.cut_selected()
+                    self.paste_preview_idx = -1
+                    return True
+
+            if not ctrl and not shift:
                 step = 1.15
                 if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
                     old = self.zoom
@@ -517,6 +654,9 @@ class SpritesheetGrid:
                     self.offset_y -= pan
                     return True
 
+        # ------------------------------------------------------------------
+        # Hover (no button)
+        # ------------------------------------------------------------------
         if event.type == pygame.MOUSEMOTION:
             if self.rect.collidepoint(mouse) and mouse[1] >= self.rect.y + TOP_BAR_H:
                 self.hover_index = self.index_at_pos(mouse)
@@ -584,6 +724,26 @@ class SpritesheetGrid:
                 sel_surf.fill((*_COLORS["selected"], 60))
                 screen.blit(sel_surf, hr.topleft)
                 pygame.draw.rect(screen, _COLORS["selected"], hr, 2)
+
+        # Drag-move ghost preview (compute screen pos directly so it
+        # works even when ghost tiles are past the current grid edge)
+        if self._drag_moving and self._drag_move_originals:
+            off_col, off_row = self._drag_move_ghost_offset
+            for src_idx, tile in self._drag_move_originals.items():
+                src_col = src_idx % self.cols
+                src_row = src_idx // self.cols
+                ghost_col = src_col + off_col
+                ghost_row = src_row + off_row
+                gx = img_x + (self.grid_offset_x + ghost_col * tw) * z
+                gy = img_y + (self.grid_offset_y + ghost_row * th) * z
+                gw = max(1, int(tw * z))
+                gh = max(1, int(th * z))
+                ghost_rect = Rect(int(gx), int(gy), gw, gh)
+                if self.rect.colliderect(ghost_rect):
+                    ghost_scaled = pygame.transform.smoothscale(tile, (gw, gh))
+                    ghost_scaled.set_alpha(180)
+                    screen.blit(ghost_scaled, ghost_rect.topleft)
+                    pygame.draw.rect(screen, (100, 220, 100), ghost_rect, 2)
 
         # Paste preview
         if self.paste_preview_idx >= 0:

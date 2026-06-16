@@ -149,6 +149,24 @@ class SpriteEditor:
                     if self.grid.redo():
                         self.grid.selected_indices.clear()
                     return True
+                elif event.key == pygame.K_c:
+                    if self.grid.has_selection():
+                        self._clipboard = self.grid.copy_selected()
+                        self._paste_mode = False
+                        self.grid.paste_preview_idx = -1
+                    return True
+                elif event.key == pygame.K_x:
+                    if self.grid.has_selection():
+                        self._clipboard = self.grid.cut_selected()
+                        self._paste_mode = False
+                        self.grid.paste_preview_idx = -1
+                    return True
+                elif event.key == pygame.K_v:
+                    if self._clipboard:
+                        self._paste_mode = not self._paste_mode
+                        if not self._paste_mode:
+                            self.grid.paste_preview_idx = -1
+                    return True
 
         # Toolbar clicks
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -156,19 +174,20 @@ class SpriteEditor:
                 if r.collidepoint(mouse):
                     return self._handle_tool(lbl)
 
-        # Paste mode: next grid click pastes
+        # Paste mode: click places (or exits if outside grid)
         if self._paste_mode and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             idx = self.grid.index_at_pos(mouse)
             if idx >= 0 and self.grid.rect.collidepoint(mouse):
                 self.grid.paste_at(idx, self._clipboard)
-                self._paste_mode = False
-                self.grid.paste_preview_idx = -1
-                return True
+            self._paste_mode = False
+            self.grid.paste_preview_idx = -1
+            return True
 
-        # Paste preview on hover
+        # Paste preview on hover (consume event to prevent grid overlap)
         if self._paste_mode and event.type == pygame.MOUSEMOTION:
             idx = self.grid.index_at_pos(mouse)
             self.grid.paste_preview_idx = idx if idx >= 0 else -1
+            return True
 
         return self.grid.handle_event(event)
 

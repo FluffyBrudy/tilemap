@@ -117,7 +117,8 @@ class CollisionPainter:
         self.snap_to_grid = False
         self.grid_size = 8  # pixels
         self.show_grid = True
-        self.edge_draw_mode = False  # E key - straight line drawing
+        self.show_angle_hints = False  # show angle arcs at vertices
+        self.edge_draw_mode = False  # Ctrl+E - straight line drawing
         self._edge_start: Optional[Tuple[int, int]] = None  # Start point for edge draw
         self._shift_held = False
         
@@ -270,7 +271,66 @@ class CollisionPainter:
     def get_one_way_flags(self) -> List[bool]:
         """Get one-way collision flags for all polygons"""
         return list(self.polygon_one_way)
+
+    def toggle_one_way(self) -> None:
+        """Toggle one-way flag on the selected polygon"""
+        idx = self.selected_polygon_idx
+        if idx is not None and 0 <= idx < len(self.polygon_one_way):
+            self.polygon_one_way[idx] = not self.polygon_one_way[idx]
+            if self.on_polygon_modified:
+                self.on_polygon_modified(idx)
     
+    def _get_interior_angle(
+        self, polygon: List[Tuple[float, float]], idx: int
+    ) -> float:
+        """Compute interior angle (degrees) at polygon vertex idx."""
+        n = len(polygon)
+        if n < 3:
+            return 0.0
+        prev = polygon[(idx - 1) % n]
+        curr = polygon[idx]
+        nxt = polygon[(idx + 1) % n]
+        v1 = (prev[0] - curr[0], prev[1] - curr[1])
+        v2 = (nxt[0] - curr[0], nxt[1] - curr[1])
+        dot = v1[0] * v2[0] + v1[1] * v2[1]
+        mag1 = math.hypot(v1[0], v1[1])
+        mag2 = math.hypot(v2[0], v2[1])
+        if mag1 < 0.001 or mag2 < 0.001:
+            return 0.0
+        cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+        return math.degrees(math.acos(cos_a))
+
+    def _draw_angle_hint(
+        self,
+        screen: pygame.Surface,
+        screen_pos: Tuple[int, int],
+        angle_deg: float,
+    ) -> None:
+        """Draw a small arc + angle text at a vertex."""
+        if angle_deg <= 0.5 or angle_deg >= 179.5:
+            return
+        arc_radius = 14
+        segments = max(4, int(angle_deg / 10))
+        angle_rad = math.radians(angle_deg)
+        pts = [screen_pos]
+        for i in range(segments + 1):
+            t = -angle_rad * i / segments
+            pts.append((
+                screen_pos[0] + arc_radius * math.cos(t),
+                screen_pos[1] + arc_radius * math.sin(t),
+            ))
+        if len(pts) >= 3:
+            wedge = pygame.Surface(self.rect.size, pygame.SRCALPHA)
+            pygame.draw.polygon(wedge, (*_COLORS["polygon_fill"], 60), pts)
+            screen.blit(wedge, self.rect.topleft)
+        label = self._font_sm.render(f"{angle_deg:.0f}°", True, _COLORS["text"])
+        label_x = screen_pos[0] + 10
+        label_y = screen_pos[1] - label.get_height() - 4
+        bg = pygame.Surface((label.get_width() + 4, label.get_height() + 2), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 180))
+        screen.blit(bg, (label_x - 2, label_y - 1))
+        screen.blit(label, (label_x, label_y))
+
     def clear_all(self) -> None:
         """Clear all polygons"""
         self.polygons = []
@@ -488,23 +548,26 @@ class CollisionPainter:
         
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
+            mods = pygame.key.get_mods()
+            ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
+
             # Track Shift state for edge draw
             if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
                 self._shift_held = True
-            
-            # E - toggle edge draw mode
-            elif event.key == pygame.K_e:
+
+            # Ctrl+E - toggle edge draw mode
+            elif ctrl and event.key == pygame.K_e:
                 self.edge_draw_mode = not self.edge_draw_mode
                 if not self.edge_draw_mode:
                     self._edge_start = None
                 return True
-            
+
             # Enter - complete polygon
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 if len(self.current_polygon) >= 3:
                     self._complete_polygon()
                     return True
-            
+
             # Escape - cancel current polygon or deselect or close help
             elif event.key == pygame.K_ESCAPE:
                 if self.show_help:
@@ -517,43 +580,44 @@ class CollisionPainter:
                     self.selected_polygon_idx = None
                     self.selected_vertex_idx = None
                     return True
-            
-            # Delete - remove selected polygon
+
+            # Delete/Backspace - remove selected polygon or last vertex
             elif event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
                 if self.selected_polygon_idx is not None:
                     self._delete_polygon(self.selected_polygon_idx)
                     return True
                 elif self.current_polygon:
-                    # Remove last vertex
                     self.current_polygon.pop()
                     return True
-            
-            # G - toggle grid
-            elif event.key == pygame.K_g:
+
+            # Ctrl+G - toggle grid
+            elif ctrl and event.key == pygame.K_g:
                 self.show_grid = not self.show_grid
                 return True
-            
-            # S - toggle snap (only if Ctrl is not held)
-            elif event.key == pygame.K_s:
-                mods = pygame.key.get_mods()
-                ctrl_held = mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)
-                if not ctrl_held:
-                    self.snap_to_grid = not self.snap_to_grid
-                    return True
-            
-            # O - toggle one-way collision for selected polygon
-            elif event.key == pygame.K_o:
+
+            # Ctrl+Shift+S - toggle snap (Ctrl+S reserved for save)
+            elif ctrl and event.key == pygame.K_s and (mods & pygame.KMOD_SHIFT):
+                self.snap_to_grid = not self.snap_to_grid
+                return True
+
+            # Ctrl+O - toggle one-way collision for selected polygon
+            elif ctrl and event.key == pygame.K_o:
                 if self.selected_polygon_idx is not None:
                     idx = self.selected_polygon_idx
                     self.polygon_one_way[idx] = not self.polygon_one_way[idx]
                     if self.on_polygon_modified:
                         self.on_polygon_modified(idx)
                     return True
-            
-            # R - reset view
-            elif event.key == pygame.K_r:
+
+            # Ctrl+R - reset view
+            elif ctrl and event.key == pygame.K_r:
                 self._center_view()
                 self.zoom = 2.0
+                return True
+
+            # Ctrl+A - toggle angle hints
+            elif ctrl and event.key == pygame.K_a:
+                self.show_angle_hints = not self.show_angle_hints
                 return True
         
         if event.type == pygame.KEYUP:
@@ -744,20 +808,21 @@ class CollisionPainter:
                 ("Right-click / Enter", "Complete polygon"),
                 ("Escape", "Cancel current polygon"),
                 ("Shift (edge mode)", "Constrain to axis"),
-                ("E", "Toggle edge draw mode"),
+                ("Ctrl+E", "Toggle edge draw mode"),
             ]),
             ("SELECTION", [
                 ("Left-click polygon", "Select polygon"),
                 ("Left-click vertex", "Select & drag vertex"),
                 ("Delete / Backspace", "Remove selected polygon"),
-                ("O", "Toggle one-way collision"),
+                ("Ctrl+O", "Toggle one-way collision"),
             ]),
             ("VIEW", [
                 ("Mouse wheel", "Zoom in/out"),
                 ("Middle mouse / Space+LMB", "Pan view"),
-                ("G", "Toggle grid"),
-                ("S", "Toggle snap to grid"),
-                ("R", "Reset view"),
+                ("Ctrl+G", "Toggle grid"),
+                ("Ctrl+Shift+S", "Toggle snap to grid"),
+                ("Ctrl+R", "Reset view"),
+                ("Ctrl+A", "Toggle angle hints"),
             ]),
             ("MISC", [
                 ("Info button (top-right)", "Toggle this help panel"),
@@ -905,6 +970,24 @@ class CollisionPainter:
             radius = VERTEX_HOVER_RADIUS if is_hovered_vertex else VERTEX_RADIUS
             pygame.draw.circle(screen, color, (px, py), radius)
             pygame.draw.circle(screen, (0, 0, 0), (px, py), radius, 1)
+
+        # One-way badge on selected polygon
+        if selected and one_way and len(polygon) >= 3:
+            cx = int(sum(p[0] for p in screen_points) / len(screen_points))
+            cy = int(sum(p[1] for p in screen_points) / len(screen_points))
+            badge = self._font_sm.render("ONE-WAY", True, (255, 255, 255))
+            bx = cx - badge.get_width() // 2
+            by = cy - badge.get_height() // 2
+            bg = pygame.Surface((badge.get_width() + 8, badge.get_height() + 4), pygame.SRCALPHA)
+            bg.fill((_COLORS["one_way"][0], _COLORS["one_way"][1], _COLORS["one_way"][2], 200))
+            screen.blit(bg, (bx - 4, by - 2))
+            screen.blit(badge, (bx, by))
+
+        # Angle hints
+        if self.show_angle_hints:
+            for i, (px, py) in enumerate(screen_points):
+                angle = self._get_interior_angle(polygon, i)
+                self._draw_angle_hint(screen, (px, py), angle)
     
     def _draw_current_polygon(self, screen: pygame.Surface) -> None:
         """Draw the polygon currently being drawn"""
@@ -934,6 +1017,25 @@ class CollisionPainter:
             radius = VERTEX_HOVER_RADIUS if is_first else VERTEX_RADIUS
             pygame.draw.circle(screen, color, (px, py), radius)
             pygame.draw.circle(screen, (0, 0, 0), (px, py), radius, 1)
+
+        # Angle hints for vertices with both neighbors
+        if self.show_angle_hints and len(self.current_polygon) >= 3:
+            for i, (px, py) in enumerate(screen_points):
+                if i == 0 or i == len(screen_points) - 1:
+                    continue
+                poly = self.current_polygon
+                prev = poly[i - 1]
+                curr = poly[i]
+                nxt = poly[i + 1]
+                v1 = (prev[0] - curr[0], prev[1] - curr[1])
+                v2 = (nxt[0] - curr[0], nxt[1] - curr[1])
+                dot = v1[0] * v2[0] + v1[1] * v2[1]
+                mag1 = math.hypot(v1[0], v1[1])
+                mag2 = math.hypot(v2[0], v2[1])
+                if mag1 > 0.001 and mag2 > 0.001:
+                    cos_a = max(-1.0, min(1.0, dot / (mag1 * mag2)))
+                    angle = math.degrees(math.acos(cos_a))
+                    self._draw_angle_hint(screen, (px, py), angle)
     
     def _draw_status(self, screen: pygame.Surface) -> None:
         """Draw status text"""
@@ -949,12 +1051,13 @@ class CollisionPainter:
             one_way = self.polygon_one_way[self.selected_polygon_idx]
             one_way_str = " (ONE-WAY)" if one_way else ""
             lines.append(f"Selected polygon {self.selected_polygon_idx}{one_way_str}")
-            lines.append("Delete to remove, O to toggle one-way")
+            lines.append("Delete to remove, Ctrl+O to toggle one-way")
         else:
             lines.append("Click to add vertices, right-click to complete")
         
-        lines.append(f"Zoom: {self.zoom:.1f}x | Grid: {'ON' if self.show_grid else 'OFF'} (G) | Snap: {'ON' if self.snap_to_grid else 'OFF'} (S)")
-        lines.append(f"Polygons: {len(self.polygons)} | R: reset view")
+        snap_str = f"Snap: {'ON' if self.snap_to_grid else 'OFF'} (Ctrl+Shift+S)"
+        lines.append(f"Zoom: {self.zoom:.1f}x | Grid: {'ON' if self.show_grid else 'OFF'} (Ctrl+G) | {snap_str}")
+        lines.append(f"Polygons: {len(self.polygons)} | Ctrl+R: reset | Ctrl+A: angle hints {'ON' if self.show_angle_hints else 'OFF'}")
         
         y = self.rect.y + 5
         for line in lines:
