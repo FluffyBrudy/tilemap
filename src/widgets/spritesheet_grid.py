@@ -312,7 +312,7 @@ class SpritesheetGrid:
         h = self.surface.get_height()
         new_w = max(1, int(w * factor))
         new_h = max(1, int(h * factor))
-        self.surface = pygame.transform.smoothscale(self.surface, (new_w, new_h))
+        self.surface = pygame.transform.scale(self.surface, (new_w, new_h))
         self.tile_size = (max(1, int(self.tile_size[0] * factor)),
                           max(1, int(self.tile_size[1] * factor)))
         self._recalc_grid()
@@ -690,7 +690,7 @@ class SpritesheetGrid:
 
         # Scaled spritesheet
         if scaled_w > 0 and scaled_h > 0:
-            scaled = pygame.transform.smoothscale(self.surface, (scaled_w, scaled_h))
+            scaled = pygame.transform.scale(self.surface, (scaled_w, scaled_h))
             screen.blit(scaled, (img_x, img_y))
 
         cell_w = tw * z
@@ -740,7 +740,7 @@ class SpritesheetGrid:
                 gh = max(1, int(th * z))
                 ghost_rect = Rect(int(gx), int(gy), gw, gh)
                 if self.rect.colliderect(ghost_rect):
-                    ghost_scaled = pygame.transform.smoothscale(tile, (gw, gh))
+                    ghost_scaled = pygame.transform.scale(tile, (gw, gh))
                     ghost_scaled.set_alpha(180)
                     screen.blit(ghost_scaled, ghost_rect.topleft)
                     pygame.draw.rect(screen, (100, 220, 100), ghost_rect, 2)
