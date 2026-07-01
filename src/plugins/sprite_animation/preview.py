@@ -341,7 +341,9 @@ class AnimationPreview:
 
         # |<< (prev)
         self._btn_prev = Rect(x, y, bw, bh)
-        self._draw_btn(screen, self._btn_prev, "|◀", mouse)
+        self._draw_btn(screen, self._btn_prev, "", mouse)
+        prev_icon = icon_manager.get_icon("skip-back", 12, _COLORS["text"])
+        screen.blit(prev_icon, prev_icon.get_rect(center=self._btn_prev.center))
         x += bw + pad
 
         # Play / Pause
@@ -362,7 +364,9 @@ class AnimationPreview:
 
         # >>| (next)
         self._btn_next = Rect(x, y, bw, bh)
-        self._draw_btn(screen, self._btn_next, "▶|", mouse)
+        self._draw_btn(screen, self._btn_next, "", mouse)
+        next_icon = icon_manager.get_icon("skip-forward", 12, _COLORS["text"])
+        screen.blit(next_icon, next_icon.get_rect(center=self._btn_next.center))
         x += bw + pad + 4
 
         # Loop toggle
@@ -393,7 +397,9 @@ class AnimationPreview:
         # Onion skin
         if x + bw + 12 < ctrl_rect.right:
             self._btn_onion = Rect(x, y, bw + 4, bh)
-            self._draw_btn(screen, self._btn_onion, "👻", mouse, active=self.show_onion)
+            self._draw_btn(screen, self._btn_onion, "", mouse, active=self.show_onion)
+            onion_icon = icon_manager.get_icon("onion", 14, _COLORS["text"])
+            screen.blit(onion_icon, onion_icon.get_rect(center=self._btn_onion.center))
 
     def _draw_btn(
         self, screen: pygame.Surface, rect: Rect, label: str, mouse, active=False
