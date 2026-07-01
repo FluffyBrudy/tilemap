@@ -333,9 +333,19 @@ class ImagePreview:
             new_height = target_height
             new_width = int(target_height * aspect_ratio)
 
-        scaled_surface = pygame.transform.smoothscale(
-            self.current_image, (new_width, new_height)
-        )
+        try:
+            image = self.current_image.convert_alpha()
+        except Exception:
+            image = self.current_image
+
+        try:
+            scaled_surface = pygame.transform.smoothscale(
+                image, (new_width, new_height)
+            )
+        except ValueError:
+            scaled_surface = pygame.transform.scale(
+                image, (new_width, new_height)
+            )
 
         self.scaled_cache = scaled_surface
         self.cached_target_size = (target_width, target_height)
