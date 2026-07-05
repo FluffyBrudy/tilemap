@@ -625,7 +625,7 @@ class TilesetCollisionEditor:
         """Save collision data to file, auto-propagating within auto-tile groups."""
         try:
             self._save_tile_collision_for_selection()
-            self._propagate_collision_to_groups()
+            # self._propagate_collision_to_groups()  # disabled — auto-copies collision to all autotile variants, breaks per-variant shapes
             self.library.save(path)
         except Exception as e:
             error_handler.capture(e, context="save_collision_file")
