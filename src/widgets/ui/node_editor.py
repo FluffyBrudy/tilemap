@@ -56,14 +56,30 @@ class NodeEditor:
         screen_h = self.editor.screen.get_height()
         panel_w = self.rect.width
         panel_h = self.rect.height
-        px = sx + sw + 8
-        py = sy + sh + 8
-        if px + panel_w > screen_w - 10:
-            px = max(10, sx - panel_w - 8)
-        if py + panel_h > screen_h - 10:
-            py = max(10, sy - panel_h - 8)
-        self.rect.x = max(10, min(px, screen_w - panel_w - 10))
-        self.rect.y = max(10, min(py, screen_h - panel_h - 10))
+        pad = 24
+
+        node_rect = Rect(sx, sy, sw, sh)
+        positions = [
+            (sx + sw + pad, sy),
+            (sx - panel_w - pad, sy),
+            (sx, sy + sh + pad),
+            (sx, sy - panel_h - pad),
+        ]
+        best = None
+        for px, py in positions:
+            px = max(10, min(px, screen_w - panel_w - 10))
+            py = max(10, min(py, screen_h - panel_h - 10))
+            pr = Rect(px, py, panel_w, panel_h)
+            if not pr.colliderect(node_rect):
+                best = (px, py)
+                break
+        if best is None:
+            px = max(10, min(sx + sw + pad, screen_w - panel_w - 10))
+            py = max(10, min(sy, screen_h - panel_h - 10))
+            self.rect.x = px
+            self.rect.y = py
+        else:
+            self.rect.x, self.rect.y = best
 
     @property
     def editing_field(self) -> bool:

@@ -1,5 +1,5 @@
 {
-    "base_path": "/Users/upstem/Documents/fluffyrudy/tilemap-packages/tilemap",
+    "base_path": "/Users/upstem/Desktop/tilemap-packages/tilemap",
     "data_path": "data",
     "collision_paths": {
         "tileset": "collision",

@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from utils.project_paths import to_project_path, resolve_project_path
-from tilemap_editor.settings import init_settings
+from tilemap_editor.settings import init_settings, update_settings
 
 
 @pytest.fixture
@@ -141,5 +141,85 @@ class TestInitSettings:
 
                 src_main = tmp_path / "src" / "main.py"
                 assert src_main.exists()
+            finally:
+                os.chdir(str(orig_cwd))
+
+
+class TestUpdateSettings:
+    def test_updates_base_path_to_cwd_when_no_path_given(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp).resolve()
+            orig_cwd = Path.cwd()
+            os.chdir(str(tmp_path))
+            try:
+                settings_file = tmp_path / "settings.json"
+                with open(settings_file, "w") as f:
+                    json.dump({"base_path": "/old/path", "data_path": "data"}, f)
+
+                update_settings()
+
+                with open(settings_file) as f:
+                    cfg = json.load(f)
+                assert cfg["base_path"] == str(tmp_path)
+                assert cfg["data_path"] == "data"
+            finally:
+                os.chdir(str(orig_cwd))
+
+    def test_updates_base_path_to_given_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp).resolve()
+            orig_cwd = Path.cwd()
+            os.chdir(str(tmp_path))
+            try:
+                settings_file = tmp_path / "settings.json"
+                with open(settings_file, "w") as f:
+                    json.dump({"base_path": "/old/path", "data_path": "data"}, f)
+
+                new_path = tmp_path / "some" / "other"
+                update_settings(path=str(new_path))
+
+                with open(settings_file) as f:
+                    cfg = json.load(f)
+                assert cfg["base_path"] == str(new_path.resolve())
+            finally:
+                os.chdir(str(orig_cwd))
+
+    def test_raises_when_settings_json_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp).resolve()
+            orig_cwd = Path.cwd()
+            os.chdir(str(tmp_path))
+            try:
+                with pytest.raises(RuntimeError, match="settings.json not found"):
+                    update_settings()
+            finally:
+                os.chdir(str(orig_cwd))
+
+    def test_does_not_touch_other_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp).resolve()
+            orig_cwd = Path.cwd()
+            os.chdir(str(tmp_path))
+            try:
+                original = {
+                    "base_path": "/old/path",
+                    "data_path": "data",
+                    "collision_paths": {"tileset": "collision"},
+                    "nodes_path": "nodes",
+                    "error_handler": {"log_path": "errors.log"},
+                }
+                settings_file = tmp_path / "settings.json"
+                with open(settings_file, "w") as f:
+                    json.dump(original, f)
+
+                update_settings()
+
+                with open(settings_file) as f:
+                    cfg = json.load(f)
+                assert cfg["base_path"] == str(tmp_path)
+                assert cfg["data_path"] == "data"
+                assert cfg["collision_paths"] == {"tileset": "collision"}
+                assert cfg["nodes_path"] == "nodes"
+                assert cfg["error_handler"] == {"log_path": "errors.log"}
             finally:
                 os.chdir(str(orig_cwd))

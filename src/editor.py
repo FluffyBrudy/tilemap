@@ -158,6 +158,7 @@ class Editor:
         self.eraser_mode = False
         self.select_mode = False
         self.node_editing_mode = False
+        self.show_nodes = False
         self._prev_tool = None
 
         if isinstance(size, tuple) and len(size) == 2:
@@ -1191,6 +1192,14 @@ class Editor:
                 elif event.key == pygame.K_y and (ctrl_held or meta_held):
                     self.tilemap.redo()
                     continue
+                elif event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
+                    self.node_editing_mode = not self.node_editing_mode
+                    if self.node_editing_mode:
+                        self.show_nodes = False
+                        self.pan_mode = False
+                        self.select_mode = False
+                        self.eraser_mode = False
+                    continue
                 elif event.key == pygame.K_n and (ctrl_held or meta_held):
                     self.open_map_setup()
                     continue
@@ -1241,14 +1250,14 @@ class Editor:
                             self.tilemap.layer_manager.set_active_layer(idx)
                         continue
 
-            # Priority 5: Toolbar
-            if self.toolbar and self.toolbar.handle_event(event):
-                continue
-
-            # Priority 5.5: Node selector & editor (when node mode active)
+            # Priority 5: Node selector & editor (float on top, check events first)
             if self.node_selector and self.node_selector.handle_event(event):
                 continue
             if self.node_editor and self.node_editor.handle_event(event):
+                continue
+
+            # Priority 5.5: Toolbar
+            if self.toolbar and self.toolbar.handle_event(event):
                 continue
 
             # Priority 6: Dockable animation panel

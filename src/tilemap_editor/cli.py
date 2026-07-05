@@ -5,7 +5,7 @@ import sys
 
 from editor import Editor
 from utils import error_handler, error_context
-from .settings import init_settings
+from .settings import init_settings, update_settings
 
 
 def _parse_size(text: str) -> tuple[int, int]:
@@ -29,6 +29,12 @@ def main() -> None:
         help="Also create src/main.py boilerplate"
     )
 
+    update_parser = subparsers.add_parser("update", help="Update settings.json base_path for current device")
+    update_parser.add_argument(
+        "--path", default=None,
+        help="Explicit base path (default: resolves cwd to absolute path)"
+    )
+
     run_parser = subparsers.add_parser("run", help="Run the tilemap editor")
     run_parser.add_argument(
         "--size", default="1500x900", help="Window size as WIDTHxHEIGHT"
@@ -41,6 +47,10 @@ def main() -> None:
 
     if args.command == "init":
         init_settings(generate_main=args.with_main)
+        return
+
+    if args.command == "update":
+        update_settings(path=args.path)
         return
 
     if args.command is None or args.command == "run":

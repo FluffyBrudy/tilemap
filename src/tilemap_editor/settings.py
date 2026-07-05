@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def init_settings(generate_main: bool = False) -> None:
@@ -72,3 +73,36 @@ if __name__ == "__main__":
         f.write(boilerplate)
 
     print(f"Created {main_file}")
+
+
+def update_settings(path: Optional[str] = None) -> None:
+    """Update base_path in an existing settings.json to the current device path.
+
+    If no path is given, resolves the current working directory to an absolute
+    path and writes it as base_path. This makes settings.json portable when
+    shared across devices — run update on each device to fix the path.
+
+    Args:
+        path: Optional explicit base_path to write (e.g. --path /home/user/project)
+    """
+    settings_file = Path.cwd() / "settings.json"
+
+    if not settings_file.exists():
+        raise RuntimeError(
+            "settings.json not found. Run 'tilemap-editor init' first."
+        )
+
+    with open(settings_file, "r") as f:
+        config = json.load(f)
+
+    if path is not None:
+        new_base = str(Path(path).expanduser().resolve())
+    else:
+        new_base = str(Path.cwd().resolve())
+
+    config["base_path"] = new_base
+
+    with open(settings_file, "w") as f:
+        json.dump(config, f, indent=4)
+
+    print(f"Updated base_path to '{new_base}' in {settings_file}")

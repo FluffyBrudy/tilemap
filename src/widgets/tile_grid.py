@@ -181,6 +181,10 @@ class TileGrid:
         if self.editor.node_editing_mode:
             return self._handle_node_event(event)
 
+        if self.editor.show_nodes:
+            if self._handle_show_node_event(event):
+                return True
+
         mouse_pos = pygame.mouse.get_pos()
         is_hovering = self.rect.collidepoint(mouse_pos)
         if event.type == pygame.KEYDOWN:
@@ -1502,6 +1506,7 @@ class TileGrid:
             return
 
         editing = self.editor.node_editing_mode
+        showing = self.editor.show_nodes
 
         node_type_colors = {
             "area": (80, 220, 120),       # Green / Emerald
@@ -1513,7 +1518,8 @@ class TileGrid:
             "particle_emitter": (240, 140, 200),  # Pink / Magenta
         }
 
-        active = nm.get_active_node() if editing else None
+        visible = editing or showing
+        active = nm.get_active_node() if visible else None
         for node in nm.nodes.values():
             sx, sy = self._node_to_screen(node.area.x, node.area.y)
             sw, sh = self._node_screen_size(node.area.w, node.area.h)
@@ -1521,8 +1527,13 @@ class TileGrid:
             if not self.rect.colliderect(Rect(sx, sy, sw, sh)):
                 continue
 
-            is_active = editing and active is not None and active.node_id == node.node_id
-            alpha = 180 if is_active else (80 if editing else 40)
+            is_active = visible and active is not None and active.node_id == node.node_id
+            if editing:
+                alpha = 180 if is_active else 80
+            elif showing:
+                alpha = 140 if is_active else 70
+            else:
+                alpha = 40
             
             color = node_type_colors.get(node.node_type, (80, 220, 120))
 
@@ -1533,14 +1544,14 @@ class TileGrid:
             border_color = (*color, alpha)
             pygame.draw.rect(screen, border_color, Rect(sx, sy, sw, sh), max(1, int(2 * self.zoom_level)))
 
-            if editing:
+            if visible:
                 label = self.font_status.render(node.name, True, (255, 255, 255))
                 label_bg = pygame.Surface((label.get_width() + 4, label.get_height() + 2), pygame.SRCALPHA)
                 label_bg.fill((0, 0, 0, 160))
                 screen.blit(label_bg, (sx, sy - label.get_height() - 2))
                 screen.blit(label, (sx + 2, sy - label.get_height() - 1))
 
-            if is_active:
+            if is_active and editing:
                 self._draw_node_handles(screen, Rect(sx, sy, sw, sh), color)
 
         self._draw_particle_previews(screen)
@@ -1563,8 +1574,8 @@ class TileGrid:
             if active_id not in self._particle_previews:
                 self._particle_previews[active_id] = ParticlePreview(dict(active.properties))
             preview = self._particle_previews[active_id]
-            preview.config = active.properties
-            preview.update(dt, active.area.x, active.area.y, active.area.w, active.area.h)
+            rs = self.editor.tilemap.render_scale
+            preview.update(dt, active.area.x, active.area.y, active.area.w * rs, active.area.h * rs)
             self._last_active_node_id = active_id
         else:
             self._particle_previews.clear()
@@ -1629,6 +1640,72 @@ class TileGrid:
             if hrect.collidepoint(sp):
                 return name
         return None
+
+    def _handle_show_node_event(self, event) -> bool:
+        nm = getattr(self.editor, "node_manager", None)
+        if not nm or not nm.nodes:
+            return False
+
+        mouse_pos = pygame.mouse.get_pos()
+        is_hover = self.rect.collidepoint(mouse_pos)
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1 and is_hover:
+                wx, wy = self.screen_to_world(mouse_pos)
+                active = nm.get_active_node()
+
+                if active:
+                    sw, sh = self._node_screen_size(active.area.w, active.area.h)
+                    sx, sy = self._node_to_screen(active.area.x, active.area.y)
+                    if Rect(sx, sy, sw, sh).collidepoint(mouse_pos):
+                        self._node_drag_state = "moving"
+                        self._node_drag_start = (wx, wy)
+                        self._node_original_rect = NodeRect(
+                            active.area.x, active.area.y,
+                            active.area.w, active.area.h,
+                        )
+                        return True
+
+                    for node in nm.nodes.values():
+                        if node.node_id == active.node_id:
+                            continue
+                        nsx, nsy = self._node_to_screen(node.area.x, node.area.y)
+                        nsw, nsh = self._node_screen_size(node.area.w, node.area.h)
+                        if Rect(nsx, nsy, nsw, nsh).collidepoint(mouse_pos):
+                            nm.set_active_node(node.node_id)
+                            return True
+                else:
+                    for node in nm.nodes.values():
+                        nsx, nsy = self._node_to_screen(node.area.x, node.area.y)
+                        nsw, nsh = self._node_screen_size(node.area.w, node.area.h)
+                        if Rect(nsx, nsy, nsw, nsh).collidepoint(mouse_pos):
+                            nm.set_active_node(node.node_id)
+                            return True
+
+                    nm.set_active_node(None)
+                return False
+
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1 and self._node_drag_state is not None:
+                self._node_drag_state = None
+                self._node_drag_handle = None
+                self._node_original_rect = None
+                return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self._node_drag_state is not None and is_hover:
+                active = nm.get_active_node()
+                if active and self._node_original_rect:
+                    orig = self._node_original_rect
+                    wx, wy = self.screen_to_world(mouse_pos)
+                    dx = wx - self._node_drag_start[0]
+                    dy = wy - self._node_drag_start[1]
+                    if self._node_drag_state == "moving":
+                        active.area.x = orig.x + dx
+                        active.area.y = orig.y + dy
+                return True
+
+        return False
 
     def _handle_node_event(self, event) -> bool:
         nm = getattr(self.editor, "node_manager", None)

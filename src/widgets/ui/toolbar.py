@@ -70,11 +70,9 @@ class Toolbar:
                     elif key == "auto":
                         self.editor.toggle_auto_autotile()
                     elif key == "nodes":
-                        self.editor.node_editing_mode = not self.editor.node_editing_mode
-                        if self.editor.node_editing_mode:
-                            self.editor.pan_mode = False
-                            self.editor.select_mode = False
-                            self.editor.eraser_mode = False
+                        self.editor.show_nodes = not self.editor.show_nodes
+                        if self.editor.show_nodes:
+                            self.editor.node_editing_mode = False
                     elif key == "zoom_in":
                         if self.editor.tile_grid_widget:
                             self.editor.tile_grid_widget.zoom_by(0.1)
@@ -98,6 +96,7 @@ class Toolbar:
 
         for key, (r, label) in self.buttons.items():
             is_active = False
+            is_show = False
             if key == "pan":
                 is_active = self.editor.pan_mode
             elif key == "select":
@@ -112,14 +111,18 @@ class Toolbar:
             elif key == "auto":
                 is_active = self.editor.autotile_mode
             elif key == "nodes":
-                is_active = self.editor.node_editing_mode
+                is_active = self.editor.show_nodes
+                is_show = False
 
             hover = r.collidepoint(mouse_pos)
-            bg = (
-                COLORS.accent_active
-                if is_active
-                else (COLORS.hover if hover else COLORS.panel_alt)
-            )
+            if is_active:
+                bg = COLORS.accent_active
+            elif is_show:
+                bg = COLORS.selected
+            elif hover:
+                bg = COLORS.hover
+            else:
+                bg = COLORS.panel_alt
             pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm)
             pygame.draw.rect(
                 screen, COLORS.border_soft, r, 1, border_radius=SHAPE.radius_sm
@@ -146,7 +149,7 @@ class Toolbar:
                 elif key == "auto":
                     tip = "Auto-Autotile"
                 elif key == "nodes":
-                    tip = "Node Mode (Ctrl+Shift+N)"
+                    tip = "Show Nodes (Ctrl+Shift+N for Edit mode)" if not self.editor.show_nodes else "Hide Nodes"
                 elif key == "zoom_in":
                     tip = "Zoom In (Ctrl+Wheel)"
                 elif key == "zoom_out":
