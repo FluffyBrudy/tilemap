@@ -18,7 +18,11 @@ class TileGrid:
 
         self.scroll_x = 0
         self.scroll_y = 0
-        self.scroll_speed = 8
+        self.scroll_speed = 40
+
+        from widgets.ui.scrollbar import Scrollbar
+        self._h_scroll = Scrollbar("horizontal", on_scroll=self._on_h_scroll)
+        self._v_scroll = Scrollbar("vertical", on_scroll=self._on_v_scroll)
 
         self.is_panning = False
         self.pan_start_pos = (0, 0)
@@ -28,7 +32,7 @@ class TileGrid:
         self.grid_color = (200, 200, 200)
         self.show_grid = True
 
-        self.eraser_size = 1  # For tiles: in grid units. For objects: in pixels.
+        self.eraser_size = 1
         self.zoom_level = 1.0
         self.min_zoom = 0.1
         self.max_zoom = 5.0
@@ -37,36 +41,38 @@ class TileGrid:
         self.font_overlay = pygame.font.SysFont("Arial", 24, bold=True)
         self._last_history_capture = 0
 
-        # Continuous adjustment and visual feedback
+
         self.last_eraser_adj_time = 0
         self.eraser_overlay_timer = 0
-        self.adj_delay = 100  # ms between adjustments
+        self.adj_delay = 100
 
-        # Selection state
-        self.selection_rect = None  # (x1, y1, x2, y2) grid coords, inclusive
-        self.selection_start = None  # grid coord where selection drag started
-        self.is_selecting = False  # currently dragging to create selection
 
-        # Move state (click inside selection → drag to move)
-        self.is_moving = False  # clicked inside selection, ready to drag-move
-        self.move_delta = (0, 0)  # current move offset: (grid_dx, grid_dy) for tiles, (px_dx, px_dy) for objects
-        self.move_start_mouse = None  # screen pos where move drag started
-        self.move_origin_rect = None  # original selection rect before move started
-        self._selection_pixel_offset = (0, 0)  # pixel-level offset for object selection display during move
+        self.selection_rect = None
+        self.selection_start = None
+        self.is_selecting = False
 
-        # Clipboard
-        self.clipboard = None  # copied tile/object data
 
-        # Node editing state (moved here so _handle_node_event can access)
+        self.is_moving = False
+        self.move_delta = (0, 0)
+        self.move_start_mouse = None
+        self.move_origin_rect = None
+        self._selection_pixel_offset = (0, 0)
+
+
+        self.clipboard = None
+
+
         self._node_drag_state: Optional[str] = None
         self._node_drag_handle: Optional[str] = None
         self._node_drag_start: Tuple[int, int] = (0, 0)
         self._node_original_rect = None
 
-        # Particle preview state
+
         self._particle_previews: Dict[str, ParticlePreview] = {}
         self._last_preview_time: float = 0.0
         self._last_active_node_id: Optional[str] = None
+
+        self._cached_bounds: Optional[Tuple[int, int, int, int]] = None
 
     @property
     def tile_size(self):
@@ -88,6 +94,58 @@ class TileGrid:
         eff_w, eff_h = self.effective_tile_size
         return int(wx // eff_w), int(wy // eff_h)
 
+    def _get_map_bounds(self) -> Tuple[int, int, int, int]:
+        if self._cached_bounds is not None:
+            return self._cached_bounds
+
+        tm = self.editor.tilemap
+        eff_w, eff_h = self.effective_tile_size
+        map_w, map_h = tm.map_size
+
+        min_col = 0
+        max_col = map_w
+        min_row = 0
+        max_row = map_h
+
+        for layer in tm.layer_manager.layers:
+            if layer.tiles:
+                for pos in layer.tiles.keys():
+                    min_col = min(min_col, pos[0])
+                    max_col = max(max_col, pos[0] + 1)
+                    min_row = min(min_row, pos[1])
+                    max_row = max(max_row, pos[1] + 1)
+
+            if layer.objects:
+                for obj in layer.objects.values():
+                    area = obj["area"]
+                    grid_l = int(area["x"] // tm.tile_size[0])
+                    grid_r = -(-int(area["x"] + area["w"]) // tm.tile_size[0])
+                    grid_t = int(area["y"] // tm.tile_size[1])
+                    grid_b = -(-int(area["y"] + area["h"]) // tm.tile_size[1])
+                    min_col = min(min_col, grid_l)
+                    max_col = max(max_col, grid_r)
+                    min_row = min(min_row, grid_t)
+                    max_row = max(max_row, grid_b)
+
+        self._cached_bounds = (min_col * eff_w, max_col * eff_w, min_row * eff_h, max_row * eff_h)
+        return self._cached_bounds
+
+    def invalidate_bounds_cache(self):
+        """Invalidate the cached bounds when tiles, objects, or layers change."""
+        self._cached_bounds = None
+
+    def _on_h_scroll(self, val: float):
+        world_min_x, _, _, _ = self._get_map_bounds()
+        self.scroll_x = val + world_min_x
+        self.clamp_scroll()
+        self._update_scrollbar_ranges()
+
+    def _on_v_scroll(self, val: float):
+        _, _, world_min_y, _ = self._get_map_bounds()
+        self.scroll_y = val + world_min_y
+        self.clamp_scroll()
+        self._update_scrollbar_ranges()
+
     def update(self):
         event_blocked = not self.editor.save_input.active
         if self.rect.collidepoint(pygame.mouse.get_pos()) and event_blocked:
@@ -102,7 +160,7 @@ class TileGrid:
             if keys[pygame.K_DOWN]:
                 self.scroll_y += self.scroll_speed
 
-            # Continuous Eraser Size Adjustment
+
             mods = pygame.key.get_mods()
             ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
             meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
@@ -128,29 +186,87 @@ class TileGrid:
                     if adj != 0:
                         self.eraser_size = max(1, min(100, self.eraser_size + adj))
                         self.last_eraser_adj_time = current_time
-                        self.eraser_overlay_timer = 1500  # Show for 1.5 seconds
+                        self.eraser_overlay_timer = 1500
 
-        self._update_particle_previews()
+        self.clamp_scroll()
+        self._update_scrollbar_ranges()
+        try:
+            self._update_particle_previews()
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
-        self.clamp_view()
+    def _view_metrics(self):
+        tm = self.editor.tilemap
+        eff_w, eff_h = self.effective_tile_size
+        map_w, map_h = tm.map_size
+        mww = map_w * eff_w
+        mwh = map_h * eff_h
+        vww = self.rect.width / self.zoom_level
+        vwh = self.rect.height / self.zoom_level
+        return mww, mwh, vww, vwh
+
+    def clamp_scroll(self):
+        if not self.editor.tilemap.initialized:
+            return
+        mww, mwh, vww, vwh = self._view_metrics()
+        world_min_x, world_max_x, world_min_y, world_max_y = self._get_map_bounds()
+
+
+        min_x = world_min_x - vww
+        max_x = world_max_x
+        self.scroll_x = max(min_x, min(self.scroll_x, max_x))
+
+        min_y = world_min_y - vwh
+        max_y = world_max_y
+        self.scroll_y = max(min_y, min(self.scroll_y, max_y))
+
+    def _update_scrollbar_ranges(self):
+        if not self.editor.tilemap.initialized:
+            return
+        sw = 12
+        bw = 12
+        self._v_scroll.rect = Rect(self.rect.right - sw, self.rect.y, sw, self.rect.h - bw)
+        self._h_scroll.rect = Rect(self.rect.x, self.rect.bottom - bw, self.rect.width - sw, bw)
+        mww, mwh, vww, vwh = self._view_metrics()
+        world_min_x, world_max_x, world_min_y, world_max_y = self._get_map_bounds()
+
+        span_x = max(vww, world_max_x - world_min_x)
+        span_y = max(vwh, world_max_y - world_min_y)
+
+        self._h_scroll.set_range(span_x, vww, self.scroll_x - world_min_x)
+        self._v_scroll.set_range(span_y, vwh, self.scroll_y - world_min_y)
 
     def zoom_by(self, delta: float, center: Optional[Tuple[int, int]] = None):
         old_zoom = self.zoom_level
-        self.zoom_level = max(
-            self.min_zoom, min(self.max_zoom, self.zoom_level + delta)
+        new_zoom = max(
+            self.min_zoom, min(self.max_zoom, old_zoom + delta)
         )
-        if self.zoom_level == old_zoom:
+        if new_zoom == old_zoom:
             return
         if center is None:
             center = pygame.mouse.get_pos()
-        wx, wy = self.screen_to_world(center)
-        self.scroll_x = wx - (center[0] - self.rect.x) / self.zoom_level
-        self.scroll_y = wy - (center[1] - self.rect.y) / self.zoom_level
+        wx = (center[0] - self.rect.x) / old_zoom + self.scroll_x
+        wy = (center[1] - self.rect.y) / old_zoom + self.scroll_y
+        self.zoom_level = new_zoom
+        self.scroll_x = wx - (center[0] - self.rect.x) / new_zoom
+        self.scroll_y = wy - (center[1] - self.rect.y) / new_zoom
+
+    def center_on_map(self):
+        """Center the map in the viewport (unbounded scroll: map can be anywhere)."""
+        eff_w, eff_h = self.effective_tile_size
+        world_w = self.editor.tilemap.map_size[0] * eff_w
+        world_h = self.editor.tilemap.map_size[1] * eff_h
+        if world_w <= 0 or world_h <= 0:
+            return
+        view_w = self.rect.width / self.zoom_level
+        view_h = self.rect.height / self.zoom_level
+        self.scroll_x = world_w / 2 - view_w / 2
+        self.scroll_y = world_h / 2 - view_h / 2
 
     def reset_view(self):
         self.zoom_level = 1.0
-        self.scroll_x = 0
-        self.scroll_y = 0
+        self.center_on_map()
 
     def fit_to_map(self):
         eff_w, eff_h = self.effective_tile_size
@@ -161,23 +277,11 @@ class TileGrid:
         zoom_x = self.rect.width / world_w
         zoom_y = self.rect.height / world_h
         self.zoom_level = max(self.min_zoom, min(self.max_zoom, min(zoom_x, zoom_y)))
-        self.scroll_x = 0
-        self.scroll_y = 0
-
-    def clamp_view(self):
-        self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level))
-        eff_w, eff_h = self.effective_tile_size
-        world_w = self.editor.tilemap.map_size[0] * eff_w
-        world_h = self.editor.tilemap.map_size[1] * eff_h
-        view_w = self.rect.width / self.zoom_level
-        view_h = self.rect.height / self.zoom_level
-
-        max_scroll_x = max(0, world_w - view_w)
-        max_scroll_y = max(0, world_h - view_h)
-        self.scroll_x = max(0, min(self.scroll_x, max_scroll_x))
-        self.scroll_y = max(0, min(self.scroll_y, max_scroll_y))
+        self.center_on_map()
 
     def handle_event(self, event: pygame.event.Event) -> bool:
+        if self._v_scroll.handle_event(event) or self._h_scroll.handle_event(event):
+            return True
         if self.editor.node_editing_mode:
             return self._handle_node_event(event)
 
@@ -262,13 +366,13 @@ class TileGrid:
                         self.editor.notifications.notify("No tile at cursor")
                 return True
 
-            # Ctrl+C: Copy selection
+
             if event.key == pygame.K_c and (ctrl_held or meta_held):
                 if self.selection_rect:
                     self.copy_selection()
                 return True
 
-            # Ctrl+X: Cut selection
+
             if event.key == pygame.K_x and (ctrl_held or meta_held):
                 if self.selection_rect:
                     self.copy_selection()
@@ -276,21 +380,21 @@ class TileGrid:
                     self.delete_selection()
                 return True
 
-            # Ctrl+V: Paste
+
             if event.key == pygame.K_v and (ctrl_held or meta_held):
                 if self.clipboard and is_hovering and self.hover_cell:
                     self.editor.tilemap.capture_history("Paste")
                     self.paste_clipboard(self.hover_cell)
                 return True
 
-            # Delete / Backspace: Delete selection
+
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
                 if self.selection_rect:
                     self.editor.tilemap.capture_history("Delete Selection")
                     self.delete_selection()
                 return True
 
-            # Enter: Commit move or deselect
+
             if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                 if self.is_moving:
                     self.commit_move()
@@ -298,7 +402,7 @@ class TileGrid:
                     self.selection_rect = None
                 return True
 
-            # Escape: Cancel move or deselect
+
             if event.key == pygame.K_ESCAPE:
                 if self.is_moving:
                     self.cancel_move()
@@ -307,7 +411,7 @@ class TileGrid:
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            # Middle-click or left-click in pan_mode → start pan
+
             if event.button == 2 or (event.button == 1 and self.editor.pan_mode):
                 if is_hovering:
                     self.is_panning = True
@@ -315,18 +419,18 @@ class TileGrid:
                     self.pan_start_scroll = (self.scroll_x, self.scroll_y)
                     return True
 
-            # Left-click
+
             if event.button == 1:
                 if self.editor.select_mode:
                     if is_hovering and self.hover_cell:
-                        # Click inside existing selection → start move
+
                         if (
                             self.selection_rect
                             and self._point_in_selection(self.hover_cell)
                         ):
                             self._begin_move(mouse_pos)
                         else:
-                            # Start new selection drag
+
                             self.selection_start = self.hover_cell
                             self.is_selecting = True
                             self.selection_rect = (
@@ -336,7 +440,7 @@ class TileGrid:
                                 self.hover_cell[1],
                             )
                     else:
-                        # Click outside selection → deselect
+
                         self.selection_rect = None
                     return True
 
@@ -346,25 +450,25 @@ class TileGrid:
                         self.remove_tile()
                     return True
 
-                # Default: place tile
+
                 if is_hovering and not self.is_panning:
                     self.editor.tilemap.capture_history("Place Tile")
                     self.place_tile()
                     return True
 
-            # Right-click → pick tile (eye-drop)
+
             if event.button == 3:
                 if is_hovering and self.hover_cell:
                     self.pick_tile_at(self.hover_cell)
                 return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
-            # Middle-click or left-click in pan_mode → stop pan
+
             if event.button == 2 or (event.button == 1 and self.editor.pan_mode):
                 self.is_panning = False
                 return True
 
-            # Left-click release
+
             if event.button == 1:
                 if self.is_selecting:
                     self.is_selecting = False
@@ -388,7 +492,7 @@ class TileGrid:
             else:
                 self.hover_cell = None
 
-            # Update selection drag
+
             if self.is_selecting and self.selection_start and self.hover_cell:
                 x1 = min(self.selection_start[0], self.hover_cell[0])
                 y1 = min(self.selection_start[1], self.hover_cell[1])
@@ -396,7 +500,7 @@ class TileGrid:
                 y2 = max(self.selection_start[1], self.hover_cell[1])
                 self.selection_rect = (x1, y1, x2, y2)
 
-            # Update move delta
+
             if self.is_moving and self.move_start_mouse:
                 self._update_move_delta(mouse_pos)
 
@@ -409,12 +513,16 @@ class TileGrid:
                 if ctrl_held or meta_held:
                     self.zoom_by(event.y * 0.1, pygame.mouse.get_pos())
                 elif shift_held:
-                    self.scroll_x -= event.y * self.scroll_speed
+                    scroll_val = event.y if event.y != 0 else event.x
+                    self.scroll_x -= scroll_val * self.scroll_speed
                 else:
+                    self.scroll_x -= event.x * self.scroll_speed
                     self.scroll_y -= event.y * self.scroll_speed
+                self.clamp_scroll()
+                self._update_scrollbar_ranges()
                 return True
 
-        # Continuous painting/erasing (left-click held, not in select or pan mode)
+
         buttons = pygame.mouse.get_pressed()
         if (
             not self.editor.pan_mode
@@ -445,6 +553,8 @@ class TileGrid:
         return tileset_index, tileset_data, tile_rect
 
     def place_tile(self):
+        if not self.editor.tilemap.initialized:
+            return
         res = self.get_selected_brush()
         if not res:
             return
@@ -472,7 +582,7 @@ class TileGrid:
                 sheet_cols,
                 tileset_data.tileset_type,
             )
-            # Incremental update for objects
+
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
             self.editor.tilemap.incremental_update_map_size(
@@ -491,7 +601,7 @@ class TileGrid:
                 tile_h,
                 sheet_cols,
             )
-            # Incremental update for tile selection size
+
             sel_w_tiles = src_rect[2] // tile_w
             sel_h_tiles = src_rect[3] // tile_h
             last_tile_pos = (
@@ -499,6 +609,8 @@ class TileGrid:
                 self.hover_cell[1] + sel_h_tiles - 1,
             )
             self.editor.tilemap.incremental_update_map_size(last_tile_pos)
+
+        self.invalidate_bounds_cache()
 
     def _place_tile_grid(
         self,
@@ -560,7 +672,7 @@ class TileGrid:
                         "variant": variant_id,
                     }
 
-                    # Copy properties from tileset variant if they exist
+
                     if variant_id in tileset_data.tile_properties:
                         tile_data["properties"] = tileset_data.tile_properties[
                             variant_id
@@ -568,7 +680,7 @@ class TileGrid:
 
                     active_layer.set_tile(target_pos, tile_data)
 
-                    # Localized autotile if mode is enabled
+
                     if self.editor.autotile_mode and getattr(
                         self.editor, "autotiler", None
                     ):
@@ -631,7 +743,7 @@ class TileGrid:
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
 
-            # Object layer removal: search in a localized area around mouse
+
             half_size = self.eraser_size // 2
             erase_rect = Rect(
                 world_pos[0] - half_size,
@@ -653,10 +765,11 @@ class TileGrid:
                         > self.editor.tilemap.initial_map_size[1]
                     ):
                         self.editor.tilemap.update_map_size()
+            self.invalidate_bounds_cache()
         else:
             if not self.hover_cell:
                 return
-            # Tile layer removal: loop over NxN area based on eraser_size
+
             must_rescan = False
             for dy in range(self.eraser_size):
                 for dx in range(self.eraser_size):
@@ -677,6 +790,7 @@ class TileGrid:
 
             if must_rescan:
                 self.editor.tilemap.update_map_size()
+            self.invalidate_bounds_cache()
 
     def pick_tile_at(self, grid_pos: Tuple[int, int]):
         """Pick/eye-drop a tile from the map at the given grid position.
@@ -700,7 +814,7 @@ class TileGrid:
             variant = tile["variant"]
             ts_widget.select_tile_by_variant(ttype, variant)
         elif active_layer.layer_type == "object":
-            # Find object under cursor
+
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
             for obj_id, obj in active_layer.get_all_objects().items():
@@ -800,6 +914,8 @@ class TileGrid:
                 active_layer.set_tile((gx, gy), new_tile)
             count = len(self.clipboard["tiles"])
             self.editor.notifications.success(f"Pasted {count} tiles")
+            self.editor.tilemap.update_map_size()
+            self.invalidate_bounds_cache()
 
         elif (
             self.clipboard["layer_type"] == "object"
@@ -822,6 +938,8 @@ class TileGrid:
                 )
             count = len(self.clipboard["objects"])
             self.editor.notifications.success(f"Pasted {count} objects")
+            self.editor.tilemap.update_map_size()
+            self.invalidate_bounds_cache()
         else:
             self.editor.notifications.notify(
                 "Cannot paste: layer type mismatch"
@@ -863,6 +981,7 @@ class TileGrid:
 
         self.selection_rect = None
         self.editor.tilemap.update_map_size()
+        self.invalidate_bounds_cache()
 
     def _begin_move(self, mouse_pos: Tuple[int, int]):
         """Enter move mode: user clicked inside the selection rectangle."""
@@ -881,13 +1000,13 @@ class TileGrid:
         dy_screen = mouse_pos[1] - self.move_start_mouse[1]
 
         if active_layer.layer_type == "tile":
-            # Grid-snapped movement
+
             eff_w, eff_h = self.effective_tile_size
             grid_dx = int(dx_screen / (eff_w * self.zoom_level))
             grid_dy = int(dy_screen / (eff_h * self.zoom_level))
             self.move_delta = (grid_dx, grid_dy)
         else:
-            # Pixel-precise movement for objects
+
             world_dx = dx_screen / self.zoom_level
             world_dy = dy_screen / self.zoom_level
             self.move_delta = (int(world_dx), int(world_dy))
@@ -916,7 +1035,7 @@ class TileGrid:
         x1, y1, x2, y2 = self.move_origin_rect
 
         if active_layer.layer_type == "tile":
-            # Collect tiles in the selection, remove them, re-add at offset positions
+
             tiles_to_move = []
             for gy in range(y1, y2 + 1):
                 for gx in range(x1, x2 + 1):
@@ -924,22 +1043,22 @@ class TileGrid:
                     if tile:
                         tiles_to_move.append(((gx, gy), tile.copy()))
 
-            # Remove originals
+
             for pos, _ in tiles_to_move:
                 active_layer.remove_tile(pos)
 
-            # Place at new positions
+
             for (_, _), tile in tiles_to_move:
                 new_pos = (tile["pos"][0] + dx, tile["pos"][1] + dy)
                 new_tile = tile.copy()
                 new_tile["pos"] = new_pos
                 active_layer.set_tile(new_pos, new_tile)
 
-            # Update selection rect
             self.selection_rect = (x1 + dx, y1 + dy, x2 + dx, y2 + dy)
+            self._selection_pixel_offset = (0, 0)
 
         elif active_layer.layer_type == "object":
-            # Collect objects fully contained in selection
+
             sel_rect = Rect(
                 x1 * self.tile_size[0],
                 y1 * self.tile_size[1],
@@ -953,11 +1072,11 @@ class TileGrid:
                 if sel_rect.contains(obj_rect):
                     objects_to_move.append((obj_id, obj.copy()))
 
-            # Remove originals
+
             for obj_id, _ in objects_to_move:
                 active_layer.remove_object(obj_id)
 
-            # Place at new positions
+
             for _, obj in objects_to_move:
                 new_obj = obj.copy()
                 new_obj["area"] = {
@@ -970,18 +1089,20 @@ class TileGrid:
                     (new_obj["area"]["x"], new_obj["area"]["y"]), new_obj
                 )
 
-            # Update selection rect (pixel delta → grid delta, but track pixel offset)
+
             grid_dx = dx // self.tile_size[0]
             grid_dy = dy // self.tile_size[1]
             self.selection_rect = (x1 + grid_dx, y1 + grid_dy, x2 + grid_dx, y2 + grid_dy)
             self._selection_pixel_offset = (dx % self.tile_size[0], dy % self.tile_size[1])
+        else:
+            self._selection_pixel_offset = (0, 0)
 
         self.is_moving = False
         self.move_start_mouse = None
         self.move_origin_rect = None
         self.move_delta = (0, 0)
-        self._selection_pixel_offset = (0, 0)
         self.editor.tilemap.update_map_size()
+        self.invalidate_bounds_cache()
 
     def cancel_move(self):
         """Cancel the current move, restoring original positions."""
@@ -993,46 +1114,86 @@ class TileGrid:
         if origin:
             self.selection_rect = origin
 
+    def _draw_background(self, screen):
+        """Draw infinite plane (solid dark) and map area (panel + accent border)."""
+        try:
+            if self.rect.width <= 0 or self.rect.height <= 0:
+                return
+            eff_w, eff_h = self.effective_tile_size
+            map_w, map_h = self.editor.tilemap.map_size
+            if eff_w <= 0 or eff_h <= 0 or map_w <= 0 or map_h <= 0:
+                pygame.draw.rect(screen, COLORS.panel, self.rect)
+                return
+
+            pygame.draw.rect(screen, COLORS.panel_alt, self.rect)
+
+            map_screen_x = (0 - self.scroll_x) * self.zoom_level + self.rect.x
+            map_screen_y = (0 - self.scroll_y) * self.zoom_level + self.rect.y
+            map_display_w = map_w * eff_w * self.zoom_level
+            map_display_h = map_h * eff_h * self.zoom_level
+            if map_display_w <= 0 or map_display_h <= 0:
+                return
+            map_rect = Rect(int(map_screen_x), int(map_screen_y),
+                            int(map_display_w), int(map_display_h))
+
+            visible = map_rect.clip(self.rect)
+            if visible.width > 0 and visible.height > 0:
+                pygame.draw.rect(screen, COLORS.panel, visible)
+                pygame.draw.rect(screen, COLORS.accent, visible, 3)
+        except Exception:
+            pygame.draw.rect(screen, COLORS.panel, self.rect)
+
     def draw(self, screen: Surface):
-        # 1. Background for the whole widget area
-        pygame.draw.rect(screen, COLORS.panel, self.rect)
-
-        # 2. Main clipping (full widget area)
-        widget_clip = self.rect.clip(screen.get_rect())
         prev_clip = screen.get_clip()
+        try:
+            tilemap = self.editor.tilemap
 
-        # 3. Apply widget-level clip
-        screen.set_clip(widget_clip)
+            if tilemap.initialized:
+                self._draw_background(screen)
+            else:
+                pygame.draw.rect(screen, COLORS.panel, self.rect)
 
-        tilemap = self.editor.tilemap
-        if tilemap.initialized:
-            self.render_map(screen)
-            if self.show_grid:
-                self._draw_grid(screen)
-        else:
-            # Only print once to avoid console flooding
-            if (
-                not hasattr(self, "_last_init_warn")
-                or pygame.time.get_ticks() - self._last_init_warn > 5000
-            ):
-                print("DEBUG: Tilemap not initialized, skipping render")
-                self._last_init_warn = pygame.time.get_ticks()
+            widget_clip = self.rect.clip(screen.get_rect())
 
-        self._draw_preview(screen)
-        self._draw_move_preview(screen)
-        self._draw_selection_rect(screen)
-        self._draw_nodes(screen)
+            screen.set_clip(widget_clip)
 
-        # 4. Restore global clip and draw widget-level decorations
-        screen.set_clip(prev_clip)
-        self._draw_eraser_overlay(screen)
-        self._draw_status_bar(screen)
-        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
+            if tilemap.initialized:
+                self.render_map(screen)
+                if self.show_grid:
+                    self._draw_grid(screen)
+                self._draw_map_boundary(screen)
+            else:
+
+                if (
+                    not hasattr(self, "_last_init_warn")
+                    or pygame.time.get_ticks() - self._last_init_warn > 5000
+                ):
+                    print("DEBUG: Tilemap not initialized, skipping render")
+                    self._last_init_warn = pygame.time.get_ticks()
+
+            self._draw_preview(screen)
+            self._draw_move_preview(screen)
+            self._draw_selection_rect(screen)
+            self._draw_nodes(screen)
+
+            screen.set_clip(prev_clip)
+            self._draw_eraser_overlay(screen)
+            self._draw_status_bar(screen)
+            if tilemap.initialized:
+                self._v_scroll.draw(screen)
+                self._h_scroll.draw(screen)
+            pygame.draw.rect(screen, COLORS.border, self.rect, 1)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            pygame.draw.rect(screen, COLORS.panel, self.rect)
+        finally:
+            screen.set_clip(prev_clip)
 
     def _draw_preview(self, screen):
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
 
-        # Eraser preview (when eraser mode is active or during erase)
+
         if self.editor.eraser_mode and self.hover_cell:
             eff_w, eff_h = self.effective_tile_size
             screen_x = (
@@ -1047,9 +1208,9 @@ class TileGrid:
             pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
             return
 
-        # Move preview (during drag-move)
+
         if self.is_moving and self.hover_cell:
-            return  # Tiles are already drawn at new positions by _update_move_preview
+            return
 
         res = self.get_selected_brush()
         if not res:
@@ -1135,50 +1296,85 @@ class TileGrid:
         eff_w, eff_h = self.effective_tile_size
         map_w, map_h = self.editor.tilemap.map_size
 
-        # World coordinates of map boundaries
+
         map_world_w = map_w * eff_w
         map_world_h = map_h * eff_h
 
-        # Screen coordinates of map top-left
         map_screen_x = (0 - self.scroll_x) * self.zoom_level + self.rect.x
         map_screen_y = (0 - self.scroll_y) * self.zoom_level + self.rect.y
 
-        # Screen size of the map
         map_display_w = map_world_w * self.zoom_level
         map_display_h = map_world_h * self.zoom_level
 
-        # Calculate visible range in grid units
-        # We divide widget dimensions by zoom to find world distance, then divide by tile size
         visible_world_w = self.rect.width / self.zoom_level
         visible_world_h = self.rect.height / self.zoom_level
 
-        start_col = max(0, int(self.scroll_x // eff_w))
-        end_col = min(map_w, int((self.scroll_x + visible_world_w) // eff_w) + 1)
+        start_col = int(self.scroll_x // eff_w)
+        end_col = int((self.scroll_x + visible_world_w) // eff_w) + 1
 
-        start_row = max(0, int(self.scroll_y // eff_h))
-        end_row = min(map_h, int((self.scroll_y + visible_world_h) // eff_h) + 1)
+        start_row = int(self.scroll_y // eff_h)
+        end_row = int((self.scroll_y + visible_world_h) // eff_h) + 1
 
-        # Draw vertical lines (at column positions)
+
         for col in range(start_col, end_col + 1):
             x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-            # Line goes from top of map to bottom of map (clipping handled by surface clip)
+
             pygame.draw.line(
                 screen,
                 self.grid_color,
-                (x, map_screen_y),
-                (x, map_screen_y + map_display_h),
+                (x, self.rect.y),
+                (x, self.rect.bottom),
             )
 
-        # Draw horizontal lines (at row positions)
         for row in range(start_row, end_row + 1):
             y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-            # Line goes from left of map to right of map
             pygame.draw.line(
                 screen,
                 self.grid_color,
-                (map_screen_x, y),
-                (map_screen_x + map_display_w, y),
+                (self.rect.x, y),
+                (self.rect.right, y),
             )
+
+    def _draw_map_boundary(self, screen):
+        eff_w, eff_h = self.effective_tile_size
+        map_w, map_h = self.editor.tilemap.map_size
+
+        boundary = Rect(
+            self.rect.x + (-self.scroll_x) * self.zoom_level,
+            self.rect.y + (-self.scroll_y) * self.zoom_level,
+            map_w * eff_w * self.zoom_level,
+            map_h * eff_h * self.zoom_level,
+        )
+
+        border_color = (100, 150, 255)
+        border_width = max(2, int(3 * self.zoom_level))
+
+        edges = (
+            (
+                self.rect.top <= boundary.top <= self.rect.bottom,
+                (max(boundary.left, self.rect.left), boundary.top),
+                (min(boundary.right, self.rect.right), boundary.top),
+            ),
+            (
+                self.rect.top <= boundary.bottom <= self.rect.bottom,
+                (max(boundary.left, self.rect.left), boundary.bottom),
+                (min(boundary.right, self.rect.right), boundary.bottom),
+            ),
+            (
+                self.rect.left <= boundary.left <= self.rect.right,
+                (boundary.left, max(boundary.top, self.rect.top)),
+                (boundary.left, min(boundary.bottom, self.rect.bottom)),
+            ),
+            (
+                self.rect.left <= boundary.right <= self.rect.right,
+                (boundary.right, max(boundary.top, self.rect.top)),
+                (boundary.right, min(boundary.bottom, self.rect.bottom)),
+            ),
+        )
+
+        for visible, start, end in edges:
+            if visible:
+                pygame.draw.line(screen, border_color, start, end, border_width)
 
     def _draw_status_bar(self, screen):
         bar_h = 25
@@ -1255,15 +1451,15 @@ class TileGrid:
 
         map_w, map_h = tilemap.map_size
 
-        # visible world bounds (in effective world space)
+
         visible_world_w = self.rect.width / self.zoom_level
         visible_world_h = self.rect.height / self.zoom_level
 
-        start_col = max(0, int(self.scroll_x // eff_w))
-        end_col = min(map_w, int((self.scroll_x + visible_world_w) // eff_w) + 1)
+        start_col = int(self.scroll_x // eff_w)
+        end_col = int((self.scroll_x + visible_world_w) // eff_w) + 1
 
-        start_row = max(0, int(self.scroll_y // eff_h))
-        end_row = min(map_h, int((self.scroll_y + visible_world_h) // eff_h) + 1)
+        start_row = int(self.scroll_y // eff_h)
+        end_row = int((self.scroll_y + visible_world_h) // eff_h) + 1
 
         assert self.editor.tileset_widget is not None
         tileset_map = self.editor.tileset_widget.tileset_map
@@ -1272,11 +1468,11 @@ class TileGrid:
 
         for layer in rendered_layers:
             if layer.opacity < 1.0:
-                # Create a temporary surface for the layer to handle opacity properly
+
                 layer_surf = pygame.Surface(
                     (self.rect.width, self.rect.height), pygame.SRCALPHA
                 )
-                # Use a coordinate system relative to the widget for blitting inside the layer_surf
+
                 draw_offset_x = -self.rect.x
                 draw_offset_y = -self.rect.y
             else:
@@ -1316,13 +1512,13 @@ class TileGrid:
 
                         sheet_w = base_surf.get_width()
 
-                        # Source rect always uses logical tile size
+
                         sheet_cols = sheet_w // tile_w
                         src_x = (variant_id % sheet_cols) * tile_w
                         src_y = (variant_id // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
-                        # Dest position uses effective (scaled) tile size
+
                         dest_x = (
                             (x * eff_w - self.scroll_x) * self.zoom_level
                             + self.rect.x
@@ -1334,7 +1530,7 @@ class TileGrid:
                             + draw_offset_y
                         )
 
-                        # Scale if zoomed or render_scaled
+
                         if self.zoom_level != 1.0 or rs != 1.0:
                             scaled_w = int(eff_w * self.zoom_level)
                             scaled_h = int(eff_h * self.zoom_level)
@@ -1416,7 +1612,7 @@ class TileGrid:
         surf = self.font_overlay.render(text, True, (255, 255, 255))
         surf.set_alpha(alpha)
 
-        # Draw background bubble
+
         rect = surf.get_rect(center=(self.rect.centerx, self.rect.bottom - 100))
         bg_rect = rect.inflate(20, 10)
         bg = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
@@ -1433,9 +1629,9 @@ class TileGrid:
         eff_w, eff_h = self.effective_tile_size
         rs = self.editor.tilemap.render_scale
         x1, y1, x2, y2 = self.selection_rect
-        px_off, py_off = 0, 0  # sub-tile pixel offset (objects only)
+        px_off, py_off = 0, 0
 
-        # During move, offset the selection rect by move_delta
+
         if self.is_moving:
             dx, dy = self.move_delta
             active_layer = self.editor.tilemap.layer_manager.get_active_layer()
@@ -1445,18 +1641,18 @@ class TileGrid:
                 x2 += dx
                 y2 += dy
             else:
-                # Object layer: use grid delta for grid-based offset
+
                 grid_dx = dx // self.tile_size[0]
                 grid_dy = dy // self.tile_size[1]
                 x1 += grid_dx
                 y1 += grid_dy
                 x2 += grid_dx
                 y2 += grid_dy
-                # Apply sub-tile pixel offset for display (scaled by render_scale)
+
                 px_off = (dx % self.tile_size[0]) * rs
                 py_off = (dy % self.tile_size[1]) * rs
 
-        # Convert grid coords to screen coords
+
         sx = (x1 * eff_w - self.scroll_x) * self.zoom_level + self.rect.x + px_off * self.zoom_level
         sy = (y1 * eff_h - self.scroll_y) * self.zoom_level + self.rect.y + py_off * self.zoom_level
         sw = (x2 - x1 + 1) * eff_w * self.zoom_level
@@ -1464,18 +1660,18 @@ class TileGrid:
 
         sel_rect = Rect(int(sx), int(sy), int(sw), int(sh))
 
-        # Semi-transparent fill (skip during drag to avoid visual noise)
+
         if not self.is_selecting:
             fill_surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)
             fill_surf.fill((100, 180, 255, 40))
             screen.blit(fill_surf, (int(sx), int(sy)))
 
-        # Dashed border (draw segments)
+
         border_color = (100, 180, 255) if not self.is_moving else (255, 200, 50)
         dash_len = 6
         gap_len = 4
 
-        # Top and bottom edges
+
         for edge_y in [sel_rect.top, sel_rect.bottom - 1]:
             x = sel_rect.left
             while x < sel_rect.right:
@@ -1483,7 +1679,7 @@ class TileGrid:
                 pygame.draw.line(screen, border_color, (x, edge_y), (end, edge_y), 2)
                 x += dash_len + gap_len
 
-        # Left and right edges
+
         for edge_x in [sel_rect.left, sel_rect.right - 1]:
             y = sel_rect.top
             while y < sel_rect.bottom:
@@ -1509,13 +1705,13 @@ class TileGrid:
         showing = self.editor.show_nodes
 
         node_type_colors = {
-            "area": (80, 220, 120),       # Green / Emerald
-            "spawn": (80, 140, 240),      # Blue / Sky
-            "portal": (180, 80, 220),     # Purple / Violet
-            "npc": (240, 140, 60),        # Orange
-            "checkpoint": (60, 200, 200),  # Teal
-            "item": (220, 200, 60),       # Yellow
-            "particle_emitter": (240, 140, 200),  # Pink / Magenta
+            "area": (80, 220, 120),
+            "spawn": (80, 140, 240),
+            "portal": (180, 80, 220),
+            "npc": (240, 140, 60),
+            "checkpoint": (60, 200, 200),
+            "item": (220, 200, 60),
+            "particle_emitter": (240, 140, 200),
         }
 
         visible = editing or showing
@@ -1534,7 +1730,7 @@ class TileGrid:
                 alpha = 140 if is_active else 70
             else:
                 alpha = 40
-            
+
             color = node_type_colors.get(node.node_type, (80, 220, 120))
 
             fill = pygame.Surface((sw, sh), pygame.SRCALPHA)
@@ -1861,7 +2057,7 @@ class TileGrid:
 
         ox1, oy1, ox2, oy2 = self.move_origin_rect
 
-        # Create a temporary surface for the preview
+
         preview_surf = pygame.Surface(
             (self.rect.width, self.rect.height), pygame.SRCALPHA
         )
@@ -1889,7 +2085,7 @@ class TileGrid:
                     src_y = (variant_id // sheet_cols) * tile_h
                     src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
-                    # New position with delta offset
+
                     new_gx = gx + dx
                     new_gy = gy + dy
                     dest_x = (
@@ -1967,7 +2163,7 @@ class TileGrid:
                         tile_copy.set_alpha(160)
                         preview_surf.blit(tile_copy, (dest_x, dest_y))
 
-        # Blit the preview onto the screen
+
         screen.blit(preview_surf, self.rect.topleft)
 
     def _get_group_for_tile(self, tile: TypeTile) -> Optional[str]:
@@ -1977,7 +2173,7 @@ class TileGrid:
         ttype = tile["ttype"]
         variant = tile["variant"]
 
-        # Check all rules in the designer
+
         for group in self.editor.autotiler.groups:
             for rule in group.rules:
                 if rule.tileset_index == ttype and variant in rule.variant_ids:

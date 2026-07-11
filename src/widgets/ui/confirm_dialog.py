@@ -2,39 +2,26 @@ import pygame
 from pygame import Rect, Surface
 from typing import Callable, Optional
 
+from .dialog_base import DialogBase
+from .theme import COLORS, FONTS
 
-class ConfirmDialog:
+
+class ConfirmDialog(DialogBase):
     def __init__(self, editor_rect: Rect):
-        self.editor_rect = editor_rect
-        self.rect = Rect(0, 0, 420, 180)
-        self.rect.center = editor_rect.center
-
-        self.active = False
-        self.title = ""
+        super().__init__(editor_rect, (420, 180))
         self.message = ""
         self.on_confirm: Optional[Callable[[], None]] = None
         self.on_cancel: Optional[Callable[[], None]] = None
 
-        self.bg_color = (40, 40, 40)
-        self.border_color = (100, 100, 100)
-        self.text_color = (255, 255, 255)
-        self.warn_color = (255, 200, 60)
-        self.button_color = (60, 100, 180)
-        self.button_hover_color = (80, 120, 200)
-
         self.btn_proceed = Rect(0, 0, 110, 30)
         self.btn_cancel = Rect(0, 0, 110, 30)
-
-        self.font_title = pygame.font.SysFont("Arial", 18, bold=True)
-        self.font_text = pygame.font.SysFont("Arial", 14)
-        self.font_btn = pygame.font.SysFont("Arial", 14, bold=True)
-
         self.btn_proceed_hover = False
         self.btn_cancel_hover = False
         self._layout()
 
     def _layout(self):
         self.rect.center = self.editor_rect.center
+        self._update_content_rect()
         btn_y = self.rect.bottom - 50
         cx = self.rect.centerx
         self.btn_cancel = Rect(cx - 120, btn_y, 110, 30)
@@ -65,6 +52,9 @@ class ConfirmDialog:
         if not self.active:
             return False
 
+        if self.handle_event_base(event):
+            return True
+
         self._layout()
         mouse_pos = pygame.mouse.get_pos()
 
@@ -81,12 +71,7 @@ class ConfirmDialog:
                 return True
 
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                if self.on_cancel:
-                    self.on_cancel()
-                self.hide()
-                return True
-            elif event.key == pygame.K_RETURN:
+            if event.key == pygame.K_RETURN:
                 if self.on_confirm:
                     self.on_confirm()
                 self.hide()
@@ -103,34 +88,22 @@ class ConfirmDialog:
             return
 
         self._layout()
-        pygame.draw.rect(surface, self.bg_color, self.rect)
-        pygame.draw.rect(surface, self.border_color, self.rect, 2)
+        super().draw_base(surface)
 
-        title_surf = self.font_title.render(self.title, True, self.warn_color)
-        title_rect = title_surf.get_rect(topleft=(self.rect.x + 20, self.rect.y + 15))
-        surface.blit(title_surf, title_rect)
+        self._draw_title(surface, color=COLORS.warning)
 
         lines = self._wrap_text(self.message, self.rect.width - 40)
         y = self.rect.y + 50
         for line in lines:
-            line_surf = self.font_text.render(line, True, self.text_color)
+            line_surf = FONTS.get_medium_font().render(line, True, COLORS.text)
             surface.blit(line_surf, (self.rect.x + 20, y))
             y += 22
 
-        proceed_color = self.button_hover_color if self.btn_proceed_hover else self.button_color
-        cancel_color = self.button_hover_color if self.btn_cancel_hover else (60, 60, 60)
-
-        pygame.draw.rect(surface, cancel_color, self.btn_cancel)
-        pygame.draw.rect(surface, proceed_color, self.btn_proceed)
-
-        cancel_text = self.font_btn.render("Cancel", True, self.text_color)
-        proceed_text = self.font_btn.render("Proceed", True, self.text_color)
-
-        cancel_text_rect = cancel_text.get_rect(center=self.btn_cancel.center)
-        proceed_text_rect = proceed_text.get_rect(center=self.btn_proceed.center)
-
-        surface.blit(cancel_text, cancel_text_rect)
-        surface.blit(proceed_text, proceed_text_rect)
+        btn_font = FONTS.get_bold_font()
+        self._draw_button(surface, self.btn_proceed, self.btn_proceed_hover, "Proceed",
+                          font=btn_font)
+        self._draw_button(surface, self.btn_cancel, self.btn_cancel_hover, "Cancel",
+                          color=COLORS.panel_alt, font=btn_font)
 
     def _wrap_text(self, text: str, max_width: int):
         words = text.split()
@@ -138,7 +111,7 @@ class ConfirmDialog:
         current = ""
         for word in words:
             test = f"{current} {word}".strip()
-            if self.font_text.size(test)[0] <= max_width:
+            if FONTS.get_medium_font().size(test)[0] <= max_width:
                 current = test
             else:
                 if current:

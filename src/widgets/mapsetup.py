@@ -3,26 +3,31 @@ from typing import TYPE_CHECKING, List
 from pygame import Rect
 
 from .input import DigitInput
+from .widget_base import WidgetBase
+from .ui.theme import COLORS, FONTS, SPACING
+from .ui.button import Button
 
 
 if TYPE_CHECKING:
     from editor import Editor
 
 
-COLOR_BG = (45, 45, 50)
-COLOR_BORDER = (80, 80, 80)
-COLOR_ACCENT = (60, 100, 160)
-COLOR_TEXT = (220, 220, 220)
-COLOR_ERROR = (200, 60, 60)
-COLOR_DIM = (140, 140, 140)
+TITLE_H = 30
+CELL_H = 70
+INPUT_H = 60
+BTN_W = 120
+BTN_H = 35
 
 
-class MapSetup:
+class MapSetup(WidgetBase):
     def __init__(self, editor: "Editor", center_rect: Rect):
+        super().__init__(center_rect, padding=20, border_width=1)
         self.editor = editor
-        self.rect = center_rect
         self.visible = True
         self.error_message = ""
+
+        self.font = FONTS.get_title_font()
+        self.font_sm = FONTS.get_medium_font()
 
         self.inputs: List[DigitInput] = []
         fields = [
@@ -32,38 +37,53 @@ class MapSetup:
             ("Tile Height", "tile_h", "32"),
         ]
 
-        cols = 2
-        cell_w = (self.rect.width - 40) // cols
-        cell_h = 70
-        start_x = self.rect.x + 20
-        start_y = self.rect.y + 60
-
         for i, (lbl, key, default) in enumerate(fields):
-            row, col = divmod(i, cols)
-            r = Rect(start_x + col * cell_w, start_y + row * cell_h, cell_w - 10, 60)
-            self.inputs.append(DigitInput(r, lbl, key, default, tab_index=i))
+            self.inputs.append(
+                DigitInput(Rect(0, 0, 0, 0), lbl, key, default, tab_index=i)
+            )
 
-        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 105, 120, 35)
-        self.btn_open_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
-        self.font = pygame.font.SysFont("Arial", 20, bold=True)
-        self.font_sm = pygame.font.SysFont("Arial", 13)
+        self.btn_create = Button(
+            Rect(0, 0, BTN_W, BTN_H), "Create",
+            accent=True, font=self.font,
+            on_click=self.submit,
+        )
+        self.btn_open = Button(
+            Rect(0, 0, BTN_W, BTN_H), "Open map",
+            accent=True, font=self.font_sm,
+            on_click=self._open_map,
+        )
 
-    def resize(self, center_rect: Rect):
-        self.rect = center_rect
+        self._relayout()
+
+    def _relayout(self):
         cols = 2
-        cell_w = (self.rect.width - 40) // cols
-        cell_h = 70
-        start_x = self.rect.x + 20
-        start_y = self.rect.y + 60
+        cell_w = self.content_rect.width // cols
+        start_x = self.content_rect.x
+        start_y = self.content_rect.y + TITLE_H + SPACING["md"]
 
         for i, inp in enumerate(self.inputs):
             row, col = divmod(i, cols)
-            r = Rect(start_x + col * cell_w, start_y + row * cell_h, cell_w - 10, 60)
-            inp.rect_area = r
-            inp.rect_input = Rect(r.x, r.y + 20, r.width, 30)
+            r = Rect(
+                start_x + col * cell_w,
+                start_y + row * CELL_H,
+                cell_w - SPACING["sm"],
+                INPUT_H,
+            )
+            inp.resize(r)
 
-        self.btn_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 105, 120, 35)
-        self.btn_open_rect = Rect(self.rect.centerx - 60, self.rect.bottom - 50, 120, 35)
+        rows = (len(self.inputs) + cols - 1) // cols
+        last_input_bottom = start_y + (rows - 1) * CELL_H + INPUT_H
+
+        cx = self.rect.centerx
+        btn_create_y = last_input_bottom + SPACING["xl"]
+        self.btn_create.rect = Rect(cx - BTN_W // 2, btn_create_y, BTN_W, BTN_H)
+        or_h = self.font_sm.render("─ OR ─", True, COLORS.text_dim).get_height()
+        btn_open_y = btn_create_y + BTN_H + SPACING["md"] + or_h + SPACING["md"]
+        self.btn_open.rect = Rect(cx - BTN_W // 2, btn_open_y, BTN_W, BTN_H)
+
+    def resize(self, center_rect: Rect):
+        super().resize(center_rect.x, center_rect.y, center_rect.w, center_rect.h)
+        self._relayout()
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
@@ -73,14 +93,10 @@ class MapSetup:
             self.visible = False
             return True
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.btn_rect.collidepoint(event.pos):
-                self.submit()
-                return True
-            if self.btn_open_rect.collidepoint(event.pos):
-                self.visible = False
-                self.editor.perform_load()
-                return True
+        if self.btn_create.handle_event(event):
+            return True
+        if self.btn_open.handle_event(event):
+            return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB:
             focused = [i for i in self.inputs if i.is_focused]
@@ -128,33 +144,33 @@ class MapSetup:
         except ValueError as e:
             self.error_message = str(e)
 
+    def _open_map(self):
+        self.visible = False
+        self.editor.perform_load()
+
     def draw(self, screen: pygame.Surface):
         if not self.visible:
             return
 
-        pygame.draw.rect(screen, COLOR_BG, self.rect)
-        pygame.draw.rect(screen, COLOR_BORDER, self.rect, 1)
+        self.draw_base(screen)
 
-        title = self.font.render("Project Setup", True, COLOR_TEXT)
-        screen.blit(title, (self.rect.x + 20, self.rect.y + 15))
+        title = self.font.render("Project Setup", True, COLORS.text)
+        screen.blit(title, (self.content_rect.x, self.content_rect.y))
 
         for inp in self.inputs:
             inp.draw(screen)
 
-        pygame.draw.rect(screen, COLOR_ACCENT, self.btn_rect)
-        btn_txt = self.font.render("Create", True, COLOR_TEXT)
-        screen.blit(btn_txt, btn_txt.get_rect(center=self.btn_rect.center))
+        self.btn_create.draw(screen)
 
-        or_surf = self.font_sm.render("─ OR ─", True, COLOR_DIM)
-        or_rect = or_surf.get_rect(center=(self.rect.centerx, self.btn_rect.bottom + 10))
+        or_surf = self.font_sm.render("─ OR ─", True, COLORS.text_dim)
+        or_center_y = self.btn_create.rect.bottom + (
+            self.btn_open.rect.top - self.btn_create.rect.bottom
+        ) // 2
+        or_rect = or_surf.get_rect(center=(self.rect.centerx, or_center_y))
         screen.blit(or_surf, or_rect)
 
-        pygame.draw.rect(screen, COLOR_ACCENT, self.btn_open_rect)
-        open_txt = self.font_sm.render("Open map", True, COLOR_TEXT)
-        screen.blit(open_txt, open_txt.get_rect(center=self.btn_open_rect.center))
+        self.btn_open.draw(screen)
 
         if self.error_message:
-            err = pygame.font.SysFont("Arial", 12).render(
-                self.error_message, True, COLOR_ERROR
-            )
-            screen.blit(err, (self.rect.x + 20, self.btn_rect.y - 20))
+            err = FONTS.get_font(12).render(self.error_message, True, COLORS.danger)
+            screen.blit(err, (self.content_rect.x, self.btn_create.rect.y - 20))

@@ -25,6 +25,8 @@ def init_settings(generate_main: bool = False) -> None:
             "character": "character_collision"
         },
         "nodes_path": "nodes",
+        "theme": "dark",
+        "themes_list": ["dark", "molokai", "light", "semi_light"],
         "error_handler": {
             "log_path": "errors.log",
             "max_recent_errors": 50,

@@ -6,27 +6,25 @@ import pygame
 from pygame import Rect, Surface
 from typing import Callable, Optional
 
+from .dialog_base import DialogBase
+from .theme import COLORS, FONTS
 
-class LayerTypeDialog:
+
+class LayerTypeDialog(DialogBase):
     """Dialog to select whether a new layer is tile-based or object-based."""
 
     def __init__(self, editor_rect: Rect):
-        self.editor_rect = editor_rect
-        self.rect = Rect(0, 0, 400, 220)
-        self.rect.center = editor_rect.center
-
-        self.active = False
+        super().__init__(editor_rect, (400, 220), title="Layer Type")
         self.selected_type: Optional[str] = None
         self.on_confirm: Optional[Callable[[str], None]] = None
         self.on_cancel: Optional[Callable[[], None]] = None
 
-        self.bg_color = (40, 40, 40)
-        self.border_color = (100, 100, 100)
-        self.text_color = (255, 255, 255)
-        self.radio_color = (100, 150, 255)
-        self.button_color = (60, 100, 180)
-        self.button_hover_color = (80, 120, 200)
+        self.btn_ok_hover = False
+        self.btn_cancel_hover = False
+        self._layout()
 
+    def _layout(self):
+        self.center()
         radio_y = self.rect.y + 60
         radio_x = self.rect.x + 40
         self.radio_tile_rect = Rect(radio_x, radio_y, 20, 20)
@@ -40,12 +38,6 @@ class LayerTypeDialog:
         self.btn_ok = Rect(self.rect.x + 100, btn_y, btn_w, btn_h)
         self.btn_cancel = Rect(self.rect.x + 220, btn_y, btn_w, btn_h)
 
-        self.font_title = pygame.font.SysFont("Arial", 18, bold=True)
-        self.font_text = pygame.font.SysFont("Arial", 14)
-
-        self.btn_ok_hover = False
-        self.btn_cancel_hover = False
-
     def show(self, on_confirm: Callable[[str], None], on_cancel: Callable[[], None]):
         """Show the dialog."""
         self.active = True
@@ -54,6 +46,7 @@ class LayerTypeDialog:
         self.on_cancel = on_cancel
         self.btn_ok_hover = False
         self.btn_cancel_hover = False
+        self._layout()
 
     def hide(self):
         """Hide the dialog."""
@@ -63,6 +56,9 @@ class LayerTypeDialog:
         """Handle events. Returns True if event was consumed."""
         if not self.active:
             return False
+
+        if self.handle_event_base(event):
+            return True
 
         mouse_pos = pygame.mouse.get_pos()
 
@@ -87,12 +83,7 @@ class LayerTypeDialog:
                 return True
 
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                if self.on_cancel:
-                    self.on_cancel()
-                self.hide()
-                return True
-            elif event.key == pygame.K_RETURN:
+            if event.key == pygame.K_RETURN:
                 if self.on_confirm and self.selected_type:
                     self.on_confirm(self.selected_type)
                 self.hide()
@@ -109,12 +100,9 @@ class LayerTypeDialog:
         if not self.active:
             return
 
-        pygame.draw.rect(surface, self.bg_color, self.rect)
-        pygame.draw.rect(surface, self.border_color, self.rect, 2)
-
-        title = self.font_title.render("Layer Type", True, self.text_color)
-        title_rect = title.get_rect(topleft=(self.rect.x + 20, self.rect.y + 15))
-        surface.blit(title, title_rect)
+        self._layout()
+        super().draw_base(surface)
+        self._draw_title(surface)
 
         self._draw_radio(
             surface,
@@ -132,22 +120,8 @@ class LayerTypeDialog:
             self.radio_object_label_rect,
         )
 
-        ok_color = self.button_hover_color if self.btn_ok_hover else self.button_color
-        cancel_color = (
-            self.button_hover_color if self.btn_cancel_hover else self.button_color
-        )
-
-        pygame.draw.rect(surface, ok_color, self.btn_ok)
-        pygame.draw.rect(surface, cancel_color, self.btn_cancel)
-
-        ok_text = self.font_text.render("OK", True, self.text_color)
-        cancel_text = self.font_text.render("Cancel", True, self.text_color)
-
-        ok_text_rect = ok_text.get_rect(center=self.btn_ok.center)
-        cancel_text_rect = cancel_text.get_rect(center=self.btn_cancel.center)
-
-        surface.blit(ok_text, ok_text_rect)
-        surface.blit(cancel_text, cancel_text_rect)
+        self._draw_button(surface, self.btn_ok, self.btn_ok_hover, "OK")
+        self._draw_button(surface, self.btn_cancel, self.btn_cancel_hover, "Cancel")
 
     def _draw_radio(
         self,
@@ -162,12 +136,11 @@ class LayerTypeDialog:
         center = (radio_rect.centerx, radio_rect.centery)
         radius = radio_rect.width // 2
 
-        pygame.draw.circle(surface, self.border_color, center, radius, 2)
+        pygame.draw.circle(surface, COLORS.border, center, radius, 2)
 
         if is_selected:
+            pygame.draw.circle(surface, COLORS.accent, center, radius - 4)
 
-            pygame.draw.circle(surface, self.radio_color, center, radius - 4)
-
-        label_surf = self.font_text.render(label, True, self.text_color)
+        label_surf = FONTS.get_medium_font().render(label, True, COLORS.text)
         label_pos = label_surf.get_rect(midleft=(label_rect.x, radio_rect.centery))
         surface.blit(label_surf, label_pos)

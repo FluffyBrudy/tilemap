@@ -3,16 +3,11 @@ from typing import TYPE_CHECKING
 from pygame import Rect
 
 from .input import BaseTextInput
+from .ui.theme import COLORS, FONTS, SHAPE
+from .ui.button import Button
 
 if TYPE_CHECKING:
     from editor import Editor
-
-
-COLOR_BG = (45, 45, 50)
-COLOR_BORDER = (80, 80, 80)
-COLOR_ACCENT = (60, 100, 160)
-COLOR_TEXT = (220, 220, 220)
-COLOR_ERROR = (200, 60, 60)
 
 
 class MapPropertiesDialog:
@@ -30,10 +25,24 @@ class MapPropertiesDialog:
             allowed_chars="0123456789.",
         )
 
-        self.btn_save = Rect(self.rect.centerx - 130, self.rect.bottom - 50, 120, 35)
-        self.btn_cancel = Rect(self.rect.centerx + 10, self.rect.bottom - 50, 120, 35)
-        self.font = pygame.font.SysFont("Arial", 20, bold=True)
-        self.font_info = pygame.font.SysFont("Arial", 14)
+        self.btn_save = Button(
+            Rect(self.rect.centerx - 130, self.rect.bottom - 50, 120, 35),
+            "Apply",
+            bg=COLORS.success,
+            border_radius=SHAPE.radius_sm,
+            font=FONTS.get_medium_font(),
+            on_click=self.submit,
+        )
+        self.btn_cancel = Button(
+            Rect(self.rect.centerx + 10, self.rect.bottom - 50, 120, 35),
+            "Cancel",
+            bg=COLORS.danger,
+            border_radius=SHAPE.radius_sm,
+            font=FONTS.get_medium_font(),
+            on_click=lambda: setattr(self, 'visible', False),
+        )
+        self.font = FONTS.get_bold_font(FONTS.size_lg)
+        self.font_info = FONTS.get_small_font()
 
     def open(self):
         self.render_scale_input.text = str(self.editor.tilemap.render_scale)
@@ -44,30 +53,20 @@ class MapPropertiesDialog:
 
     def resize(self, center_rect: Rect):
         self.rect = center_rect
-        self.render_scale_input.rect_area = Rect(
-            self.rect.x + 20, self.rect.y + 60, self.rect.width - 40, 60
+        self.render_scale_input.resize(
+            Rect(self.rect.x + 20, self.rect.y + 60, self.rect.width - 40, 60)
         )
-        self.render_scale_input.rect_input = Rect(
-            self.render_scale_input.rect_area.x,
-            self.render_scale_input.rect_area.y + 20,
-            self.render_scale_input.rect_area.width,
-            30,
-        )
-        self.btn_save = Rect(self.rect.centerx - 130, self.rect.bottom - 50, 120, 35)
-        self.btn_cancel = Rect(self.rect.centerx + 10, self.rect.bottom - 50, 120, 35)
+        self.btn_save.rect = Rect(self.rect.centerx - 130, self.rect.bottom - 50, 120, 35)
+        self.btn_cancel.rect = Rect(self.rect.centerx + 10, self.rect.bottom - 50, 120, 35)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
             return False
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:
-                if self.btn_save.collidepoint(event.pos):
-                    self.submit()
-                    return True
-                if self.btn_cancel.collidepoint(event.pos):
-                    self.visible = False
-                    return True
+        if self.btn_save.handle_event(event):
+            return True
+        if self.btn_cancel.handle_event(event):
+            return True
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -79,6 +78,8 @@ class MapPropertiesDialog:
 
         self.render_scale_input.handle_event(event)
         return True
+
+
 
     def submit(self):
         try:
@@ -104,30 +105,24 @@ class MapPropertiesDialog:
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        pygame.draw.rect(screen, COLOR_BG, self.rect, border_radius=8)
-        pygame.draw.rect(screen, COLOR_BORDER, self.rect, 2, border_radius=8)
+        pygame.draw.rect(screen, COLORS.panel, self.rect, border_radius=SHAPE.radius)
+        pygame.draw.rect(screen, COLORS.border, self.rect, SHAPE.border, border_radius=SHAPE.radius)
 
-        title = self.font.render("Map Properties", True, COLOR_TEXT)
+        title = self.font.render("Map Properties", True, COLORS.text)
         screen.blit(title, (self.rect.x + 20, self.rect.y + 15))
 
-        # Show read-only info about tile and map size
         tm = self.editor.tilemap
         info = f"Tile Size: {tm.tile_size[0]}x{tm.tile_size[1]}  |  Map Size: {tm.map_size[0]}x{tm.map_size[1]}"
-        info_surf = self.font_info.render(info, True, (150, 150, 150))
+        info_surf = self.font_info.render(info, True, COLORS.text_dim)
         screen.blit(info_surf, (self.rect.x + 20, self.rect.y + 42))
 
         self.render_scale_input.draw(screen)
 
-        for btn, text, col in [
-            (self.btn_save, "Apply", (40, 150, 80)),
-            (self.btn_cancel, "Cancel", (150, 60, 60)),
-        ]:
-            pygame.draw.rect(screen, col, btn, border_radius=4)
-            txt_surf = self.font.render(text, True, COLOR_TEXT)
-            screen.blit(txt_surf, txt_surf.get_rect(center=btn.center))
+        self.btn_save.draw(screen)
+        self.btn_cancel.draw(screen)
 
         if self.error_message:
-            err = pygame.font.SysFont("Arial", 12).render(
-                self.error_message, True, COLOR_ERROR
+            err = FONTS.get_small_font().render(
+                self.error_message, True, COLORS.danger
             )
-            screen.blit(err, (self.rect.x + 20, self.btn_save.y - 20))
+            screen.blit(err, (self.rect.x + 20, self.btn_save.rect.y - 20))
