@@ -100,10 +100,17 @@ class ConfirmDialog(DialogBase):
             y += 22
 
         btn_font = FONTS.get_bold_font()
-        self._draw_button(surface, self.btn_proceed, self.btn_proceed_hover, "Proceed",
-                          font=btn_font)
-        self._draw_button(surface, self.btn_cancel, self.btn_cancel_hover, "Cancel",
-                          color=COLORS.panel_alt, font=btn_font)
+        self._draw_button(
+            surface, self.btn_proceed, self.btn_proceed_hover, "Proceed", font=btn_font
+        )
+        self._draw_button(
+            surface,
+            self.btn_cancel,
+            self.btn_cancel_hover,
+            "Cancel",
+            color=COLORS.panel_alt,
+            font=btn_font,
+        )
 
     def _wrap_text(self, text: str, max_width: int):
         words = text.split()

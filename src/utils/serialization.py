@@ -11,10 +11,12 @@ def serialize_point(point: Sequence, sep=";"):
         raise TypeError("point must be sequence")
     elif len(point) < 2:
         raise ValueError("point must have at least 2 elements")
+
     def format_val(v):
         if isinstance(v, float) and v.is_integer():
             return int(v)
         return v
+
     return f"{format_val(point[0])}{sep}{format_val(point[1])}"
 
 
@@ -26,9 +28,11 @@ def deserialize_point(point_str: str):
         raise ValueError(f"Improper point string format: {point_str}")
 
     x, y = matched_str.groups()
+
     def parse_val(v):
         f = float(v)
         return int(f) if f.is_integer() else f
+
     return parse_val(x), parse_val(y)
 
 

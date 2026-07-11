@@ -19,7 +19,9 @@ class NodeEditor:
         self.rect = Rect(x, y, w, h)
 
         self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
-        self.font_bold = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.BOLD)
+        self.font_bold = font_manager.get_font(
+            FONTS.name, FONTS.size_sm, FontWeight.BOLD
+        )
         self.font_input = font_manager.get_font(FONTS.name, 11, FontWeight.REGULAR)
 
         self._editing_field: Optional[str] = None
@@ -87,12 +89,9 @@ class NodeEditor:
 
     @property
     def visible(self) -> bool:
-        return (
-            self.editor.node_editing_mode
-            and (
-                self.editor.node_manager.active_node_id is not None
-                or self.editor.node_manager.active_group_name is not None
-            )
+        return self.editor.node_editing_mode and (
+            self.editor.node_manager.active_node_id is not None
+            or self.editor.node_manager.active_group_name is not None
         )
 
     def _fields(self) -> List[Tuple[str, str, str]]:
@@ -170,7 +169,6 @@ class NodeEditor:
 
         mouse_pos = pygame.mouse.get_pos()
 
-        # Check preset dropdown first (before field commit logic)
         if self._is_particle and self._preset_dd is not None:
             result = self._preset_dd.handle_event(event)
             if result is not None:
@@ -178,7 +176,9 @@ class NodeEditor:
                     cfg = get_preset_config(result)
                     node.properties.clear()
                     node.properties.update(cfg)
-                    self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
+                    self.editor.tile_grid_widget.reset_particle_preview(
+                        node.node_id, cfg
+                    )
                 self._preset_dd.selected = result
                 return True
 
@@ -225,11 +225,15 @@ class NodeEditor:
                         elif action == "particle":
                             node = mgr.get_active_node()
                             if node:
-                                self.editor.particle_config_dialog = ParticleConfigDialog(
-                                    self.editor,
-                                    dict(node.properties),
-                                    node.node_id,
-                                    on_save=lambda cfg: self._save_particle_config(cfg),
+                                self.editor.particle_config_dialog = (
+                                    ParticleConfigDialog(
+                                        self.editor,
+                                        dict(node.properties),
+                                        node.node_id,
+                                        on_save=lambda cfg: self._save_particle_config(
+                                            cfg
+                                        ),
+                                    )
                                 )
                         return True
 
@@ -371,7 +375,13 @@ class NodeEditor:
             self._last_node_id = active_id
             self.reposition_near_node()
 
-        draw_panel(screen, self.rect, bg=COLORS.panel, border=COLORS.border, radius=SHAPE.radius_sm)
+        draw_panel(
+            screen,
+            self.rect,
+            bg=COLORS.panel,
+            border=COLORS.border,
+            radius=SHAPE.radius_sm,
+        )
 
         title = "Group Editor" if mgr.active_group_name is not None else "Node Editor"
         header = self.font_bold.render(title, True, COLORS.text)
@@ -380,30 +390,43 @@ class NodeEditor:
         fields = self._fields()
         field_data = self._get_field_rects()
 
-        for (key, label_rect, input_rect), (fkey, flabel, fvalue) in zip(field_data, fields):
+        for (key, label_rect, input_rect), (fkey, flabel, fvalue) in zip(
+            field_data, fields
+        ):
             lbl = self.font.render(flabel, True, COLORS.text_dim)
             screen.blit(lbl, (label_rect.x, label_rect.y + 2))
 
-            pygame.draw.rect(screen, COLORS.panel_alt, input_rect, border_radius=SHAPE.radius_sm)
-            pygame.draw.rect(screen, COLORS.border_soft, input_rect, 1, border_radius=SHAPE.radius_sm)
+            pygame.draw.rect(
+                screen, COLORS.panel_alt, input_rect, border_radius=SHAPE.radius_sm
+            )
+            pygame.draw.rect(
+                screen, COLORS.border_soft, input_rect, 1, border_radius=SHAPE.radius_sm
+            )
 
             if self._editing_field == key:
                 if self.text_selected:
-                    base_txt = self.font_input.render(self._input_text, True, COLORS.text)
+                    base_txt = self.font_input.render(
+                        self._input_text, True, COLORS.text
+                    )
                     txt_w = base_txt.get_width()
                     txt_h = base_txt.get_height()
-                    highlight_rect = Rect(input_rect.x + 3, input_rect.y + 2, max(4, txt_w), txt_h)
+                    highlight_rect = Rect(
+                        input_rect.x + 3, input_rect.y + 2, max(4, txt_w), txt_h
+                    )
                     pygame.draw.rect(screen, (50, 100, 200), highlight_rect)
-                    txt = self.font_input.render(self._input_text, True, (255, 255, 255))
+                    txt = self.font_input.render(
+                        self._input_text, True, (255, 255, 255)
+                    )
                 else:
-                    display = self._input_text + ("|" if pygame.time.get_ticks() % 1000 < 500 else "")
+                    display = self._input_text + (
+                        "|" if pygame.time.get_ticks() % 1000 < 500 else ""
+                    )
                     txt = self.font_input.render(display, True, COLORS.text)
             else:
                 txt = self.font_input.render(fvalue, True, COLORS.text_muted)
 
             screen.blit(txt, (input_rect.x + 3, input_rect.y + 2))
 
-        # Preset dropdown for particle emitters
         node = mgr.get_active_node()
         is_particle = node is not None and node.node_type == "particle_emitter"
         self._is_particle = is_particle
@@ -414,9 +437,12 @@ class NodeEditor:
                 lbl = self.font.render("Preset", True, COLORS.text_dim)
                 screen.blit(lbl, (pr.x - 58, pr.y + 2))
 
-                # Build or update the dropdown
                 owner = node.node_id if node else None
-                if self._preset_dd is None or self._preset_dd.rect != pr or self._preset_owner != owner:
+                if (
+                    self._preset_dd is None
+                    or self._preset_dd.rect != pr
+                    or self._preset_owner != owner
+                ):
                     current = "Custom"
                     if node and node.properties:
                         for p in PRESETS:
@@ -431,13 +457,16 @@ class NodeEditor:
 
         for rect, action in self._buttons():
             if action == "particle":
-                pygame.draw.rect(screen, (200, 100, 160), rect, border_radius=SHAPE.radius_sm)
+                pygame.draw.rect(
+                    screen, (200, 100, 160), rect, border_radius=SHAPE.radius_sm
+                )
                 txt = self.font.render("Particle Config...", True, COLORS.text)
             else:
-                pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
+                pygame.draw.rect(
+                    screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm
+                )
                 txt = self.font.render("Properties...", True, COLORS.text)
             screen.blit(txt, txt.get_rect(center=rect.center))
 
-        # Draw dropdown options on top
         if self._preset_dd is not None and self._preset_dd.open:
             self._preset_dd.draw_options(screen)

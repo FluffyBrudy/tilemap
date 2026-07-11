@@ -25,8 +25,12 @@ class NodeSelector:
         self.rect = Rect(x, y, w, h)
 
         self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
-        self.font_bold = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.BOLD)
-        self.font_mini = font_manager.get_font(FONTS.name, FONTS.size_sm - 1, FontWeight.REGULAR)
+        self.font_bold = font_manager.get_font(
+            FONTS.name, FONTS.size_sm, FontWeight.BOLD
+        )
+        self.font_mini = font_manager.get_font(
+            FONTS.name, FONTS.size_sm - 1, FontWeight.REGULAR
+        )
 
         self.search_text = ""
         self.scroll_offset = 0
@@ -40,7 +44,6 @@ class NodeSelector:
         self.add_btn_hover: bool = False
         self._add_dropdown_hover_idx: Optional[int] = None
 
-        # Drag and drop state
         self.dragged_item_idx: Optional[int] = None
         self.dragged_item_y_offset: int = 0
         self.drag_start_y: int = 0
@@ -52,7 +55,7 @@ class NodeSelector:
             ("particle_emitter", "Particle Emitter", (240, 140, 200)),
         ]
         self._add_dropdown_open: bool = False
-        
+
         self.collapsed_groups = set()
         self._filtered_rows: List[Dict] = []
         self._rebuild_filter()
@@ -63,11 +66,10 @@ class NodeSelector:
     def _rebuild_filter(self) -> List[Dict]:
         mgr = self.editor.node_manager
         query = self.search_text.lower()
-        
-        # Build mapping of group names to their nodes (preserving mgr.nodes order)
+
         grouped_nodes = {g: [] for g in mgr.groups}
         ungrouped_nodes = []
-        
+
         for node in mgr.nodes.values():
             if query and query not in node.name.lower():
                 continue
@@ -75,35 +77,26 @@ class NodeSelector:
                 grouped_nodes[node.group].append(node)
             else:
                 ungrouped_nodes.append(node)
-                
+
         self._filtered_rows = []
-        
-        # Add groups
+
         for g in mgr.groups:
-            # If search is active, only show group if it has matching nodes
             if query and len(grouped_nodes[g]) == 0:
                 continue
-            self._filtered_rows.append({
-                "type": "group",
-                "name": g,
-                "nodes_count": len(grouped_nodes[g])
-            })
+            self._filtered_rows.append(
+                {"type": "group", "name": g, "nodes_count": len(grouped_nodes[g])}
+            )
             if g not in self.collapsed_groups:
                 for node in grouped_nodes[g]:
-                    self._filtered_rows.append({
-                        "type": "node",
-                        "node_id": node.node_id,
-                        "indent": True
-                    })
-                    
-        # Add ungrouped nodes
+                    self._filtered_rows.append(
+                        {"type": "node", "node_id": node.node_id, "indent": True}
+                    )
+
         for node in ungrouped_nodes:
-            self._filtered_rows.append({
-                "type": "node",
-                "node_id": node.node_id,
-                "indent": False
-            })
-            
+            self._filtered_rows.append(
+                {"type": "node", "node_id": node.node_id, "indent": False}
+            )
+
         return self._filtered_rows
 
     @property
@@ -112,7 +105,9 @@ class NodeSelector:
 
     def _add_button_rect(self) -> Rect:
         add_h = 28
-        return Rect(self.rect.x + 6, self.rect.y + self.header_h, self.rect.width - 12, add_h)
+        return Rect(
+            self.rect.x + 6, self.rect.y + self.header_h, self.rect.width - 12, add_h
+        )
 
     def _add_dropdown_items(self) -> List[Tuple[str, str, Tuple[int, int, int], Rect]]:
         btn = self._add_button_rect()
@@ -130,10 +125,18 @@ class NodeSelector:
 
     def _list_rect(self) -> Rect:
         top = self._search_rect().bottom + 6
-        return Rect(self.rect.x + 2, top, self.rect.width - 4, self.rect.bottom - top - 6)
+        return Rect(
+            self.rect.x + 2, top, self.rect.width - 4, self.rect.bottom - top - 6
+        )
 
     def _draw_folder_icon(self, screen, x, y, color):
-        pygame.draw.rect(screen, color, Rect(x, y, 5, 2), border_top_left_radius=1, border_top_right_radius=1)
+        pygame.draw.rect(
+            screen,
+            color,
+            Rect(x, y, 5, 2),
+            border_top_left_radius=1,
+            border_top_right_radius=1,
+        )
         pygame.draw.rect(screen, color, Rect(x, y + 2, 12, 8), border_radius=1)
 
     def _draw_arrow(self, screen, x, y, collapsed: bool, color):
@@ -148,10 +151,9 @@ class NodeSelector:
         rows = self._filtered_rows
         if not (0 <= drag_idx < len(rows)):
             return
-            
+
         drag_row = rows[drag_idx]
-        
-        # If drop_idx is invalid, treat as drop on background (ungroup)
+
         if not (0 <= drop_idx < len(rows)):
             if drag_row["type"] == "node":
                 node_id = drag_row["node_id"]
@@ -161,14 +163,12 @@ class NodeSelector:
             self._rebuild_filter()
             self.editor.tilemap.capture_history("Ungroup Node")
             return
-            
+
         drop_row = rows[drop_idx]
-        
-        # CASE 1: Dragging a Group
+
         if drag_row["type"] == "group":
             drag_group_name = drag_row["name"]
-            
-            # Find target group name to place it near
+
             target_group_name = None
             if drop_row["type"] == "group":
                 target_group_name = drop_row["name"]
@@ -176,7 +176,7 @@ class NodeSelector:
                 target_node = mgr.get_node(drop_row["node_id"])
                 if target_node:
                     target_group_name = target_node.group
-                    
+
             if drag_group_name in mgr.groups:
                 mgr.groups.remove(drag_group_name)
                 if target_group_name in mgr.groups:
@@ -186,19 +186,17 @@ class NodeSelector:
                     mgr.groups.insert(max(0, target_idx), drag_group_name)
                 else:
                     mgr.groups.append(drag_group_name)
-                    
-        # CASE 2: Dragging a Node
+
         elif drag_row["type"] == "node":
             node_id = drag_row["node_id"]
             node = mgr.get_node(node_id)
             if not node:
                 return
-                
-            # If dropped on a group header
+
             if drop_row["type"] == "group":
                 target_group = drop_row["name"]
                 node.group = target_group
-                # Position it as the first node in that group
+
                 first_node_id = None
                 for n in mgr.nodes.values():
                     if n.group == target_group and n.node_id != node_id:
@@ -206,8 +204,7 @@ class NodeSelector:
                         break
                 if first_node_id:
                     mgr.reorder_node(node_id, first_node_id, before=True)
-                    
-            # If dropped on another node
+
             elif drop_row["type"] == "node":
                 target_node_id = drop_row["node_id"]
                 target_node = mgr.get_node(target_node_id)
@@ -215,7 +212,7 @@ class NodeSelector:
                     node.group = target_node.group
                     before = drop_idx < drag_idx
                     mgr.reorder_node(node_id, target_node_id, before=before)
-                    
+
         self._rebuild_filter()
         self.editor.tilemap.capture_history("Reorder Node")
 
@@ -249,10 +246,8 @@ class NodeSelector:
             return False
         mouse_pos = pygame.mouse.get_pos()
 
-        # 1. Handle mouse motion for hover and drag & drop
         if event.type == pygame.MOUSEMOTION:
             if self.dragged_item_idx is not None:
-                # If mouse moved enough, enter dragging state
                 if abs(mouse_pos[1] - self.drag_start_y) > 4:
                     self.is_dragging = True
                 return True
@@ -278,7 +273,6 @@ class NodeSelector:
             else:
                 self._add_dropdown_hover_idx = None
 
-            # Hover items in the list
             list_rect = self._list_rect()
             if list_rect.collidepoint(mouse_pos) and not self._add_dropdown_open:
                 rel_y = mouse_pos[1] - list_rect.y + self.scroll_offset
@@ -288,12 +282,10 @@ class NodeSelector:
                     self.hover_idx = idx
                     y_pos = list_rect.y - self.scroll_offset + idx * self.item_h
                     item_rect = Rect(list_rect.x, y_pos, list_rect.width, self.item_h)
-                    
-                    # Delete hover check
+
                     del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
                     self.delete_hover = del_rect.collidepoint(mouse_pos)
 
-                    # Arrow hover check for group rows
                     if rows[idx]["type"] == "group":
                         arrow_rect = Rect(item_rect.x + 4, item_rect.y + 8, 12, 12)
                         self.arrow_hover = arrow_rect.collidepoint(mouse_pos)
@@ -309,7 +301,6 @@ class NodeSelector:
                 self.arrow_hover = False
             return True
 
-        # 2. Handle click down
         if event.type == pygame.MOUSEBUTTONDOWN:
             if not self.rect.collidepoint(mouse_pos):
                 if self._add_dropdown_open:
@@ -318,7 +309,6 @@ class NodeSelector:
                 return False
 
             if event.button == 1:
-                # 1. Add node dropdown click (if open)
                 if self._add_dropdown_open:
                     dropdown_items = self._add_dropdown_items()
                     for idx, (t_name, t_label, t_color, r) in enumerate(dropdown_items):
@@ -329,18 +319,15 @@ class NodeSelector:
                     self._add_dropdown_open = False
                     return True
 
-                # 2. Add button click → toggle dropdown
                 add_btn = self._add_button_rect()
                 if add_btn.collidepoint(mouse_pos):
                     self._add_dropdown_open = not self._add_dropdown_open
                     return True
 
-                # 3. Search input click
                 search_rect = self._search_rect()
                 if search_rect.collidepoint(mouse_pos):
                     return True
 
-                # 5. List items click
                 list_rect = self._list_rect()
                 if list_rect.collidepoint(mouse_pos):
                     rel_y = mouse_pos[1] - list_rect.y + self.scroll_offset
@@ -350,10 +337,11 @@ class NodeSelector:
                         row = rows[idx]
                         mgr = self.editor.node_manager
                         y_pos = list_rect.y - self.scroll_offset + idx * self.item_h
-                        item_rect = Rect(list_rect.x, y_pos, list_rect.width, self.item_h)
+                        item_rect = Rect(
+                            list_rect.x, y_pos, list_rect.width, self.item_h
+                        )
                         del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
 
-                        # Delete button click
                         if del_rect.collidepoint(mouse_pos):
                             if row["type"] == "group":
                                 group_name = row["name"]
@@ -373,7 +361,6 @@ class NodeSelector:
                             self.delete_hover = False
                             return True
 
-                        # Expand/Collapse click (Group Arrow)
                         if row["type"] == "group":
                             arrow_rect = Rect(item_rect.x + 4, item_rect.y + 8, 12, 12)
                             if arrow_rect.collidepoint(mouse_pos):
@@ -385,13 +372,11 @@ class NodeSelector:
                                 self._rebuild_filter()
                                 return True
 
-                        # Row selection
                         if row["type"] == "group":
                             mgr.set_active_group(row["name"])
                         else:
                             mgr.set_active_node(row["node_id"])
 
-                        # Setup drag drop
                         self.dragged_item_idx = idx
                         self.drag_start_y = mouse_pos[1]
                         self.dragged_item_y_offset = mouse_pos[1] - y_pos
@@ -400,25 +385,22 @@ class NodeSelector:
                     return True
             return True
 
-        # 3. Handle click release
         if event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 if self.dragged_item_idx is not None:
                     if self.is_dragging:
-                        # Drop row
                         list_rect = self._list_rect()
                         rel_y = mouse_pos[1] - list_rect.y + self.scroll_offset
                         drop_idx = rel_y // self.item_h
-                        # If cursor is completely outside selector, drop_idx is -1 (ungroup)
+
                         if not self.rect.collidepoint(mouse_pos):
                             drop_idx = -1
                         self._handle_drag_drop(self.dragged_item_idx, drop_idx)
-                    
+
                     self.dragged_item_idx = None
                     self.is_dragging = False
                     return True
 
-        # 4. Keyboard filtering input
         if event.type == pygame.KEYDOWN:
             if (
                 self.editor.node_editor
@@ -454,8 +436,12 @@ class NodeSelector:
         if event.type == pygame.MOUSEWHEEL:
             if self.rect.collidepoint(mouse_pos):
                 list_rect = self._list_rect()
-                max_scroll = max(0, len(self._filtered_rows) * self.item_h - list_rect.height)
-                self.scroll_offset = max(0, min(max_scroll, self.scroll_offset - event.y * self.item_h))
+                max_scroll = max(
+                    0, len(self._filtered_rows) * self.item_h - list_rect.height
+                )
+                self.scroll_offset = max(
+                    0, min(max_scroll, self.scroll_offset - event.y * self.item_h)
+                )
                 return True
 
         return False
@@ -464,32 +450,39 @@ class NodeSelector:
         if not self.visible:
             return
 
-        # 1. Background
-        draw_panel(screen, self.rect, bg=COLORS.panel, border=COLORS.border, radius=SHAPE.radius_sm)
+        draw_panel(
+            screen,
+            self.rect,
+            bg=COLORS.panel,
+            border=COLORS.border,
+            radius=SHAPE.radius_sm,
+        )
 
-        # 2. Header
         header = self.font_bold.render("Nodes", True, COLORS.text)
         screen.blit(header, (self.rect.x + 8, self.rect.y + 6))
 
-        # Add Node button
         add_btn = self._add_button_rect()
         btn_bg = COLORS.accent if self.add_btn_hover else COLORS.panel_alt
         pygame.draw.rect(screen, btn_bg, add_btn, border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(screen, COLORS.border_soft, add_btn, 1, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.border_soft, add_btn, 1, border_radius=SHAPE.radius_sm
+        )
         btn_label = self.font.render("+ Add Node", True, COLORS.text)
         screen.blit(btn_label, btn_label.get_rect(center=add_btn.center))
 
-        # 3. Search Bar
         search_rect = self._search_rect()
-        pygame.draw.rect(screen, COLORS.panel_alt, search_rect, border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(screen, COLORS.border_soft, search_rect, 1, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.panel_alt, search_rect, border_radius=SHAPE.radius_sm
+        )
+        pygame.draw.rect(
+            screen, COLORS.border_soft, search_rect, 1, border_radius=SHAPE.radius_sm
+        )
 
         display = self.search_text if self.search_text else "Search..."
         color = COLORS.text if self.search_text else COLORS.text_dim
         txt = self.font.render(display, True, color)
         screen.blit(txt, (search_rect.x + 6, search_rect.y + 5))
 
-        # 4. List Items
         list_rect = self._list_rect()
         clip = screen.get_clip()
         screen.set_clip(list_rect)
@@ -498,13 +491,20 @@ class NodeSelector:
         mgr = self.editor.node_manager
 
         for i, row in enumerate(self._filtered_rows):
-            # Skip drawing the currently dragged item at its original position (draw placeholder instead)
             if self.is_dragging and self.dragged_item_idx == i:
                 y_pos = item_y + i * self.item_h
                 if y_pos + self.item_h >= list_rect.y and y_pos <= list_rect.bottom:
-                    placeholder_rect = Rect(list_rect.x, y_pos, list_rect.width, self.item_h)
-                    # Draw a subtle dashed / border box for placeholder
-                    pygame.draw.rect(screen, COLORS.hover, placeholder_rect, 1, border_radius=SHAPE.radius_sm)
+                    placeholder_rect = Rect(
+                        list_rect.x, y_pos, list_rect.width, self.item_h
+                    )
+
+                    pygame.draw.rect(
+                        screen,
+                        COLORS.hover,
+                        placeholder_rect,
+                        1,
+                        border_radius=SHAPE.radius_sm,
+                    )
                 continue
 
             y_pos = item_y + i * self.item_h
@@ -514,45 +514,57 @@ class NodeSelector:
             item_rect = Rect(list_rect.x, y_pos, list_rect.width, self.item_h)
             is_hover = self.hover_idx == i
 
-            # Group Row
             if row["type"] == "group":
                 is_active = mgr.active_group_name == row["name"]
-                bg = COLORS.accent_active if is_active else (COLORS.hover if is_hover else COLORS.panel)
+                bg = (
+                    COLORS.accent_active
+                    if is_active
+                    else (COLORS.hover if is_hover else COLORS.panel)
+                )
                 pygame.draw.rect(screen, bg, item_rect, border_radius=SHAPE.radius_sm)
 
-                # Collapse triangle arrow
                 collapsed = row["name"] in self.collapsed_groups
-                arrow_color = COLORS.text if self.arrow_hover and is_hover else COLORS.text_dim
-                self._draw_arrow(screen, item_rect.x + 4, item_rect.y + 10, collapsed, arrow_color)
+                arrow_color = (
+                    COLORS.text if self.arrow_hover and is_hover else COLORS.text_dim
+                )
+                self._draw_arrow(
+                    screen, item_rect.x + 4, item_rect.y + 10, collapsed, arrow_color
+                )
 
-                # Folder icon
-                folder_color = (220, 180, 80) # Gold folder color
-                self._draw_folder_icon(screen, item_rect.x + 16, item_rect.y + 9, folder_color)
+                folder_color = (220, 180, 80)
+                self._draw_folder_icon(
+                    screen, item_rect.x + 16, item_rect.y + 9, folder_color
+                )
 
-                # Group name & count
                 lbl_text = f"{row['name']} ({row['nodes_count']})"
                 lbl = self.font.render(lbl_text, True, COLORS.text)
                 screen.blit(lbl, (item_rect.x + 32, item_rect.y + 6))
 
-            # Node Row
             else:
                 node = mgr.get_node(row["node_id"])
                 if node is None:
                     continue
 
                 is_active = mgr.active_node_id == row["node_id"]
-                bg = COLORS.accent_active if is_active else (COLORS.hover if is_hover else COLORS.panel)
+                bg = (
+                    COLORS.accent_active
+                    if is_active
+                    else (COLORS.hover if is_hover else COLORS.panel)
+                )
                 pygame.draw.rect(screen, bg, item_rect, border_radius=SHAPE.radius_sm)
 
                 indent_offset = 16 if row["indent"] else 0
                 bullet_color = self.NODE_TYPE_COLORS.get(node.node_type, (80, 220, 120))
-                pygame.draw.circle(screen, bullet_color, (item_rect.x + indent_offset + 10, item_rect.centery), 4)
+                pygame.draw.circle(
+                    screen,
+                    bullet_color,
+                    (item_rect.x + indent_offset + 10, item_rect.centery),
+                    4,
+                )
 
-                # Node name
                 lbl = self.font.render(node.name, True, COLORS.text)
                 screen.blit(lbl, (item_rect.x + indent_offset + 20, item_rect.y + 6))
 
-            # Delete button (on hover)
             if is_hover:
                 del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
                 del_color = COLORS.danger if self.delete_hover else COLORS.text_dim
@@ -561,53 +573,78 @@ class NodeSelector:
 
         screen.set_clip(clip)
 
-        # 5. Draw dragging floating preview
         if self.is_dragging and self.dragged_item_idx is not None:
             drag_row = self._filtered_rows[self.dragged_item_idx]
             mouse_pos = pygame.mouse.get_pos()
             preview_y = mouse_pos[1] - self.dragged_item_y_offset
             preview_rect = Rect(list_rect.x, preview_y, list_rect.width, self.item_h)
 
-            # Draw translucent floating box
-            drag_surf = pygame.Surface((preview_rect.width, preview_rect.height), pygame.SRCALPHA)
-            # Fill with accent border and background
+            drag_surf = pygame.Surface(
+                (preview_rect.width, preview_rect.height), pygame.SRCALPHA
+            )
+
             drag_surf.fill((*COLORS.accent_active, 180))
             screen.blit(drag_surf, preview_rect)
-            pygame.draw.rect(screen, COLORS.text, preview_rect, 1, border_radius=SHAPE.radius_sm)
+            pygame.draw.rect(
+                screen, COLORS.text, preview_rect, 1, border_radius=SHAPE.radius_sm
+            )
 
-            # Draw text inside floating box
             if drag_row["type"] == "group":
-                # Folder icon inside float
-                self._draw_folder_icon(screen, preview_rect.x + 16, preview_rect.y + 9, (220, 180, 80))
+                self._draw_folder_icon(
+                    screen, preview_rect.x + 16, preview_rect.y + 9, (220, 180, 80)
+                )
                 lbl_text = f"{drag_row['name']} ({drag_row['nodes_count']})"
             else:
                 node = mgr.get_node(drag_row["node_id"])
                 lbl_text = node.name if node else "Node"
-                bullet_color = self.NODE_TYPE_COLORS.get(node.node_type, (80, 220, 120)) if node else (80, 220, 120)
-                pygame.draw.circle(screen, bullet_color, (preview_rect.x + 10, preview_rect.centery), 4)
+                bullet_color = (
+                    self.NODE_TYPE_COLORS.get(node.node_type, (80, 220, 120))
+                    if node
+                    else (80, 220, 120)
+                )
+                pygame.draw.circle(
+                    screen, bullet_color, (preview_rect.x + 10, preview_rect.centery), 4
+                )
 
             txt_lbl = self.font.render(lbl_text, True, (255, 255, 255))
-            screen.blit(txt_lbl, (preview_rect.x + 32 if drag_row["type"] == "group" else preview_rect.x + 20, preview_rect.y + 6))
+            screen.blit(
+                txt_lbl,
+                (
+                    preview_rect.x + 32
+                    if drag_row["type"] == "group"
+                    else preview_rect.x + 20,
+                    preview_rect.y + 6,
+                ),
+            )
 
-        # 6. Draw Add Node Dropdown Overlay (above everything)
         if self._add_dropdown_open:
             dropdown_items = self._add_dropdown_items()
-            
+
             r_first = dropdown_items[0][3]
             r_last = dropdown_items[-1][3]
-            overlay_rect = Rect(r_first.x, r_first.y, r_first.width, r_last.bottom - r_first.top)
-            
-            draw_panel(screen, overlay_rect, bg=COLORS.panel_alt, border=COLORS.border, radius=SHAPE.radius_sm)
+            overlay_rect = Rect(
+                r_first.x, r_first.y, r_first.width, r_last.bottom - r_first.top
+            )
+
+            draw_panel(
+                screen,
+                overlay_rect,
+                bg=COLORS.panel_alt,
+                border=COLORS.border,
+                radius=SHAPE.radius_sm,
+            )
 
             for idx, (t_name, t_label, t_color, r) in enumerate(dropdown_items):
                 opt_hover = self._add_dropdown_hover_idx == idx
                 if opt_hover:
-                    pygame.draw.rect(screen, COLORS.hover, r, border_radius=SHAPE.radius_sm)
-                
+                    pygame.draw.rect(
+                        screen, COLORS.hover, r, border_radius=SHAPE.radius_sm
+                    )
+
                 if t_name == "group":
                     self._draw_folder_icon(screen, r.x + 6, r.y + 8, t_color)
                 else:
                     pygame.draw.circle(screen, t_color, (r.x + 10, r.centery), 4)
-                
+
                 opt_lbl = self.font.render(t_label, True, COLORS.text)
                 screen.blit(opt_lbl, (r.x + 20, r.y + 5))

@@ -94,9 +94,7 @@ class AnimationPreview:
         self._elapsed = 0.0
 
     def set_surface(
-        self,
-        surface: pygame.Surface,
-        tile_size: Optional[Tuple[int, int]] = None
+        self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None
     ) -> None:
         self.surface = surface
         if tile_size:
@@ -185,7 +183,11 @@ class AnimationPreview:
 
         mouse = pygame.mouse.get_pos()
         if not self.rect.collidepoint(mouse):
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._editing_fps:
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and self._editing_fps
+            ):
                 self.commit_fps_input()
             return False
 
@@ -239,7 +241,9 @@ class AnimationPreview:
         title = "Preview"
         if self.frames:
             title += f"  {self.current_frame + 1}/{len(self.frames)}"
-        screen.blit(self._font.render(title, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 2))
+        screen.blit(
+            self._font.render(title, True, _COLORS["text"]), (hdr.x + 6, hdr.y + 2)
+        )
         if self.frames and 0 <= self.current_frame < len(self.frames):
             fr = self.frames[self.current_frame]
             auth = max(0.001, float(self.authoring_fps))
@@ -311,7 +315,9 @@ class AnimationPreview:
 
         self._btn_play = Rect(x, y, bw, bh)
         self._draw_btn(screen, self._btn_play, "", mouse, active=self.playing)
-        play_icon = icon_manager.get_icon("pause" if self.playing else "play", 12, _COLORS["text"])
+        play_icon = icon_manager.get_icon(
+            "pause" if self.playing else "play", 12, _COLORS["text"]
+        )
         screen.blit(play_icon, play_icon.get_rect(center=self._btn_play.center))
         x += bw + pad
 
@@ -339,7 +345,9 @@ class AnimationPreview:
         self._fps_input_rect = Rect(x, y, 44, bh)
         fps_bg = _COLORS["btn_active"] if self._editing_fps else _COLORS["input_bg"]
         pygame.draw.rect(screen, fps_bg, self._fps_input_rect, border_radius=3)
-        pygame.draw.rect(screen, _COLORS["border"], self._fps_input_rect, 1, border_radius=3)
+        pygame.draw.rect(
+            screen, _COLORS["border"], self._fps_input_rect, 1, border_radius=3
+        )
         shown = self._fps_input_text
         if self._editing_fps and (pygame.time.get_ticks() // 400) % 2:
             shown += "|"
@@ -354,7 +362,9 @@ class AnimationPreview:
             onion_icon = icon_manager.get_icon("onion", 14, _COLORS["text"])
             screen.blit(onion_icon, onion_icon.get_rect(center=self._btn_onion.center))
 
-    def _draw_btn(self, screen: pygame.Surface, rect: Rect, label: str, mouse, active=False) -> None:
+    def _draw_btn(
+        self, screen: pygame.Surface, rect: Rect, label: str, mouse, active=False
+    ) -> None:
         hover = rect.collidepoint(mouse)
         if active:
             bg = _COLORS["btn_active"]

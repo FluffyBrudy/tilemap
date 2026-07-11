@@ -5,10 +5,18 @@ from .ui.theme import COLORS, SHAPE
 
 
 class WidgetBase:
-    def __init__(self, rect, *,
-                 padding=None, padding_x=None, padding_y=None,
-                 border_width=None, border_radius=None,
-                 bg=None, border_color=None):
+    def __init__(
+        self,
+        rect,
+        *,
+        padding=None,
+        padding_x=None,
+        padding_y=None,
+        border_width=None,
+        border_radius=None,
+        bg=None,
+        border_color=None,
+    ):
         self.rect = Rect(rect)
         p = padding or 0
         self.px = padding_x if padding_x is not None else p
@@ -38,5 +46,4 @@ class WidgetBase:
         border = self._border if self._border is not None else COLORS.border
         pygame.draw.rect(surface, bg, self.rect, border_radius=self.br)
         if self.bw:
-            pygame.draw.rect(surface, border, self.rect, self.bw,
-                             border_radius=self.br)
+            pygame.draw.rect(surface, border, self.rect, self.bw, border_radius=self.br)

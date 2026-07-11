@@ -14,13 +14,13 @@ import os
 import sys
 from pathlib import Path
 
-# Add src directory to path for imports
+
 _current_file = Path(__file__).resolve()
 _src_dir = _current_file.parent.parent.parent
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
-# Fix HiDPI/Retina blur on macOS
+
 if sys.platform == "darwin":
     os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
@@ -43,7 +43,7 @@ def parse_tile_size(s: str) -> tuple[int, int]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    # Global exception handler for standalone collision editor
+
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
@@ -110,12 +110,13 @@ def main(argv: list[str] | None = None) -> None:
             window_size = parse_tile_size(args.window_size)
 
             pygame.init()
-            screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
+            pygame.display.set_mode(window_size, pygame.RESIZABLE)
             pygame.display.set_caption(f"Tileset Collision Editor — {args.image.name}")
 
             propagation_groups = None
             if args.propagation_groups and args.propagation_groups.exists():
                 import json
+
                 with open(args.propagation_groups) as f:
                     propagation_groups = json.load(f)
                 print(f"Loaded {len(propagation_groups)} auto-tile propagation groups")

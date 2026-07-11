@@ -31,47 +31,45 @@ class IconManager:
 
     def _resolve_icons_path(self) -> Path:
         """Find bundled icons in package data or fallback locations."""
-        
-        # Strategy 1: Use importlib.resources (Python 3.9+, most reliable)
+
         try:
             from importlib.resources import files
+
             pkg_path = files("tilemap_editor.assets") / "icons"
-            # Convert to Path and check if it exists
-            if hasattr(pkg_path, '__fspath__'):
+
+            if hasattr(pkg_path, "__fspath__"):
                 path = Path(pkg_path)
             else:
-                # For older importlib.resources, use str conversion
                 path = Path(str(pkg_path))
-            
+
             if path.exists() and any(path.glob("*.svg")):
                 return path
         except (ImportError, AttributeError, TypeError):
             pass
-        
-        # Strategy 2: Direct package import (fallback for older Python)
+
         try:
             import tilemap_editor.assets
+
             pkg_assets_path = Path(tilemap_editor.assets.__file__).parent / "icons"
             if pkg_assets_path.exists() and any(pkg_assets_path.glob("*.svg")):
                 return pkg_assets_path
         except (ImportError, AttributeError):
             pass
-        
-        # Strategy 3: Old data-files locations (backward compatibility)
+
         for prefix in [sys.prefix, sys.base_prefix]:
-            data_files_path = Path(prefix) / "share" / "tilemap_editor" / "assets" / "icons"
+            data_files_path = (
+                Path(prefix) / "share" / "tilemap_editor" / "assets" / "icons"
+            )
             if data_files_path.exists() and any(data_files_path.glob("*.svg")):
                 return data_files_path
-        
-        # Strategy 4: Development fallback (source tree)
+
         dev_path = Path(__file__).parent.parent.parent / "assets" / "icons"
         if dev_path.exists():
             return dev_path
-        
-        # Ultimate fallback: return package path even if it doesn't exist yet
-        # (allows graceful degradation with fallback icons)
+
         try:
             import tilemap_editor.assets
+
             return Path(tilemap_editor.assets.__file__).parent / "icons"
         except ImportError:
             return Path(__file__).parent.parent.parent / "assets" / "icons"
@@ -245,7 +243,6 @@ class IconManager:
             )
 
         elif name == "duplicate":
-            # Two overlapping rectangles
             rect_w = size // 2 - 2
             pygame.draw.rect(
                 surface, color, (padding, padding + 4, rect_w, rect_w), border_radius=2
@@ -255,12 +252,11 @@ class IconManager:
             )
 
         elif name == "zoomin":
-            # Plus with magnifying glass handle
             thickness = max(2, size // 8)
             cx, cy = size // 2 - 2, size // 2 - 2
-            # Circle (lens)
+
             pygame.draw.circle(surface, color, (cx, cy), size // 3, thickness)
-            # Plus inside
+
             pygame.draw.line(
                 surface,
                 color,
@@ -275,7 +271,7 @@ class IconManager:
                 (cx + size // 6, cy),
                 thickness - 1,
             )
-            # Handle
+
             pygame.draw.line(
                 surface,
                 color,
@@ -285,12 +281,11 @@ class IconManager:
             )
 
         elif name == "zoomout":
-            # Minus with magnifying glass handle
             thickness = max(2, size // 8)
             cx, cy = size // 2 - 2, size // 2 - 2
-            # Circle (lens)
+
             pygame.draw.circle(surface, color, (cx, cy), size // 3, thickness)
-            # Minus inside
+
             pygame.draw.line(
                 surface,
                 color,
@@ -298,7 +293,7 @@ class IconManager:
                 (cx + size // 6, cy),
                 thickness - 1,
             )
-            # Handle
+
             pygame.draw.line(
                 surface,
                 color,
@@ -308,11 +303,10 @@ class IconManager:
             )
 
         elif name == "reset":
-            # Circular arrow
             thickness = max(2, size // 8)
             cx, cy = size // 2, size // 2
             radius = size // 3
-            # Draw arc (3/4 circle)
+
             import math
 
             points = []
@@ -323,7 +317,7 @@ class IconManager:
                 points.append((px, py))
             if len(points) > 1:
                 pygame.draw.lines(surface, color, False, points, thickness)
-            # Arrow head
+
             arrow_angle = math.radians(45)
             head_x = cx + int(radius * math.cos(arrow_angle))
             head_y = cy + int(radius * math.sin(arrow_angle))
@@ -338,16 +332,15 @@ class IconManager:
             )
 
         elif name == "fit":
-            # Four corners pointing inward
             thickness = max(2, size // 8)
-            # Top-left corner
+
             pygame.draw.line(
                 surface, color, (padding, padding + 6), (padding, padding), thickness
             )
             pygame.draw.line(
                 surface, color, (padding, padding), (padding + 6, padding), thickness
             )
-            # Top-right corner
+
             pygame.draw.line(
                 surface,
                 color,
@@ -362,7 +355,7 @@ class IconManager:
                 (size - padding - 6, padding),
                 thickness,
             )
-            # Bottom-left corner
+
             pygame.draw.line(
                 surface,
                 color,
@@ -377,7 +370,7 @@ class IconManager:
                 (padding + 6, size - padding),
                 thickness,
             )
-            # Bottom-right corner
+
             pygame.draw.line(
                 surface,
                 color,
@@ -394,10 +387,9 @@ class IconManager:
             )
 
         elif name == "pan":
-            # Four-way arrows
             thickness = max(2, size // 8)
             cx, cy = size // 2, size // 2
-            # Vertical line with arrows
+
             pygame.draw.line(
                 surface, color, (cx, padding + 4), (cx, size - padding - 4), thickness
             )
@@ -415,7 +407,7 @@ class IconManager:
                     (cx + 4, size - padding - 5),
                 ],
             )
-            # Horizontal line with arrows
+
             pygame.draw.line(
                 surface, color, (padding + 4, cy), (size - padding - 4, cy), thickness
             )
@@ -435,14 +427,13 @@ class IconManager:
             )
 
         elif name == "save":
-            # Floppy disk shape
             pygame.draw.rect(
                 surface,
                 color,
                 (padding, padding, size - 2 * padding, size - 2 * padding),
                 border_radius=2,
             )
-            # Inner rectangle
+
             pygame.draw.rect(
                 surface,
                 color,
@@ -451,7 +442,6 @@ class IconManager:
             )
 
         elif name == "load" or name == "folder":
-            # Folder shape
             pygame.draw.rect(
                 surface,
                 color,
@@ -463,7 +453,6 @@ class IconManager:
             )
 
         else:
-            # Generic square
             pygame.draw.rect(
                 surface,
                 color,
@@ -493,27 +482,22 @@ class IconManager:
 
         surface = None
 
-        # Try native pygame SVG loading
         if self.has_icon(name):
             svg_path = self._icons_path / f"{name}.svg"
             try:
-                # Use load_sized_svg if available (pygame-ce 2.2.0+)
                 if hasattr(pygame.image, "load_sized_svg"):
                     surface = pygame.image.load_sized_svg(str(svg_path), (size, size))
                 else:
-                    # Basic load (may need scaling)
                     surface = pygame.image.load(str(svg_path)).convert_alpha()
                     if surface.get_size() != (size, size):
                         surface = pygame.transform.smoothscale(surface, (size, size))
             except Exception:
                 pass
 
-        # Fallback to primitive drawing
         if surface is None:
             fallback_color = color or (200, 200, 200)
             surface = self._draw_fallback_icon(name, size, fallback_color)
 
-        # Apply color tint if specified
         if color and surface:
             tinted = surface.copy()
             overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
@@ -529,7 +513,6 @@ class IconManager:
         self._surface_cache.clear()
 
 
-# Global singleton instance
 icon_manager = IconManager()
 
 

@@ -6,6 +6,7 @@ correctly synced to internal editor state and sub-widget properties.
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
@@ -15,6 +16,7 @@ import pygame
 from pygame import Rect
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 

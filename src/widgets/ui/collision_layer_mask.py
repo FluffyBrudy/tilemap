@@ -47,7 +47,9 @@ class _BitButton:
             text_col = COLORS.text_dim
 
         pygame.draw.rect(screen, bg, self.rect, border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(screen, COLORS.border_soft, self.rect, 1, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.border_soft, self.rect, 1, border_radius=SHAPE.radius_sm
+        )
 
         font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
         txt = font.render(self.label, True, text_col)
@@ -77,13 +79,24 @@ class CollisionLayerMaskWidget:
     def calc_min_width(cls, max_layers: int = 16, cols: int = 8) -> int:
         """Calculate minimum width needed to fit all buttons in one row."""
         actual_cols = min(max_layers, cols)
-        return cls.PADDING + cls.LABEL_W + actual_cols * (cls.BTN_W + cls.BTN_GAP) - cls.BTN_GAP + cls.PADDING
+        return (
+            cls.PADDING
+            + cls.LABEL_W
+            + actual_cols * (cls.BTN_W + cls.BTN_GAP)
+            - cls.BTN_GAP
+            + cls.PADDING
+        )
 
     @classmethod
     def calc_min_height(cls, max_layers: int = 16, cols: int = 8) -> int:
         """Calculate minimum height needed."""
         rows = (max_layers + cols - 1) // cols
-        return cls.PADDING + 2 * (rows * (cls.BTN_H + cls.BTN_GAP) - cls.BTN_GAP) + cls.ROW_GAP + cls.PADDING
+        return (
+            cls.PADDING
+            + 2 * (rows * (cls.BTN_H + cls.BTN_GAP) - cls.BTN_GAP)
+            + cls.ROW_GAP
+            + cls.PADDING
+        )
 
     def __init__(
         self,
@@ -105,8 +118,6 @@ class CollisionLayerMaskWidget:
         self._layer_buttons: list[_BitButton] = []
         self._mask_buttons: list[_BitButton] = []
         self._rebuild_buttons()
-
-    # -- Public API --
 
     def get_layer(self) -> int:
         return self._collision_layer
@@ -135,14 +146,14 @@ class CollisionLayerMaskWidget:
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
-            # Check layer buttons
+
             for btn in self._layer_buttons:
                 if btn.contains(pos):
                     self._collision_layer = 1 << btn.bit_index
                     self._sync_buttons()
                     self._fire_changed()
                     return True
-            # Check mask buttons
+
             for btn in self._mask_buttons:
                 if btn.contains(pos):
                     self._collision_mask ^= 1 << btn.bit_index
@@ -153,29 +164,29 @@ class CollisionLayerMaskWidget:
         return False
 
     def draw(self, screen: Surface) -> None:
-        font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
+        font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
         bold_font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.BOLD)
 
         y = self.rect.y + self.PADDING
 
-        # "Layer:" label + buttons
         label_surf = bold_font.render("Layer:", True, COLORS.text)
         screen.blit(label_surf, (self.rect.x + self.PADDING, y))
-        label_w = label_surf.get_width() + self.PADDING
+        label_surf.get_width() + self.PADDING
 
         for btn in self._layer_buttons:
             btn.draw(screen, is_radio=True)
 
-        y += self._rows_per_axis * (self.BTN_H + self.BTN_GAP) - self.BTN_GAP + self.ROW_GAP
+        y += (
+            self._rows_per_axis * (self.BTN_H + self.BTN_GAP)
+            - self.BTN_GAP
+            + self.ROW_GAP
+        )
 
-        # "Mask:" label + buttons
         label_surf = bold_font.render("Mask:", True, COLORS.text)
         screen.blit(label_surf, (self.rect.x + self.PADDING, y))
 
         for btn in self._mask_buttons:
             btn.draw(screen, is_radio=False)
-
-    # -- Internal --
 
     def _rebuild_buttons(self) -> None:
         self._layer_buttons.clear()
@@ -183,7 +194,11 @@ class CollisionLayerMaskWidget:
 
         start_x = self.rect.x + self.PADDING + self.LABEL_W
         start_y_layer = self.rect.y + self.PADDING
-        start_y_mask = start_y_layer + self._rows_per_axis * (self.BTN_H + self.BTN_GAP) + self.ROW_GAP
+        start_y_mask = (
+            start_y_layer
+            + self._rows_per_axis * (self.BTN_H + self.BTN_GAP)
+            + self.ROW_GAP
+        )
 
         for i in range(self.max_layers):
             col = i % self._cols
@@ -197,7 +212,9 @@ class CollisionLayerMaskWidget:
             layer_active = (self._collision_layer >> i) & 1
             mask_active = (self._collision_mask >> i) & 1
 
-            self._layer_buttons.append(_BitButton(btn_rect, i, str(i + 1), layer_active))
+            self._layer_buttons.append(
+                _BitButton(btn_rect, i, str(i + 1), layer_active)
+            )
             self._mask_buttons.append(_BitButton(mask_rect, i, str(i + 1), mask_active))
 
     def _sync_buttons(self) -> None:

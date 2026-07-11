@@ -58,8 +58,6 @@ class CollisionLayerSidebar:
 
         self._rebuild_layout()
 
-    # -- Public API --
-
     @property
     def visible(self) -> bool:
         return self._visible
@@ -96,18 +94,16 @@ class CollisionLayerSidebar:
 
         pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
 
-        # Close button click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._close_rect.collidepoint(pos):
                 self._visible = False
                 return True
-            # Click outside sidebar closes it
+
             sidebar_rect = self._sidebar_rect()
             if not sidebar_rect.collidepoint(pos):
                 self._visible = False
                 return True
 
-        # Widget events (only when visible)
         if self.widget.handle_event(event):
             return True
 
@@ -119,38 +115,40 @@ class CollisionLayerSidebar:
 
         sidebar_rect = self._sidebar_rect()
 
-        # Dim overlay
         overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 140))
         screen.blit(overlay, (0, 0))
 
-        # Sidebar panel
         draw_panel(screen, sidebar_rect, COLORS.panel, COLORS.border, radius=0)
 
-        # Header bar
-        header_rect = Rect(
-            sidebar_rect.x, sidebar_rect.y, sidebar_rect.w, 36
-        )
+        header_rect = Rect(sidebar_rect.x, sidebar_rect.y, sidebar_rect.w, 36)
         draw_panel(screen, header_rect, COLORS.header, COLORS.border_soft, radius=0)
 
-        # Title
         font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.BOLD)
         title = font.render("Collision Layers", True, COLORS.text)
-        screen.blit(title, (header_rect.x + 10, header_rect.centery - title.get_height() // 2))
-
-        # Close button
-        self._close_rect = Rect(
-            header_rect.right - 34, header_rect.y + 4, 28, 28
+        screen.blit(
+            title, (header_rect.x + 10, header_rect.centery - title.get_height() // 2)
         )
-        close_bg = COLORS.danger if self._close_hover else COLORS.panel_alt
-        pygame.draw.rect(screen, close_bg, self._close_rect, border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(screen, COLORS.border_soft, self._close_rect, 1, border_radius=SHAPE.radius_sm)
 
-        close_font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
+        self._close_rect = Rect(header_rect.right - 34, header_rect.y + 4, 28, 28)
+        close_bg = COLORS.danger if self._close_hover else COLORS.panel_alt
+        pygame.draw.rect(
+            screen, close_bg, self._close_rect, border_radius=SHAPE.radius_sm
+        )
+        pygame.draw.rect(
+            screen,
+            COLORS.border_soft,
+            self._close_rect,
+            1,
+            border_radius=SHAPE.radius_sm,
+        )
+
+        close_font = font_manager.get_font(
+            FONTS.name, FONTS.size_md, FontWeight.REGULAR
+        )
         close_text = close_font.render("✕", True, COLORS.text)
         screen.blit(close_text, close_text.get_rect(center=self._close_rect.center))
 
-        # Widget area
         self._rebuild_widget_layout()
         self.widget.draw(screen)
 
@@ -161,9 +159,14 @@ class CollisionLayerSidebar:
 
         bg = COLORS.accent if self._toggle_hover else COLORS.panel_alt
         pygame.draw.rect(screen, bg, self._toggle_rect, border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(screen, COLORS.border_soft, self._toggle_rect, 1, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen,
+            COLORS.border_soft,
+            self._toggle_rect,
+            1,
+            border_radius=SHAPE.radius_sm,
+        )
 
-        # Gear icon
         font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
         icon = font.render("⚙", True, COLORS.text)
         screen.blit(icon, icon.get_rect(center=self._toggle_rect.center))
@@ -177,13 +180,12 @@ class CollisionLayerSidebar:
                 return True
         return False
 
-    # -- Internal --
-
     def _rebuild_layout(self) -> None:
         self._toggle_rect = Rect(
             self._parent_rect.right - self._sidebar_width - 42,
             self._parent_rect.y + 6,
-            32, 32,
+            32,
+            32,
         )
 
     def _rebuild_widget_layout(self) -> None:

@@ -68,7 +68,10 @@ class MenuBar:
                     ),
                     MenuAction("Animation Editor", self.editor.launch_animation_editor),
                     MenuAction("Sprite Editor", self.editor.launch_sprite_editor),
-                    MenuAction("Character Collision Editor", self.editor.launch_character_collision_editor),
+                    MenuAction(
+                        "Character Collision Editor",
+                        self.editor.launch_character_collision_editor,
+                    ),
                     MenuAction(
                         "Autotile Active Layer", self.editor.autotile_active, "Ctrl+A"
                     ),
@@ -107,7 +110,6 @@ class MenuBar:
             w = txt_surf.get_width() + 24
             menu.rect = Rect(x, 0, w, self.rect.height)
 
-            # Dropdown calculation
             item_h = 26
             max_w = 180
             for action in menu.actions:
@@ -132,7 +134,6 @@ class MenuBar:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                # Check dropdowns first
                 for menu in self.menus:
                     if menu.is_open and menu.dropdown_rect.collidepoint(mouse_pos):
                         rel_y = mouse_pos[1] - menu.dropdown_rect.y - 5
@@ -142,7 +143,6 @@ class MenuBar:
                             menu.is_open = False
                             return True
 
-                # Check top level
                 for menu in self.menus:
                     if menu.rect.collidepoint(mouse_pos):
                         was_open = menu.is_open
@@ -151,12 +151,10 @@ class MenuBar:
                         menu.is_open = not was_open
                         return True
 
-                # Close all if clicked elsewhere
                 for m in self.menus:
                     m.is_open = False
 
         elif event.type == pygame.MOUSEMOTION:
-            # If a menu is open, handle "sliding" selection
             any_open = any(m.is_open for m in self.menus)
             if any_open:
                 for menu in self.menus:
@@ -166,7 +164,6 @@ class MenuBar:
                         menu.is_open = True
                         break
 
-        # Only consume mouse events that are within the menu bar or open dropdowns
         if event.type in (
             pygame.MOUSEBUTTONDOWN,
             pygame.MOUSEBUTTONUP,
@@ -181,7 +178,7 @@ class MenuBar:
         return False
 
     def draw(self, screen: pygame.Surface):
-        # Bar background
+
         pygame.draw.rect(screen, self.bg_color, self.rect)
         pygame.draw.line(
             screen,
@@ -193,7 +190,6 @@ class MenuBar:
         mouse_pos = pygame.mouse.get_pos()
 
         for menu in self.menus:
-            # Draw host item
             is_hover = menu.rect.collidepoint(mouse_pos)
             if menu.is_open:
                 pygame.draw.rect(screen, self.open_color, menu.rect)
@@ -208,14 +204,10 @@ class MenuBar:
             txt_surf = self.font.render(menu.label, True, self.text_color)
             screen.blit(txt_surf, txt_surf.get_rect(center=menu.rect.center))
 
-            # Draw dropdown
             if menu.is_open:
-                # Dropdown shadow/background
                 shadow_rect = menu.dropdown_rect.copy()
                 shadow_rect.inflate_ip(4, 4)
-                pygame.draw.rect(
-                    screen, (20, 20, 25, 100), shadow_rect
-                )  # Simple shadow
+                pygame.draw.rect(screen, (20, 20, 25, 100), shadow_rect)
 
                 pygame.draw.rect(screen, self.bg_color, menu.dropdown_rect)
                 pygame.draw.rect(screen, self.border_color, menu.dropdown_rect, 1)

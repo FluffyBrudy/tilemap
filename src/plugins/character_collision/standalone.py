@@ -13,7 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src directory to path for imports
+
 _current_file = Path(__file__).resolve()
 _src_dir = _current_file.parent.parent.parent
 if str(_src_dir) not in sys.path:
@@ -38,7 +38,7 @@ def parse_window_size(s: str) -> tuple[int, int]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    # Global exception handler for standalone character collision editor
+
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> None:
 
             pygame.init()
             pygame.display.set_caption(f"Character Collision Editor — {args.name}")
-            screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
+            pygame.display.set_mode(window_size, pygame.RESIZABLE)
 
             editor = CharacterCollisionEditor.from_path(
                 args.image,
@@ -113,7 +113,9 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"Loaded collision data from {args.load}")
 
             print("\nControls:")
-            print("  Shape Types: Click buttons to switch between Rectangle, Circle, Capsule")
+            print(
+                "  Shape Types: Click buttons to switch between Rectangle, Circle, Capsule"
+            )
             print("  Left-click: Drag handles to adjust shape")
             print("  G: Toggle grid")
             print("  R: Reset view")

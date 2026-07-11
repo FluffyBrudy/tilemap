@@ -13,10 +13,9 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src directory to path for imports (needed for FileManager, etc.)
-# This allows the animation editor to import widgets.filemanager
+
 _current_file = Path(__file__).resolve()
-_src_dir = _current_file.parent.parent.parent  # Go up to src/
+_src_dir = _current_file.parent.parent.parent
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
@@ -39,7 +38,7 @@ def parse_tile_size(s: str) -> tuple[int, int]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    # Global exception handler for standalone animation editor
+
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
@@ -85,7 +84,6 @@ def main(argv: list[str] | None = None) -> None:
 
         args = parser.parse_args(argv)
 
-        # Resolve data_root - use provided path or default to cwd/data
         data_root = args.data_root if args.data_root else Path.cwd() / "data"
 
         if not args.image.exists():

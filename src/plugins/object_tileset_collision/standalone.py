@@ -35,10 +35,21 @@ def main(argv: list[str] | None = None) -> None:
             description="Object Tileset Collision Editor",
         )
         parser.add_argument("image", type=Path, help="Path to object tileset image")
-        parser.add_argument("--window-size", type=str, default="1200x800", help="Window size WxH")
-        parser.add_argument("--data-root", type=Path, required=True, help="Data root path")
-        parser.add_argument("--collision-dir", type=Path, default=None, help="Collision directory override")
-        parser.add_argument("--load", type=Path, default=None, help="Load existing collision file")
+        parser.add_argument(
+            "--window-size", type=str, default="1200x800", help="Window size WxH"
+        )
+        parser.add_argument(
+            "--data-root", type=Path, required=True, help="Data root path"
+        )
+        parser.add_argument(
+            "--collision-dir",
+            type=Path,
+            default=None,
+            help="Collision directory override",
+        )
+        parser.add_argument(
+            "--load", type=Path, default=None, help="Load existing collision file"
+        )
 
         args = parser.parse_args(argv)
 
@@ -49,7 +60,7 @@ def main(argv: list[str] | None = None) -> None:
         window_size = tuple(int(x) for x in args.window_size.split("x"))
 
         pygame.init()
-        screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
+        pygame.display.set_mode(window_size, pygame.RESIZABLE)
         pygame.display.set_caption(f"Object Tileset Collision — {args.image.name}")
 
         collision_dir = args.collision_dir

@@ -13,6 +13,7 @@ Covers:
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
@@ -22,6 +23,7 @@ from pygame import Rect
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
@@ -79,7 +81,9 @@ class TestZeroCostWhenClosed:
 
     def test_handle_event_returns_false(self):
         s = CollisionLayerSidebar(Rect(0, 0, 1000, 800))
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (500, 400)})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (500, 400)}
+        )
         assert s.handle_event(event) is False
 
 
@@ -90,7 +94,9 @@ class TestEventHandling:
         screen = pygame.display.get_surface()
         s.draw_toggle_button(screen)
         # Click on toggle button
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": s._toggle_rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": s._toggle_rect.center}
+        )
         assert s.handle_toggle_event(event) is True
         assert s.visible is True
 
@@ -99,7 +105,9 @@ class TestEventHandling:
         s.open()
         # Manually set close rect to avoid needing draw()
         s._close_rect = Rect(940, 4, 28, 28)
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": s._close_rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": s._close_rect.center}
+        )
         assert s.handle_event(event) is True
         assert s.visible is False
 
@@ -107,7 +115,9 @@ class TestEventHandling:
         s = CollisionLayerSidebar(Rect(0, 0, 1000, 800))
         s.open()
         # Click far left (outside sidebar which is on the right)
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (50, 400)})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (50, 400)}
+        )
         assert s.handle_event(event) is True
         assert s.visible is False
 
@@ -116,7 +126,9 @@ class TestEventHandling:
         s.open()
         # open() rebuilds widget layout, so buttons are at screen positions
         btn = s.widget._layer_buttons[2]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         assert s.handle_event(event) is True
         assert s.get_layer() == 4  # 1 << 2
 
@@ -141,7 +153,9 @@ class TestValuePassthrough:
         s.open()
         # open() rebuilds widget layout
         btn = s.widget._mask_buttons[0]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         s.handle_event(event)
         assert len(calls) == 1
         assert calls[0] == (1, 0xFFFE)

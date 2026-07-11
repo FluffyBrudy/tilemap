@@ -403,7 +403,7 @@ class ParticlePreview:
         for p in self.particles:
             sx = int((p.x - scroll_x) * zoom + grid_rect.x)
             sy = int((p.y - scroll_y) * zoom + grid_rect.y)
-            s = max(1, int(p.current_size * zoom))
+            max(1, int(p.current_size * zoom))
             color = p.current_color
 
             if color[3] <= 0:
@@ -412,7 +412,7 @@ class ParticlePreview:
             scaled_w = max(1, int(tex_w * p.current_size * zoom / PARTICLE_TEXTURE_SCALE_FACTOR))
             scaled_h = max(1, int(tex_h * p.current_size * zoom / PARTICLE_TEXTURE_SCALE_FACTOR))
             draw_surf = pygame.transform.scale(tex, (scaled_w, scaled_h))
-            cw, ch = draw_surf.get_width(), draw_surf.get_height()
+            _cw, _ch = draw_surf.get_width(), draw_surf.get_height()
 
             tint = pygame.Surface(draw_surf.get_size(), pygame.SRCALPHA)
             tint.fill((color[0], color[1], color[2], color[3]))

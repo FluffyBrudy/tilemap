@@ -13,15 +13,19 @@ Covers:
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import sys
 from pathlib import Path
-import pytest
+
 import pygame
+import pytest
 from pygame import Rect
 
-import sys
+from widgets.tile_selector import TileSelector
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -50,7 +54,6 @@ class FakeEditor:
 
 
 def _make_selector(tile_size=(32, 32)) -> "TileSelector":
-    from widgets.tile_selector import TileSelector
 
     editor = FakeEditor(tile_size=tile_size)
     ts = TileSelector(editor, x=0, y=0, w=400, h=600)

@@ -19,10 +19,10 @@ if TYPE_CHECKING:
 class MatchMode(Enum):
     """Defines how a pattern cell matches against layer tiles."""
 
-    EXACT = "exact"  # Match specific tile ID
-    WILDCARD = "wildcard"  # Match any tile (including empty)
-    ANY_FILLED = "any_filled"  # Match any non-empty tile
-    ANY_EMPTY = "any_empty"  # Match only empty tiles
+    EXACT = "exact"
+    WILDCARD = "wildcard"
+    ANY_FILLED = "any_filled"
+    ANY_EMPTY = "any_empty"
 
 
 @dataclass
@@ -57,8 +57,7 @@ class PatternCell:
             return actual_tile_id is not None
         elif self.match_mode == MatchMode.ANY_EMPTY:
             return actual_tile_id is None
-        else:  # EXACT
-            # For exact match, both tile_id and tileset_index must match
+        else:
             return (
                 self.tile_id == actual_tile_id
                 and self.tileset_index == actual_tileset_index
@@ -99,7 +98,6 @@ class PatternGrid:
             cell: The pattern cell to set
         """
         if cell.match_mode == MatchMode.WILDCARD:
-            # Remove wildcard cells from storage for sparse representation
             if (x, y) in self.cells:
                 del self.cells[(x, y)]
         else:
@@ -236,7 +234,7 @@ class PatternRule:
         Raises:
             ValueError: If validation fails
         """
-        # Validate dimensions
+
         input_data = data["input_pattern"]
         output_data = data["output_pattern"]
 
@@ -245,16 +243,13 @@ class PatternRule:
         if output_data["width"] <= 0 or output_data["height"] <= 0:
             raise ValueError("Pattern dimensions must be positive integers")
 
-        # Validate priority
         priority = data.get("priority", 0)
         if priority < 0:
             raise ValueError("Priority must be a non-negative integer")
 
-        # Deserialize patterns
         input_pattern = PatternGrid.from_dict(input_data)
         output_pattern = PatternGrid.from_dict(output_data)
 
-        # Create rule (validation happens in __post_init__)
         return PatternRule(
             name=data["name"],
             input_pattern=input_pattern,
@@ -298,22 +293,18 @@ class AutomapEngine:
         Returns:
             True if pattern matches at this position, False otherwise
         """
-        # Check if pattern extends beyond layer boundaries
-        # Note: Layer uses sparse storage, so we check against tile positions
+
         for py in range(pattern.height):
             for px in range(pattern.width):
                 layer_x = x + px
                 layer_y = y + py
 
-                # Get pattern cell and layer tile
                 pattern_cell = pattern.get_cell(px, py)
                 layer_tile = layer.get_tile((layer_x, layer_y))
 
-                # Extract tile variant ID and tileset index (None if no tile)
                 actual_tile_id = layer_tile["variant"] if layer_tile else None
                 actual_tileset_index = layer_tile["ttype"] if layer_tile else None
 
-                # Check match
                 if not pattern_cell.matches(actual_tile_id, actual_tileset_index):
                     return False
 
@@ -338,12 +329,10 @@ class AutomapEngine:
 
         matches = []
 
-        # Determine scan bounds based on existing tiles
         if not layer.tiles:
             logging.debug("Layer has no tiles, skipping scan")
             return matches
 
-        # Find the bounding box of all tiles
         tile_positions = list(layer.tiles.keys())
         min_x = min(pos[0] for pos in tile_positions)
         max_x = max(pos[0] for pos in tile_positions)
@@ -354,8 +343,7 @@ class AutomapEngine:
             f"Scanning layer bounds: x=[{min_x}, {max_x}], y=[{min_y}, {max_y}]"
         )
 
-        # Scan with pattern window
-        for y in range(min_y, max_y + 2):  # +2 to allow pattern to extend beyond
+        for y in range(min_y, max_y + 2):
             for x in range(min_x, max_x + 2):
                 if self.match_pattern(layer, x, y, pattern):
                     matches.append((x, y))
@@ -387,16 +375,13 @@ class AutomapEngine:
 
                 pattern_cell = pattern.get_cell(px, py)
 
-                # Only apply EXACT cells (preserve wildcards)
                 if pattern_cell.match_mode == MatchMode.EXACT:
-                    # Validate tile ID is within reasonable bounds
                     if pattern_cell.tile_id is not None and pattern_cell.tile_id < 0:
                         logging.warning(
                             f"Invalid tile ID {pattern_cell.tile_id} at pattern position ({px}, {py}), skipping cell"
                         )
                         continue
 
-                    # Validate tileset index
                     if (
                         pattern_cell.tileset_index is not None
                         and pattern_cell.tileset_index < 0
@@ -410,7 +395,6 @@ class AutomapEngine:
                         pattern_cell.tile_id is not None
                         and pattern_cell.tileset_index is not None
                     ):
-                        # Create tile data
                         tile_data: TypeTile = {
                             "pos": (layer_x, layer_y),
                             "ttype": pattern_cell.tileset_index,
@@ -418,7 +402,6 @@ class AutomapEngine:
                         }
                         layer.set_tile((layer_x, layer_y), tile_data)
                     else:
-                        # EXACT with None means remove tile
                         layer.remove_tile((layer_x, layer_y))
 
     def apply_rules(self, layer: "Layer", rules: List[PatternRule]) -> int:
@@ -440,7 +423,6 @@ class AutomapEngine:
         if not rules:
             return 0
 
-        # Sort rules by priority (higher priority first)
         sorted_rules = sorted(
             [r for r in rules if r.enabled], key=lambda r: r.priority, reverse=True
         )
@@ -448,7 +430,6 @@ class AutomapEngine:
         transformation_count = 0
 
         for rule in sorted_rules:
-            # Check transformation limit
             if transformation_count >= self.max_transformations:
                 logging.warning(
                     f"Transformation limit ({self.max_transformations}) reached. "
@@ -456,10 +437,8 @@ class AutomapEngine:
                 )
                 break
 
-            # Find all matching positions
             matches = self.scan_layer_for_pattern(layer, rule.input_pattern)
 
-            # Apply output pattern at each match
             for x, y in matches:
                 if transformation_count >= self.max_transformations:
                     break

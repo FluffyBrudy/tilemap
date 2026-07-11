@@ -12,7 +12,7 @@ from pygame import Rect
 from typing import TYPE_CHECKING
 from utils.font_manager import font_manager, FontWeight, FontStyle
 
-# Fix HiDPI/Retina blur on macOS
+
 if sys.platform == "darwin":
     os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
@@ -90,9 +90,7 @@ def _load_project_config() -> tuple[Path, Path, dict]:
     settings_file = Path.cwd() / "settings.json"
 
     if not settings_file.exists():
-        raise RuntimeError(
-            "settings.json not found. Run 'tilemap-editor init' first."
-        )
+        raise RuntimeError("settings.json not found. Run 'tilemap-editor init' first.")
 
     try:
         with open(settings_file, "r", encoding="utf-8") as f:
@@ -100,7 +98,6 @@ def _load_project_config() -> tuple[Path, Path, dict]:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Invalid settings.json: {e}")
 
-    # Validate required fields
     required_fields = ["base_path", "data_path", "error_handler"]
     for field in required_fields:
         if field not in config:
@@ -117,7 +114,6 @@ def _load_project_config() -> tuple[Path, Path, dict]:
     if venv_path in base_path.parents:
         raise RuntimeError("base_path cannot be inside virtual environment")
 
-    # Validate data_path is relative, not absolute
     data_path = config["data_path"]
     if Path(data_path).is_absolute():
         raise RuntimeError("data_path must be relative, not absolute")
@@ -125,21 +121,21 @@ def _load_project_config() -> tuple[Path, Path, dict]:
     data_root = base_path / data_path
 
     if not data_root.exists():
-        raise RuntimeError(f"Data directory not found: {data_root}. Run 'tilemap-editor init' to create the project structure.")
+        raise RuntimeError(
+            f"Data directory not found: {data_root}. Run 'tilemap-editor init' to create the project structure."
+        )
 
-    # Initialize error_handler with proper paths
     log_root = data_root / "logs"
 
-    # Create logs directory only, don't create data root
     log_root.mkdir(parents=True, exist_ok=True)
 
     from utils.error_handler import init_error_handler
+
     init_error_handler(log_root=log_root, config=config["error_handler"])
 
     return base_path, data_root, config
 
 
-# Backwards-compatible alias for existing editor.py call sites
 _launch_standalone_module = launch_standalone
 
 
@@ -181,14 +177,13 @@ class Editor:
 
         self.selector_w = 300
         self._tileset_dragging = False
-        self.left_panel_w = 380  # Width for the dockable left sidebar
+        self.left_panel_w = 380
         self.map_setup_widget: Optional[MapSetup] = None
         self.map_properties_dialog: Optional[MapPropertiesDialog] = None
         self.tileset_widget: Optional[TileSelector] = None
         self.layer_widget: Optional[LayerSelector] = None
         self.tile_grid_widget: Optional[TileGrid] = None
 
-        # Dockable left sidebar (animation panel)
         self.left_panel_visible = False
         self.animation_panel: Optional["SpriteAnimationEditor"] = None
         self._animation_panel_surface: Optional[pygame.Surface] = None
@@ -236,12 +231,20 @@ class Editor:
         sidebar_x = self.width - self.selector_w
         sidebar_h = self.height - menu_h - toolbar_h
         tileset_actions = [
-            ToolbarAction("E", self.tileset_widget._export_selected_as_png_dialog, "E: Export selection as PNG"),
-            ToolbarAction("C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"),
+            ToolbarAction(
+                "E",
+                self.tileset_widget._export_selected_as_png_dialog,
+                "E: Export selection as PNG",
+            ),
+            ToolbarAction(
+                "C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"
+            ),
             ToolbarAction("+", self.tileset_widget.request_add_tileset, "Add Tileset"),
             ToolbarAction("-", self.tileset_widget.remove_tileset, "Remove Tileset"),
         ]
-        self.sidebar = SidebarContainer(self, Rect(sidebar_x, menu_h + toolbar_h, self.selector_w, sidebar_h))
+        self.sidebar = SidebarContainer(
+            self, Rect(sidebar_x, menu_h + toolbar_h, self.selector_w, sidebar_h)
+        )
         self.sidebar.add_tab("Tilesets", self.tileset_widget, tileset_actions)
         self.sidebar.add_tab("Layers", self.layer_widget)
         self.tile_grid_widget = TileGrid(
@@ -255,7 +258,9 @@ class Editor:
         center_y = (self.height - 400) // 2
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
         self.map_setup_widget.visible = True
-        self.map_properties_dialog = MapPropertiesDialog(self, Rect(center_x, center_y, 400, 260))
+        self.map_properties_dialog = MapPropertiesDialog(
+            self, Rect(center_x, center_y, 400, 260)
+        )
         self.node_manager = NodeManager(self)
         self.node_selector = NodeSelector(self, 0, 65, 260, 240)
         self.node_editor = NodeEditor(self, 0, 310, 260, 230)
@@ -274,50 +279,39 @@ class Editor:
         if self.file_manager_process and self.file_manager_process.poll() is None:
             return
 
-        # Build command line arguments
         args = [
             "--mode",
             mode,
         ]
 
         if initial_dir:
-            # Ensure directory exists before resolving to avoid errors
             if initial_dir.exists():
                 args.extend(["--initial-dir", str(initial_dir.resolve())])
             else:
-                # Pass as-is if it doesn't exist; StandaloneFileManager will handle the error
                 args.extend(["--initial-dir", str(initial_dir)])
         else:
-            # Ensure data_root exists before resolving
             if self.data_root.exists():
                 args.extend(["--initial-dir", str(self.data_root.resolve())])
             else:
-                # Create data_root if it doesn't exist
                 self.data_root.mkdir(parents=True, exist_ok=True)
                 args.extend(["--initial-dir", str(self.data_root.resolve())])
-        
-        # Ensure data_root exists before resolving
+
         if self.data_root.exists():
             args.extend(["--data-root", str(self.data_root.resolve())])
         else:
-            # Create data_root if it doesn't exist
             self.data_root.mkdir(parents=True, exist_ok=True)
             args.extend(["--data-root", str(self.data_root.resolve())])
 
-        # Add allowed extensions
         if allowed_exts:
             args.extend(["--allowed-exts", ",".join(allowed_exts)])
 
-        # Add default name for save mode
         if default_name:
             args.extend(["--default-name", default_name])
 
-        # Add multi-select flag
         if multi_select:
             args.append("--multi-select")
 
         try:
-            # Launch subprocess via unified launcher (stderr captured, text mode for JSON parsing)
             self.file_manager_process = launch_standalone(
                 "standalone_filemanager",
                 args,
@@ -325,14 +319,12 @@ class Editor:
                 text=True,
             )
 
-            # Store callbacks for later processing
             self._file_manager_callbacks = {
                 "on_select": on_select,
                 "on_save": on_save,
                 "mode": mode,
             }
 
-            # Track the process
             self.child_processes.append(self.file_manager_process)
 
             print(
@@ -386,7 +378,7 @@ class Editor:
                             error_handler.capture(
                                 e, context="parse_file_manager_result"
                             )
-                            print(f"Output was: {result_line}")  # Keep for debugging
+                            print(f"Output was: {result_line}")
 
                 if stderr:
                     error_handler.capture(
@@ -571,6 +563,7 @@ class Editor:
         except Exception as e:
             error_handler.capture(e, context="load_map_apply")
             import traceback
+
             traceback.print_exc()
         finally:
             self.loading_state["active"] = False
@@ -584,10 +577,12 @@ class Editor:
         menu_h = 30
         toolbar_h = 35
         left_offset = self.left_panel_w if self.left_panel_visible else 0
-        
+
         min_canvas_w = 200
         available_w = self.width - left_offset
-        self._effective_selector_w = min(self.selector_w, max(0, available_w - min_canvas_w))
+        self._effective_selector_w = min(
+            self.selector_w, max(0, available_w - min_canvas_w)
+        )
 
         if hasattr(self, "sidebar") and self.sidebar:
             self.sidebar.resize(
@@ -621,7 +616,6 @@ class Editor:
 
         self._update_side_panel_layout()
 
-        # Update animation panel rect
         if self.left_panel_visible and self.animation_panel:
             panel_rect = Rect(
                 0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h)
@@ -680,7 +674,6 @@ class Editor:
     def toggle_animation_panel(self):
         """Toggle the dockable animation panel visibility (Cmd/Ctrl+B)."""
         if not self.left_panel_visible:
-            # Lazy-initialize the animation panel on first toggle
             if self.animation_panel is None:
                 self._init_animation_panel()
             if self.animation_panel is not None:
@@ -689,13 +682,12 @@ class Editor:
             self.left_panel_visible = False
         self.handle_resize(self.width, self.height)
 
-
     def _init_animation_panel(self):
         """Initialize the animation panel without loading any tileset."""
         from plugins.sprite_animation.editor import SpriteAnimationEditor
 
         try:
-            # Create a simple consumer adapter that logs animation changes
+
             class _PanelConsumer:
                 editor_instance = self
 
@@ -711,14 +703,12 @@ class Editor:
 
             consumer = _PanelConsumer()
 
-            # Create panel rect (will be set by handle_resize)
             panel_rect = Rect(0, 65, self.left_panel_w, self.height - 65)
 
-            # Create animation editor without any surface - user will load spritesheet via "Sheet" button
             self.animation_panel = SpriteAnimationEditor(
                 panel_rect,
-                surface=None,  # No surface - user must load spritesheet
-                tile_size=(32, 32),  # Default tile size
+                surface=None,
+                tile_size=(32, 32),
                 consumer=consumer,
             )
             self.animation_panel._data_root = self.data_root
@@ -749,7 +739,7 @@ class Editor:
         new_theme = theme_names[next_idx]
         set_theme(new_theme)
         self.notifications.notify(f"Theme: {new_theme}")
-        
+
         settings_file = Path.cwd() / "settings.json"
         if settings_file.exists():
             try:
@@ -814,7 +804,13 @@ class Editor:
                 tw, th = self.tilemap.tile_size
                 tile_size = f"{tw}x{th}"
 
-            args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
+            args = [
+                str(path),
+                "--tile-size",
+                tile_size,
+                "--data-root",
+                str(self.data_root),
+            ]
             process = launch_standalone(
                 "plugins.sprite_animation.standalone",
                 args,
@@ -850,14 +846,19 @@ class Editor:
                 resolved = None
 
             if not resolved or not resolved.exists():
-                self.notifications.notify(f"Could not locate spritesheet: {path.name}", duration=2.0)
+                self.notifications.notify(
+                    f"Could not locate spritesheet: {path.name}", duration=2.0
+                )
                 return
 
             args = [
                 str(resolved),
-                "--tile-size", f"{tile_size[0]}x{tile_size[1]}",
-                "--load", str(path),
-                "--data-root", str(self.data_root),
+                "--tile-size",
+                f"{tile_size[0]}x{tile_size[1]}",
+                "--load",
+                str(path),
+                "--data-root",
+                str(self.data_root),
             ]
             process = launch_standalone(
                 "plugins.sprite_animation.standalone",
@@ -866,7 +867,9 @@ class Editor:
                 text=True,
             )
             self.child_processes.append(process)
-            print(f"Launched animation editor with: {path.name} (spritesheet: {resolved.name})")
+            print(
+                f"Launched animation editor with: {path.name} (spritesheet: {resolved.name})"
+            )
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
 
@@ -905,7 +908,9 @@ class Editor:
 
         self.notifications.notify("No tileset loaded. Please load a tileset first.")
 
-    def _launch_collision_editor_with_image(self, path: Path, tileset_type: str = "tile"):
+    def _launch_collision_editor_with_image(
+        self, path: Path, tileset_type: str = "tile"
+    ):
         """Launch collision editor subprocess with selected tileset."""
         try:
             if tileset_type == "object":
@@ -917,7 +922,7 @@ class Editor:
 
     def _launch_tileset_collision_editor_with_image(self, path: Path):
         """Launch tileset collision editor (tile-based)."""
-        logger = self.logger if hasattr(self, 'logger') else None
+        logger = self.logger if hasattr(self, "logger") else None
         tile_size = "32x32"
         if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
             tw, th = self.tilemap.tile_size
@@ -925,12 +930,13 @@ class Editor:
 
         args = [str(path), "--tile-size", tile_size, "--data-root", str(self.data_root)]
 
-        # Collect auto-tile variant groups for this tileset and pass as --propagation-groups
         propagation_groups_path = self._write_propagation_groups(path)
         if propagation_groups_path:
             args.extend(["--propagation-groups", str(propagation_groups_path)])
 
-        collision_dir = self.data_root / self.config.get("collision_paths", {}).get("tileset", "collision")
+        collision_dir = self.data_root / self.config.get("collision_paths", {}).get(
+            "tileset", "collision"
+        )
         collision_path = collision_dir / f"{path.stem}.collision.json"
         if collision_path.exists():
             args.extend(["--load", str(collision_path)])
@@ -960,7 +966,6 @@ class Editor:
         if not tw or not tw.tilesets:
             return None
 
-        # Find the tileset index matching the given path
         resolved_path = Path(tileset_path).resolve()
         tileset_index = None
         for idx, ts in enumerate(tw.tilesets):
@@ -974,7 +979,6 @@ class Editor:
         if tileset_index is None:
             return None
 
-        # Collect variant_ids grouped by group_id from autotile rules matching this tileset
         groups: Dict[str, List[int]] = {}
         for group in self.autotiler.groups:
             for rule in group.rules:
@@ -989,6 +993,7 @@ class Editor:
 
         import json
         import tempfile
+
         fd, tmp_path = tempfile.mkstemp(suffix=".json", prefix="propagation_groups_")
         with os.fdopen(fd, "w") as f:
             json.dump(groups, f)
@@ -998,12 +1003,20 @@ class Editor:
 
     def _launch_object_tileset_collision_editor_with_image(self, path: Path):
         """Launch object tileset collision editor (region-based)."""
-        logger = self.logger if hasattr(self, 'logger') else None
+        logger = self.logger if hasattr(self, "logger") else None
 
-        collision_dir = self.data_root / self.config.get("collision_paths", {}).get("object_tileset", "collision")
+        collision_dir = self.data_root / self.config.get("collision_paths", {}).get(
+            "object_tileset", "collision"
+        )
         collision_path = collision_dir / f"{path.stem}.object_collision.json"
 
-        args = [str(path), "--data-root", str(self.data_root), "--collision-dir", str(collision_dir)]
+        args = [
+            str(path),
+            "--data-root",
+            str(self.data_root),
+            "--collision-dir",
+            str(collision_dir),
+        ]
         if collision_path.exists():
             args.extend(["--load", str(collision_path)])
 
@@ -1035,13 +1048,19 @@ class Editor:
     def _launch_character_collision_editor_with_image(self, path: Path):
         """Launch character collision editor subprocess with selected image."""
         try:
-            # Use filename (without extension) as default character name
             character_name = path.stem
 
-            args = [str(path), "--name", character_name, "--data-root", str(self.data_root)]
-            
-            # Check if collision data file exists and load it
-            collision_dir = self.data_root / self.config.get("collision_paths", {}).get("character", "character_collision")
+            args = [
+                str(path),
+                "--name",
+                character_name,
+                "--data-root",
+                str(self.data_root),
+            ]
+
+            collision_dir = self.data_root / self.config.get("collision_paths", {}).get(
+                "character", "character_collision"
+            )
             collision_path = collision_dir / f"{character_name}.collision.json"
             if collision_path.exists():
                 args.extend(["--load", str(collision_path)])
@@ -1067,10 +1086,8 @@ class Editor:
             return
 
         try:
-            # Calculate window size with better aspect ratio
             editor_width, editor_height = self.screen.get_size()
 
-            # Default to 80% of editor width, 40% of editor height for good aspect ratio
             console_width = max(800, int(editor_width * 0.8))
             console_height = max(400, int(editor_height * 0.4))
 
@@ -1123,7 +1140,7 @@ class Editor:
 
     def _cleanup_finished_processes(self):
         """Remove finished processes from the tracking list."""
-        # Read output from finished processes
+
         for process in self.child_processes:
             if process.poll() is not None:
                 try:
@@ -1145,7 +1162,6 @@ class Editor:
             if event.type == pygame.VIDEORESIZE:
                 self.handle_resize(event.w, event.h)
 
-            # Priority 1: Modal dialogs and inputs (highest priority)
             if self.save_input.active:
                 self.save_input.handle_event(event)
                 continue
@@ -1178,7 +1194,6 @@ class Editor:
                 if self.particle_config_dialog.handle_event(event):
                     continue
 
-            # Priority 2: Autotiler and Regex Designer (block all events when visible)
             if self.autotiler.visible:
                 if self.autotiler.handle_event(event):
                     continue
@@ -1187,11 +1202,9 @@ class Editor:
                 if self.regex_automap_designer.handle_event(event):
                     continue
 
-            # Priority 3: Menu bar
             if self.menubar.handle_event(event):
                 continue
 
-            # Priority 4: Keyboard shortcuts
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
@@ -1222,7 +1235,9 @@ class Editor:
                 elif event.key == pygame.K_y and (ctrl_held or meta_held):
                     self.tilemap.redo()
                     continue
-                elif event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
+                elif (
+                    event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held
+                ):
                     self.node_editing_mode = not self.node_editing_mode
                     if self.node_editing_mode:
                         self.show_nodes = False
@@ -1238,7 +1253,6 @@ class Editor:
                     continue
                 elif event.key == pygame.K_SPACE and (ctrl_held or meta_held):
                     if self.pan_mode:
-                        # Restoring: turn off pan, re-enable previous tool
                         self.pan_mode = False
                         if getattr(self, "_prev_tool", None) == "select":
                             self.select_mode = True
@@ -1247,7 +1261,6 @@ class Editor:
                         elif getattr(self, "_prev_tool", None) == "nodes":
                             self.node_editing_mode = True
                     else:
-                        # Entering pan: save current tool, turn off others
                         if self.select_mode:
                             self._prev_tool = "select"
                         elif self.eraser_mode:
@@ -1264,7 +1277,9 @@ class Editor:
                 elif event.key == pygame.K_g and (ctrl_held or meta_held):
                     self.toggle_grid()
                     continue
-                elif event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held:
+                elif (
+                    event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held
+                ):
                     self.export_selection_as_png()
                     continue
                 elif event.key == pygame.K_t and (ctrl_held or meta_held):
@@ -1274,29 +1289,29 @@ class Editor:
                     self.toggle_animation_panel()
                     continue
                 elif pygame.K_1 <= event.key <= pygame.K_9:
-                    if not (self.node_editor and self.node_editor.visible and self.node_editor.editing_field):
+                    if not (
+                        self.node_editor
+                        and self.node_editor.visible
+                        and self.node_editor.editing_field
+                    ):
                         idx = event.key - pygame.K_1
                         if idx < self.tilemap.layer_manager.get_layer_count():
                             self.tilemap.layer_manager.set_active_layer(idx)
                         continue
 
-            # Priority 5: Node selector & editor (float on top, check events first)
             if self.node_selector and self.node_selector.handle_event(event):
                 continue
             if self.node_editor and self.node_editor.handle_event(event):
                 continue
 
-            # Priority 5.5: Toolbar
             if self.toolbar and self.toolbar.handle_event(event):
                 continue
 
-            # Priority 6: Dockable animation panel
             if self.left_panel_visible and self.animation_panel:
                 if hasattr(self.animation_panel, "handle_event"):
                     if self.animation_panel.handle_event(event):
                         continue
 
-            # Priority 6.5: Sidebar resize drag (vertical)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
                 edge_x = self.width - self._effective_selector_w
@@ -1321,12 +1336,10 @@ class Editor:
                     self._tileset_dragging = False
                     continue
 
-            # Priority 7: Sidebar container
             consumed = False
             if self.sidebar and self.sidebar.handle_event(event):
                 consumed = True
-            
-            # Priority 8: Main tile grid (lowest priority)
+
             if not consumed and self.tile_grid_widget:
                 self.tile_grid_widget.handle_event(event)
 
@@ -1345,7 +1358,6 @@ class Editor:
             if self.tile_grid_widget:
                 self.tile_grid_widget.update()
 
-            # Update animation panel
             if self.left_panel_visible and self.animation_panel:
                 if hasattr(self.animation_panel, "update"):
                     self.animation_panel.update()
@@ -1362,33 +1374,28 @@ class Editor:
                 pygame.draw.rect(self.screen, COLORS.border, handle_rect)
                 if self._tileset_dragging:
                     pygame.draw.rect(self.screen, COLORS.accent, handle_rect)
-            
-            # Draw autotiler and regex designer with modal overlay
+
             if self.autotiler:
                 if self.autotiler.visible:
-                    # Dim background when autotiler is open
                     overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                     overlay.fill((0, 0, 0, 100))
                     self.screen.blit(overlay, (0, 0))
                 self.autotiler.draw(self.screen)
-            
+
             if self.regex_automap_designer:
                 if self.regex_automap_designer.visible:
-                    # Dim background when regex designer is open
                     overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                     overlay.fill((0, 0, 0, 100))
                     self.screen.blit(overlay, (0, 0))
                 self.regex_automap_designer.draw(self.screen)
 
-            # Draw the dockable animation panel
             if self.left_panel_visible and self.animation_panel:
-                # Draw panel background
                 panel_surf = pygame.Surface(
                     (self.left_panel_w, self.height), pygame.SRCALPHA
                 )
                 panel_surf.fill((28, 30, 34, 255))
                 self.screen.blit(panel_surf, (0, 65))
-                # Draw panel border
+
                 pygame.draw.rect(
                     self.screen,
                     (60, 62, 65),
@@ -1452,7 +1459,7 @@ class Editor:
                 self.node_selector.draw(self.screen)
             if self.node_editor:
                 self.node_editor.draw(self.screen)
-            # Modal dialogs draw on top of everything
+
             if self.property_editor and self.property_editor.active:
                 self.property_editor.draw(self.screen)
             if self.particle_config_dialog and self.particle_config_dialog.active:
@@ -1468,7 +1475,7 @@ class Editor:
 
 
 if __name__ == "__main__":
-    # Global exception handler for direct execution
+
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)

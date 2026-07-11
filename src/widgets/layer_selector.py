@@ -50,11 +50,13 @@ class LayerSelector:
         btn_w = 25
         btn_y = self.footer_rect.y + 5
         self.btn_add = Button(
-            Rect(x + 5, btn_y, btn_w, btn_h), "+",
+            Rect(x + 5, btn_y, btn_w, btn_h),
+            "+",
             on_click=self._add_layer,
         )
         self.btn_remove = Button(
-            Rect(x + 35, btn_y, btn_w, btn_h), "-",
+            Rect(x + 35, btn_y, btn_w, btn_h),
+            "-",
             on_click=self._remove_layer,
         )
 
@@ -130,7 +132,7 @@ class LayerSelector:
                         self.editor.tilemap.layer_manager.set_active_layer(layer_idx)
                         return True
 
-            elif event.button == 3:  # Right click
+            elif event.button == 3:
                 if self.list_rect.collidepoint(mouse_pos):
                     layer_idx = self._get_layer_at_pos(mouse_pos)
                     if layer_idx is not None:
@@ -181,7 +183,9 @@ class LayerSelector:
                         self._adjusting_opacity_idx
                     )
                     if opacity_rect:
-                        rel_x = max(0, min(opacity_rect.width, mouse_pos[0] - opacity_rect.x))
+                        rel_x = max(
+                            0, min(opacity_rect.width, mouse_pos[0] - opacity_rect.x)
+                        )
                         layer.opacity = max(0.0, min(1.0, rel_x / opacity_rect.width))
                 return True
 
@@ -451,14 +455,22 @@ class LayerSelector:
 
             opacity_bar = self._get_opacity_bar_rect(i)
             if opacity_bar:
-                bg_rect = Rect(opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height)
+                bg_rect = Rect(
+                    opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height
+                )
                 pygame.draw.rect(screen, (60, 60, 60), bg_rect, border_radius=2)
                 fill_w = int(opacity_bar.width * layer.opacity)
                 if fill_w > 0:
-                    fill_rect = Rect(opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height)
+                    fill_rect = Rect(
+                        opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height
+                    )
                     green = int(180 * layer.opacity) + 40
-                    pygame.draw.rect(screen, (40, green, 40), fill_rect, border_radius=2)
-                pct_txt = self.font_layer.render(f"{int(layer.opacity * 100)}%", True, COLORS.text_dim)
+                    pygame.draw.rect(
+                        screen, (40, green, 40), fill_rect, border_radius=2
+                    )
+                pct_txt = self.font_layer.render(
+                    f"{int(layer.opacity * 100)}%", True, COLORS.text_dim
+                )
                 screen.blit(pct_txt, (opacity_bar.x - 32, opacity_bar.y - 2))
 
             eye_x = item_rect.right - 25
@@ -511,9 +523,7 @@ class LayerSelector:
             drag_surf.set_alpha(200)
             screen.blit(drag_surf, preview_rect)
 
-            name_txt = self.font_layer.render(
-                dragging_layer.name, True, COLORS.text
-            )
+            name_txt = self.font_layer.render(dragging_layer.name, True, COLORS.text)
             screen.blit(name_txt, (preview_rect.x + 5, preview_rect.y + 5))
 
             pygame.draw.rect(screen, (150, 150, 255), preview_rect, 2)

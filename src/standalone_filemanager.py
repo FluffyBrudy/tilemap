@@ -17,13 +17,13 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-# Suppress pygame welcome message
+
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 import pygame
 from pygame import Rect
 
-# Ensure we can import from src
+
 _current_file = Path(__file__).resolve()
 _src_dir = _current_file.parent
 if str(_src_dir) not in sys.path:
@@ -52,7 +52,6 @@ class StandaloneFileManager:
         self.running = True
         self.window_size = window_size
 
-        # Resolve initial directory relative to the caller cwd if it's relative.
         if initial_dir and not initial_dir.is_absolute():
             initial_dir = Path.cwd() / initial_dir
 
@@ -65,7 +64,6 @@ class StandaloneFileManager:
         if not initial_dir.exists():
             raise RuntimeError(f"Initial directory does not exist: {initial_dir}")
 
-        # Create FileManager widget - fill entire window (no margins for standalone)
         rect = Rect(0, 0, window_size[0], window_size[1])
         self.file_manager = FileManager(
             rect=rect,
@@ -77,22 +75,20 @@ class StandaloneFileManager:
             default_name=default_name,
             on_cancel=self._on_cancel,
             multi_select=multi_select,
-            draw_overlay=False,  # No overlay in standalone mode
-            enable_window_drag=False,  # OS handles window dragging
-            enable_resize_handles=False,  # OS handles window resizing
+            draw_overlay=False,
+            enable_window_drag=False,
+            enable_resize_handles=False,
             data_root=data_root,
         )
 
     def _on_select(self, path):
         """Handle file selection - output to stdout and exit."""
         if isinstance(path, list):
-            # Multi-select
             result = {
                 "status": "selected",
                 "paths": [str(p.resolve()) for p in path],
             }
         else:
-            # Single select
             result = {
                 "status": "selected",
                 "path": str(path.resolve()),
@@ -126,29 +122,25 @@ class StandaloneFileManager:
                     self._on_cancel()
                     break
                 elif event.type == pygame.VIDEORESIZE:
-                    # Update window size
                     self.window_size = (event.w, event.h)
-                    # Don't recreate screen on every resize, pygame handles it
-                    # Just update the file manager rect
+
                     self.file_manager.rect.x = 0
                     self.file_manager.rect.y = 0
                     self.file_manager.rect.width = event.w
                     self.file_manager.rect.height = event.h
-                    # Update resize handler to track new rect
+
                     self.file_manager.resize_handler.widget_rect = (
                         self.file_manager.rect
                     )
-                    # Don't handle this event further to avoid double processing
+
                     continue
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         self._on_cancel()
                         break
 
-                # Handle events
                 self.file_manager.handle_event(event)
 
-            # Draw - no background fill needed, FileManager draws its own background
             self.file_manager.draw(self.screen)
             pygame.display.flip()
 
@@ -204,26 +196,22 @@ def main(argv: List[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    # Parse window size
     try:
         w, h = map(int, args.window_size.split("x"))
         window_size = (w, h)
     except ValueError:
         window_size = (800, 600)
 
-    # Parse allowed extensions
     allowed_exts = [
         ext.strip() if ext.startswith(".") else f".{ext.strip()}"
         for ext in args.allowed_exts.split(",")
     ]
 
-    # Parse initial directory
     initial_dir = None
     if args.initial_dir:
         initial_dir = Path(args.initial_dir)
     data_root = Path(args.data_root) if args.data_root else None
 
-    # Create and run standalone file manager
     fm = StandaloneFileManager(
         mode=args.mode,
         initial_dir=initial_dir,

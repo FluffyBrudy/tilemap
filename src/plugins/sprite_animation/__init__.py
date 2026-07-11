@@ -10,7 +10,7 @@ Standalone usage:
 
 Plugin usage:
     editor = SpriteAnimationEditor(rect, surface=surface, tile_size=(32, 32))
-    # Call handle_event(event) and draw(screen) in your game loop
+
 
 Protocol-based integration:
     class MyProvider:

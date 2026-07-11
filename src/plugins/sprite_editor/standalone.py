@@ -2,7 +2,7 @@
 Standalone launcher for the Sprite Editor.
 
 Usage:
-    python standalone.py                          # start blank, then click [Open]
+    python standalone.py
     python standalone.py path/to/spritesheet.png
     python standalone.py path/to/spritesheet.png --tile-size 32
 """
@@ -47,16 +47,31 @@ def main(argv: list[str] | None = None) -> None:
     sys.excepthook = handle_exception
 
     parser = argparse.ArgumentParser(description="Grid Sprite Editor")
-    parser.add_argument("image", type=str, nargs="?", default=None,
-                        help="Path to spritesheet image (optional — start blank)")
-    parser.add_argument("--tile-size", type=str, default="32",
-                        help="Tile size (e.g. 32 or 32x32)")
-    parser.add_argument("--save", type=str, default=None,
-                        help="Output path for modified spritesheet")
-    parser.add_argument("--window-size", type=str, default="1000x700",
-                        help="Window size WxH (default 1000x700)")
-    parser.add_argument("--data-root", type=str, default=None,
-                        help="Project data root (for file dialogs)")
+    parser.add_argument(
+        "image",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Path to spritesheet image (optional — start blank)",
+    )
+    parser.add_argument(
+        "--tile-size", type=str, default="32", help="Tile size (e.g. 32 or 32x32)"
+    )
+    parser.add_argument(
+        "--save", type=str, default=None, help="Output path for modified spritesheet"
+    )
+    parser.add_argument(
+        "--window-size",
+        type=str,
+        default="1000x700",
+        help="Window size WxH (default 1000x700)",
+    )
+    parser.add_argument(
+        "--data-root",
+        type=str,
+        default=None,
+        help="Project data root (for file dialogs)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -78,8 +93,11 @@ def main(argv: list[str] | None = None) -> None:
         surface = pygame.image.load(str(image_path)).convert_alpha()
         pygame.display.set_caption(f"Sprite Editor - {image_path.name}")
         editor = SpriteEditor(
-            screen.get_rect(), surface, (tw, th),
-            image_path=image_path, data_root=data_root,
+            screen.get_rect(),
+            surface,
+            (tw, th),
+            image_path=image_path,
+            data_root=data_root,
         )
         if args.save:
             editor.set_save_path(Path(args.save))
@@ -87,7 +105,9 @@ def main(argv: list[str] | None = None) -> None:
         data_root = Path(args.data_root) if args.data_root else Path.cwd()
         pygame.display.set_caption("Sprite Editor — blank")
         editor = SpriteEditor(
-            screen.get_rect(), tile_size=(tw, th), data_root=data_root,
+            screen.get_rect(),
+            tile_size=(tw, th),
+            data_root=data_root,
         )
 
     clock = pygame.time.Clock()

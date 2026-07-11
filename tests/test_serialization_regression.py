@@ -6,23 +6,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from utils.serialization import serialize_point, deserialize_point
 
+
 def test_serialize_point_fractional():
     # Retain fractional coordinates
     assert serialize_point((12.75, 4.5)) == "12.75;4.5"
     assert serialize_point((12, 4)) == "12;4"
-    assert serialize_point((12.0, 4.0)) == "12;4"  # whole floats should be formatted as int
+    assert (
+        serialize_point((12.0, 4.0)) == "12;4"
+    )  # whole floats should be formatted as int
+
 
 def test_deserialize_point_fractional_round_trip():
     # Round-trip check
     p_str = "12.75;4.5"
     parsed = deserialize_point(p_str)
     assert parsed == (12.75, 4.5)
-    
+
     # Integers should remain int
     assert deserialize_point("12;4") == (12, 4)
     # Different separators
     assert deserialize_point("12.75,4.5") == (12.75, 4.5)
     assert deserialize_point("12.75 4.5") == (12.75, 4.5)
+
 
 def test_deserialize_point_strict_regex_fullmatch():
     # re.fullmatch validation: reject malformed prefixes/suffixes
@@ -33,16 +38,19 @@ def test_deserialize_point_strict_regex_fullmatch():
     with pytest.raises(ValueError):
         deserialize_point("12;;4")
 
+
 def test_tile_grid_map_bounds_calculation():
     import pygame
+
     pygame.font.init()
+
     # Mock classes to test tile_grid bounds calculation
     class FakeTilemap:
         tile_size = (32, 32)
         map_size = (50, 50)
         initialized = True
         render_scale = 1.0
-        
+
         class FakeLayerManager:
             class FakeLayer:
                 def __init__(self, tiles, objects, layer_type="tile"):
@@ -54,9 +62,10 @@ def test_tile_grid_map_bounds_calculation():
                     self.locked = False
                     self.opacity = 1.0
                     self.properties = {}
+
             def __init__(self, layers):
                 self.layers = layers
-        
+
         def __init__(self, layers):
             self.layer_manager = self.FakeLayerManager(layers)
 
@@ -76,8 +85,7 @@ def test_tile_grid_map_bounds_calculation():
 
     # Test layers with negative tiles
     layer1 = FakeTilemap.FakeLayerManager.FakeLayer(
-        tiles={(-5, -2): {}, (10, 20): {}},
-        objects={}
+        tiles={(-5, -2): {}, (10, 20): {}}, objects={}
     )
     editor = FakeEditor([layer1])
     grid = TileGrid(editor, Rect(0, 0, 800, 600))

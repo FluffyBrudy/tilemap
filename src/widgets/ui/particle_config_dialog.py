@@ -29,7 +29,9 @@ CONTENT_W = 480
 
 
 class Dropdown:
-    def __init__(self, rect: Rect, options: List[str], initial: str, max_visible: int = 10):
+    def __init__(
+        self, rect: Rect, options: List[str], initial: str, max_visible: int = 10
+    ):
         if not options:
             raise ValueError("options must be a non-empty list")
         self.rect = rect
@@ -43,7 +45,12 @@ class Dropdown:
 
     def _get_option_rect(self, idx: int) -> Rect:
         visible_idx = idx - self.scroll_offset
-        return Rect(self.rect.x, self.rect.y + self.rect.height + visible_idx * self.option_h, self.rect.width, self.option_h)
+        return Rect(
+            self.rect.x,
+            self.rect.y + self.rect.height + visible_idx * self.option_h,
+            self.rect.width,
+            self.option_h,
+        )
 
     def _total_height(self) -> int:
         return len(self.options) * self.option_h
@@ -93,17 +100,23 @@ class Dropdown:
 
         return None
 
-    def draw(self, screen: Surface, bg: Tuple[int, int, int], border: Tuple[int, int, int]):
+    def draw(
+        self, screen: Surface, bg: Tuple[int, int, int], border: Tuple[int, int, int]
+    ):
         pygame.draw.rect(screen, bg, self.rect, border_radius=3)
         pygame.draw.rect(screen, border, self.rect, 1, border_radius=3)
         font = pygame.font.SysFont("Arial", 13)
         txt = font.render(self.selected, True, (220, 220, 220))
         screen.blit(txt, (self.rect.x + 4, self.rect.y + 3))
-        pygame.draw.polygon(screen, (160, 160, 160), [
-            (self.rect.right - 10, self.rect.y + 6),
-            (self.rect.right - 4, self.rect.y + 6),
-            (self.rect.right - 7, self.rect.y + 11),
-        ])
+        pygame.draw.polygon(
+            screen,
+            (160, 160, 160),
+            [
+                (self.rect.right - 10, self.rect.y + 6),
+                (self.rect.right - 4, self.rect.y + 6),
+                (self.rect.right - 7, self.rect.y + 11),
+            ],
+        )
 
     def draw_options(self, screen: Surface):
         if not self.open:
@@ -111,10 +124,11 @@ class Dropdown:
         font = pygame.font.SysFont("Arial", 13)
         lo, hi = self._visible_range()
 
-        # clip the options area
         full_h = self._total_height()
         visible_h = min(full_h, self.max_visible * self.option_h)
-        clip = Rect(self.rect.x, self.rect.y + self.rect.height, self.rect.width, visible_h)
+        clip = Rect(
+            self.rect.x, self.rect.y + self.rect.height, self.rect.width, visible_h
+        )
         old_clip = screen.get_clip()
         screen.set_clip(clip)
 
@@ -122,32 +136,53 @@ class Dropdown:
             r = self._get_option_rect(i)
             opt = self.options[i]
             is_selected = opt == self.selected
-            opt_bg = (60, 70, 90) if self.hover_idx == i else (50, 55, 65) if is_selected else (40, 44, 50)
+            opt_bg = (
+                (60, 70, 90)
+                if self.hover_idx == i
+                else (50, 55, 65)
+                if is_selected
+                else (40, 44, 50)
+            )
             pygame.draw.rect(screen, opt_bg, r, border_radius=2)
             txt = font.render(opt, True, (220, 220, 220))
             screen.blit(txt, (r.x + 4, r.y + 3))
 
         screen.set_clip(old_clip)
 
-        # scroll indicators
         if self.scroll_offset > 0:
             arrow_y = clip.y
-            pygame.draw.polygon(screen, (160, 160, 160), [
-                (clip.x + clip.width // 2, arrow_y + 4),
-                (clip.x + clip.width // 2 - 5, arrow_y + 10),
-                (clip.x + clip.width // 2 + 5, arrow_y + 10),
-            ])
+            pygame.draw.polygon(
+                screen,
+                (160, 160, 160),
+                [
+                    (clip.x + clip.width // 2, arrow_y + 4),
+                    (clip.x + clip.width // 2 - 5, arrow_y + 10),
+                    (clip.x + clip.width // 2 + 5, arrow_y + 10),
+                ],
+            )
         if hi < len(self.options):
             arrow_y = clip.bottom - 10
-            pygame.draw.polygon(screen, (160, 160, 160), [
-                (clip.x + clip.width // 2, arrow_y + 6),
-                (clip.x + clip.width // 2 - 5, arrow_y),
-                (clip.x + clip.width // 2 + 5, arrow_y),
-            ])
+            pygame.draw.polygon(
+                screen,
+                (160, 160, 160),
+                [
+                    (clip.x + clip.width // 2, arrow_y + 6),
+                    (clip.x + clip.width // 2 - 5, arrow_y),
+                    (clip.x + clip.width // 2 + 5, arrow_y),
+                ],
+            )
 
 
 class Slider:
-    def __init__(self, rect: Rect, label: str, min_val: float, max_val: float, value: float, fmt: str = "{:.0f}"):
+    def __init__(
+        self,
+        rect: Rect,
+        label: str,
+        min_val: float,
+        max_val: float,
+        value: float,
+        fmt: str = "{:.0f}",
+    ):
         self.rect = rect
         self.label = label
         self.min_val = min_val
@@ -191,8 +226,14 @@ class Slider:
 
     @property
     def fill_rect(self) -> Rect:
-        w = int((self.value - self.min_val) / (self.max_val - self.min_val) * (self.rect.width - 4))
-        return Rect(self.rect.x + 2, self.rect.y + (self.rect.height - TRACK_H) // 2, w, TRACK_H)
+        w = int(
+            (self.value - self.min_val)
+            / (self.max_val - self.min_val)
+            * (self.rect.width - 4)
+        )
+        return Rect(
+            self.rect.x + 2, self.rect.y + (self.rect.height - TRACK_H) // 2, w, TRACK_H
+        )
 
 
 class ColorField:
@@ -207,7 +248,9 @@ class ColorField:
 
     @property
     def rgb(self) -> Tuple[int, int, int]:
-        return tuple(int(c * 255) for c in self._hsv_to_rgb(self.hue, self.sat, self.bri))
+        return tuple(
+            int(c * 255) for c in self._hsv_to_rgb(self.hue, self.sat, self.bri)
+        )
 
     def _hsv_to_rgb(self, h: float, s: float, v: float) -> Tuple[float, float, float]:
         h = h % 360
@@ -302,7 +345,6 @@ class ColorField:
             self._cache_surf = self._build_hue_sat_surf(field_w, field_h)
             self._cache_key = cache_key
 
-        # Apply brightness overlay to a copy — never mutate the cache
         surf = self._cache_surf.copy()
         bri_surf = Surface((field_w, field_h), pygame.SRCALPHA)
         dark = int((1.0 - self.bri) * 255)
@@ -310,23 +352,30 @@ class ColorField:
         surf.blit(bri_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         screen.blit(surf, self.rect.topleft)
 
-        # Cursor on field
         cx = int((self.hue / 360) * field_w)
         cy = int((1.0 - self.sat) * field_h)
-        pygame.draw.circle(screen, (255, 255, 255), (self.rect.x + cx, self.rect.y + cy), 5, 1)
-        pygame.draw.circle(screen, (0, 0, 0), (self.rect.x + cx, self.rect.y + cy), 4, 1)
+        pygame.draw.circle(
+            screen, (255, 255, 255), (self.rect.x + cx, self.rect.y + cy), 5, 1
+        )
+        pygame.draw.circle(
+            screen, (0, 0, 0), (self.rect.x + cx, self.rect.y + cy), 4, 1
+        )
 
-        # Brightness strip
         strip_x = self.rect.x + field_w + 4
         strip_w = 14
         for y in range(field_h):
             t = 1.0 - y / field_h
             r, g, b = self._hsv_to_rgb(self.hue, self.sat, t)
-            pygame.draw.line(screen, (int(r * 255), int(g * 255), int(b * 255)),
-                (strip_x, self.rect.y + y), (strip_x + strip_w, self.rect.y + y))
-        pygame.draw.rect(screen, (60, 64, 69), Rect(strip_x, self.rect.y, strip_w, field_h), 1)
+            pygame.draw.line(
+                screen,
+                (int(r * 255), int(g * 255), int(b * 255)),
+                (strip_x, self.rect.y + y),
+                (strip_x + strip_w, self.rect.y + y),
+            )
+        pygame.draw.rect(
+            screen, (60, 64, 69), Rect(strip_x, self.rect.y, strip_w, field_h), 1
+        )
 
-        # Brightness thumb
         by = self.rect.y + int((1.0 - self.bri) * field_h)
         pygame.draw.circle(screen, (255, 255, 255), (strip_x + strip_w // 2, by), 6)
         pygame.draw.circle(screen, (0, 0, 0), (strip_x + strip_w // 2, by), 5, 1)
@@ -340,16 +389,26 @@ class ColorPicker:
 
     def __init__(self, rect: Rect):
         self.rect = rect
-        self.active_tab = 0  # 0=start, 1=end
+        self.active_tab = 0
         self.start_colors = {"r": 255, "g": 200, "b": 100, "a": 255}
         self.end_colors = {"r": 255, "g": 100, "b": 50, "a": 0}
         self._field_ox = 4
         self._field_oy = self.TAB_H + self.SWATCH_H + 8
-        self.field = ColorField(Rect(rect.x + self._field_ox, rect.y + self._field_oy, rect.width - 8, self.FIELD_H))
+        self.field = ColorField(
+            Rect(
+                rect.x + self._field_ox,
+                rect.y + self._field_oy,
+                rect.width - 8,
+                self.FIELD_H,
+            )
+        )
         self._init_sliders()
 
     def _update_field_rect(self):
-        self.field.rect.topleft = (self.rect.x + self._field_ox, self.rect.y + self._field_oy)
+        self.field.rect.topleft = (
+            self.rect.x + self._field_ox,
+            self.rect.y + self._field_oy,
+        )
 
     def _tab_rect(self, idx: int) -> Rect:
         w = (self.rect.width - 4) // 2
@@ -357,14 +416,21 @@ class ColorPicker:
 
     def _swatch_rect(self, idx: int) -> Rect:
         w = (self.rect.width - 8) // 2
-        return Rect(self.rect.x + 4 + idx * w, self.rect.y + self.TAB_H + 2, w, self.SWATCH_H)
+        return Rect(
+            self.rect.x + 4 + idx * w, self.rect.y + self.TAB_H + 2, w, self.SWATCH_H
+        )
 
     def _slider_rects(self) -> List[Tuple[str, Rect, Tuple[int, int, int]]]:
         y0 = self.rect.y + self.TAB_H + self.SWATCH_H + 8 + self.FIELD_H + 8
         label_x = self.rect.x + 8
         slider_x = label_x + 54
         slider_w = self.rect.width - 64
-        labels = [("R", (220, 80, 80)), ("G", (80, 200, 80)), ("B", (80, 80, 220)), ("A", (180, 180, 180))]
+        labels = [
+            ("R", (220, 80, 80)),
+            ("G", (80, 200, 80)),
+            ("B", (80, 80, 220)),
+            ("A", (180, 180, 180)),
+        ]
         result = []
         for i, (label, accent) in enumerate(labels):
             r = Rect(slider_x, y0 + i * 18, slider_w, self.SLIDER_H)
@@ -396,14 +462,24 @@ class ColorPicker:
                     self.active_tab = i
                     colors = self._get_active_colors()
                     self.field.set_rgb(colors["r"], colors["g"], colors["b"])
-                    self._slider_values = [colors["r"], colors["g"], colors["b"], colors["a"]]
+                    self._slider_values = [
+                        colors["r"],
+                        colors["g"],
+                        colors["b"],
+                        colors["a"],
+                    ]
                     return True
             for i in range(2):
                 if self._swatch_rect(i).collidepoint(mouse):
                     self.active_tab = i
                     colors = self._get_active_colors()
                     self.field.set_rgb(colors["r"], colors["g"], colors["b"])
-                    self._slider_values = [colors["r"], colors["g"], colors["b"], colors["a"]]
+                    self._slider_values = [
+                        colors["r"],
+                        colors["g"],
+                        colors["b"],
+                        colors["a"],
+                    ]
                     return True
 
         if self.field.handle_event(event):
@@ -414,10 +490,18 @@ class ColorPicker:
             self._get_active_colors().update({"r": r, "g": g, "b": b})
             return True
 
-        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+        if event.type in (
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEMOTION,
+            pygame.MOUSEBUTTONUP,
+        ):
             rects = self._slider_rects()
             for i, (label, accent, r, _lx) in enumerate(rects):
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and r.collidepoint(mouse):
+                if (
+                    event.type == pygame.MOUSEBUTTONDOWN
+                    and event.button == 1
+                    and r.collidepoint(mouse)
+                ):
                     self._slider_dragging[i] = True
                 if event.type == pygame.MOUSEMOTION and self._slider_dragging[i]:
                     w = r.width - 4
@@ -427,7 +511,11 @@ class ColorPicker:
                         keys = ["r", "g", "b", "a"]
                         self._get_active_colors()[keys[i]] = self._slider_values[i]
                         if i < 3:
-                            self.field.set_rgb(self._slider_values[0], self._slider_values[1], self._slider_values[2])
+                            self.field.set_rgb(
+                                self._slider_values[0],
+                                self._slider_values[1],
+                                self._slider_values[2],
+                            )
                 if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     self._slider_dragging[i] = False
         return False
@@ -450,7 +538,10 @@ class ColorPicker:
         self._slider_values = [colors["r"], colors["g"], colors["b"], colors["a"]]
 
     def sync_to_config(self, config: Dict[str, object]):
-        for prefix, colors in [("start_color", self.start_colors), ("end_color", self.end_colors)]:
+        for prefix, colors in [
+            ("start_color", self.start_colors),
+            ("end_color", self.end_colors),
+        ]:
             config[f"{prefix}_r"] = colors["r"]
             config[f"{prefix}_g"] = colors["g"]
             config[f"{prefix}_b"] = colors["b"]
@@ -464,10 +555,12 @@ class ColorPicker:
             tab_bg = (50, 60, 80) if is_active else (35, 38, 42)
             pygame.draw.rect(screen, tab_bg, tr, border_radius=3)
             pygame.draw.rect(screen, (60, 64, 69), tr, 1, border_radius=3)
-            t = pygame.font.SysFont("Arial", 12, bold=is_active).render(label, True, (220, 220, 220))
+            t = pygame.font.SysFont("Arial", 12, bold=is_active).render(
+                label, True, (220, 220, 220)
+            )
             screen.blit(t, t.get_rect(center=tr.center))
 
-        colors = self._get_active_colors()
+        self._get_active_colors()
         for i in range(2):
             sr = self._swatch_rect(i)
             c = self.start_colors if i == 0 else self.end_colors
@@ -514,7 +607,8 @@ class ParticleConfigDialog:
         self.rect = Rect(
             (editor.width - w) // 2,
             (editor.height - h) // 2,
-            w, h,
+            w,
+            h,
         )
 
         self.scroll_y = 0
@@ -524,7 +618,9 @@ class ParticleConfigDialog:
 
         self.sliders: List[Tuple[str, Slider]] = []
         self.dropdowns: List[Tuple[str, Dropdown]] = []
-        self.color_picker = ColorPicker(Rect(self.rect.x + 10, 0, self.rect.width - 20, 240))
+        self.color_picker = ColorPicker(
+            Rect(self.rect.x + 10, 0, self.rect.width - 20, 240)
+        )
         self._slider_base_y: Dict[str, int] = {}
         self._dropdown_base_y: Dict[str, int] = {}
         self._section_positions: List[Tuple[int, str]] = []
@@ -548,7 +644,7 @@ class ParticleConfigDialog:
             sl = Slider(sr, lbl, mn, mx, val, "{:.1f}" if mn < 1 else "{:.0f}")
             self.sliders.append((key, sl))
             self._slider_base_y[key] = y
-            l = self.font_label.render(lbl, True, (180, 180, 180))
+            self.font_label.render(lbl, True, (180, 180, 180))
             y += ROW_H
 
         def add_dropdown(key: str, opts: List[str]):
@@ -620,11 +716,15 @@ class ParticleConfigDialog:
                     return True
 
             if event.button == 4:
-                max_scroll = max(0, self._get_content_height() - (self.rect.height - 80))
+                max_scroll = max(
+                    0, self._get_content_height() - (self.rect.height - 80)
+                )
                 self.scroll_y = max(0, self.scroll_y - 20)
                 return True
             if event.button == 5:
-                max_scroll = max(0, self._get_content_height() - (self.rect.height - 80))
+                max_scroll = max(
+                    0, self._get_content_height() - (self.rect.height - 80)
+                )
                 self.scroll_y = min(max_scroll, self.scroll_y + 20)
                 return True
 
@@ -662,7 +762,12 @@ class ParticleConfigDialog:
         title = self.font_title.render("Particle Emitter Config", True, (255, 255, 255))
         screen.blit(title, (self.rect.x + 14, self.rect.y + 14))
 
-        content_rect = Rect(self.rect.x + 4, self.rect.y + 42, self.rect.width - 8, self.rect.height - 84)
+        content_rect = Rect(
+            self.rect.x + 4,
+            self.rect.y + 42,
+            self.rect.width - 8,
+            self.rect.height - 84,
+        )
         clip = screen.get_clip()
         screen.set_clip(content_rect)
 
@@ -691,13 +796,11 @@ class ParticleConfigDialog:
             screen.blit(l, (self.rect.x + CONTENT_X, draw_y + 2))
             sl.draw(screen, (70, 130, 220))
 
-        # Draw color picker at its scrolled position
         colors_base_y = self._colors_y
         cp_y = cy + (colors_base_y - self.rect.y - 44)
         self.color_picker.rect.y = int(cp_y)
         self.color_picker.draw(screen)
 
-        # Draw open dropdown options on top of sliders
         for _key, dd in self.dropdowns:
             dd.draw_options(screen)
 

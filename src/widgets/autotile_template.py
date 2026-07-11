@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List, Tuple, Set
 if TYPE_CHECKING:
     from .autotiler import AutotileRule
 
-# Directions mapping for convenience
+
 U = (0, -1)
 D = (0, 1)
 L = (-1, 0)
@@ -21,10 +21,9 @@ class TemplateDefinition:
         self, name: str, mappings: List[Tuple[int, int, Set[Tuple[int, int]]]]
     ):
         self.name = name
-        self.mappings = mappings  # List of (rel_col, rel_row, neighbor_set)
+        self.mappings = mappings
 
 
-# Preset Templates
 TEMPLATES = [
     TemplateDefinition(
         "Standard 3x3 (Cardinal)",
@@ -63,7 +62,7 @@ class AutotileTemplateApplier:
         self.active_templates = self._get_active_templates()
         self.rect.height = len(self.active_templates) * 25 + 10
         self.rect.topleft = pos
-        # Keep on screen
+
         if self.rect.bottom > self.designer.editor.height:
             self.rect.bottom = self.designer.editor.height
         if self.rect.right > self.designer.editor.width:
@@ -74,7 +73,6 @@ class AutotileTemplateApplier:
     def _get_active_templates(self) -> List[TemplateDefinition]:
         all_templates = list(TEMPLATES)
 
-        # Dynamic templates from existing rules
         rules_by_ts = {}
         ts_widget = getattr(self.designer.editor, "tileset_widget", None)
         if not ts_widget:
@@ -89,8 +87,7 @@ class AutotileTemplateApplier:
 
         for ts_idx, rules in rules_by_ts.items():
             ts_name = ts_widget.tilesets[ts_idx].name
-            # Don't offer the current tileset as a template for itself if it has rules
-            # Actually, offering it might be useful for repeating patterns, but usually not.
+
             if ts_idx == ts_widget.active_idx:
                 continue
 
@@ -166,12 +163,10 @@ class AutotileTemplateApplier:
         if not ts:
             return
 
-        # Check if a group is selected
         if self.designer.selected_group_idx == -1:
             print("Template Error: No group selected. Please select a group first.")
             return
 
-        # Use the currently selected group
         target_group = self.designer.groups[self.designer.selected_group_idx]
 
         rx, ry, rw, rh = tile_selector.selected_tile
@@ -194,33 +189,28 @@ class AutotileTemplateApplier:
 
             ts_index = tile_selector.active_idx
 
-            # Check for existing rule in THIS group with EXACT same neighbors and tileset
             matched_rule = None
             for r in target_group.rules:
-                # Must match both neighbors AND tileset to be considered the same rule
                 if r.neighbors == neighbors and r.tileset_index == ts_index:
                     matched_rule = r
                     break
 
             if matched_rule:
-                # Only add variant if it's not already there
                 if vid not in matched_rule.variant_ids:
                     matched_rule.variant_ids.append(vid)
                     updated_count += 1
             else:
-                # Create a new rule with a unique name
                 rule_num = len(target_group.rules) + 1
                 rule_name = f"Rule {rule_num}"
-                
-                # Ensure unique name
+
                 existing_names = {r.name for r in target_group.rules}
                 while rule_name in existing_names:
                     rule_num += 1
                     rule_name = f"Rule {rule_num}"
-                
+
                 new_rule = AutotileRule(
                     name=rule_name,
-                    neighbors=set(neighbors),  # Create a new set to avoid reference issues
+                    neighbors=set(neighbors),
                     tileset_path=str(ts.path),
                     variant_ids=[vid],
                     tileset_index=ts_index,

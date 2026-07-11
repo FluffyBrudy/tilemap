@@ -128,7 +128,6 @@ class Toolbar:
                 screen, COLORS.border_soft, r, 1, border_radius=SHAPE.radius_sm
             )
 
-            # Draw icon if available (lookup by button key), otherwise use text
             if icon_manager.has_icon(key):
                 icon = icon_manager.get_icon(key, 16, COLORS.text)
                 screen.blit(icon, icon.get_rect(center=r.center))
@@ -149,7 +148,11 @@ class Toolbar:
                 elif key == "auto":
                     tip = "Auto-Autotile"
                 elif key == "nodes":
-                    tip = "Show Nodes (Ctrl+Shift+N for Edit mode)" if not self.editor.show_nodes else "Hide Nodes"
+                    tip = (
+                        "Show Nodes (Ctrl+Shift+N for Edit mode)"
+                        if not self.editor.show_nodes
+                        else "Hide Nodes"
+                    )
                 elif key == "zoom_in":
                     tip = "Zoom In (Ctrl+Wheel)"
                 elif key == "zoom_out":

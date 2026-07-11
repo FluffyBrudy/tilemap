@@ -63,7 +63,7 @@ class TypeTilesetSerialized(TypedDict, total=True):
     path: str
     type: str
     properties: NotRequired[Dict[str, Any]]
-    tile_properties: NotRequired[Dict[str, Dict[str, Any]]]  # variant_id string -> properties
+    tile_properties: NotRequired[Dict[str, Dict[str, Any]]]
     animation: NotRequired[dict]
 
 

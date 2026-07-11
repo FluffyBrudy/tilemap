@@ -32,7 +32,7 @@ from widgets.ui.theme import COLORS, FONTS
 from widgets.ui.draw_utils import draw_panel, draw_button
 from widgets.ui.checkbox import Checkbox
 
-# Widget panel layout constants
+
 WP_PADDING_X = 12
 WP_PADDING_Y = 38
 WP_SECTION_HEIGHT = 28
@@ -59,7 +59,6 @@ class TilesetCollisionEditor:
         self.consumer = consumer
         self.visible = True
 
-        # Resolve tileset from provider or direct arg
         if provider is not None:
             self._provider = provider
             self._tileset_surface = provider.get_surface()
@@ -76,34 +75,26 @@ class TilesetCollisionEditor:
             self._tile_size = tile_size
             self._tileset_name = "No Tileset"
 
-        # Clipboard for copy/paste
         self._clipboard_polygons: List[List[Tuple[float, float]]] = []
         self._clipboard_one_way_flags: List[bool] = []
         self._toast_message: Optional[str] = None
         self._toast_timer: float = 0.0
         self._toast_start: int = 0
 
-        # Auto-tile propagation: group_id -> [variant_ids]
         self._propagation_groups: Dict[str, List[int]] = {}
 
-        # Tiles the user explicitly cleared — propagation won't re-add to these
         self._user_cleared_tiles: Set[int] = set()
 
-        # Collision library
         self.library = TilesetCollisionLibrary(
-            tileset_name=self._tileset_name,
-            tile_size=self._tile_size
+            tileset_name=self._tileset_name, tile_size=self._tile_size
         )
-        
-        # Selected tiles (can select multiple from tileset selector)
+
         self._selected_tiles: Set[int] = {0}
-        
-        # Calculate tile grid
+
         self._recalc_tile_grid()
 
-        # UI layout
         self.toolbar_height = 40
-        self.tileset_selector_height = 250  # Resizable
+        self.tileset_selector_height = 250
         self.painted_tiles_width = 200
         self.widget_panel_width = 200
         self._resizing_selector = False
@@ -112,7 +103,6 @@ class TilesetCollisionEditor:
 
         self._update_layout()
 
-        # Tileset selector state
         self.tileset_scroll_x = 0
         self.tileset_scroll_y = 0
         self.tileset_zoom = 2.0
@@ -121,32 +111,28 @@ class TilesetCollisionEditor:
         self._tileset_pan_start_offset = (0, 0)
         self._space_held = False
 
-        # Painted tiles list state
         self.painted_tiles_scroll = 0
         self.painted_tiles_hover = -1
         self._painted_tiles_focused = False
 
-        # Collision painter
         self.painter = CollisionPainter(
-            self.painter_rect,
-            self._get_tile_surface(0),
-            self._tile_size
+            self.painter_rect, self._get_tile_surface(0), self._tile_size
         )
         self.painter.on_polygon_added = self._on_polygon_added
         self.painter.on_polygon_removed = self._on_polygon_removed
         self.painter.on_polygon_modified = self._on_polygon_modified
 
-        # Fonts
-        self._font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
-        self._font_sm = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
+        self._font = font_manager.get_font(
+            FONTS.name, FONTS.size_md, FontWeight.REGULAR
+        )
+        self._font_sm = font_manager.get_font(
+            FONTS.name, FONTS.size_sm, FontWeight.REGULAR
+        )
 
-        # Toolbar buttons
         self._setup_toolbar_buttons()
 
-        # Widget panel buttons
         self._setup_widget_buttons()
 
-        # Load collision data for first tile
         self._load_tile_collision_for_selection()
 
     def _setup_toolbar_buttons(self) -> None:
@@ -162,31 +148,37 @@ class TilesetCollisionEditor:
         ]
 
         for i, config in enumerate(buttons_config):
-            self._toolbar_buttons.append({
-                "label": config["label"],
-                "action": config["action"],
-                "rect": Rect(0, 0, 80, 28),
-                "hovered": False,
-            })
+            self._toolbar_buttons.append(
+                {
+                    "label": config["label"],
+                    "action": config["action"],
+                    "rect": Rect(0, 0, 80, 28),
+                    "hovered": False,
+                }
+            )
 
     def _setup_widget_buttons(self) -> None:
         """Setup widget panel buttons"""
         self._chk_one_way = Checkbox(
-            Rect(0, 0, 0, 0), "One-Way",
+            Rect(0, 0, 0, 0),
+            "One-Way",
             disabled=True,
             on_changed=lambda _: self.painter.toggle_one_way(),
         )
         self._chk_angle = Checkbox(
-            Rect(0, 0, 0, 0), "Angle Hints",
+            Rect(0, 0, 0, 0),
+            "Angle Hints",
             on_changed=lambda v: setattr(self.painter, "show_angle_hints", v),
         )
         self._chk_grid = Checkbox(
-            Rect(0, 0, 0, 0), "Grid",
+            Rect(0, 0, 0, 0),
+            "Grid",
             checked=True,
             on_changed=lambda v: setattr(self.painter, "show_grid", v),
         )
         self._chk_snap = Checkbox(
-            Rect(0, 0, 0, 0), "Snap to Grid",
+            Rect(0, 0, 0, 0),
+            "Snap to Grid",
             on_changed=lambda v: setattr(self.painter, "snap_to_grid", v),
         )
 
@@ -207,14 +199,14 @@ class TilesetCollisionEditor:
         """Save collision via toolbar button"""
         collision_dir = self._get_collision_dir()
         collision_dir.mkdir(parents=True, exist_ok=True)
-        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+        stem = getattr(self, "_tileset_path_stem", self._tileset_name)
         save_path = collision_dir / f"{stem}.collision.json"
         self.save_to_file(save_path)
 
     def _load_collision(self) -> None:
         """Load collision via toolbar button"""
         collision_dir = self._get_collision_dir()
-        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+        stem = getattr(self, "_tileset_path_stem", self._tileset_name)
         load_path = collision_dir / f"{stem}.collision.json"
         if load_path.exists():
             self.load_from_file(load_path)
@@ -222,7 +214,9 @@ class TilesetCollisionEditor:
     def _get_collision_dir(self) -> Path:
         """Get collision directory path"""
         if self._data_root is None:
-            raise RuntimeError("data_root is required. Initialize via from_path() with data_root parameter.")
+            raise RuntimeError(
+                "data_root is required. Initialize via from_path() with data_root parameter."
+            )
         return self._data_root / "collision"
 
     def _clear_current(self) -> None:
@@ -250,7 +244,9 @@ class TilesetCollisionEditor:
         self._save_tile_collision_for_selection()
         tile_count = len(self._selected_tiles)
         shape_count = len(self._clipboard_polygons)
-        self._show_toast(f"Pasted {shape_count} shape{'s' if shape_count != 1 else ''} to {tile_count} tile{'s' if tile_count != 1 else ''}")
+        self._show_toast(
+            f"Pasted {shape_count} shape{'s' if shape_count != 1 else ''} to {tile_count} tile{'s' if tile_count != 1 else ''}"
+        )
 
     def _layout_widget_panel(self) -> None:
         """Pre-compute clickable widget rects (checkbox + grid buttons)"""
@@ -269,7 +265,9 @@ class TilesetCollisionEditor:
             elif kind == "grid_val":
                 self._grid_val_rect = Rect(px, y, 0, WP_GRID_BTN)
             elif kind == "grid_inc":
-                self._grid_inc_rect = Rect(px + WP_GRID_GAP, y, WP_GRID_BTN, WP_GRID_BTN)
+                self._grid_inc_rect = Rect(
+                    px + WP_GRID_GAP, y, WP_GRID_BTN, WP_GRID_BTN
+                )
                 y += WP_GRID_ROW
 
     def _sync_widget_state(self) -> None:
@@ -291,9 +289,8 @@ class TilesetCollisionEditor:
         self._sync_widget_state()
         self._layout_widget_panel()
         painter = self.painter
-        mouse = pygame.mouse.get_pos()
+        pygame.mouse.get_pos()
 
-        # Pass click events to checkboxes
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos = event.pos
@@ -312,7 +309,7 @@ class TilesetCollisionEditor:
 
     def _position_toolbar_buttons(self) -> None:
         """Position toolbar buttons in the toolbar area"""
-        if not hasattr(self, '_toolbar_buttons'):
+        if not hasattr(self, "_toolbar_buttons"):
             return
 
         start_x = self.toolbar_rect.right - (len(self._toolbar_buttons) * 90) - 10
@@ -328,7 +325,7 @@ class TilesetCollisionEditor:
         mouse_pos = pygame.mouse.get_pos()
 
         for button in self._toolbar_buttons:
-            was_hovered = button["hovered"]
+            button["hovered"]
             button["hovered"] = button["rect"].collidepoint(mouse_pos)
 
             for event in events:
@@ -380,7 +377,9 @@ class TilesetCollisionEditor:
 
             elif kind == "grid_val":
                 self._grid_val_rect = Rect(px, y, 0, WP_GRID_BTN)
-                val_surf = self._font_sm.render(str(painter.grid_size), True, COLORS.text)
+                val_surf = self._font_sm.render(
+                    str(painter.grid_size), True, COLORS.text
+                )
                 vx = px + WP_GRID_BTN + 8
                 vy = y + (WP_GRID_BTN - val_surf.get_height()) // 2
                 surface.blit(val_surf, (vx, vy))
@@ -406,53 +405,41 @@ class TilesetCollisionEditor:
 
     def _update_layout(self) -> None:
         """Update layout rects based on current sizes"""
-        # Toolbar at top
+
         self.toolbar_rect = Rect(
-            self.rect.x,
-            self.rect.y,
-            self.rect.w,
-            self.toolbar_height
+            self.rect.x, self.rect.y, self.rect.w, self.toolbar_height
         )
 
-        # Tileset selector at bottom
         self.tileset_selector_rect = Rect(
             self.rect.x,
             self.rect.bottom - self.tileset_selector_height,
             self.rect.w,
-            self.tileset_selector_height
+            self.tileset_selector_height,
         )
 
-        # Resize handle above tileset selector
         self.resize_handle_rect = Rect(
-            self.rect.x,
-            self.tileset_selector_rect.y - 4,
-            self.rect.w,
-            8
+            self.rect.x, self.tileset_selector_rect.y - 4, self.rect.w, 8
         )
 
-        # Middle area (painter + painted tiles list)
         middle_y = self.rect.y + self.toolbar_height
         middle_h = self.rect.h - self.toolbar_height - self.tileset_selector_height
 
         self.painted_tiles_rect = Rect(
-            self.rect.x,
-            middle_y,
-            self.painted_tiles_width,
-            middle_h
+            self.rect.x, middle_y, self.painted_tiles_width, middle_h
         )
 
         self.painter_rect = Rect(
             self.rect.x + self.painted_tiles_width,
             middle_y,
             self.rect.w - self.painted_tiles_width - self.widget_panel_width,
-            middle_h
+            middle_h,
         )
 
         self.widget_panel_rect = Rect(
             self.rect.right - self.widget_panel_width,
             middle_y,
             self.widget_panel_width,
-            middle_h
+            middle_h,
         )
 
     def _recalc_tile_grid(self) -> None:
@@ -478,16 +465,12 @@ class TilesetCollisionEditor:
         row = tile_id // self.tile_cols
 
         tile_surf = pygame.Surface(self._tile_size, pygame.SRCALPHA)
-        tile_surf.blit(
-            self._tileset_surface,
-            (0, 0),
-            (col * tw, row * th, tw, th)
-        )
+        tile_surf.blit(self._tileset_surface, (0, 0), (col * tw, row * th, tw, th))
         return tile_surf
 
     def _load_tile_collision_for_selection(self) -> None:
         """Load collision data for selected tiles into painter.
-        
+
         If multiple tiles selected with same collision, show that.
         If different collision, show empty (ready to paint new).
         """
@@ -495,9 +478,8 @@ class TilesetCollisionEditor:
             self.painter.set_polygons([], [])
             return
 
-        # Get first selected tile's collision
         first_tile = min(self._selected_tiles)
-        
+
         if first_tile in self.library.tiles:
             tile_data = self.library.tiles[first_tile]
             polygons = [shape.vertices for shape in tile_data.shapes]
@@ -505,8 +487,7 @@ class TilesetCollisionEditor:
             self.painter.set_polygons(polygons, one_way_flags)
         else:
             self.painter.set_polygons([], [])
-        
-        # Update painter tile surface to show first selected
+
         self.painter.tile_surface = self._get_tile_surface(first_tile)
 
     def _save_tile_collision_for_selection(self) -> None:
@@ -516,23 +497,20 @@ class TilesetCollisionEditor:
 
         for tile_id in self._selected_tiles:
             if not polygons:
-                # Remove tile data if no polygons
                 if tile_id in self.library.tiles:
                     del self.library.tiles[tile_id]
                     if self.consumer:
                         self.consumer.on_collision_deleted(tile_id)
-                # Mark as user-cleared so propagation doesn't re-add it
+
                 self._user_cleared_tiles.add(tile_id)
             else:
-                # User painted collision — remove from cleared set
                 self._user_cleared_tiles.discard(tile_id)
-                # Create collision shapes
+
                 shapes = [
                     CollisionPolygon(vertices=poly, one_way=one_way)
                     for poly, one_way in zip(polygons, one_way_flags)
                 ]
 
-                # Save to library
                 tile_data = TileCollisionData(tile_id=tile_id, shapes=shapes)
                 self.library.tiles[tile_id] = tile_data
 
@@ -565,7 +543,11 @@ class TilesetCollisionEditor:
         elapsed = pygame.time.get_ticks() - self._toast_start
         remaining = self._toast_timer - elapsed
         fade_ms = 500.0
-        alpha = 255 if remaining >= fade_ms else max(0, min(255, int((remaining / fade_ms) * 255)))
+        alpha = (
+            255
+            if remaining >= fade_ms
+            else max(0, min(255, int((remaining / fade_ms) * 255)))
+        )
         label = self._font.render(self._toast_message, True, (255, 255, 255))
         padding = 12
         bg_rect = Rect(
@@ -594,20 +576,17 @@ class TilesetCollisionEditor:
         self._update_layout()
         self.painter.resize(self.painter_rect)
 
-    def load_tileset(self, surface: Surface, tile_size: Tuple[int, int], name: str = "Tileset") -> None:
+    def load_tileset(
+        self, surface: Surface, tile_size: Tuple[int, int], name: str = "Tileset"
+    ) -> None:
         """Load a new tileset"""
         self._tileset_surface = surface
         self._tile_size = tile_size
         self._tileset_name = name
         self._recalc_tile_grid()
 
-        # Reset library
-        self.library = TilesetCollisionLibrary(
-            tileset_name=name,
-            tile_size=tile_size
-        )
+        self.library = TilesetCollisionLibrary(tileset_name=name, tile_size=tile_size)
 
-        # Reset selection
         self._selected_tiles = {0}
         self.painter.tile_surface = self._get_tile_surface(0)
         self.painter.tile_size = tile_size
@@ -625,7 +604,7 @@ class TilesetCollisionEditor:
         """Save collision data to file, auto-propagating within auto-tile groups."""
         try:
             self._save_tile_collision_for_selection()
-            # self._propagate_collision_to_groups()  # disabled — auto-copies collision to all autotile variants, breaks per-variant shapes
+
             self.library.save(path)
         except Exception as e:
             error_handler.capture(e, context="save_collision_file")
@@ -642,7 +621,6 @@ class TilesetCollisionEditor:
 
         propagated_count = 0
         for group_id, variant_ids in self._propagation_groups.items():
-            # Find the first tile in this group that has collision shapes
             source_shapes = None
             for vid in variant_ids:
                 tile_data = self.library.tiles.get(vid)
@@ -653,8 +631,6 @@ class TilesetCollisionEditor:
             if source_shapes is None:
                 continue
 
-            # Propagate to all variants in the group that lack collision
-            # Skip tiles the user explicitly cleared
             for vid in variant_ids:
                 if vid in self._user_cleared_tiles:
                     continue
@@ -662,15 +638,20 @@ class TilesetCollisionEditor:
                 if existing is None:
                     self.library.tiles[vid] = TileCollisionData(
                         tile_id=vid,
-                        shapes=[CollisionPolygon(
-                            vertices=list(s.vertices),
-                            one_way=s.one_way,
-                        ) for s in source_shapes],
+                        shapes=[
+                            CollisionPolygon(
+                                vertices=list(s.vertices),
+                                one_way=s.one_way,
+                            )
+                            for s in source_shapes
+                        ],
                     )
                     propagated_count += 1
 
         if propagated_count:
-            self._show_toast(f"Propagated collision to {propagated_count} auto-tile variants")
+            self._show_toast(
+                f"Propagated collision to {propagated_count} auto-tile variants"
+            )
 
     def load_from_file(self, path: Path) -> None:
         """Load collision data from file"""
@@ -685,13 +666,11 @@ class TilesetCollisionEditor:
         if not self.visible:
             return False
 
-        # Let painter handle events first
         if self.painter.handle_event(event):
             return True
 
         mouse = pygame.mouse.get_pos()
 
-        # Resize handle
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.resize_handle_rect.collidepoint(mouse):
                 self._resizing_selector = True
@@ -713,12 +692,11 @@ class TilesetCollisionEditor:
                 self.painter.resize(self.painter_rect)
                 return True
 
-        # Track space key for panning
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self._space_held = True
                 return True
-        
+
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_SPACE:
                 self._space_held = False
@@ -726,22 +704,26 @@ class TilesetCollisionEditor:
                     self._tileset_panning = False
                 return True
 
-        # Tileset selector interaction
         if self.tileset_selector_rect.collidepoint(mouse):
-            # Middle mouse OR Space+Left mouse to pan
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 2 or (event.button == 1 and self._space_held):
                     self._tileset_panning = True
                     self._tileset_pan_start = mouse
-                    self._tileset_pan_start_offset = (self.tileset_scroll_x, self.tileset_scroll_y)
+                    self._tileset_pan_start_offset = (
+                        self.tileset_scroll_x,
+                        self.tileset_scroll_y,
+                    )
                     return True
 
-            # Left click to select tile (only if not panning)
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self._space_held:
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and not self._space_held
+            ):
                 tile_id = self._get_tile_at_mouse(mouse)
                 if tile_id is not None:
                     self._painted_tiles_focused = False
-                    # Ctrl/Cmd for multi-select
+
                     mods = pygame.key.get_mods()
                     if mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA):
                         if tile_id in self._selected_tiles:
@@ -750,11 +732,10 @@ class TilesetCollisionEditor:
                             self._selected_tiles.add(tile_id)
                     else:
                         self._selected_tiles = {tile_id}
-                    
+
                     self._load_tile_collision_for_selection()
                     return True
 
-            # Mouse wheel to zoom
             if event.type == pygame.MOUSEWHEEL:
                 self.tileset_zoom *= 1.15 if event.y > 0 else 0.87
                 self.tileset_zoom = max(0.5, min(self.tileset_zoom, 8.0))
@@ -776,7 +757,6 @@ class TilesetCollisionEditor:
                 self.tileset_scroll_y = max(0, self.tileset_scroll_y)
                 return True
 
-        # Painted tiles list interaction
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.painted_tiles_rect.collidepoint(mouse):
                 self._painted_tiles_focused = True
@@ -790,14 +770,12 @@ class TilesetCollisionEditor:
                     self._load_tile_collision_for_selection()
                 return True
 
-        # Painted tiles list scrolling
         if event.type == pygame.MOUSEWHEEL:
             if self.painted_tiles_rect.collidepoint(mouse):
                 self.painted_tiles_scroll -= event.y * 30
                 self.painted_tiles_scroll = max(0, self.painted_tiles_scroll)
                 return True
 
-        # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
@@ -843,20 +821,17 @@ class TilesetCollisionEditor:
         """Recenter the tileset view to show the whole tileset"""
         if self._tileset_surface is None:
             return
-        
-        # Calculate tileset dimensions at current zoom
+
         tw = int(self._tile_size[0] * self.tileset_zoom)
         th = int(self._tile_size[1] * self.tileset_zoom)
         tileset_w = self.tile_cols * tw
         tileset_h = self.tile_rows * th
-        
-        # Center horizontally
+
         if tileset_w < self.tileset_selector_rect.w:
             self.tileset_scroll_x = 0
         else:
             self.tileset_scroll_x = (tileset_w - self.tileset_selector_rect.w) // 2
-        
-        # Center vertically
+
         if tileset_h < self.tileset_selector_rect.h:
             self.tileset_scroll_y = 0
         else:
@@ -867,28 +842,20 @@ class TilesetCollisionEditor:
         if not self.visible:
             return
 
-        # Draw toolbar
         self._draw_toolbar(screen)
 
-        # Draw painted tiles list
         self._draw_painted_tiles_list(screen)
 
-        # Draw painter
         self.painter.draw(screen)
 
-        # Draw resize handle
         self._draw_resize_handle(screen)
 
-        # Draw tileset selector
         self._draw_tileset_selector(screen)
 
-        # Draw widget panel
         self._draw_widget_panel(screen)
 
-        # Draw toast overlay
         self._draw_toast(screen)
 
-        # Update toast timer
         if self._toast_message is not None:
             elapsed = pygame.time.get_ticks() - self._toast_start
             if elapsed >= self._toast_timer:
@@ -898,39 +865,44 @@ class TilesetCollisionEditor:
         """Draw the toolbar"""
         draw_panel(screen, self.toolbar_rect, COLORS.header, COLORS.border)
 
-        # Title
         selected_str = f"{len(self._selected_tiles)} tile{'s' if len(self._selected_tiles) != 1 else ''} selected"
         title = self._font.render(
             f"Tileset Collision Editor — {self._tileset_name} — {selected_str}",
             True,
-            COLORS.text
+            COLORS.text,
         )
         screen.blit(title, (self.toolbar_rect.x + 10, self.toolbar_rect.y + 10))
 
-        # Draw toolbar buttons
-        if hasattr(self, '_toolbar_buttons'):
+        if hasattr(self, "_toolbar_buttons"):
             self._draw_toolbar_buttons(screen)
 
-        # Collision count (after buttons to avoid overlap)
         collision_count = len(self.library.tiles)
         count_text = self._font_sm.render(
-            f"{collision_count} painted",
-            True,
-            COLORS.text_dim
+            f"{collision_count} painted", True, COLORS.text_dim
         )
         start_x = self.toolbar_rect.right - (len(self._toolbar_buttons) * 90) - 10
-        screen.blit(count_text, (start_x - count_text.get_width() - 15, self.toolbar_rect.y + 12))
+        screen.blit(
+            count_text,
+            (start_x - count_text.get_width() - 15, self.toolbar_rect.y + 12),
+        )
 
     def _draw_painted_tiles_list(self, screen: Surface) -> None:
         """Draw the list of tiles with collision"""
         draw_panel(screen, self.painted_tiles_rect, COLORS.panel, COLORS.border)
 
-        # Header
         header_text = self._font_sm.render("Painted Tiles", True, COLORS.text)
-        screen.blit(header_text, (self.painted_tiles_rect.x + 8, self.painted_tiles_rect.y + 8))
+        screen.blit(
+            header_text, (self.painted_tiles_rect.x + 8, self.painted_tiles_rect.y + 8)
+        )
         if self._painted_tiles_focused:
             hint = self._font_sm.render("Backspace to clear", True, COLORS.accent)
-            screen.blit(hint, (self.painted_tiles_rect.right - hint.get_width() - 8, self.painted_tiles_rect.y + 8))
+            screen.blit(
+                hint,
+                (
+                    self.painted_tiles_rect.right - hint.get_width() - 8,
+                    self.painted_tiles_rect.y + 8,
+                ),
+            )
 
         clip = screen.get_clip()
         screen.set_clip(self.painted_tiles_rect)
@@ -946,19 +918,21 @@ class TilesetCollisionEditor:
             if y > self.painted_tiles_rect.bottom:
                 break
 
-            tile_rect = Rect(self.painted_tiles_rect.x, y, self.painted_tiles_rect.w, tile_height)
+            tile_rect = Rect(
+                self.painted_tiles_rect.x, y, self.painted_tiles_rect.w, tile_height
+            )
 
-            # Background
-            is_selected = (tile_id in self._selected_tiles)
+            is_selected = tile_id in self._selected_tiles
             bg_color = COLORS.selected if is_selected else COLORS.panel_alt
 
             pygame.draw.rect(screen, bg_color, tile_rect)
             pygame.draw.rect(screen, COLORS.border_soft, tile_rect, 1)
 
-            # Tile preview
             tile_surf = self._get_tile_surface(tile_id)
             preview_size = 48
-            scale = min(preview_size / self._tile_size[0], preview_size / self._tile_size[1])
+            scale = min(
+                preview_size / self._tile_size[0], preview_size / self._tile_size[1]
+            )
             scaled_w = int(self._tile_size[0] * scale)
             scaled_h = int(self._tile_size[1] * scale)
             scaled_surf = pygame.transform.scale(tile_surf, (scaled_w, scaled_h))
@@ -967,16 +941,14 @@ class TilesetCollisionEditor:
             preview_y = tile_rect.y + (tile_height - scaled_h) // 2
             screen.blit(scaled_surf, (preview_x, preview_y))
 
-            # Tile ID
             id_text = self._font.render(str(tile_id), True, COLORS.text)
             screen.blit(id_text, (preview_x + scaled_w + 10, tile_rect.y + 8))
 
-            # Shape count
             shape_count = len(self.library.tiles[tile_id].shapes)
             coll_text = self._font_sm.render(
                 f"{shape_count} shape{'s' if shape_count != 1 else ''}",
                 True,
-                COLORS.accent
+                COLORS.accent,
             )
             screen.blit(coll_text, (preview_x + scaled_w + 10, tile_rect.y + 30))
 
@@ -987,18 +959,22 @@ class TilesetCollisionEditor:
     def _draw_resize_handle(self, screen: Surface) -> None:
         """Draw the resize handle"""
         mouse = pygame.mouse.get_pos()
-        is_hover = self.resize_handle_rect.collidepoint(mouse) or self._resizing_selector
-        
+        is_hover = (
+            self.resize_handle_rect.collidepoint(mouse) or self._resizing_selector
+        )
+
         color = COLORS.accent if is_hover else COLORS.border_soft
         pygame.draw.rect(screen, color, self.resize_handle_rect)
-        
-        # Draw grip lines
+
         center_y = self.resize_handle_rect.centery
         for i in range(-1, 2):
             y = center_y + i * 2
-            pygame.draw.line(screen, COLORS.text_dim, 
-                           (self.resize_handle_rect.x + 10, y),
-                           (self.resize_handle_rect.right - 10, y))
+            pygame.draw.line(
+                screen,
+                COLORS.text_dim,
+                (self.resize_handle_rect.x + 10, y),
+                (self.resize_handle_rect.right - 10, y),
+            )
 
     def _draw_tileset_selector(self, screen: Surface) -> None:
         """Draw the tileset selector"""
@@ -1013,46 +989,49 @@ class TilesetCollisionEditor:
         tw = int(self._tile_size[0] * self.tileset_zoom)
         th = int(self._tile_size[1] * self.tileset_zoom)
 
-        # Draw tiles
         for row in range(self.tile_rows):
             for col in range(self.tile_cols):
                 tile_id = row * self.tile_cols + col
-                
+
                 x = self.tileset_selector_rect.x + col * tw - self.tileset_scroll_x
                 y = self.tileset_selector_rect.y + row * th - self.tileset_scroll_y
 
-                # Skip if outside visible area
-                if x + tw < self.tileset_selector_rect.x or x > self.tileset_selector_rect.right:
+                if (
+                    x + tw < self.tileset_selector_rect.x
+                    or x > self.tileset_selector_rect.right
+                ):
                     continue
-                if y + th < self.tileset_selector_rect.y or y > self.tileset_selector_rect.bottom:
+                if (
+                    y + th < self.tileset_selector_rect.y
+                    or y > self.tileset_selector_rect.bottom
+                ):
                     continue
 
                 tile_rect = Rect(x, y, tw, th)
 
-                # Draw tile
                 tile_surf = self._get_tile_surface(tile_id)
                 if tw != self._tile_size[0] or th != self._tile_size[1]:
                     tile_surf = pygame.transform.scale(tile_surf, (tw, th))
                 screen.blit(tile_surf, (x, y))
 
-                # Highlight selected tiles
                 if tile_id in self._selected_tiles:
                     pygame.draw.rect(screen, COLORS.accent, tile_rect, 2)
 
-                # Highlight painted tiles
                 if tile_id in self.library.tiles:
-                    # Draw small indicator in corner
                     indicator_rect = Rect(x + tw - 8, y + 2, 6, 6)
                     pygame.draw.circle(screen, COLORS.accent, indicator_rect.center, 3)
 
-                # Grid
                 pygame.draw.rect(screen, COLORS.border_soft, tile_rect, 1)
 
         screen.set_clip(clip)
 
-        # Draw zoom indicator
-        zoom_text = self._font_sm.render(f"Zoom: {self.tileset_zoom:.1f}x", True, COLORS.text_dim)
-        screen.blit(zoom_text, (self.tileset_selector_rect.x + 8, self.tileset_selector_rect.y + 8))
+        zoom_text = self._font_sm.render(
+            f"Zoom: {self.tileset_zoom:.1f}x", True, COLORS.text_dim
+        )
+        screen.blit(
+            zoom_text,
+            (self.tileset_selector_rect.x + 8, self.tileset_selector_rect.y + 8),
+        )
 
     @classmethod
     def from_path(
@@ -1069,7 +1048,7 @@ class TilesetCollisionEditor:
         editor = cls(rect, surface, tile_size)
         editor._data_root = data_root
         editor._tileset_path_stem = tileset_path.stem
-        editor._tileset_name = tileset_path.stem  # Use actual filename, not "Tileset"
+        editor._tileset_name = tileset_path.stem
         editor.library.tileset_name = tileset_path.stem
         editor._propagation_groups = propagation_groups or {}
         return editor
@@ -1080,7 +1059,6 @@ class TilesetCollisionEditor:
         if screen is None:
             raise RuntimeError("pygame display not initialized")
 
-        # Position thorpy toolbar
         self._position_toolbar_buttons()
 
         clock = pygame.time.Clock()
@@ -1099,21 +1077,23 @@ class TilesetCollisionEditor:
                     ):
                         collision_dir = self._get_collision_dir()
                         collision_dir.mkdir(parents=True, exist_ok=True)
-                        stem = getattr(self, '_tileset_path_stem', self._tileset_name)
+                        stem = getattr(self, "_tileset_path_stem", self._tileset_name)
                         save_path = collision_dir / f"{stem}.collision.json"
                         self.save_to_file(save_path)
                     elif event.key == pygame.K_l and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
                         collision_dir = self._get_collision_dir()
-                        load_path = collision_dir / f"{getattr(self, '_tileset_path_stem', self._tileset_name)}.collision.json"
+                        load_path = (
+                            collision_dir
+                            / f"{getattr(self, '_tileset_path_stem', self._tileset_name)}.collision.json"
+                        )
                         if load_path.exists():
                             self.load_from_file(load_path)
                             print(f"Loaded collision data from {load_path}")
 
                 self.handle_event(event)
 
-            # Handle toolbar and widget button clicks
             self._handle_toolbar_button_clicks(events)
             self._handle_widget_button_clicks(events)
 

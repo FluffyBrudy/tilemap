@@ -7,15 +7,30 @@ from .theme import COLORS, SHAPE, FONTS
 
 
 class Button(WidgetBase):
-    def __init__(self, rect, text="", *,
-                 font=None, text_color=None, accent=False,
-                 bg=None, border_color=None,
-                 border_radius=None,
-                 on_click: Optional[Callable[[], None]] = None):
+    def __init__(
+        self,
+        rect,
+        text="",
+        *,
+        font=None,
+        text_color=None,
+        accent=False,
+        bg=None,
+        border_color=None,
+        border_radius=None,
+        on_click: Optional[Callable[[], None]] = None,
+    ):
         border_width = SHAPE.border
-        super().__init__(rect, padding=0, border_width=border_width,
-                         border_radius=border_radius if border_radius is not None else SHAPE.radius_sm,
-                         bg=bg, border_color=border_color)
+        super().__init__(
+            rect,
+            padding=0,
+            border_width=border_width,
+            border_radius=border_radius
+            if border_radius is not None
+            else SHAPE.radius_sm,
+            bg=bg,
+            border_color=border_color,
+        )
         self.text = text
         self.font = font or FONTS.get_medium_font()
         self._text_color = text_color
@@ -64,7 +79,11 @@ class Button(WidgetBase):
             border = COLORS.border
             text_color = self._text_color or COLORS.text
         else:
-            bg = self._bg if self._bg is not None else (COLORS.accent if self.accent else COLORS.panel_alt)
+            bg = (
+                self._bg
+                if self._bg is not None
+                else (COLORS.accent if self.accent else COLORS.panel_alt)
+            )
             border = self._border if self._border is not None else COLORS.border_soft
             text_color = self._text_color or COLORS.text
 
@@ -76,8 +95,7 @@ class Button(WidgetBase):
         rect = self.rect
         pygame.draw.rect(surface, bg, rect, border_radius=self.br)
         if self.bw:
-            pygame.draw.rect(surface, border, rect, self.bw,
-                             border_radius=self.br)
+            pygame.draw.rect(surface, border, rect, self.bw, border_radius=self.br)
 
         label = self.font.render(self.text, True, text_color)
         surface.blit(label, label.get_rect(center=rect.center))

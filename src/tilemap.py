@@ -65,18 +65,17 @@ class Tilemap:
     ):
         self.tile_size = tile_size
         self.map_size = map_size
-        self.initial_map_size = map_size  # Store what user initially setup
+        self.initial_map_size = map_size
         self.initialized = True
         self.render_scale = render_scale
         self.active_project_path = None
 
-        # Clear and create default layer
         self.layer_manager.layers.clear()
         self.layer_manager.create_layer("Layer 1", "tile")
         self.layer_manager.set_active_layer(0)
 
     def capture_history(self, description: str = "State Change"):
-        # Capture current full state
+
         designer = getattr(self.editor, "autotiler", None)
         groups_data = []
         if designer:
@@ -166,14 +165,12 @@ class Tilemap:
             return
 
         if is_pixel:
-            # For objects/pixel positions
             w, h = size if size else self.tile_size
             grid_r = int((pos[0] + w) / self.tile_size[0]) + 1
             grid_b = int((pos[1] + h) / self.tile_size[1]) + 1
             new_w = max(self.map_size[0], grid_r)
             new_h = max(self.map_size[1], grid_b)
         else:
-            # For grid positions
             new_w = max(self.map_size[0], pos[0] + 1)
             new_h = max(self.map_size[1], pos[1] + 1)
 
@@ -195,7 +192,7 @@ class Tilemap:
             if "groups" in state:
                 designer.groups = [AutotileGroup.from_dict(G) for G in state["groups"]]
                 designer.selected_group_idx = state.get("selected_group_idx", 0)
-            elif "rules" in state:  # Fallback for old history
+            elif "rules" in state:
                 from widgets.autotiler import AutotileRule
 
                 default_group = AutotileGroup("Default")
@@ -296,7 +293,6 @@ class Tilemap:
                 if ts.properties:
                     ts_data["properties"] = ts.properties
                 if ts.tile_properties:
-                    # Convert int keys to str for JSON
                     ts_data["tile_properties"] = {
                         str(k): v for k, v in ts.tile_properties.items()
                     }
@@ -320,14 +316,12 @@ class Tilemap:
                     }
                 )
 
-            # For backward compatibility with simpler loaders, also save flat rules
             save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
                 save_data["project_state"]["rules"].append(
                     self._serialize_autotile_rule(rule, map_dir)
                 )
 
-        # Save automap pattern rules
         if (
             hasattr(self.editor, "regex_automap_designer")
             and self.editor.regex_automap_designer
@@ -342,7 +336,6 @@ class Tilemap:
                 error_handler.capture(
                     e, context="save_automap_rules", severity="warning"
                 )
-                # Continue saving other data
 
         for layer in self.layer_manager.layers:
             layer_data = {
@@ -501,13 +494,10 @@ class Tilemap:
             object_tileset_indices = self._object_tileset_indices_from_payload(payload)
 
             for resource_idx, ts_entry in enumerate(tilesets):
-
                 if isinstance(ts_entry, str):
-
                     path_str = ts_entry
                     tileset_type = "tile"
                 else:
-
                     path_str = ts_entry.get("path", "")
                     tileset_type = ts_entry.get("type", "tile")
 
@@ -521,7 +511,6 @@ class Tilemap:
                     must_exist=True,
                 )
 
-                # Log error if tileset file not found
                 if not p.exists():
                     error_msg = f"Tileset file not found: {path_str} (tried: {p})"
                     error_handler.capture(
@@ -565,16 +554,14 @@ class Tilemap:
             assert ts_widget is not None
 
             if "project_state" in payload:
-                # Load hierarchical groups if available
                 if "groups" in payload["project_state"]:
                     for group_dict in payload["project_state"]["groups"]:
                         group = AutotileGroup.from_dict(group_dict)
-                        # Resolve tileset indices/previews for all rules in group
+
                         for rule in group.rules:
                             self._resolve_rule_resources(rule, ts_widget)
                         designer.groups.append(group)
 
-                # Fallback / Migration for old flat rules
                 elif "rules" in payload["project_state"]:
                     default_group = AutotileGroup("Default")
                     for rule_dict in payload["project_state"]["rules"]:
@@ -592,7 +579,6 @@ class Tilemap:
                 designer.groups.append(AutotileGroup("Default"))
             designer.selected_group_idx = 0
 
-        # Load automap pattern rules
         if (
             hasattr(self.editor, "regex_automap_designer")
             and self.editor.regex_automap_designer
@@ -620,12 +606,10 @@ class Tilemap:
                     error_handler.capture(
                         e, context="load_automap_rules", severity="warning"
                     )
-                    # Continue loading other data
 
         data_section = payload.get("data", {})
 
         if "layers" in data_section and data_section["layers"]:
-
             self.layer_manager.layers.clear()
             for layer_data in data_section["layers"]:
                 layer = self._load_layer_from_dict(layer_data)
@@ -636,10 +620,8 @@ class Tilemap:
 
             self.layer_manager.active_layer_idx = 0
         else:
-
             raw_ongrid = data_section.get("ongrid", {})
             if raw_ongrid:
-
                 self.layer_manager.layers.clear()
                 self.layer_manager.create_layer("Terrain")
                 active_layer = self.layer_manager.get_active_layer()
@@ -658,7 +640,6 @@ class Tilemap:
 
         self.initialized = True
 
-        # Restore view state and invalidate bounds cache after map load
         if self.editor.tile_grid_widget:
             if "zoom_level" in payload["meta"]:
                 self.editor.tile_grid_widget.zoom_level = payload["meta"]["zoom_level"]

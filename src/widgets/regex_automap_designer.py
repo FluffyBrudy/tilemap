@@ -20,7 +20,7 @@ from widgets.automap_models import (
 if TYPE_CHECKING:
     from editor import Editor
 
-# Color scheme (matching AutotileRuleDesigner)
+
 WINDOW_BG = (40, 44, 52)
 PANEL_BG = (33, 37, 43)
 BORDER_COLOR = (24, 26, 31)
@@ -31,12 +31,12 @@ GRID_ACTIVE = (152, 195, 121)
 GRID_INACTIVE = (60, 64, 72)
 GRID_CENTER = (97, 175, 239)
 
-# Match mode colors
+
 MATCH_MODE_COLORS = {
-    MatchMode.EXACT: (152, 195, 121),  # Green
-    MatchMode.WILDCARD: (60, 64, 72),  # Gray
-    MatchMode.ANY_FILLED: (229, 192, 123),  # Yellow
-    MatchMode.ANY_EMPTY: (97, 175, 239),  # Blue
+    MatchMode.EXACT: (152, 195, 121),
+    MatchMode.WILDCARD: (60, 64, 72),
+    MatchMode.ANY_FILLED: (229, 192, 123),
+    MatchMode.ANY_EMPTY: (97, 175, 239),
 }
 
 
@@ -73,32 +73,25 @@ class RegexAutomapDesigner:
         self.is_dragging = False
         self.drag_offset = (0, 0)
 
-        # Pattern rules management
         self.pattern_rules: List[PatternRule] = []
         self.selected_rule_idx: int = -1
 
-        # Pattern grids (default 3x3)
         self.pattern_width = 3
         self.pattern_height = 3
         self.input_pattern_grid = PatternGrid(self.pattern_width, self.pattern_height)
         self.output_pattern_grid = PatternGrid(self.pattern_width, self.pattern_height)
 
-        # Grid display settings
         self.cell_size = 40
 
-        # Current tile selection from editor
         self.current_tile_id: Optional[int] = None
         self.current_tileset_index: Optional[int] = None
         self.current_preview_surf: Optional[Surface] = None
 
-        # Match mode cycling for right-click
         self.current_match_mode = MatchMode.EXACT
 
-        # Fonts
         self.font = pygame.font.SysFont("Arial", 12)
         self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
 
-        # Create and cache match mode icons
         self.match_mode_icons = self._create_match_mode_icons()
 
         self._update_layout()
@@ -112,7 +105,6 @@ class RegexAutomapDesigner:
         icon_size = 16
         icons = {}
 
-        # WILDCARD icon - asterisk with circular background
         wildcard_surf = Surface((icon_size, icon_size), pygame.SRCALPHA)
         pygame.draw.circle(
             wildcard_surf,
@@ -127,13 +119,12 @@ class RegexAutomapDesigner:
             icon_size // 2 - 1,
             1,
         )
-        # Draw asterisk
+
         font = pygame.font.SysFont("Arial", 14, bold=True)
         asterisk = font.render("*", True, (220, 220, 240))
         wildcard_surf.blit(asterisk, (icon_size // 2 - 4, icon_size // 2 - 8))
         icons[MatchMode.WILDCARD] = wildcard_surf
 
-        # ANY_FILLED icon - solid square
         filled_surf = Surface((icon_size, icon_size), pygame.SRCALPHA)
         pygame.draw.rect(
             filled_surf, (229, 192, 123), Rect(2, 2, icon_size - 4, icon_size - 4)
@@ -141,19 +132,18 @@ class RegexAutomapDesigner:
         pygame.draw.rect(
             filled_surf, (180, 150, 90), Rect(2, 2, icon_size - 4, icon_size - 4), 2
         )
-        # Draw F
+
         f_text = pygame.font.SysFont("Arial", 10, bold=True).render(
             "F", True, (80, 60, 30)
         )
         filled_surf.blit(f_text, (5, 3))
         icons[MatchMode.ANY_FILLED] = filled_surf
 
-        # ANY_EMPTY icon - empty square with dashed border
         empty_surf = Surface((icon_size, icon_size), pygame.SRCALPHA)
-        # Draw dashed border
+
         dash_color = (97, 175, 239)
         dash_length = 3
-        # Top
+
         for x in range(2, icon_size - 2, dash_length * 2):
             pygame.draw.line(
                 empty_surf,
@@ -162,7 +152,7 @@ class RegexAutomapDesigner:
                 (min(x + dash_length, icon_size - 2), 2),
                 2,
             )
-        # Bottom
+
         for x in range(2, icon_size - 2, dash_length * 2):
             pygame.draw.line(
                 empty_surf,
@@ -171,7 +161,7 @@ class RegexAutomapDesigner:
                 (min(x + dash_length, icon_size - 2), icon_size - 3),
                 2,
             )
-        # Left
+
         for y in range(2, icon_size - 2, dash_length * 2):
             pygame.draw.line(
                 empty_surf,
@@ -180,7 +170,7 @@ class RegexAutomapDesigner:
                 (2, min(y + dash_length, icon_size - 2)),
                 2,
             )
-        # Right
+
         for y in range(2, icon_size - 2, dash_length * 2):
             pygame.draw.line(
                 empty_surf,
@@ -189,14 +179,13 @@ class RegexAutomapDesigner:
                 (icon_size - 3, min(y + dash_length, icon_size - 2)),
                 2,
             )
-        # Draw E
+
         e_text = pygame.font.SysFont("Arial", 10, bold=True).render(
             "E", True, (70, 130, 180)
         )
         empty_surf.blit(e_text, (5, 3))
         icons[MatchMode.ANY_EMPTY] = empty_surf
 
-        # EXACT icon - checkmark
         exact_surf = Surface((icon_size, icon_size), pygame.SRCALPHA)
         pygame.draw.circle(
             exact_surf,
@@ -211,7 +200,7 @@ class RegexAutomapDesigner:
             icon_size // 2 - 1,
             1,
         )
-        # Draw checkmark
+
         check_color = (50, 80, 40)
         pygame.draw.line(exact_surf, check_color, (4, 8), (7, 11), 2)
         pygame.draw.line(exact_surf, check_color, (7, 11), (12, 5), 2)
@@ -221,30 +210,25 @@ class RegexAutomapDesigner:
 
     def _update_layout(self):
         """Update layout rectangles based on current window position."""
-        # Close button
+
         self.close_btn_rect = Rect(
             self.rect.right - 30, self.rect.y, 30, self.header_height
         )
 
-        # Body area
         body_y = self.rect.y + self.header_height
         body_h = self.rect.height - self.header_height
 
-        # Left sidebar for rule list
         sidebar_w = 180
         self.rule_list_area = Rect(self.rect.x, body_y, sidebar_w, body_h)
 
-        # Main edit area
         self.edit_area = Rect(
             self.rect.x + sidebar_w, body_y, self.rect.width - sidebar_w, body_h
         )
 
-        # Buttons at bottom of edit area
         btn_y = self.edit_area.bottom - 40
         btn_w = 80
         btn_spacing = 10
 
-        # Center buttons horizontally
         total_btn_width = btn_w * 3 + btn_spacing * 2
         start_x = self.edit_area.centerx - total_btn_width // 2
 
@@ -254,7 +238,6 @@ class RegexAutomapDesigner:
             start_x + (btn_w + btn_spacing) * 2, btn_y, btn_w, 30
         )
 
-        # New rule button in sidebar
         self.new_rule_btn_rect = Rect(
             self.rule_list_area.x + 10,
             self.rule_list_area.bottom - 35,
@@ -292,8 +275,7 @@ class RegexAutomapDesigner:
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left click
-                # Header dragging
+            if event.button == 1:
                 header_rect = Rect(
                     self.rect.x, self.rect.y, self.rect.width, self.header_height
                 )
@@ -308,12 +290,10 @@ class RegexAutomapDesigner:
                     )
                     return True
 
-                # Rule list clicks
                 if self.rule_list_area.collidepoint(mouse_pos):
                     self._handle_rule_list_click(mouse_pos)
                     return True
 
-                # Button clicks
                 if self.save_btn_rect.collidepoint(mouse_pos):
                     self._save_pattern_rule()
                     return True
@@ -327,13 +307,11 @@ class RegexAutomapDesigner:
                     self._reset_selection()
                     return True
 
-                # Grid clicks
                 if self.edit_area.collidepoint(mouse_pos):
                     if self._handle_grid_click(mouse_pos, event.button):
                         return True
 
-            elif event.button == 3:  # Right click
-                # Right-click on grids to cycle match mode
+            elif event.button == 3:
                 if self.edit_area.collidepoint(mouse_pos):
                     if self._handle_grid_click(mouse_pos, event.button):
                         return True
@@ -349,7 +327,6 @@ class RegexAutomapDesigner:
                 self._update_layout()
                 return True
 
-        # Don't consume events outside the window
         if not self.rect.collidepoint(mouse_pos) and not self.is_dragging:
             return False
 
@@ -364,11 +341,9 @@ class RegexAutomapDesigner:
         if not self.visible:
             return
 
-        # Main window background
         pygame.draw.rect(screen, WINDOW_BG, self.rect)
         pygame.draw.rect(screen, BORDER_COLOR, self.rect, 1)
 
-        # Header
         pygame.draw.rect(
             screen,
             HEADER_COLOR,
@@ -377,15 +352,12 @@ class RegexAutomapDesigner:
         title = self.title_font.render("Regex Automap Designer", True, Color("white"))
         screen.blit(title, (self.rect.x + 10, self.rect.y + 5))
 
-        # Close button
         pygame.draw.rect(screen, (200, 60, 60), self.close_btn_rect)
         x_lbl = self.title_font.render("X", True, Color("white"))
         screen.blit(x_lbl, (self.close_btn_rect.x + 10, self.close_btn_rect.y + 5))
 
-        # Sidebar background
         pygame.draw.rect(screen, PANEL_BG, self.rule_list_area)
 
-        # Draw components
         self._draw_rule_list(screen)
         self._draw_pattern_grids(screen)
         self._draw_buttons(screen)
@@ -396,7 +368,6 @@ class RegexAutomapDesigner:
         if tile_selector and tile_selector.selected_tile:
             ts = tile_selector.get_active_tile()
             if ts:
-                # Get the first selected tile
                 current_rect = tile_selector.selected_tile
                 tile_w, tile_h = self.editor.tilemap.tile_size
                 sheet_cols = ts.surface.get_width() // tile_w
@@ -405,12 +376,10 @@ class RegexAutomapDesigner:
                 start_cx = rx // tile_w
                 start_cy = ry // tile_h
 
-                # Use first tile in selection
                 vid = (start_cy * sheet_cols) + start_cx
                 self.current_tile_id = vid
                 self.current_tileset_index = tile_selector.active_idx
 
-                # Get preview surface
                 sub_rect = Rect(start_cx * tile_w, start_cy * tile_h, tile_w, tile_h)
                 try:
                     self.current_preview_surf = ts.surface.subsurface(sub_rect).copy()
@@ -419,12 +388,11 @@ class RegexAutomapDesigner:
 
     def _handle_rule_list_click(self, mouse_pos):
         """Handle clicks on the rule list."""
-        # Check new rule button
+
         if self.new_rule_btn_rect.collidepoint(mouse_pos):
             self._reset_selection()
             return
 
-        # Check rule items
         start_y = self.rule_list_area.y + 30
         item_h = 25
         for i, rule in enumerate(self.pattern_rules):
@@ -449,7 +417,7 @@ class RegexAutomapDesigner:
         Returns:
             True if a grid was clicked
         """
-        # Determine which grid was clicked
+
         input_grid_rect, output_grid_rect = self._get_grid_rects()
 
         clicked_grid = None
@@ -462,7 +430,6 @@ class RegexAutomapDesigner:
         else:
             return False
 
-        # Calculate cell position
         rel_x = mouse_pos[0] - grid_rect.x
         rel_y = mouse_pos[1] - grid_rect.y
 
@@ -470,9 +437,9 @@ class RegexAutomapDesigner:
         cell_y = rel_y // self.cell_size
 
         if 0 <= cell_x < self.pattern_width and 0 <= cell_y < self.pattern_height:
-            if button == 1:  # Left click - set tile
+            if button == 1:
                 self._set_pattern_cell(clicked_grid, cell_x, cell_y)
-            elif button == 3:  # Right click - cycle match mode
+            elif button == 3:
                 self._cycle_match_mode(clicked_grid, cell_x, cell_y)
             return True
 
@@ -487,7 +454,6 @@ class RegexAutomapDesigner:
         grid_w = self.pattern_width * self.cell_size
         grid_h = self.pattern_height * self.cell_size
 
-        # Position grids side by side with spacing
         spacing = 40
         total_width = grid_w * 2 + spacing
         start_x = self.edit_area.centerx - total_width // 2
@@ -524,7 +490,6 @@ class RegexAutomapDesigner:
         """
         cell = grid.get_cell(x, y)
 
-        # Cycle through modes: EXACT -> WILDCARD -> ANY_FILLED -> ANY_EMPTY -> EXACT
         mode_cycle = [
             MatchMode.EXACT,
             MatchMode.WILDCARD,
@@ -536,10 +501,8 @@ class RegexAutomapDesigner:
             current_idx = mode_cycle.index(cell.match_mode)
             next_idx = (current_idx + 1) % len(mode_cycle)
         except ValueError:
-            # If current mode is not in cycle, start from EXACT
             next_idx = 0
 
-        # Preserve tile_id and tileset_index, or use current selection if cell is default wildcard
         tile_id = cell.tile_id if cell.tile_id is not None else self.current_tile_id
         tileset_index = (
             cell.tileset_index
@@ -553,9 +516,6 @@ class RegexAutomapDesigner:
             tile_id=tile_id, tileset_index=tileset_index, match_mode=next_mode
         )
 
-        # For UI purposes, we always store the cell even if it's WILDCARD
-        # This allows cycling through modes. The sparse storage optimization
-        # is mainly for serialization and pattern matching.
         grid.cells[(x, y)] = new_cell
 
     def _load_rule_to_editor(self, rule: PatternRule):
@@ -571,7 +531,6 @@ class RegexAutomapDesigner:
             rule.output_pattern.width, rule.output_pattern.height
         )
 
-        # Copy cells from rule patterns
         for (x, y), cell in rule.input_pattern.cells.items():
             self.input_pattern_grid.set_cell(x, y, cell)
         for (x, y), cell in rule.output_pattern.cells.items():
@@ -591,20 +550,16 @@ class RegexAutomapDesigner:
     def _save_pattern_rule(self):
         """Save current input/output pattern as a rule."""
         try:
-            # Validate that patterns have at least one non-wildcard cell
             if not self.input_pattern_grid.cells:
                 print("Cannot save rule: input pattern is empty")
                 return
 
-            # Generate rule name
             if self.selected_rule_idx >= 0:
-                # Update existing rule
                 rule = self.pattern_rules[self.selected_rule_idx]
                 rule.input_pattern = self.input_pattern_grid
                 rule.output_pattern = self.output_pattern_grid
                 print(f"Updated rule: {rule.name}")
             else:
-                # Create new rule
                 rule_name = f"Pattern Rule {len(self.pattern_rules) + 1}"
                 try:
                     new_rule = PatternRule(
@@ -621,14 +576,12 @@ class RegexAutomapDesigner:
                     print(f"Cannot save rule: {e}")
                     return
 
-            # Reset for next rule
             self._reset_selection()
         except Exception as e:
             import logging
 
             logging.error(f"Error saving pattern rule: {e}", exc_info=True)
             print(f"Error saving pattern rule: {e}")
-            # Keep rules in memory - don't clear anything on error
 
     def _delete_pattern_rule(self):
         """Remove the currently selected pattern rule."""
@@ -648,14 +601,11 @@ class RegexAutomapDesigner:
             print("No pattern rules to apply")
             return
 
-        # Debug: Show layer info
         print(f"Applying automap to layer with {len(layer.tiles)} tiles")
 
-        # Create engine and apply rules
         engine = AutomapEngine(self.editor.tilemap)
         transformation_count = engine.apply_rules(layer, self.pattern_rules)
 
-        # Check if transformation limit was reached (potential circular dependency)
         if transformation_count >= engine.max_transformations:
             print(
                 f"WARNING: Transformation limit ({engine.max_transformations}) reached!"
@@ -666,8 +616,6 @@ class RegexAutomapDesigner:
             )
         else:
             print(f"Automap applied: {transformation_count} tile transformations")
-
-        # TODO: Display transformation count in UI (status message or dialog)
 
     def serialize_rules(self) -> List[dict]:
         """Serialize all pattern rules to dictionary format with error handling.
@@ -710,17 +658,15 @@ class RegexAutomapDesigner:
                     f"Error deserializing rule at index {i}: {e}", exc_info=True
                 )
                 print(f"Warning: Skipping invalid rule at index {i}: {e}")
-                # Continue loading other rules
 
         print(f"Loaded {len(self.pattern_rules)} pattern rules")
 
     def _draw_rule_list(self, screen: Surface):
         """Draw the list of saved pattern rules."""
-        # Title
+
         title = self.title_font.render("Pattern Rules", True, (150, 150, 255))
         screen.blit(title, (self.rule_list_area.x + 5, self.rule_list_area.y + 5))
 
-        # Rule items
         start_y = self.rule_list_area.y + 30
         item_h = 25
         for i, rule in enumerate(self.pattern_rules):
@@ -731,16 +677,13 @@ class RegexAutomapDesigner:
                 item_h,
             )
 
-            # Highlight selected rule
             if i == self.selected_rule_idx:
                 pygame.draw.rect(screen, HIGHLIGHT_COLOR, item_rect, border_radius=3)
 
-            # Draw rule name
             display_name = rule.name if len(rule.name) < 18 else rule.name[:15] + "..."
             text_surf = self.font.render(display_name, True, TEXT_COLOR)
             screen.blit(text_surf, (item_rect.x + 5, item_rect.y + 5))
 
-        # New rule button
         pygame.draw.rect(
             screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4
         )
@@ -753,7 +696,6 @@ class RegexAutomapDesigner:
         """Draw the input and output pattern grids."""
         input_grid_rect, output_grid_rect = self._get_grid_rects()
 
-        # Labels
         input_label = self.title_font.render("Input Pattern", True, TEXT_COLOR)
         output_label = self.title_font.render("Output Pattern", True, TEXT_COLOR)
         screen.blit(input_label, (input_grid_rect.centerx - 50, input_grid_rect.y - 25))
@@ -761,22 +703,18 @@ class RegexAutomapDesigner:
             output_label, (output_grid_rect.centerx - 55, output_grid_rect.y - 25)
         )
 
-        # Draw grids
         self._draw_grid(screen, self.input_pattern_grid, input_grid_rect)
         self._draw_grid(screen, self.output_pattern_grid, output_grid_rect)
 
-        # Draw current tile preview
         if self.current_preview_surf:
             preview_y = self.edit_area.y + 20
             scaled = pygame.transform.scale(self.current_preview_surf, (48, 48))
             screen.blit(scaled, (self.edit_area.centerx - 24, preview_y))
 
-            # Show current match mode
             mode_text = f"Mode: {self.current_match_mode.value}"
             mode_surf = self.font.render(mode_text, True, TEXT_COLOR)
             screen.blit(mode_surf, (self.edit_area.centerx - 40, preview_y + 55))
 
-        # Draw match mode legend
         self._draw_match_mode_legend(screen)
 
     def _draw_grid(self, screen: Surface, grid: PatternGrid, grid_rect: Rect):
@@ -796,19 +734,15 @@ class RegexAutomapDesigner:
                     self.cell_size,
                 )
 
-                # Get cell and determine color
                 cell = grid.get_cell(x, y)
                 color = MATCH_MODE_COLORS.get(cell.match_mode, GRID_INACTIVE)
 
-                # Draw cell background
                 pygame.draw.rect(screen, color, cell_rect)
                 pygame.draw.rect(screen, (30, 30, 30), cell_rect, 1)
 
-                # Draw tile preview if available
                 if cell.match_mode == MatchMode.EXACT and cell.tile_id is not None:
                     self._draw_tile_in_cell(screen, cell, cell_rect)
 
-                # Draw match mode indicator
                 self._draw_match_mode_indicator(screen, cell, cell_rect)
 
     def _draw_tile_in_cell(self, screen: Surface, cell: PatternCell, cell_rect: Rect):
@@ -819,7 +753,7 @@ class RegexAutomapDesigner:
             cell: Pattern cell with tile data
             cell_rect: Rectangle of the cell
         """
-        # Try to get tile surface from tileset
+
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if tile_selector and cell.tileset_index is not None:
             if 0 <= cell.tileset_index < len(tile_selector.tilesets):
@@ -834,7 +768,6 @@ class RegexAutomapDesigner:
                     sub_rect = Rect(tx, ty, tile_w, tile_h)
                     tile_surf = ts.surface.subsurface(sub_rect)
 
-                    # Scale to fit cell
                     scaled = pygame.transform.scale(
                         tile_surf, (self.cell_size - 4, self.cell_size - 4)
                     )
@@ -852,10 +785,9 @@ class RegexAutomapDesigner:
             cell: Pattern cell
             cell_rect: Rectangle of the cell
         """
-        # Get the appropriate icon for this match mode
+
         icon = self.match_mode_icons.get(cell.match_mode)
         if icon:
-            # Position icon in top-left corner of cell
             icon_x = cell_rect.x + 2
             icon_y = cell_rect.y + 2
             screen.blit(icon, (icon_x, icon_y))
@@ -869,16 +801,13 @@ class RegexAutomapDesigner:
         legend_x = self.edit_area.x + 10
         legend_y = self.edit_area.bottom - 120
 
-        # Background panel
         legend_rect = Rect(legend_x, legend_y, 160, 90)
         pygame.draw.rect(screen, PANEL_BG, legend_rect, border_radius=4)
         pygame.draw.rect(screen, BORDER_COLOR, legend_rect, 1, border_radius=4)
 
-        # Title
         title = self.font.render("Match Modes:", True, (150, 150, 255))
         screen.blit(title, (legend_x + 5, legend_y + 5))
 
-        # Legend items
         legend_items = [
             (MatchMode.EXACT, "Exact tile"),
             (MatchMode.WILDCARD, "Any tile"),
@@ -897,12 +826,11 @@ class RegexAutomapDesigner:
 
     def _draw_buttons(self, screen: Surface):
         """Draw action buttons."""
-        # Save button
+
         pygame.draw.rect(screen, (70, 180, 70), self.save_btn_rect, border_radius=4)
         save_text = self.font.render("Save", True, Color("white"))
         screen.blit(save_text, (self.save_btn_rect.x + 25, self.save_btn_rect.y + 8))
 
-        # Delete button (only if rule selected)
         if self.selected_rule_idx >= 0:
             pygame.draw.rect(
                 screen, (180, 70, 70), self.delete_btn_rect, border_radius=4
@@ -912,7 +840,6 @@ class RegexAutomapDesigner:
                 del_text, (self.delete_btn_rect.x + 20, self.delete_btn_rect.y + 8)
             )
 
-        # Apply button
         pygame.draw.rect(screen, (100, 100, 200), self.apply_btn_rect, border_radius=4)
         apply_text = self.font.render("Apply", True, Color("white"))
         screen.blit(apply_text, (self.apply_btn_rect.x + 20, self.apply_btn_rect.y + 8))

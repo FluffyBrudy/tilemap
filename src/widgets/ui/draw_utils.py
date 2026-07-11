@@ -4,7 +4,14 @@ from typing import Tuple
 from .theme import COLORS, SHAPE
 
 
-def draw_panel(surface: pygame.Surface, rect: pygame.Rect, bg=None, border=None, radius=None, border_width=None):
+def draw_panel(
+    surface: pygame.Surface,
+    rect: pygame.Rect,
+    bg=None,
+    border=None,
+    radius=None,
+    border_width=None,
+):
     bg = bg if bg is not None else COLORS.panel
     border = border if border is not None else COLORS.border
     radius = SHAPE.radius if radius is None else radius
@@ -14,7 +21,15 @@ def draw_panel(surface: pygame.Surface, rect: pygame.Rect, bg=None, border=None,
         pygame.draw.rect(surface, border, rect, border_width, border_radius=radius)
 
 
-def draw_button(surface: pygame.Surface, rect: pygame.Rect, label_surf: pygame.Surface, *, active=False, hover=False, accent=False):
+def draw_button(
+    surface: pygame.Surface,
+    rect: pygame.Rect,
+    label_surf: pygame.Surface,
+    *,
+    active=False,
+    hover=False,
+    accent=False,
+):
     if accent or active:
         bg = COLORS.accent_active if active else COLORS.accent
         if hover:
@@ -37,7 +52,9 @@ def draw_separator(surface: pygame.Surface, x: int, y: int, h: int, color=None):
     pygame.draw.line(surface, color, (x, y), (x, y + h))
 
 
-def truncate_text(text: str, font: pygame.font.Font, max_width: int) -> Tuple[str, bool]:
+def truncate_text(
+    text: str, font: pygame.font.Font, max_width: int
+) -> Tuple[str, bool]:
     if font.size(text)[0] <= max_width:
         return text, False
     ellipsis = "..."
@@ -48,7 +65,13 @@ def truncate_text(text: str, font: pygame.font.Font, max_width: int) -> Tuple[st
     return text + ellipsis, True
 
 
-def draw_soft_rect(surface: pygame.Surface, rect: pygame.Rect, color: Tuple[int, int, int], radius=4, alpha=255):
+def draw_soft_rect(
+    surface: pygame.Surface,
+    rect: pygame.Rect,
+    color: Tuple[int, int, int],
+    radius=4,
+    alpha=255,
+):
     if alpha >= 255:
         pygame.draw.rect(surface, color, rect, border_radius=radius)
         return

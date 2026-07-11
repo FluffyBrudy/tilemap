@@ -8,14 +8,33 @@ from .theme import COLORS, FONTS
 
 
 class Label(WidgetBase):
-    def __init__(self, rect, text: str, *,
-                 font=None, color=None, align="left",
-                 padding=None, padding_x=None, padding_y=None,
-                 bg=None, border_color=None, border_width=None, border_radius=None):
+    def __init__(
+        self,
+        rect,
+        text: str,
+        *,
+        font=None,
+        color=None,
+        align="left",
+        padding=None,
+        padding_x=None,
+        padding_y=None,
+        bg=None,
+        border_color=None,
+        border_width=None,
+        border_radius=None,
+    ):
         bw = border_width if border_width is not None else 0
-        super().__init__(rect, padding=padding, padding_x=padding_x,
-                         padding_y=padding_y, border_width=bw,
-                         border_radius=border_radius, bg=bg, border_color=border_color)
+        super().__init__(
+            rect,
+            padding=padding,
+            padding_x=padding_x,
+            padding_y=padding_y,
+            border_width=bw,
+            border_radius=border_radius,
+            bg=bg,
+            border_color=border_color,
+        )
         self.text = text
         self.font = font or FONTS.get_medium_font()
         self.color = color or COLORS.text

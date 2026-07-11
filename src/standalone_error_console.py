@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Standalone Error Console - Professional Version
 Fixes: Text overlapping, compact layout, font clarity, and unicode support.
@@ -23,28 +22,26 @@ import logging
 
 from utils.error_handler import error_handler
 
-# Setup logging for font debugging
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-# Add src to path for imports
+
 sys.path.insert(0, str(Path(__file__).parent))
 try:
     from constants import BASE_PATH
 except ImportError:
     BASE_PATH = Path(".").absolute()
 
-# ---------------------------------------------------------------------------
-# Professional Dev-Tools Palette
-# ---------------------------------------------------------------------------
+
 PALETTE_DARK = {
-    "bg_primary": (18, 18, 18),  # Deeper dark
-    "bg_secondary": (28, 28, 30),  # Elevated surfaces
-    "bg_tertiary": (42, 42, 45),  # Hover states
-    "border": (45, 45, 48),  # Subtle dividers
-    "border_focus": (0, 120, 212),  # VS Code Blue
-    "text_primary": (255, 255, 255),  # High emphasis - pure white for max contrast
-    "text_secondary": (220, 220, 220),  # Medium emphasis - much brighter
-    "text_tertiary": (170, 170, 170),  # Low emphasis - significantly brighter
+    "bg_primary": (18, 18, 18),
+    "bg_secondary": (28, 28, 30),
+    "bg_tertiary": (42, 42, 45),
+    "border": (45, 45, 48),
+    "border_focus": (0, 120, 212),
+    "text_primary": (255, 255, 255),
+    "text_secondary": (220, 220, 220),
+    "text_tertiary": (170, 170, 170),
     "error_stripe": (248, 81, 73),
     "error_bg": (62, 20, 20),
     "warning_stripe": (210, 153, 34),
@@ -61,7 +58,9 @@ C = PALETTE_DARK
 
 
 class StandaloneErrorConsole:
-    def __init__(self, window_size: tuple[int, int] = (1280, 500), log_file: Path = None):
+    def __init__(
+        self, window_size: tuple[int, int] = (1280, 500), log_file: Path = None
+    ):
         pygame.init()
         pygame.font.init()
         self.font_family = self._auto_select_font()
@@ -72,10 +71,8 @@ class StandaloneErrorConsole:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        # log_file is now required via argparse
         self.log_file = log_file
 
-        # UI Geometry
         self.x, self.y = 0, 0
         self.width, self.height = window_size
         self.TITLEBAR_H = 35
@@ -85,13 +82,11 @@ class StandaloneErrorConsole:
         self.LINE_SPACING = 4
         self.CELL_PADDING = 12
 
-        # Initialize Fonts using improved font manager with bold weights for better visibility
         self.f_main = font_manager.get_font(self.font_family, 14, FontWeight.BOLD)
         self.f_bold = font_manager.get_font(self.font_family, 14, FontWeight.BOLD)
         self.f_small = font_manager.get_font(self.font_family, 12, FontWeight.BOLD)
         self.f_code = font_manager.get_font(self.font_family, 13, FontWeight.BOLD)
 
-        # State
         self.search_text = ""
         self.search_active = False
         self.search_focused = False
@@ -110,7 +105,6 @@ class StandaloneErrorConsole:
 
         self._update_layout()
 
-        # Threading
         self.monitor_thread = threading.Thread(target=self._monitor_file, daemon=True)
         self.monitor_thread.start()
 
@@ -143,7 +137,6 @@ class StandaloneErrorConsole:
         if self._delete_selected():
             return
 
-        # Find start of word
         pos = self.cursor_pos
         while (
             pos > 0
@@ -158,7 +151,6 @@ class StandaloneErrorConsole:
         ):
             pos -= 1
 
-        # Only delete if we actually moved the cursor
         if pos < self.cursor_pos:
             self.search_text = (
                 self.search_text[:pos] + self.search_text[self.cursor_pos :]
@@ -203,7 +195,7 @@ class StandaloneErrorConsole:
 
     def _auto_select_font(self):
         """Returns the best available coding font using centralized font manager."""
-        # Try prioritized fonts
+
         candidates = [
             "jetbrainsmono",
             "firacode",
@@ -219,10 +211,9 @@ class StandaloneErrorConsole:
     def _update_layout(self):
         """Recalculate UI Rects."""
         w = self.width
-        # Search Box
+
         self._search_rect = Rect(15, self.TITLEBAR_H + 10, 250, 26)
 
-        # Filter Buttons
         bx = self._search_rect.right + 15
         self._filter_btns = []
         for sev in ["error", "warning", "info"]:
@@ -230,13 +221,10 @@ class StandaloneErrorConsole:
             self._filter_btns.append([sev, Rect(bx, self.TITLEBAR_H + 10, bw, 26)])
             bx += bw + 8
 
-        # Clear Button
         self._clear_btn = Rect(w - 175, self.TITLEBAR_H + 10, 75, 26)
 
-        # Delete Logs Button
         self._delete_logs_btn = Rect(w - 90, self.TITLEBAR_H + 10, 75, 26)
 
-        # Content Area
         content_top = self.TITLEBAR_H + self.TOOLBAR_H
         content_h = self.height - content_top - self.STATUSBAR_H
         self.content_rect = Rect(0, content_top, w, content_h)
@@ -267,7 +255,7 @@ class StandaloneErrorConsole:
         """Permanently purge the log file (truncate to empty)."""
         try:
             if self.log_file and self.log_file.exists():
-                with open(self.log_file, "w", encoding="utf-8") as f:
+                with open(self.log_file, "w", encoding="utf-8"):
                     pass
                 self.last_file_size = 0
             self._all_entries = []
@@ -305,21 +293,19 @@ class StandaloneErrorConsole:
 
     def _get_entry_layout(self, entry: Dict, width: int) -> Dict[str, Any]:
         """Calculates dynamic height and text wrapping for a specific entry."""
-        wrap_w = width - 245  # Space for timestamp (YYYY-MM-DD HH:MM:SS) + tag + padding
+        wrap_w = width - 245
         msg_text = entry.get("message", "No message")
         ctx_text = entry.get("context", "")
 
-        # Wrap message
         msg_lines = textwrap.wrap(msg_text, width=int(wrap_w // 8))
         if not msg_lines:
             msg_lines = [" "]
 
-        # Determine Height
         h = self.CELL_PADDING * 2
-        h += len(msg_lines) * 18  # Message height
+        h += len(msg_lines) * 18
 
         if ctx_text:
-            h += 18  # Context line
+            h += 18
 
         if entry.get("id") in self._expanded_ids:
             stack = entry.get("stack_trace", "")
@@ -337,26 +323,21 @@ class StandaloneErrorConsole:
             self._update_layout()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left Click
-                # Handle search box focus
+            if event.button == 1:
                 if self._search_rect.collidepoint(event.pos):
                     self.search_focused = True
-                    # Set cursor position based on click
+
                     text_surface = self.f_main.render(
                         self.search_text, True, C["text_primary"]
                     )
                     text_width = text_surface.get_width()
-                    click_x = (
-                        event.pos[0] - self._search_rect.x - 8
-                    )  # Account for padding
+                    click_x = event.pos[0] - self._search_rect.x - 8
 
-                    # Approximate cursor position based on click
                     if click_x <= 0:
                         self.cursor_pos = 0
                     elif click_x >= text_width:
                         self.cursor_pos = len(self.search_text)
                     else:
-                        # Estimate character position
                         avg_char_width = (
                             text_width / len(self.search_text)
                             if self.search_text
@@ -371,10 +352,8 @@ class StandaloneErrorConsole:
 
                     self.selection_start = self.selection_end = self.cursor_pos
                 else:
-                    # Unfocus search if clicking elsewhere
                     self.search_focused = False
 
-                # Handle filter toggles
                 for sev, rect in self._filter_btns:
                     if rect.collidepoint(event.pos):
                         if sev in self.active_filters:
@@ -383,16 +362,13 @@ class StandaloneErrorConsole:
                             self.active_filters.add(sev)
                         self._refresh_entries()
 
-                # Handle Clear
                 if self._clear_btn.collidepoint(event.pos):
                     self._all_entries = []
                     self._refresh_entries()
 
-                # Handle Delete Logs
                 if self._delete_logs_btn.collidepoint(event.pos):
                     self._purge_logs()
 
-                # Handle Entry Expansion
                 if self.content_rect.collidepoint(event.pos):
                     rel_y = event.pos[1] - self.content_rect.y + self._scroll_offset
                     curr_y = 0
@@ -413,40 +389,32 @@ class StandaloneErrorConsole:
                 self._scroll_offset += 40
 
         if event.type == KEYDOWN:
-            # Better mod detection using event.mod
             ctrl_held = event.mod & pygame.KMOD_CTRL
             cmd_held = event.mod & pygame.KMOD_META
             shift_held = event.mod & pygame.KMOD_SHIFT
 
-            # Handle Ctrl+F for search focus
             if event.key == pygame.K_f and ctrl_held:
                 self.search_focused = True
                 self._select_all()
                 return
 
-            # Only handle text input if search is focused
             if self.search_focused:
-                # Ctrl+A / Cmd+A - Select all
                 if event.key == pygame.K_a and (ctrl_held or cmd_held):
                     self._select_all()
                     return
 
-                # Ctrl+Backspace / Cmd+Backspace - Delete word left
                 if event.key == pygame.K_BACKSPACE and (ctrl_held or cmd_held):
                     self._delete_word_left()
                     return
 
-                # Ctrl+Left / Cmd+Left - Move cursor word left
                 if event.key == pygame.K_LEFT and (ctrl_held or cmd_held):
                     self._move_cursor_word_left(shift_held)
                     return
 
-                # Ctrl+Right / Cmd+Right - Move cursor word right
                 if event.key == pygame.K_RIGHT and (ctrl_held or cmd_held):
                     self._move_cursor_word_right(shift_held)
                     return
 
-                # Regular Backspace - Delete character or selection
                 if event.key == pygame.K_BACKSPACE:
                     if not self._delete_selected():
                         if self.cursor_pos > 0:
@@ -459,7 +427,6 @@ class StandaloneErrorConsole:
                     self._refresh_entries()
                     return
 
-                # Left/Right arrows - Move cursor
                 if event.key == pygame.K_LEFT:
                     if self.cursor_pos > 0:
                         self.cursor_pos -= 1
@@ -477,7 +444,6 @@ class StandaloneErrorConsole:
                             self.selection_end = self.cursor_pos
                     return
 
-                # Home/End - Move to start/end
                 if event.key == pygame.K_HOME:
                     self.cursor_pos = 0
                     if not shift_held:
@@ -493,9 +459,7 @@ class StandaloneErrorConsole:
                         self.selection_end = self.cursor_pos
                     return
 
-                # Printable characters - Insert at cursor position
                 if event.unicode.isprintable() and len(event.unicode) > 0:
-                    # Ignore control characters that might have escaped filters
                     if not (ctrl_held or cmd_held):
                         if not self._delete_selected():
                             self.search_text = (
@@ -510,8 +474,7 @@ class StandaloneErrorConsole:
 
     def _draw_entries(self):
         """Draws entries with dynamic spacing to prevent overlapping."""
-        # Use a list to store entry surfaces to avoid huge surface allocation issues
-        # Actually, let's just draw directly to screen with clipping
+
         content_y = self.content_rect.y
         curr_y = content_y - self._scroll_offset
 
@@ -519,20 +482,17 @@ class StandaloneErrorConsole:
             layout = self._get_entry_layout(entry, self.width)
             eh = layout["total_h"]
 
-            # Clipping: only draw if in view
             if curr_y + eh > self.content_rect.y and curr_y < self.content_rect.bottom:
                 sev = entry.get("severity", "info")
 
-                # Row Background
                 row_rect = Rect(0, curr_y, self.width, eh)
                 if row_rect.collidepoint(self.mouse_pos):
                     pygame.draw.rect(self.screen, C["bg_secondary"], row_rect)
 
-                # Severity Stripe with icon
                 pygame.draw.rect(
                     self.screen, C[f"{sev}_stripe"], Rect(0, curr_y, self.STRIPE_W, eh)
                 )
-                # Severity icon
+
                 icon_name = {
                     "error": "error",
                     "warning": "warning",
@@ -542,13 +502,15 @@ class StandaloneErrorConsole:
                 sev_icon = icon_manager.get_icon(icon_name, 14, icon_color)
                 self.screen.blit(sev_icon, (8, curr_y + self.CELL_PADDING))
 
-                # 1. Timestamp (full ISO: YYYY-MM-DD HH:MM:SS)
                 raw_ts = entry.get("timestamp", "")
-                ts = raw_ts[:10].replace("T", " ") + " " + raw_ts[11:19] if raw_ts else ""
+                ts = (
+                    raw_ts[:10].replace("T", " ") + " " + raw_ts[11:19]
+                    if raw_ts
+                    else ""
+                )
                 ts_surf = self.f_small.render(ts, True, C["text_tertiary"])
                 self.screen.blit(ts_surf, (12, curr_y + self.CELL_PADDING))
 
-                # 2. Tag
                 tag_col = C[f"{sev}_stripe"]
                 tag_rect = Rect(165, curr_y + self.CELL_PADDING - 2, 65, 18)
                 pygame.draw.rect(self.screen, tag_col, tag_rect, 1, border_radius=3)
@@ -561,7 +523,6 @@ class StandaloneErrorConsole:
                     ),
                 )
 
-                # 3. Message (Wrapped)
                 text_x = 245
                 text_y = curr_y + self.CELL_PADDING
                 for i, line in enumerate(layout["msg_lines"]):
@@ -569,9 +530,7 @@ class StandaloneErrorConsole:
                     self.screen.blit(m_surf, (text_x, text_y))
                     text_y += 18
 
-                # 4. Context (Below Message)
                 if layout["ctx"]:
-                    # Arrow icon for context
                     arrow_icon = icon_manager.get_icon(
                         "arrow-down", 10, C["text_secondary"]
                     )
@@ -582,7 +541,6 @@ class StandaloneErrorConsole:
                     self.screen.blit(c_surf, (text_x + 12, text_y))
                     text_y += 18
 
-                # 5. Expanded Stack Trace
                 if entry["id"] in self._expanded_ids:
                     stack = entry.get("stack_trace", "")
                     if stack:
@@ -604,7 +562,6 @@ class StandaloneErrorConsole:
                             self.screen.blit(st_surf, (text_x + 10, text_y + 10))
                             text_y += 16
 
-                # Divider
                 pygame.draw.line(
                     self.screen,
                     C["border"],
@@ -618,25 +575,20 @@ class StandaloneErrorConsole:
         self.screen.fill(C["bg_primary"])
         self.mouse_pos = pygame.mouse.get_pos()
 
-        # 1. Main Content (drawn first so it's behind overlays)
         self._draw_entries()
 
-        # 2. Header Overlay (Title Bar + Toolbar)
-        # Background for header
         pygame.draw.rect(
             self.screen,
             C["bg_primary"],
             (0, 0, self.width, self.TITLEBAR_H + self.TOOLBAR_H),
         )
 
-        # Title Bar
         pygame.draw.rect(
             self.screen, C["bg_secondary"], (0, 0, self.width, self.TITLEBAR_H)
         )
         title = self.f_bold.render("ERROR CONSOLE", True, C["text_secondary"])
         self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 10))
 
-        # Search Box
         bg_color = C["bg_primary"] if self.search_focused else C["bg_secondary"]
         border_color = C["border_focus"] if self.search_focused else C["border"]
 
@@ -645,7 +597,6 @@ class StandaloneErrorConsole:
             self.screen, border_color, self._search_rect, 1, border_radius=4
         )
 
-        # Draw selection highlight if any
         if self.search_focused and self.selection_start != self.selection_end:
             start, end = self._get_text_selection()
             if start < end:
@@ -669,7 +620,6 @@ class StandaloneErrorConsole:
                 )
                 pygame.draw.rect(self.screen, (60, 90, 150), sel_rect, border_radius=2)
 
-        # Draw text
         display_text = self.search_text if self.search_text else "Filter logs (type...)"
         text_color = C["text_primary"] if self.search_text else C["text_tertiary"]
         text_surface = self.f_main.render(display_text, True, text_color)
@@ -677,7 +627,6 @@ class StandaloneErrorConsole:
             text_surface, (self._search_rect.x + 8, self._search_rect.y + 5)
         )
 
-        # Draw cursor
         if self.search_focused:
             cursor_text = self.search_text[: self.cursor_pos]
             cursor_surface = self.f_main.render(cursor_text, True, C["text_primary"])
@@ -691,7 +640,6 @@ class StandaloneErrorConsole:
                     2,
                 )
 
-        # Filters
         for sev, rect in self._filter_btns:
             active = sev in self.active_filters
             bg = C[f"{sev}_bg"] if active else C["bg_secondary"]
@@ -713,7 +661,6 @@ class StandaloneErrorConsole:
                 ),
             )
 
-        # Clear
         pygame.draw.rect(
             self.screen, C["bg_secondary"], self._clear_btn, border_radius=4
         )
@@ -726,12 +673,9 @@ class StandaloneErrorConsole:
             ),
         )
 
-        # Delete Logs
         is_hover_delete = self._delete_logs_btn.collidepoint(self.mouse_pos)
         delete_bg = C["danger_bg"] if is_hover_delete else C["bg_secondary"]
-        pygame.draw.rect(
-            self.screen, delete_bg, self._delete_logs_btn, border_radius=4
-        )
+        pygame.draw.rect(self.screen, delete_bg, self._delete_logs_btn, border_radius=4)
         dtxt = self.f_small.render("Delete Logs", True, C["danger"])
         self.screen.blit(
             dtxt,
@@ -741,7 +685,6 @@ class StandaloneErrorConsole:
             ),
         )
 
-        # 3. Status Bar
         pygame.draw.rect(
             self.screen,
             C["bg_secondary"],
@@ -768,11 +711,17 @@ class StandaloneErrorConsole:
 
 def parse_args():
     import argparse
+
     parser = argparse.ArgumentParser(description="Standalone Error Console")
-    parser.add_argument("--window-size", type=str, default="1280x500",
-                        help="Window size as WIDTHxHEIGHT")
-    parser.add_argument("--log-file", type=str, required=True,
-                        help="Path to error log file (REQUIRED)")
+    parser.add_argument(
+        "--window-size",
+        type=str,
+        default="1280x500",
+        help="Window size as WIDTHxHEIGHT",
+    )
+    parser.add_argument(
+        "--log-file", type=str, required=True, help="Path to error log file (REQUIRED)"
+    )
     return parser.parse_args()
 
 

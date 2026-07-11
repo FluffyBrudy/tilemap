@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -59,6 +60,9 @@ class TestRenderScaleModel:
             zoom_level = 1.0
             scroll_x = 0
             scroll_y = 0
+
+            def invalidate_bounds_cache(self):
+                pass
 
         class FakeEditor:
             tileset_widget = FakeTilesetWidget()
@@ -139,8 +143,10 @@ class TestRenderScaleModel:
         class FakeTilesetWidget:
             tilesets = []
             tileset_map = {}
+
             def load_tileset_from_path(self, *args, **kwargs):
                 pass
+
             def load_object_tileset_companions(self):
                 pass
 
@@ -148,7 +154,11 @@ class TestRenderScaleModel:
             zoom_level = 1.0
             scroll_x = 0
             scroll_y = 0
+
             def clamp_view(self):
+                pass
+
+            def invalidate_bounds_cache(self):
                 pass
 
         class FakeEditor:

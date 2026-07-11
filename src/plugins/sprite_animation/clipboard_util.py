@@ -11,7 +11,7 @@ def copy_plain_text(text: str) -> bool:
     if not text:
         return False
     try:
-        import pyperclip  # type: ignore
+        import pyperclip
 
         pyperclip.copy(text)
         return True

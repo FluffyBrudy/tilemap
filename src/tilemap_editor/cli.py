@@ -22,26 +22,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Tilemap Editor")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    init_parser = subparsers.add_parser("init", help="Initialize a new Tilemap Editor project")
+    init_parser = subparsers.add_parser(
+        "init", help="Initialize a new Tilemap Editor project"
+    )
     init_parser.add_argument(
-        "--with-main",
-        action="store_true",
-        help="Also create src/main.py boilerplate"
+        "--with-main", action="store_true", help="Also create src/main.py boilerplate"
     )
 
-    update_parser = subparsers.add_parser("update", help="Update settings.json base_path for current device")
+    update_parser = subparsers.add_parser(
+        "update", help="Update settings.json base_path for current device"
+    )
     update_parser.add_argument(
-        "--path", default=None,
-        help="Explicit base path (default: resolves cwd to absolute path)"
+        "--path",
+        default=None,
+        help="Explicit base path (default: resolves cwd to absolute path)",
     )
 
     run_parser = subparsers.add_parser("run", help="Run the tilemap editor")
     run_parser.add_argument(
         "--size", default="1500x900", help="Window size as WIDTHxHEIGHT"
     )
-    run_parser.add_argument(
-        "--fps", type=int, default=60, help="Editor FPS"
-    )
+    run_parser.add_argument("--fps", type=int, default=60, help="Editor FPS")
 
     args = parser.parse_args()
 

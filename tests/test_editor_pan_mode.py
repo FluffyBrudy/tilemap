@@ -12,6 +12,7 @@ Also tests:
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
@@ -23,6 +24,7 @@ from unittest import mock
 import pytest
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -31,8 +33,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 # (mirrors the K_SPACE branch in editor.py handle_events)
 # ---------------------------------------------------------------------------
 
+
 class ToolState:
     """Minimal object mirroring the 5 editor tool fields touched by the PR."""
+
     def __init__(self, pan_mode=False, select_mode=False, eraser_mode=False):
         self.pan_mode = pan_mode
         self.select_mode = select_mode
@@ -65,6 +69,7 @@ def apply_space_press(state: ToolState):
 # ---------------------------------------------------------------------------
 # Tests for pan-mode toggle state machine
 # ---------------------------------------------------------------------------
+
 
 class TestPanModeStateTransitions:
     def test_space_enables_pan_from_neutral(self):
@@ -108,15 +113,15 @@ class TestPanModeStateTransitions:
 
     def test_space_restores_select_after_pan(self):
         s = ToolState(select_mode=True)
-        apply_space_press(s)   # enter pan, save "select"
-        apply_space_press(s)   # exit pan, restore select
+        apply_space_press(s)  # enter pan, save "select"
+        apply_space_press(s)  # exit pan, restore select
         assert s.select_mode is True
         assert s.pan_mode is False
 
     def test_space_restores_eraser_after_pan(self):
         s = ToolState(eraser_mode=True)
-        apply_space_press(s)   # enter pan, save "eraser"
-        apply_space_press(s)   # exit pan, restore eraser
+        apply_space_press(s)  # enter pan, save "eraser"
+        apply_space_press(s)  # exit pan, restore eraser
         assert s.eraser_mode is True
         assert s.pan_mode is False
 
@@ -172,6 +177,7 @@ class TestPanModeStateTransitions:
 # ---------------------------------------------------------------------------
 # Tests for _launch_animation_editor_with_image routing
 # ---------------------------------------------------------------------------
+
 
 class TestLaunchAnimationEditorRouting:
     """Test that .json paths are routed to _launch_animation_editor_with_json."""
@@ -241,6 +247,7 @@ class TestLaunchAnimationEditorRouting:
 # Tests for _launch_animation_editor_with_json early-exit cases
 # ---------------------------------------------------------------------------
 
+
 class TestLaunchAnimationEditorWithJsonModel:
     """
     Test the logic inside _launch_animation_editor_with_json that concerns
@@ -272,7 +279,8 @@ class TestLaunchAnimationEditorWithJsonModel:
                     sp = loaded.spritesheet_path
                     if sp:
                         resolved = resolve_project_path(
-                            sp, p.parent,
+                            sp,
+                            p.parent,
                             fallback_roots=[self.base_path],
                             must_exist=True,
                         )

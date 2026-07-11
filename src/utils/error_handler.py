@@ -65,7 +65,9 @@ class ErrorHandler:
 
         self._file_logging = config.get("file_logging", True)
         self._console_output_enabled = config.get("console_output", True)
-        self._severity_levels = config.get("severity_levels", ["error", "warning", "info"])
+        self._severity_levels = config.get(
+            "severity_levels", ["error", "warning", "info"]
+        )
 
         self._initialized = True
 
@@ -93,12 +95,16 @@ class ErrorHandler:
         self._capture_impl(None, context, "info", message=message)
 
     def _capture_impl(
-        self, error: Optional[Exception], context: str = "", severity: str = "error", message: Optional[str] = None
+        self,
+        error: Optional[Exception],
+        context: str = "",
+        severity: str = "error",
+        message: Optional[str] = None,
     ) -> None:
         """
         Internal implementation of error capture.
         """
-        # Check if this severity level is enabled in config
+
         if severity not in self._severity_levels:
             return
 
@@ -108,25 +114,25 @@ class ErrorHandler:
             "message": str(error) if error else (message or ""),
             "context": context,
             "severity": severity,
-            "stack_trace": "".join(traceback.format_exception(type(error), error, error.__traceback__)) if error else None,
+            "stack_trace": "".join(
+                traceback.format_exception(type(error), error, error.__traceback__)
+            )
+            if error
+            else None,
             "thread_id": threading.current_thread().ident,
         }
 
-        # Add to recent errors (thread-safe)
         with self._lock:
             self._recent_errors.append(error_data)
             if len(self._recent_errors) > self._max_recent_errors:
                 self._recent_errors.pop(0)
 
-        # Write to log file if enabled
         if self._file_logging:
             self._write_to_log(error_data)
 
-        # Console output if enabled
         if self._console_output_enabled:
             self._console_output(error_data)
 
-        # Notify error console if it's available
         self._notify_console(error_data)
 
     def _write_to_log(self, error_data: Dict[str, Any]) -> None:
@@ -135,7 +141,6 @@ class ErrorHandler:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(error_data) + "\n")
         except Exception as e:
-            # Fallback to print if log file fails
             print(f"Failed to write to error log: {e}")
             print(f"Original error: {error_data}")
 
@@ -175,15 +180,12 @@ class ErrorHandler:
             by_severity = {}
 
             for error in self._recent_errors:
-                # Count by error type
                 error_type = error["error_type"]
                 by_type[error_type] = by_type.get(error_type, 0) + 1
 
-                # Count by context
                 context = error["context"] or "unknown"
                 by_context[context] = by_context.get(context, 0) + 1
 
-                # Count by severity
                 severity = error["severity"]
                 by_severity[severity] = by_severity.get(severity, 0) + 1
 
@@ -202,7 +204,6 @@ class ErrorHandler:
                 try:
                     self._console.add_error(error_data)
                 except Exception:
-                    # If console fails, unregister it to avoid repeated failures
                     self._console = None
 
     def register_console(self, console) -> None:
@@ -216,7 +217,6 @@ class ErrorHandler:
             self._console = None
 
 
-# Module-level singleton instance - initialized by Editor via init_error_handler()
 _error_handler_instance: ErrorHandler = None
 
 
@@ -241,17 +241,18 @@ def get_error_handler() -> ErrorHandler:
     """
     global _error_handler_instance
     if _error_handler_instance is None:
-        raise RuntimeError("ErrorHandler not initialized. Editor must call init_error_handler() first.")
+        raise RuntimeError(
+            "ErrorHandler not initialized. Editor must call init_error_handler() first."
+        )
     return _error_handler_instance
 
 
-# Backwards-compatible access via property
 class _ErrorHandlerProxy:
     """Proxy class to provide backwards-compatible error_handler access."""
+
     def __getattr__(self, name):
         global _error_handler_instance
         if _error_handler_instance is None:
-            # Fallback to print before Editor initializes - don't break
             return lambda *args, **kwargs: None
         return getattr(get_error_handler(), name)
 
@@ -272,5 +273,4 @@ def error_context(operation: str, severity: str = "error"):
         yield
     except Exception as e:
         error_handler.capture(e, context=operation, severity=severity)
-        raise  # Re-raise the exception for existing error handling patterns
-
+        raise

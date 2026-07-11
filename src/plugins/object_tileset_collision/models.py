@@ -11,6 +11,7 @@ from plugins.tileset_collision.models import CollisionPolygon
 @dataclass
 class RegionCollisionData:
     """Complete collision data for a single region in an object tileset"""
+
     region_id: str
     region_rect: Tuple[int, int, int, int]
     name: str = ""
@@ -40,6 +41,7 @@ class RegionCollisionData:
 @dataclass
 class ObjectTilesetCollisionLibrary:
     """Collection of collision data for all regions in an object tileset"""
+
     tileset_name: str
     regions: Dict[str, RegionCollisionData] = field(default_factory=dict)
 

@@ -13,6 +13,7 @@ Covers:
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
@@ -22,6 +23,7 @@ from pygame import Rect
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from widgets.ui.collision_layer_mask import CollisionLayerMaskWidget
@@ -69,11 +71,11 @@ class TestInitialization:
 class TestLayerSingleSelect:
     def test_set_layer_power_of_two(self):
         w = CollisionLayerMaskWidget(Rect(0, 0, 400, 80))
-        w.set_layer(1)   # bit 0
+        w.set_layer(1)  # bit 0
         assert w.get_layer() == 1
-        w.set_layer(2)   # bit 1
+        w.set_layer(2)  # bit 1
         assert w.get_layer() == 2
-        w.set_layer(8)   # bit 3
+        w.set_layer(8)  # bit 3
         assert w.get_layer() == 8
         w.set_layer(32768)  # bit 15
         assert w.get_layer() == 32768
@@ -132,7 +134,9 @@ class TestOnChangedCallback:
         )
         # Simulate click on layer button 2 (bit index 1)
         btn = w._layer_buttons[1]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         w.handle_event(event)
         assert len(calls) == 1
         assert calls[0] == (2, 0xFFFF)
@@ -147,7 +151,9 @@ class TestOnChangedCallback:
         )
         # Simulate click on mask button 1 (bit index 0) to toggle off
         btn = w._mask_buttons[0]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         w.handle_event(event)
         assert len(calls) == 1
         assert calls[0] == (1, 0xFFFE)  # bit 0 toggled off
@@ -157,18 +163,24 @@ class TestEventHandling:
     def test_layer_click_returns_true(self):
         w = CollisionLayerMaskWidget(Rect(0, 0, 400, 80))
         btn = w._layer_buttons[0]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         assert w.handle_event(event) is True
 
     def test_mask_click_returns_true(self):
         w = CollisionLayerMaskWidget(Rect(0, 0, 400, 80))
         btn = w._mask_buttons[0]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         assert w.handle_event(event) is True
 
     def test_click_outside_returns_false(self):
         w = CollisionLayerMaskWidget(Rect(0, 0, 400, 80))
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (500, 500)})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (500, 500)}
+        )
         assert w.handle_event(event) is False
 
     def test_mouse_motion_does_not_consume(self):
@@ -180,7 +192,9 @@ class TestEventHandling:
         w = CollisionLayerMaskWidget(Rect(0, 0, 400, 80))
         # Click layer button 3 (bit index 2)
         btn = w._layer_buttons[2]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         w.handle_event(event)
         assert w.get_layer() == 4  # 1 << 2
 
@@ -188,7 +202,9 @@ class TestEventHandling:
         w = CollisionLayerMaskWidget(Rect(0, 0, 400, 80), initial_mask=0xFFFF)
         # Click mask button 1 (bit index 0) to toggle off
         btn = w._mask_buttons[0]
-        event = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center})
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": btn.rect.center}
+        )
         w.handle_event(event)
         assert w.get_mask() == 0xFFFE
         # Click again to toggle on

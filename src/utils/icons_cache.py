@@ -275,7 +275,6 @@ def get_icon(
         params = {}
 
     if renderer_name not in _RENDERERS:
-
         surface = pygame.Surface(size, pygame.SRCALPHA)
         surface.fill((255, 0, 255, 128))
         return surface
@@ -288,7 +287,6 @@ def get_icon(
         if key in index.get("entries", {}):
             surface = _read_png_to_surface(cache_path)
             if surface:
-
                 index["entries"][key]["hits"] = index["entries"][key].get("hits", 0) + 1
                 index["entries"][key]["last_access"] = time.time()
                 _save_index(index)
@@ -298,7 +296,6 @@ def get_icon(
     surface = renderer(size=size, **params)
 
     if _write_surface_to_png(surface, cache_path):
-
         index = _load_index()
         index["entries"][key] = {
             "renderer": renderer_name,
@@ -322,14 +319,12 @@ def invalidate_cache(key: Optional[str] = None):
         key: Specific cache key to invalidate, or None to clear all
     """
     if key is None:
-
         if CACHE_DIR.exists():
             import shutil
 
             shutil.rmtree(CACHE_DIR)
         _ensure_cache_dir()
     else:
-
         cache_path = CACHE_DIR / f"{key}.png"
         if cache_path.exists():
             cache_path.unlink()

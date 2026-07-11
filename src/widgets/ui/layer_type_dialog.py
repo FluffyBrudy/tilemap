@@ -63,7 +63,6 @@ class LayerTypeDialog(DialogBase):
         mouse_pos = pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-
             if self.radio_tile_rect.collidepoint(mouse_pos):
                 self.selected_type = "tile"
                 return True

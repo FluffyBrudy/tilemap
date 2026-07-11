@@ -40,12 +40,11 @@ class Layer:
         self.objects: Dict[int, TypeObject] = {}
         self.next_object_id: int = 1
 
-        # Caching for autotile rules
         self._autotile_cache = {
             "rules_hash": None,
             "variant_to_group": {},
             "rules_by_group": {},
-            "significant_offsets": set()
+            "significant_offsets": set(),
         }
 
     def set_tile(self, pos: Tuple[int, int], tile: TypeTile) -> None:
@@ -65,17 +64,23 @@ class Layer:
         """Update the tile at pos and its 8 neighbors according to autotile rules."""
         positions = [pos]
         for dx, dy in [
-            (-1, -1), (0, -1), (1, -1),
-            (-1, 0),          (1, 0),
-            (-1, 1),  (0, 1),  (1, 1)
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
         ]:
             positions.append((pos[0] + dx, pos[1] + dy))
-        
-        # Only process tiles that actually exist
+
         existing_positions = [p for p in positions if p in self.tiles]
         return self._autotile_tiles(rules, existing_positions)
 
-    def _autotile_tiles(self, rules: List["AutotileRule"], positions: List[Tuple[int, int]]) -> int:
+    def _autotile_tiles(
+        self, rules: List["AutotileRule"], positions: List[Tuple[int, int]]
+    ) -> int:
         """
         Internal helper to update specific tiles according to autotile rules.
         """
@@ -85,90 +90,98 @@ class Layer:
         if not rules or not positions:
             return 0
 
-        # 1. Check cache or build dictionary for O(1) lookup
-        # Simple hash based on rule count and tileset indices
-        rules_hash = hash(tuple((r.group_id, r.tileset_index, tuple(sorted(r.variant_ids))) for r in rules))
-        
+        rules_hash = hash(
+            tuple(
+                (r.group_id, r.tileset_index, tuple(sorted(r.variant_ids)))
+                for r in rules
+            )
+        )
+
         if self._autotile_cache["rules_hash"] != rules_hash:
             variant_to_group = {}
             rules_by_group: Dict[str, List["AutotileRule"]] = {}
             significant_offsets = set()
-            
+
             for rule in rules:
                 gid = rule.group_id
                 if gid not in rules_by_group:
                     rules_by_group[gid] = []
                 rules_by_group[gid].append(rule)
-                
+
                 ts_idx = rule.tileset_index
                 for vid in rule.variant_ids:
                     variant_to_group[(ts_idx, vid)] = gid
-                
+
                 significant_offsets.update(rule.neighbors)
 
-            # Sort rules in each group by neighbor count for best-match priority
             for gid in rules_by_group:
                 rules_by_group[gid].sort(key=lambda r: len(r.neighbors), reverse=True)
-                
-            self._autotile_cache.update({
-                "rules_hash": rules_hash,
-                "variant_to_group": variant_to_group,
-                "rules_by_group": rules_by_group,
-                "significant_offsets": significant_offsets
-            })
+
+            self._autotile_cache.update(
+                {
+                    "rules_hash": rules_hash,
+                    "variant_to_group": variant_to_group,
+                    "rules_by_group": rules_by_group,
+                    "significant_offsets": significant_offsets,
+                }
+            )
         else:
             variant_to_group = self._autotile_cache["variant_to_group"]
             rules_by_group = self._autotile_cache["rules_by_group"]
             significant_offsets = self._autotile_cache["significant_offsets"]
 
         changes_count = 0
-        
+
         for pos in positions:
             if pos not in self.tiles:
                 continue
-                
+
             tile = self.tiles[pos]
             ttype = tile["ttype"]
             current_variant = tile["variant"]
-            
-            # 3. Identify the group of the CURRENT tile
+
             target_group_id = variant_to_group.get((ttype, current_variant))
             if not target_group_id:
                 continue
-                
-            # 4. Detect neighbors (8-way) that belong to the SAME group
+
             actual_neighbors = []
             for dx, dy in [
-                (-1, -1), (0, -1), (1, -1),
-                (-1, 0),          (1, 0),
-                (-1, 1),  (0, 1),  (1, 1)
+                (-1, -1),
+                (0, -1),
+                (1, -1),
+                (-1, 0),
+                (1, 0),
+                (-1, 1),
+                (0, 1),
+                (1, 1),
             ]:
                 npos = (pos[0] + dx, pos[1] + dy)
                 if npos in self.tiles:
                     n_tile = self.tiles[npos]
                     n_group = variant_to_group.get((n_tile["ttype"], n_tile["variant"]))
-                    
+
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            # 5. Filter to directions defined in the ruleset
-            neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
+            neighbor_offsets_set = {
+                n for n in actual_neighbors if n in significant_offsets
+            }
 
-            # 6. Find matching rule WITHIN the same group
             matched_rule: Optional["AutotileRule"] = None
             group_rules = rules_by_group.get(target_group_id, [])
-            
+
             for rule in group_rules:
-                if (rule.neighbors == neighbor_offsets_set and 
-                    rule.tileset_index == ttype):
+                if (
+                    rule.neighbors == neighbor_offsets_set
+                    and rule.tileset_index == ttype
+                ):
                     matched_rule = rule
                     break
-            
+
             if matched_rule and matched_rule.variant_ids:
-                # Avoid unnecessary updates
                 if current_variant in matched_rule.variant_ids:
                     continue
-                
+
                 new_variant = random.choice(matched_rule.variant_ids)
                 tile["variant"] = new_variant
                 changes_count += 1
@@ -182,7 +195,12 @@ class Layer:
             return True
         return False
 
-    def flood_fill(self, start_pos: Tuple[int, int], new_tile_data: TypeTile, map_size: Tuple[int, int]) -> None:
+    def flood_fill(
+        self,
+        start_pos: Tuple[int, int],
+        new_tile_data: TypeTile,
+        map_size: Tuple[int, int],
+    ) -> None:
         """Replace contiguous tiles of the same type starting from start_pos."""
         if self.locked or self.layer_type != "tile":
             return
@@ -202,23 +220,24 @@ class Layer:
 
         while queue:
             curr = queue.pop(0)
-            
-            # Bounds check if necessary, though dict sparse storage handles it
-            if curr[0] < 0 or curr[0] >= map_size[0] or curr[1] < 0 or curr[1] >= map_size[1]:
+
+            if (
+                curr[0] < 0
+                or curr[0] >= map_size[0]
+                or curr[1] < 0
+                or curr[1] >= map_size[1]
+            ):
                 continue
 
-            # Check if current tile matches target
             curr_tile = self.tiles.get(curr)
             curr_ttype = curr_tile["ttype"] if curr_tile else None
             curr_variant = curr_tile["variant"] if curr_tile else None
 
             if curr_ttype == target_ttype and curr_variant == target_variant:
-                # Update tile
                 td = new_tile_data.copy()
                 td["pos"] = curr
                 self.tiles[curr] = td
 
-                # Add neighbors
                 for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                     next_pos = (curr[0] + dx, curr[1] + dy)
                     if next_pos not in seen:
@@ -256,7 +275,6 @@ class Layer:
     def move_object(self, obj_id: int, new_pos: Tuple[int, int]) -> bool:
         """Move an object to a new position. Returns True if successful."""
         if not self.locked and obj_id in self.objects:
-
             self.objects[obj_id]["area"]["x"] = new_pos[0]
             self.objects[obj_id]["area"]["y"] = new_pos[1]
             return True
@@ -290,8 +308,7 @@ class Layer:
             data["objects"] = {}
 
         data["next_object_id"] = self.next_object_id
-        
-        # Metadata storage
+
         data["metadata"] = getattr(self, "metadata", {})
 
         return data
@@ -310,7 +327,6 @@ class Layer:
 
         if "tiles" in data:
             for pos_str, tile_data in data["tiles"].items():
-
                 pos_parts = pos_str.strip("()").split(",")
                 if len(pos_parts) == 2:
                     try:

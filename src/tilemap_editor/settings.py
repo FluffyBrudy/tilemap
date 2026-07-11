@@ -20,10 +20,7 @@ def init_settings(generate_main: bool = False) -> None:
     settings = {
         "base_path": str(base_path.resolve()),
         "data_path": "data",
-        "collision_paths": {
-            "tileset": "collision",
-            "character": "character_collision"
-        },
+        "collision_paths": {"tileset": "collision", "character": "character_collision"},
         "nodes_path": "nodes",
         "theme": "dark",
         "themes_list": ["dark", "molokai", "light", "semi_light"],
@@ -32,8 +29,8 @@ def init_settings(generate_main: bool = False) -> None:
             "max_recent_errors": 50,
             "console_output": True,
             "file_logging": True,
-            "severity_levels": ["error", "warning", "info"]
-        }
+            "severity_levels": ["error", "warning", "info"],
+        },
     }
 
     settings_file = Path.cwd() / "settings.json"
@@ -90,9 +87,7 @@ def update_settings(path: Optional[str] = None) -> None:
     settings_file = Path.cwd() / "settings.json"
 
     if not settings_file.exists():
-        raise RuntimeError(
-            "settings.json not found. Run 'tilemap-editor init' first."
-        )
+        raise RuntimeError("settings.json not found. Run 'tilemap-editor init' first.")
 
     with open(settings_file, "r") as f:
         config = json.load(f)

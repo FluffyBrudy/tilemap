@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from utils.project_paths import to_project_path, resolve_project_path
@@ -67,7 +68,9 @@ class TestResolveProjectPath:
         target.touch()
 
         stored = "assets/file.png"
-        result = resolve_project_path(stored, base, fallback_roots=[fallback], must_exist=True)
+        result = resolve_project_path(
+            stored, base, fallback_roots=[fallback], must_exist=True
+        )
         assert result == target.resolve()
 
     def test_returns_first_candidate_when_not_exist(self, tmp_base):

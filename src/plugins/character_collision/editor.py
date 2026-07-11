@@ -1,18 +1,4 @@
-"""
-Character Collision Editor — Define collision shapes for character sprites.
 
-Layout:
-    +----------------------------------------------------+
-    | Toolbar: [Name: _______] [Shape Type Buttons]      |
-    +----------------------------------------------------+
-    |                                                    |
-    |              Shape Editor                          |
-    |              (visual shape editing)                |
-    |                                                    |
-    +----------------------------------------------------+
-    | Properties: [Width/Height/Radius/etc.]             |
-    +----------------------------------------------------+
-"""
 
 from __future__ import annotations
 
@@ -49,7 +35,6 @@ class CharacterCollisionEditor:
         self._data_root: Path = None
         self.visible = True
 
-        # UI layout
         self.toolbar_height = 50
         self.properties_height = 100
 
@@ -57,13 +42,11 @@ class CharacterCollisionEditor:
             rect.x,
             rect.y + self.toolbar_height,
             rect.w,
-            rect.h - self.toolbar_height - self.properties_height
+            rect.h - self.toolbar_height - self.properties_height,
         )
 
-        # Shape editor
         self.shape_editor = ShapeEditor(shape_editor_rect, sprite_surface)
 
-        # Collision layer/mask sidebar (toggleable overlay)
         self.layer_sidebar = CollisionLayerSidebar(
             rect,
             max_layers=16,
@@ -71,14 +54,15 @@ class CharacterCollisionEditor:
             initial_mask=0xFFFF,
         )
 
-        # Fonts
-        self._font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
-        self._font_sm = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
+        self._font = font_manager.get_font(
+            FONTS.name, FONTS.size_md, FontWeight.REGULAR
+        )
+        self._font_sm = font_manager.get_font(
+            FONTS.name, FONTS.size_sm, FontWeight.REGULAR
+        )
 
-        # Editable name input
         self._name_input = InlineTextInput("char_name", default_val=self.character_name)
 
-        # Shape type buttons
         self.shape_buttons: Dict[ShapeType, Rect] = {}
         self._init_shape_buttons()
 
@@ -103,7 +87,7 @@ class CharacterCollisionEditor:
             rect.x,
             rect.y + self.toolbar_height,
             rect.w,
-            rect.h - self.toolbar_height - self.properties_height
+            rect.h - self.toolbar_height - self.properties_height,
         )
 
         self.shape_editor.resize(shape_editor_rect)
@@ -119,15 +103,14 @@ class CharacterCollisionEditor:
         """
         name = self._name_input.text.strip()
         if name:
-            safe = re.sub(r'[^\w\-]+', '-', name).strip('-').lower()
+            safe = re.sub(r"[^\w\-]+", "-", name).strip("-").lower()
             return f"{safe}-character.collision.json"
         return "character.collision.json"
 
     def get_collision_data(self) -> CharacterCollisionData:
         """Get the current collision data"""
         shape_data = self.shape_editor.get_shape_data()
-        
-        # Import shape data classes
+
         from .models import (
             RectangleCollisionData,
             CircleCollisionData,
@@ -192,21 +175,24 @@ class CharacterCollisionEditor:
         name_path = collision_dir / self._get_save_name()
         if name_path.exists():
             return name_path
-        # Fallback to default
+
         return collision_dir / "character.collision.json"
 
     def _get_collision_dir(self) -> Path:
         """Get collision data directory (data_root/character_collision)"""
         if self._data_root is None:
-            raise RuntimeError("data_root is required. Initialize via from_path() with data_root parameter.")
+            raise RuntimeError(
+                "data_root is required. Initialize via from_path() with data_root parameter."
+            )
         return self._data_root / "character_collision"
 
     def save_to_file(self, path: Path) -> None:
         """Save collision data to file"""
         try:
             import json
+
             data = self.get_collision_data()
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump(data.to_dict(), f, indent=2)
         except Exception as e:
             error_handler.capture(e, context="save_character_collision")
@@ -215,7 +201,8 @@ class CharacterCollisionEditor:
         """Load collision data from file"""
         try:
             import json
-            with open(path, 'r') as f:
+
+            with open(path, "r") as f:
                 data_dict = json.load(f)
             data = CharacterCollisionData.from_dict(data_dict)
             self.load_collision_data(data)
@@ -233,22 +220,22 @@ class CharacterCollisionEditor:
 
         mouse = pygame.mouse.get_pos()
 
-        # Layer/mask sidebar handles events when open
         if self.layer_sidebar.handle_event(event):
             return True
 
-        # Toggle button
         if self.layer_sidebar.handle_toggle_event(event):
             return True
 
-        # Keyboard shortcut: L to toggle sidebar (skip when name input is focused)
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_l and not self._name_input.is_focused:
+        if (
+            event.type == pygame.KEYDOWN
+            and event.key == pygame.K_l
+            and not self._name_input.is_focused
+        ):
             mods = pygame.key.get_mods()
             if not (mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)):
                 self.layer_sidebar.toggle()
                 return True
 
-        # Name input handling
         if self._name_input.is_focused:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
@@ -259,9 +246,7 @@ class CharacterCollisionEditor:
                     return True
             if self._name_input.handle_event(event, self._font):
                 return True
-            # Tab/click outside handled below
 
-        # Click-to-focus name input
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._name_input_rect().collidepoint(mouse):
                 self._name_input.is_focused = True
@@ -271,11 +256,9 @@ class CharacterCollisionEditor:
             elif self._name_input.is_focused:
                 self._name_input.is_focused = False
 
-        # Let shape editor handle events next
         if self.shape_editor.handle_event(event):
             return True
 
-        # Shape type button clicks
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for shape_type, button_rect in self.shape_buttons.items():
                 if button_rect.collidepoint(mouse):
@@ -289,19 +272,14 @@ class CharacterCollisionEditor:
         if not self.visible:
             return
 
-        # Draw toolbar
         self._draw_toolbar(screen)
 
-        # Draw shape editor
         self.shape_editor.draw(screen)
 
-        # Draw toggle button
         self.layer_sidebar.draw_toggle_button(screen)
 
-        # Draw collision layer/mask sidebar (only when visible)
         self.layer_sidebar.draw(screen)
 
-        # Draw properties panel
         self._draw_properties(screen)
 
     def _draw_toolbar(self, screen: Surface) -> None:
@@ -309,38 +287,41 @@ class CharacterCollisionEditor:
         toolbar_rect = Rect(self.rect.x, self.rect.y, self.rect.w, self.toolbar_height)
         draw_panel(screen, toolbar_rect, COLORS.header, COLORS.border)
 
-        # "Name:" label
         label = self._font_sm.render("Name:", True, COLORS.text)
         screen.blit(label, (toolbar_rect.x + 10, toolbar_rect.y + 17))
 
-        # Editable name field
         name_rect = self._name_input_rect()
         bg_color = COLORS.panel if self._name_input.is_focused else COLORS.panel_alt
         pygame.draw.rect(screen, bg_color, name_rect, border_radius=4)
         pygame.draw.rect(
-            screen, COLORS.accent if self._name_input.is_focused else COLORS.border,
-            name_rect, 1, border_radius=4,
+            screen,
+            COLORS.accent if self._name_input.is_focused else COLORS.border,
+            name_rect,
+            1,
+            border_radius=4,
         )
 
-        # Render input text
         display_name = self._name_input.text or "character"
         txt = self._font_sm.render(display_name, True, COLORS.text)
         screen.blit(txt, (name_rect.x + 4, name_rect.y + 5))
 
-        # Cursor when focused
         if self._name_input.is_focused and (pygame.time.get_ticks() // 400) % 2:
-            pre = self._font_sm.render(self._name_input.text[:self._name_input.cursor_pos], True, (0, 0, 0))
+            pre = self._font_sm.render(
+                self._name_input.text[: self._name_input.cursor_pos], True, (0, 0, 0)
+            )
             cx = name_rect.x + 4 + pre.get_width()
             cy = name_rect.y + 5
-            pygame.draw.line(screen, COLORS.text, (cx, cy), (cx, cy + txt.get_height()), 1)
+            pygame.draw.line(
+                screen, COLORS.text, (cx, cy), (cx, cy + txt.get_height()), 1
+            )
 
-        # Shape type buttons
         for shape_type, button_rect in self.shape_buttons.items():
-            is_active = (self.shape_editor.shape_type == shape_type)
-            
-            # Render label
-            label_surf = self._font_sm.render(shape_type.capitalize(), True, COLORS.text)
-            
+            is_active = self.shape_editor.shape_type == shape_type
+
+            label_surf = self._font_sm.render(
+                shape_type.capitalize(), True, COLORS.text
+            )
+
             draw_button(screen, button_rect, label_surf, active=is_active)
 
     def _draw_properties(self, screen: Surface) -> None:
@@ -349,11 +330,10 @@ class CharacterCollisionEditor:
             self.rect.x,
             self.rect.bottom - self.properties_height,
             self.rect.w,
-            self.properties_height
+            self.properties_height,
         )
         draw_panel(screen, props_rect, COLORS.panel, COLORS.border)
 
-        # Display current shape properties
         shape_data = self.shape_editor.get_shape_data()
         y = props_rect.y + 10
         x = props_rect.x + 10
@@ -366,29 +346,27 @@ class CharacterCollisionEditor:
             text = self._font_sm.render(
                 f"Width: {shape_data['width']:.1f}  Height: {shape_data['height']:.1f}  Offset: ({shape_data['offset'][0]:.1f}, {shape_data['offset'][1]:.1f})",
                 True,
-                COLORS.text_dim
+                COLORS.text_dim,
             )
             screen.blit(text, (x, y))
         elif shape_data["type"] == "circle":
             text = self._font_sm.render(
                 f"Radius: {shape_data['radius']:.1f}  Offset: ({shape_data['offset'][0]:.1f}, {shape_data['offset'][1]:.1f})",
                 True,
-                COLORS.text_dim
+                COLORS.text_dim,
             )
             screen.blit(text, (x, y))
         elif shape_data["type"] == "capsule":
             text = self._font_sm.render(
                 f"Radius: {shape_data['radius']:.1f}  Height: {shape_data['height']:.1f}  Offset: ({shape_data['offset'][0]:.1f}, {shape_data['offset'][1]:.1f})",
                 True,
-                COLORS.text_dim
+                COLORS.text_dim,
             )
             screen.blit(text, (x, y))
         elif shape_data["type"] == "polygon":
             vertex_count = len(shape_data["vertices"])
             text = self._font_sm.render(
-                f"Vertices: {vertex_count}",
-                True,
-                COLORS.text_dim
+                f"Vertices: {vertex_count}", True, COLORS.text_dim
             )
             screen.blit(text, (x, y))
 
@@ -426,7 +404,6 @@ class CharacterCollisionEditor:
                     elif event.key == pygame.K_s and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
-                        # Ctrl+S / Cmd+S to save
                         collision_dir = self._get_collision_dir()
                         collision_dir.mkdir(parents=True, exist_ok=True)
                         save_path = self._get_save_path()
@@ -435,7 +412,6 @@ class CharacterCollisionEditor:
                     elif event.key == pygame.K_l and (
                         pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
                     ):
-                        # Ctrl+L / Cmd+L to load
                         load_path = self._get_load_path()
                         if load_path.exists():
                             self.load_from_file(load_path)

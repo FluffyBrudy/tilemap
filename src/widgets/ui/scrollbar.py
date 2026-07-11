@@ -11,8 +11,12 @@ THUMB_MIN = 16
 class Scrollbar:
     """Interactive scrollbar with drag, track-click, and wheel support."""
 
-    def __init__(self, orientation: str = "vertical", rect: Optional[Rect] = None,
-                 on_scroll: Optional[Callable[[float], None]] = None):
+    def __init__(
+        self,
+        orientation: str = "vertical",
+        rect: Optional[Rect] = None,
+        on_scroll: Optional[Callable[[float], None]] = None,
+    ):
         self.orientation = orientation
         self.rect = rect or Rect(0, 0, 10, 100)
         self.on_scroll = on_scroll
@@ -74,12 +78,18 @@ class Scrollbar:
                 self._dragging = True
                 self._drag_start_scroll = self.scroll_pos
                 pos_val = event.pos[1 if self.orientation == "vertical" else 0]
-                self._drag_offset = pos_val - tr.y if self.orientation == "vertical" else pos_val - tr.x
+                self._drag_offset = (
+                    pos_val - tr.y if self.orientation == "vertical" else pos_val - tr.x
+                )
             else:
                 pos_val = event.pos[1 if self.orientation == "vertical" else 0]
-                rel = pos_val - (self.rect.y if self.orientation == "vertical" else self.rect.x)
+                rel = pos_val - (
+                    self.rect.y if self.orientation == "vertical" else self.rect.x
+                )
                 ratio = rel / self._track_size
-                self.scroll_pos = max(0.0, min(ratio * self.max_scroll, self.max_scroll))
+                self.scroll_pos = max(
+                    0.0, min(ratio * self.max_scroll, self.max_scroll)
+                )
                 if self.on_scroll:
                     self.on_scroll(self.scroll_pos)
             return True
@@ -109,12 +119,16 @@ class Scrollbar:
             self._hovered = self.rect.collidepoint(event.pos)
             if self._dragging:
                 pos_val = event.pos[1 if self.orientation == "vertical" else 0]
-                track_start = self.rect.y if self.orientation == "vertical" else self.rect.x
+                track_start = (
+                    self.rect.y if self.orientation == "vertical" else self.rect.x
+                )
                 rel = pos_val - track_start - self._drag_offset
                 avail = self._track_size - self.thumb_size
                 if avail > 0:
                     ratio = rel / avail
-                    self.scroll_pos = max(0.0, min(ratio * self.max_scroll, self.max_scroll))
+                    self.scroll_pos = max(
+                        0.0, min(ratio * self.max_scroll, self.max_scroll)
+                    )
                     if self.on_scroll:
                         self.on_scroll(self.scroll_pos)
                 return True
@@ -140,5 +154,7 @@ class Scrollbar:
         if self.content_size <= self.view_size:
             return
         pygame.draw.rect(screen, COLORS.panel_alt, self.rect, border_radius=4)
-        thumb_col = COLORS.text_dim if self._hovered or self._dragging else COLORS.text_muted
+        thumb_col = (
+            COLORS.text_dim if self._hovered or self._dragging else COLORS.text_muted
+        )
         pygame.draw.rect(screen, thumb_col, self._thumb_rect(), border_radius=4)

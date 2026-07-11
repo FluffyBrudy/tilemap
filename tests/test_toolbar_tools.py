@@ -11,15 +11,19 @@ Covers:
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import sys
 from pathlib import Path
-import pytest
+
 import pygame
+import pytest
 from pygame import Rect
 
-import sys
+from widgets.ui.toolbar import Toolbar
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -54,7 +58,6 @@ class FakeEditor:
 
 
 def make_toolbar(x=0, y=0, w=800, h=35) -> "Toolbar":
-    from widgets.ui.toolbar import Toolbar
 
     editor = FakeEditor()
     return Toolbar(editor, x, y, w, h)

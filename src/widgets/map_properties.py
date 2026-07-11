@@ -39,7 +39,7 @@ class MapPropertiesDialog:
             bg=COLORS.danger,
             border_radius=SHAPE.radius_sm,
             font=FONTS.get_medium_font(),
-            on_click=lambda: setattr(self, 'visible', False),
+            on_click=lambda: setattr(self, "visible", False),
         )
         self.font = FONTS.get_bold_font(FONTS.size_lg)
         self.font_info = FONTS.get_small_font()
@@ -56,8 +56,12 @@ class MapPropertiesDialog:
         self.render_scale_input.resize(
             Rect(self.rect.x + 20, self.rect.y + 60, self.rect.width - 40, 60)
         )
-        self.btn_save.rect = Rect(self.rect.centerx - 130, self.rect.bottom - 50, 120, 35)
-        self.btn_cancel.rect = Rect(self.rect.centerx + 10, self.rect.bottom - 50, 120, 35)
+        self.btn_save.rect = Rect(
+            self.rect.centerx - 130, self.rect.bottom - 50, 120, 35
+        )
+        self.btn_cancel.rect = Rect(
+            self.rect.centerx + 10, self.rect.bottom - 50, 120, 35
+        )
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
@@ -78,8 +82,6 @@ class MapPropertiesDialog:
 
         self.render_scale_input.handle_event(event)
         return True
-
-
 
     def submit(self):
         try:
@@ -106,7 +108,9 @@ class MapPropertiesDialog:
         screen.blit(overlay, (0, 0))
 
         pygame.draw.rect(screen, COLORS.panel, self.rect, border_radius=SHAPE.radius)
-        pygame.draw.rect(screen, COLORS.border, self.rect, SHAPE.border, border_radius=SHAPE.radius)
+        pygame.draw.rect(
+            screen, COLORS.border, self.rect, SHAPE.border, border_radius=SHAPE.radius
+        )
 
         title = self.font.render("Map Properties", True, COLORS.text)
         screen.blit(title, (self.rect.x + 20, self.rect.y + 15))
@@ -122,7 +126,5 @@ class MapPropertiesDialog:
         self.btn_cancel.draw(screen)
 
         if self.error_message:
-            err = FONTS.get_small_font().render(
-                self.error_message, True, COLORS.danger
-            )
+            err = FONTS.get_small_font().render(self.error_message, True, COLORS.danger)
             screen.blit(err, (self.rect.x + 20, self.btn_save.rect.y - 20))

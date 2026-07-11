@@ -37,8 +37,8 @@ class AnimationMarker:
 class AnimationFrame:
     """A single frame in an animation sequence."""
 
-    variant_id: int  # Tile index in the spritesheet (row-major)
-    duration_ms: float = 100.0  # How long this frame displays
+    variant_id: int
+    duration_ms: float = 100.0
 
     def to_dict(self) -> dict:
         return {"variant_id": self.variant_id, "duration_ms": self.duration_ms}
@@ -58,9 +58,9 @@ class Animation:
     name: str
     frames: List[AnimationFrame] = field(default_factory=list)
     loop: bool = True
-    # Playback rate hint for preview + runtime (wall-clock: durations are ms per cel).
+
     fps: float = 60.0
-    # Optional JSON-serializable key/value data (combat phases, tags, exporter hints, …).
+
     metadata: Dict[str, Any] = field(default_factory=dict)
     markers: List[AnimationMarker] = field(default_factory=list)
 
@@ -111,9 +111,7 @@ class Animation:
         """Deep copy of this clip under a new name (for duplicate / template)."""
         return Animation(
             name=new_name,
-            frames=[
-                AnimationFrame(f.variant_id, f.duration_ms) for f in self.frames
-            ],
+            frames=[AnimationFrame(f.variant_id, f.duration_ms) for f in self.frames],
             loop=self.loop,
             fps=self.fps,
             metadata=dict(self.metadata),

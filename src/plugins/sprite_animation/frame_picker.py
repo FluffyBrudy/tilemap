@@ -20,9 +20,6 @@ TOP_TITLE_H = 22
 TOP_BAR_TOTAL = 42
 
 
-# ---------------------------------------------------------------------------
-# Inline theme constants (avoids hard dependency on widgets.ui.theme)
-# ---------------------------------------------------------------------------
 _COLORS = {
     "bg": (25, 27, 30),
     "grid": (255, 255, 255),
@@ -53,25 +50,20 @@ class FramePicker:
         self.surface = surface
         self.tile_size = tile_size
 
-        # Grid offset (for starting grid at a specific position in the spritesheet)
-        # Must be initialized BEFORE _recalc_grid()
         self.grid_offset_x: int = 0
         self.grid_offset_y: int = 0
 
         self._recalc_grid()
 
-        # View state
         self.offset_x: float = 0.0
         self.offset_y: float = 0.0
         self.zoom: float = 1.0
 
-        # Interaction
         self.hover_index: int = -1
         self._panning = False
         self._pan_start = (0, 0)
         self._pan_start_offset = (0.0, 0.0)
 
-        # Highlighted frames (belonging to the active animation)
         self.highlighted: Set[int] = set()
         self.focus_variant: int = -1
 
@@ -81,19 +73,12 @@ class FramePicker:
         self._filter_input_rect = Rect(0, 0, 0, 0)
         self._btn_unused_rect = Rect(0, 0, 0, 0)
 
-        # Callback fired when user clicks a tile
         self.on_frame_clicked: Optional[Callable[[int], None]] = None
 
-        # Fonts (created lazily so pygame.init() can happen anytime before draw)
         self._font: Optional[pygame.font.Font] = None
         self._font_sm: Optional[pygame.font.Font] = None
 
-        # Checkerboard tile (8×8) cached
         self._checker: Optional[pygame.Surface] = None
-
-    # ------------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------------
 
     def set_surface(
         self, surface: pygame.Surface, tile_size: Optional[Tuple[int, int]] = None
@@ -161,10 +146,6 @@ class FramePicker:
             return True
         return True
 
-    # ------------------------------------------------------------------
-    # Events
-    # ------------------------------------------------------------------
-
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
         if not self.rect.collidepoint(mouse) and event.type not in (
@@ -184,7 +165,6 @@ class FramePicker:
                 self.editing_filter = False
                 return True
 
-        # Right-click drag to pan
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.rect.collidepoint(mouse):
                 if mouse[1] < self.rect.y + TOP_BAR_TOTAL:
@@ -206,7 +186,6 @@ class FramePicker:
             self.offset_y = self._pan_start_offset[1] + dy
             return True
 
-        # Left-click to select a frame
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if (
                 self.rect.collidepoint(mouse)
@@ -221,41 +200,35 @@ class FramePicker:
                     self.on_frame_clicked(idx)
                 return True
 
-        # Scroll to pan / Ctrl+scroll to zoom
-        # Handles both mouse wheel and touchpad gestures
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
             if mouse[1] < self.rect.y + TOP_BAR_TOTAL:
                 return True
             mods = pygame.key.get_mods()
             if mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL):
-                # Zoom mode: vertical scroll zooms, horizontal scroll pans
                 old = self.zoom
-                # Use vertical scroll for zoom
+
                 if event.y != 0:
                     self.zoom *= 1.12 if event.y > 0 else 0.88
                     self.zoom = max(0.25, min(self.zoom, 8.0))
-                    # Zoom toward mouse position
+
                     rel_x = mouse[0] - self.rect.x - self.offset_x
                     rel_y = mouse[1] - self.rect.y - self.offset_y
                     scale = self.zoom / old
                     self.offset_x -= rel_x * (scale - 1)
                     self.offset_y -= rel_y * (scale - 1)
-                # Use horizontal scroll for panning (touchpad support)
+
                 if event.x != 0:
                     self.offset_x += event.x * 30
             else:
-                # Pan mode: vertical scroll pans Y, horizontal scroll pans X
-                # Touchpad two-finger scroll sends both x and y
                 if event.y != 0:
                     self.offset_y += event.y * 30
                 if event.x != 0:
                     self.offset_x += event.x * 30
             return True
 
-        # Keyboard shortcuts for zoom and pan (when mouse is over the frame picker)
         if event.type == pygame.KEYDOWN and self.rect.collidepoint(mouse):
             mods = pygame.key.get_mods()
-            # Don't capture if Ctrl/Shift is held (let mouse wheel zoom handle it)
+
             if not (
                 mods
                 & (
@@ -267,11 +240,10 @@ class FramePicker:
             ):
                 zoom_step = 1.15
                 if event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
-                    # Zoom in
                     old = self.zoom
                     self.zoom *= zoom_step
                     self.zoom = min(self.zoom, 8.0)
-                    # Zoom toward center of view
+
                     cx = self.rect.w // 2
                     cy = self.rect.h // 2
                     rel_x = cx - self.offset_x
@@ -281,7 +253,6 @@ class FramePicker:
                     self.offset_y -= rel_y * (scale - 1)
                     return True
                 elif event.key == pygame.K_MINUS:
-                    # Zoom out
                     old = self.zoom
                     self.zoom /= zoom_step
                     self.zoom = max(self.zoom, 0.25)
@@ -294,13 +265,11 @@ class FramePicker:
                     self.offset_y -= rel_y * (scale - 1)
                     return True
                 elif event.key == pygame.K_0:
-                    # Reset zoom to 1x and center
                     self.zoom = 1.0
                     self.offset_x = 0.0
                     self.offset_y = 0.0
                     return True
 
-                # Arrow keys for panning
                 pan_amount = 20
                 if event.key == pygame.K_LEFT:
                     self.offset_x += pan_amount
@@ -315,7 +284,6 @@ class FramePicker:
                     self.offset_y -= pan_amount
                     return True
 
-        # Track hover
         if event.type == pygame.MOUSEMOTION:
             if self.rect.collidepoint(mouse):
                 hi = self._index_at(mouse)
@@ -328,16 +296,11 @@ class FramePicker:
 
         return False
 
-    # ------------------------------------------------------------------
-    # Drawing
-    # ------------------------------------------------------------------
-
     def draw(self, screen: pygame.Surface) -> None:
         self._ensure_fonts()
         clip = screen.get_clip()
         screen.set_clip(self.rect)
 
-        # Background (checkerboard)
         self._draw_checker_bg(screen)
 
         tw, th = self.tile_size
@@ -347,30 +310,24 @@ class FramePicker:
         scaled_w = int(self.surface.get_width() * z)
         scaled_h = int(self.surface.get_height() * z)
 
-        # Draw scaled spritesheet
         if scaled_w > 0 and scaled_h > 0:
             scaled = pygame.transform.smoothscale(self.surface, (scaled_w, scaled_h))
             screen.blit(scaled, (img_x, img_y))
 
-        # Grid lines (only within spritesheet bounds, starting from offset)
         cell_w = tw * z
         cell_h = th * z
 
-        # Calculate spritesheet bounds on screen
         sheet_screen_rect = Rect(int(img_x), int(img_y), int(scaled_w), int(scaled_h))
 
-        # Calculate grid start position (with offset applied)
         grid_start_x = img_x + (self.grid_offset_x * z)
         grid_start_y = img_y + (self.grid_offset_y * z)
 
-        # Clip grid to spritesheet area
         grid_clip = sheet_screen_rect.clip(self.rect)
         if grid_clip.width > 0 and grid_clip.height > 0:
             grid_alpha_surf = pygame.Surface(
                 (grid_clip.w, grid_clip.h), pygame.SRCALPHA
             )
 
-            # Draw vertical lines
             for c in range(self.cols + 1):
                 x_world = grid_start_x + c * cell_w
                 x_local = int(x_world - grid_clip.x)
@@ -382,7 +339,6 @@ class FramePicker:
                         (x_local, grid_clip.h),
                     )
 
-            # Draw horizontal lines
             for r in range(self.rows + 1):
                 y_world = grid_start_y + r * cell_h
                 y_local = int(y_world - grid_clip.y)
@@ -396,7 +352,6 @@ class FramePicker:
 
             screen.blit(grid_alpha_surf, grid_clip.topleft)
 
-        # Highlighted tiles (used in current animation)
         for idx in self.highlighted:
             col = idx % self.cols
             row = idx // self.cols
@@ -411,7 +366,6 @@ class FramePicker:
             screen.blit(hl_surf, hr.topleft)
             pygame.draw.rect(screen, _COLORS["highlight"], hr, 1)
 
-        # Dim tiles that fail the active filter (still visible for context)
         for idx in range(self.total_frames):
             if self._tile_matches_filter(idx):
                 continue
@@ -424,13 +378,11 @@ class FramePicker:
             dim.fill((*_COLORS["filter_mask"], 140))
             screen.blit(dim, hr.topleft)
 
-        # Timeline-linked selection (distinct from "used in clip" green wash)
         if self.focus_variant >= 0 and self.focus_variant < self.total_frames:
             fhr = self._tile_screen_rect(self.focus_variant)
             if fhr is not None and self.rect.colliderect(fhr):
                 pygame.draw.rect(screen, _COLORS["focus"], fhr, 3)
 
-        # Hover highlight
         if self.hover_index >= 0:
             col = self.hover_index % self.cols
             row = self.hover_index // self.cols
@@ -441,7 +393,7 @@ class FramePicker:
                 int(cell_h),
             )
             pygame.draw.rect(screen, _COLORS["hover"], hr, 2)
-            # Index label
+
             label = self._font_sm.render(str(self.hover_index), True, _COLORS["text"])
             lx = hr.x + 2
             ly = hr.y + 2
@@ -453,7 +405,6 @@ class FramePicker:
             screen.blit(bg, bg_rect.topleft)
             screen.blit(label, (lx, ly))
 
-        # Top bar: title + filter row
         hdr = Rect(self.rect.x, self.rect.y, self.rect.w, TOP_TITLE_H)
         hdr_bg = pygame.Surface((hdr.w, hdr.h), pygame.SRCALPHA)
         hdr_bg.fill((*_COLORS["header"], 200))
@@ -510,14 +461,10 @@ class FramePicker:
 
         screen.set_clip(clip)
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     def _recalc_grid(self) -> None:
         """Recalculate grid dimensions based on tile size and offset."""
         tw, th = self.tile_size
-        # Calculate available space after offset
+
         available_w = self.surface.get_width() - self.grid_offset_x
         available_h = self.surface.get_height() - self.grid_offset_y
         self.cols = max(1, available_w // tw)
@@ -559,11 +506,9 @@ class FramePicker:
         W = float(self.surface.get_width())
         H = float(self.surface.get_height())
 
-        # Convert mouse to spritesheet pixel coordinates
         rel_x = (mouse[0] - self.rect.x - self.offset_x) / z
         rel_y = (mouse[1] - self.rect.y - self.offset_y) / z
 
-        # ~1 screen pixel in texture space — fixes float overshoot on right/bottom at zoom
         eps_tex = max(0.25, 0.5 / max(z, 0.01))
 
         if rel_x < 0 or rel_y < 0:
@@ -583,7 +528,7 @@ class FramePicker:
 
         gw = float(self.cols * tw)
         gh = float(self.rows * th)
-        # Nudge picks that land on the inner edge of the last cell (float / scale artifacts)
+
         if grid_rel_x >= gw and grid_rel_x < gw + eps_tex:
             grid_rel_x = max(0.0, gw - 1e-6)
         if grid_rel_y >= gh and grid_rel_y < gh + eps_tex:

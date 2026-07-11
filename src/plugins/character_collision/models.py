@@ -167,5 +167,4 @@ class CharacterCollisionData:
         )
 
 
-# Type aliases for backward compatibility
 CollisionShapeType = CollisionShapeType

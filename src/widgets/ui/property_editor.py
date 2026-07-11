@@ -56,17 +56,20 @@ class PropertyEditor:
         btn_y = self.rect.bottom - 40
         self.btn_save = Button(
             Rect(self.rect.right - btn_w - 10, btn_y, btn_w, btn_h),
-            "Save", font=self.font_label,
+            "Save",
+            font=self.font_label,
             on_click=self._on_save_click,
         )
         self.btn_cancel = Button(
             Rect(self.rect.x + 10, btn_y, btn_w, btn_h),
-            "Cancel", font=self.font_label,
+            "Cancel",
+            font=self.font_label,
             on_click=self._on_cancel_click,
         )
         self.btn_add = Button(
             Rect(self.rect.centerx - btn_w // 2, btn_y, btn_w, btn_h),
-            "Add Prop", font=self.font_label,
+            "Add Prop",
+            font=self.font_label,
             on_click=self._on_add_click,
         )
 
@@ -87,9 +90,7 @@ class PropertyEditor:
 
     def _update_hovered_tooltip(self, mouse_pos):
         self._hovered_truncated = None
-        content_rect = Rect(
-            self.rect.x, self.rect.y + 40, self.width, self.height - 90
-        )
+        content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
         if content_rect.collidepoint(mouse_pos):
             rel_y = mouse_pos[1] - content_rect.y + self.scroll_y
             idx = rel_y // self.item_height
@@ -238,7 +239,8 @@ class PropertyEditor:
 
         content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
         pygame.draw.line(
-            screen, COLORS.border,
+            screen,
+            COLORS.border,
             (self.rect.x, self.rect.y + 40),
             (self.rect.right, self.rect.y + 40),
         )

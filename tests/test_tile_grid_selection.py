@@ -14,6 +14,7 @@ Covers:
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
@@ -23,6 +24,7 @@ import pygame
 from pygame import Rect
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -37,6 +39,7 @@ def init_pygame():
 # ---------------------------------------------------------------------------
 # Minimal fakes
 # ---------------------------------------------------------------------------
+
 
 class FakeNotifications:
     def __init__(self):
@@ -173,6 +176,7 @@ def make_grid(layer=None):
 # Initial state
 # ---------------------------------------------------------------------------
 
+
 class TestInitialState:
     def test_selection_rect_is_none(self):
         g = make_grid()
@@ -211,6 +215,7 @@ class TestInitialState:
 # _point_in_selection
 # ---------------------------------------------------------------------------
 
+
 class TestPointInSelection:
     def test_returns_false_when_no_selection(self):
         g = make_grid()
@@ -246,6 +251,7 @@ class TestPointInSelection:
 # _finalize_selection
 # ---------------------------------------------------------------------------
 
+
 class TestFinalizeSelection:
     def test_removes_single_cell_selection(self):
         g = make_grid()
@@ -268,6 +274,7 @@ class TestFinalizeSelection:
 # ---------------------------------------------------------------------------
 # copy_selection (tile layer)
 # ---------------------------------------------------------------------------
+
 
 class TestCopySelection:
     def test_copy_with_no_selection_does_nothing(self):
@@ -340,6 +347,7 @@ class TestCopySelection:
 # paste_clipboard (tile layer)
 # ---------------------------------------------------------------------------
 
+
 class TestPasteClipboard:
     def _setup_clipboard(self):
         layer = FakeTileLayer()
@@ -396,6 +404,7 @@ class TestPasteClipboard:
 # delete_selection
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteSelection:
     def test_delete_with_no_selection_does_nothing(self):
         g = make_grid()
@@ -441,6 +450,7 @@ class TestDeleteSelection:
 # ---------------------------------------------------------------------------
 # _begin_move and cancel_move
 # ---------------------------------------------------------------------------
+
 
 class TestBeginMoveAndCancelMove:
     def test_begin_move_sets_is_moving(self):
@@ -499,6 +509,7 @@ class TestBeginMoveAndCancelMove:
 # ---------------------------------------------------------------------------
 # commit_move (tile layer)
 # ---------------------------------------------------------------------------
+
 
 class TestCommitMove:
     def test_commit_move_with_zero_delta_does_not_move_tiles(self):

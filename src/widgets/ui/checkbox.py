@@ -38,7 +38,9 @@ class Checkbox:
         self._disabled = disabled
         self._on_changed = on_changed
         self._hovered = False
-        self._font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
+        self._font = font_manager.get_font(
+            FONTS.name, FONTS.size_sm, FontWeight.REGULAR
+        )
 
     @property
     def checked(self) -> bool:
@@ -87,11 +89,15 @@ class Checkbox:
         cb_y = self.rect.y + (self.rect.h - CHECKBOX_SIZE) // 2
         check_rect = Rect(self.rect.x, cb_y, CHECKBOX_SIZE, CHECKBOX_SIZE)
         pygame.draw.rect(screen, box_color, check_rect, border_radius=CHECKBOX_RADIUS)
-        pygame.draw.rect(screen, border_color, check_rect, 1, border_radius=CHECKBOX_RADIUS)
+        pygame.draw.rect(
+            screen, border_color, check_rect, 1, border_radius=CHECKBOX_RADIUS
+        )
 
         if self._checked:
             surf = self._font.render("✓", True, check_color)
-            screen.blit(surf, (self.rect.x + CHECKMARK_OFFSET_X, cb_y + CHECKMARK_OFFSET_Y))
+            screen.blit(
+                surf, (self.rect.x + CHECKMARK_OFFSET_X, cb_y + CHECKMARK_OFFSET_Y)
+            )
 
         label_x = self.rect.x + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP
         label_y = self.rect.y + (self.rect.h - self._font.get_height()) // 2

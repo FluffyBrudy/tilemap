@@ -6,15 +6,19 @@ invalidate_cache now consolidates.
 """
 
 import os
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+import sys
 from pathlib import Path
-import pytest
+
 import pygame
+import pytest
 from pygame import Rect
 
-import sys
+from plugins.sprite_animation.timeline import Timeline
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -34,7 +38,6 @@ def _make_surface(w=128, h=64, color=(255, 0, 0)) -> pygame.Surface:
 
 
 def _make_timeline(tile_size=(32, 32), surf_size=(128, 64)) -> "Timeline":
-    from plugins.sprite_animation.timeline import Timeline
 
     surf = _make_surface(*surf_size)
     rect = Rect(0, 0, 400, 120)

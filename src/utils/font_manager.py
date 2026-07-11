@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Centralized Font Manager - Singleton Pattern
 Provides efficient font loading and management with customizable weight variants.
@@ -11,7 +10,7 @@ from typing import Dict, Optional, Tuple
 from enum import Enum
 from pathlib import Path
 
-# Setup logging for font manager
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,13 +89,11 @@ class FontManager:
         """Parse font filename to extract weight and style."""
         filename_lower = filename.lower()
 
-        # Determine style
         style = FontStyle.NORMAL
         if "italic" in filename_lower:
             style = FontStyle.ITALIC
 
-        # Determine weight
-        weight = FontWeight.REGULAR  # default
+        weight = FontWeight.REGULAR
         for weight_enum in FontWeight:
             if weight_enum.value in filename_lower:
                 weight = weight_enum
@@ -127,36 +124,30 @@ class FontManager:
         Returns:
             pygame.font.Font object
         """
-        # Handle legacy bold/italic parameters
+
         if bold is not None:
             weight = FontWeight.BOLD if bold else FontWeight.REGULAR
         if italic is not None:
             style = FontStyle.ITALIC if italic else FontStyle.NORMAL
 
-        # Use default family if none specified
         if family is None:
             family = self._default_family
 
-        # Create cache key
         cache_key = f"{family}_{size}_{weight.value}_{style.value}"
 
         logger.debug(f"Font request: {family} {size} {weight.value} {style.value}")
 
-        # Return cached font if available
         if cache_key in self._fonts:
             logger.debug(f"Font cache hit: {cache_key}")
             return self._fonts[cache_key]
 
-        # Try system font first for better rendering (especially with bold)
         logger.debug(f"Attempting to load system font first: {family}")
         font = self._load_system_font(family, size, weight, style)
 
-        # Fallback to custom font if system font fails
         if font is None:
             logger.debug(f"System font failed, trying custom font: {family}")
             font = self._load_custom_font(family, size, weight, style)
 
-        # Cache and return
         if font:
             self._fonts[cache_key] = font
             logger.info(f"Font loaded successfully: {cache_key}")
@@ -164,7 +155,6 @@ class FontManager:
         else:
             logger.warning(f"Failed to load font: {cache_key}, using fallback")
 
-        # Ultimate fallback
         return pygame.font.Font(None, size)
 
     def _load_custom_font(
@@ -180,7 +170,6 @@ class FontManager:
         font_key = f"{weight.value}_{style.value}"
         font_path = self._font_families[family_lower].get(font_key)
 
-        # Fallback logic: if bold weight requested but not found, try regular bold
         if not font_path and weight in [
             FontWeight.BOLD,
             FontWeight.SEMI_BOLD,
@@ -209,7 +198,7 @@ class FontManager:
         self, family: str, size: int, weight: FontWeight, style: FontStyle
     ) -> Optional[pygame.font.Font]:
         """Load system font with fallback."""
-        # Try exact family name first
+
         try:
             bold = weight in [
                 FontWeight.SEMI_BOLD,
@@ -226,7 +215,6 @@ class FontManager:
         except (pygame.error, OSError) as e:
             logger.debug(f"System font failed: {family} - {e}")
 
-        # Try common variations
         family_variants = [family]
         if "mono" in family.lower():
             family_variants.extend(["consolas", "monaco", "courier new"])
@@ -283,11 +271,9 @@ class FontManager:
         return self._font_families.get(family_lower, {})
 
 
-# Global singleton instance
 font_manager = FontManager()
 
 
-# Convenience functions for backward compatibility
 def get_font(
     family: Optional[str] = None,
     size: int = 12,
@@ -314,7 +300,6 @@ def preload_common_fonts():
     """Preload commonly used fonts."""
     common_sizes = [11, 12, 13, 14, 16, 18]
 
-    # Preload JetBrains Mono variants if available
     if "jetbrain-fonts" in font_manager._font_families:
         for size in common_sizes:
             font_manager.preload_font("jetbrainsmono", size, FontWeight.REGULAR)
@@ -323,13 +308,11 @@ def preload_common_fonts():
                 "jetbrainsmono", size, FontWeight.REGULAR, FontStyle.ITALIC
             )
 
-    # Preload Noto Sans variants if available
     if "noto" in font_manager._font_families:
         for size in common_sizes:
             font_manager.preload_font("noto", size, FontWeight.REGULAR)
             font_manager.preload_font("noto", size, FontWeight.BOLD)
 
-    # Preload fallback Arial
     for size in common_sizes:
         font_manager.preload_font("Arial", size, FontWeight.REGULAR)
         font_manager.preload_font("Arial", size, FontWeight.BOLD)

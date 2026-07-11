@@ -102,7 +102,11 @@ def _parse_animation(name: str, d: Dict[str, Any], ctx: str) -> Animation:
     if markers_raw is not None:
         ml = _req_list(markers_raw, f"{ctx}.markers")
         for i, m in enumerate(ml):
-            markers.append(_parse_marker(_req_dict(m, f"{ctx}.markers[{i}]"), f"{ctx}.markers[{i}]"))
+            markers.append(
+                _parse_marker(
+                    _req_dict(m, f"{ctx}.markers[{i}]"), f"{ctx}.markers[{i}]"
+                )
+            )
 
     anim = Animation(
         name=_req_str(d.get("name", name), f"{ctx}.name"),
@@ -136,7 +140,9 @@ def parse_animation_library_dict(data: Dict[str, Any]) -> AnimationLibrary:
     for key, val in anims_raw.items():
         if not isinstance(key, str):
             key = str(key)
-        animations[key] = _parse_animation(key, _req_dict(val, f"animations[{key!r}]"), f"animations[{key!r}]")
+        animations[key] = _parse_animation(
+            key, _req_dict(val, f"animations[{key!r}]"), f"animations[{key!r}]"
+        )
 
     return AnimationLibrary(
         animations=animations,
@@ -194,7 +200,9 @@ class SpriteAnimRuntime:
         if sheet_ref is None and library.spritesheet_path:
             sheet_ref = library.spritesheet_path
         if sheet_ref is None:
-            raise AnimationParseError("No spritesheet_path in JSON and none passed to load()")
+            raise AnimationParseError(
+                "No spritesheet_path in JSON and none passed to load()"
+            )
 
         img_path = Path(sheet_ref)
         if not img_path.is_absolute():
@@ -210,7 +218,9 @@ class SpriteAnimRuntime:
                     break
 
         if not img_path.is_file():
-            raise AnimationParseError(f"Spritesheet not found: {sheet_ref!r} (tried {img_path})")
+            raise AnimationParseError(
+                f"Spritesheet not found: {sheet_ref!r} (tried {img_path})"
+            )
 
         try:
             surface = pygame.image.load(str(img_path)).convert_alpha()

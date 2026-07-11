@@ -23,9 +23,7 @@ def load_settings() -> Dict[str, Any]:
     settings_file = Path.cwd() / "settings.json"
 
     if not settings_file.exists():
-        raise RuntimeError(
-            "settings.json not found. Run 'tilemap-editor init' first."
-        )
+        raise RuntimeError("settings.json not found. Run 'tilemap-editor init' first.")
 
     with open(settings_file, "r", encoding="utf-8") as f:
         return json.load(f)

@@ -8,9 +8,7 @@ from .ui.draw_utils import draw_panel
 
 
 class InputBox(WidgetBase):
-    def __init__(self, rect, *,
-                 font=None, padding=3,
-                 allowed_chars=None):
+    def __init__(self, rect, *, font=None, padding=3, allowed_chars=None):
         super().__init__(rect, padding=padding, border_width=1)
         self._text = ""
         self.is_focused = False
@@ -42,9 +40,7 @@ class InputBox(WidgetBase):
             self.cursor_pos = start + len(filtered)
         else:
             self._text = (
-                self._text[:self.cursor_pos]
-                + filtered
-                + self._text[self.cursor_pos:]
+                self._text[: self.cursor_pos] + filtered + self._text[self.cursor_pos :]
             )
             self.cursor_pos += len(filtered)
         self.selection_start = None
@@ -59,14 +55,12 @@ class InputBox(WidgetBase):
         elif forward:
             if self.cursor_pos < len(self._text):
                 self._text = (
-                    self._text[:self.cursor_pos]
-                    + self._text[self.cursor_pos + 1:]
+                    self._text[: self.cursor_pos] + self._text[self.cursor_pos + 1 :]
                 )
         else:
             if self.cursor_pos > 0:
                 self._text = (
-                    self._text[:self.cursor_pos - 1]
-                    + self._text[self.cursor_pos:]
+                    self._text[: self.cursor_pos - 1] + self._text[self.cursor_pos :]
                 )
                 self.cursor_pos -= 1
 
@@ -93,7 +87,7 @@ class InputBox(WidgetBase):
                 mouse_x = event.pos[0] - self.content_rect.x
                 self.cursor_pos = 0
                 for i, char in enumerate(self._text):
-                    if self.font.size(self._text[:i + 1])[0] > mouse_x:
+                    if self.font.size(self._text[: i + 1])[0] > mouse_x:
                         self.cursor_pos = i
                         break
                 else:
@@ -147,10 +141,12 @@ class InputBox(WidgetBase):
         self._update_content_rect()
 
         border_color = COLORS.accent if self.is_focused else COLORS.border
-        pygame.draw.rect(surface, COLORS.panel_alt, self.rect,
-                         border_radius=SHAPE.radius_sm)
-        pygame.draw.rect(surface, border_color, self.rect, bw,
-                         border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            surface, COLORS.panel_alt, self.rect, border_radius=SHAPE.radius_sm
+        )
+        pygame.draw.rect(
+            surface, border_color, self.rect, bw, border_radius=SHAPE.radius_sm
+        )
 
         clip = surface.get_clip()
         if clip:
@@ -179,11 +175,13 @@ class InputBox(WidgetBase):
         surface.blit(txt_surf, (self.content_rect.x, self.content_rect.y))
 
         if self.is_focused:
-            cursor_x = (self.content_rect.x
-                        + self.font.size(self._text[:self.cursor_pos])[0])
+            cursor_x = (
+                self.content_rect.x + self.font.size(self._text[: self.cursor_pos])[0]
+            )
             if cursor_x < self.content_rect.right - 1:
                 pygame.draw.line(
-                    surface, COLORS.text,
+                    surface,
+                    COLORS.text,
                     (cursor_x, self.content_rect.y),
                     (cursor_x, self.content_rect.bottom - 1),
                     1,
@@ -265,9 +263,7 @@ class BaseTextInput:
 
     def resize(self, rect_area: Rect):
         self.rect_area = rect_area
-        self.input_box.resize(
-            rect_area.x, rect_area.y + 20, rect_area.width, 30
-        )
+        self.input_box.resize(rect_area.x, rect_area.y + 20, rect_area.width, 30)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         return self.input_box.handle_event(event)
@@ -296,8 +292,7 @@ class TextInput(BaseTextInput):
         default_val: str = "",
         tab_index: Optional[int] = None,
     ):
-        super().__init__(rect, label, key, default_val, tab_index,
-                         allowed_chars=None)
+        super().__init__(rect, label, key, default_val, tab_index, allowed_chars=None)
 
 
 class InlineTextInput:
@@ -328,9 +323,7 @@ class InlineTextInput:
             self.cursor_pos = start + len(filtered)
         else:
             self.text = (
-                self.text[:self.cursor_pos]
-                + filtered
-                + self.text[self.cursor_pos:]
+                self.text[: self.cursor_pos] + filtered + self.text[self.cursor_pos :]
             )
             self.cursor_pos += len(filtered)
         self.selection_start = None
@@ -345,14 +338,12 @@ class InlineTextInput:
         elif forward:
             if self.cursor_pos < len(self.text):
                 self.text = (
-                    self.text[:self.cursor_pos]
-                    + self.text[self.cursor_pos + 1:]
+                    self.text[: self.cursor_pos] + self.text[self.cursor_pos + 1 :]
                 )
         else:
             if self.cursor_pos > 0:
                 self.text = (
-                    self.text[:self.cursor_pos - 1]
-                    + self.text[self.cursor_pos:]
+                    self.text[: self.cursor_pos - 1] + self.text[self.cursor_pos :]
                 )
                 self.cursor_pos -= 1
 
@@ -389,18 +380,17 @@ class InlineTextInput:
             idx -= 1
         while idx >= 0 and self.text[idx] != " ":
             idx -= 1
-        self.text = self.text[:idx + 1] + self.text[self.cursor_pos:]
+        self.text = self.text[: idx + 1] + self.text[self.cursor_pos :]
         self.cursor_pos = idx + 1
 
-    def handle_event(self, event: pygame.event.Event,
-                     font: pygame.font.Font) -> bool:
+    def handle_event(self, event: pygame.event.Event, font: pygame.font.Font) -> bool:
         if not self.is_focused:
             return False
 
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             ctrl_held = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
-            shift_held = mods & pygame.KMOD_SHIFT
+            mods & pygame.KMOD_SHIFT
 
             if ctrl_held and event.key == pygame.K_a:
                 self.select_all()
@@ -454,8 +444,9 @@ class DigitInput(BaseTextInput):
         default_val: str = "",
         tab_index: Optional[int] = None,
     ):
-        super().__init__(rect, label, key, default_val, tab_index,
-                         allowed_chars="0123456789")
+        super().__init__(
+            rect, label, key, default_val, tab_index, allowed_chars="0123456789"
+        )
 
     def is_char_allowed(self, char: str) -> bool:
         return char.isdigit()

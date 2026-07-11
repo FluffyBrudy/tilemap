@@ -13,13 +13,13 @@ from pathlib import Path
 
 from utils.error_handler import error_handler
 
-# Import BASE_PATH from constants (works both installed and as script)
+
 _current = Path(__file__).resolve()
 _src = _current.parent.parent
 if _src not in sys.path:
     sys.path.insert(0, str(_src))
 
-from constants import BASE_PATH  # noqa: E402
+from constants import BASE_PATH
 
 
 def launch_standalone(
@@ -70,7 +70,7 @@ def launch_standalone(
     env["PYTHONPATH"] = str(BASE_PATH / "src") + (
         os.pathsep + env.get("PYTHONPATH", "")
     )
-    # Strategy 1: module invocation (skip for standalone_* modules - they need PYTHONPATH)
+
     if not module_name.startswith("standalone_"):
         try:
             import importlib.util
@@ -82,12 +82,12 @@ def launch_standalone(
                 )
                 raise ModuleNotFoundError(f"Module not found: {module_name}")
             else:
-                error_handler.capture_info(f"Module found: {module_name}", context="launch_standalone")
+                error_handler.capture_info(
+                    f"Module found: {module_name}", context="launch_standalone"
+                )
             cmd = [sys.executable, "-m", module_name] + args
             error_handler.capture_info(f"Command: {cmd}", context="launch_standalone")
 
-            # For GUI tools, don't wait - just launch and return immediately
-            # GUI apps don't produce stdout/stderr that we can read synchronously
             proc = subprocess.Popen(
                 cmd,
                 env=env,
@@ -97,23 +97,23 @@ def launch_standalone(
                 cwd=str(cwd) if cwd else None,
             )
 
-            # Don't call communicate() - GUI tools block on display, don't respond immediately
-            # Just return the process - it's running independently
             return proc
         except ModuleNotFoundError as e:
-            error_handler.capture_info(f"Module not found: {module_name} - {e}", context="launch_standalone")
+            error_handler.capture_info(
+                f"Module not found: {module_name} - {e}", context="launch_standalone"
+            )
         except ImportError as e:
-            error_handler.capture_info(f"Import error for {module_name}: {e}", context="launch_standalone")
+            error_handler.capture_info(
+                f"Import error for {module_name}: {e}", context="launch_standalone"
+            )
         except Exception as e:
             error_handler.capture(
-                e, context=f"Error launching {module_name}: {type(e).__name__}", severity="info"
+                e,
+                context=f"Error launching {module_name}: {type(e).__name__}",
+                severity="info",
             )
 
-    # Strategy 2: direct script path from src/ (only for non-standalone modules)
-    # Skip this strategy for standalone_* modules as they need proper module resolution
     if not module_name.startswith("standalone_"):
-        # Convert dotted name to file path: standalone_filemanager -> standalone_filemanager.py
-        #                                       plugins.sprite_animation.standalone -> plugins/sprite_animation/standalone.py
         script_rel = module_name.replace(".", "/") + ".py"
         script_path = BASE_PATH / "src" / script_rel
         if script_path.exists():
@@ -126,14 +126,13 @@ def launch_standalone(
                 cwd=str(cwd) if cwd else None,
             )
 
-    # Strategy 3: inject src/ into PYTHONPATH
     env = os.environ.copy()
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(BASE_PATH / "src") + (
         os.pathsep + existing if existing else ""
     )
     cmd = [sys.executable, "-m", module_name] + args
-    # For standalone modules, don't override cwd to keep PYTHONPATH working
+
     effective_cwd = (
         None if module_name.startswith("standalone_") else (str(cwd) if cwd else None)
     )

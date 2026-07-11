@@ -56,6 +56,7 @@ class NodeManager:
                     self.nodes[node.node_id] = node
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             import logging
+
             logging.warning(f"Failed to load nodes from {sidecar}")
 
     def save(self, map_path: Path) -> None:
@@ -103,6 +104,7 @@ class NodeManager:
         props: Dict[str, Any] = {}
         if node_type == "particle_emitter":
             from widgets.particle_system import get_default_config
+
             props = get_default_config()
             name = f"Emitter {count}"
         else:
@@ -120,37 +122,36 @@ class NodeManager:
         if not new_name or new_name == old_name:
             return False
         if new_name in self.groups:
-            return False  # Already exists
+            return False
         if old_name not in self.groups:
             return False
-            
-        # Update groups list
+
         idx = self.groups.index(old_name)
         self.groups[idx] = new_name
-        
-        # Update child nodes
+
         for node in self.nodes.values():
             if node.group == old_name:
                 node.group = new_name
-                
+
         if self.active_group_name == old_name:
             self.active_group_name = new_name
         return True
 
-    def reorder_node(self, node_id: str, target_node_id: str, before: bool = True) -> None:
+    def reorder_node(
+        self, node_id: str, target_node_id: str, before: bool = True
+    ) -> None:
         if node_id not in self.nodes or target_node_id not in self.nodes:
             return
         if node_id == target_node_id:
             return
-        node = self.nodes[node_id]
+        self.nodes[node_id]
         keys = list(self.nodes.keys())
         keys.remove(node_id)
         target_idx = keys.index(target_node_id)
         if not before:
             target_idx += 1
         keys.insert(target_idx, node_id)
-        
-        # Rebuild dictionary
+
         new_nodes = {}
         for k in keys:
             new_nodes[k] = self.nodes[k]

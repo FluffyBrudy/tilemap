@@ -24,7 +24,7 @@ class TilesetData:
         self.tileset_type = tileset_type
         self.offset = [0, 0]
         self.properties: Dict[str, Any] = {}
-        # Map of variant_id (int) to property dict
+
         self.tile_properties: Dict[int, Dict[str, Any]] = {}
         self.object_collision_path: Optional[Path] = None
         self.object_collision_data: Optional[Dict[str, Any]] = None
@@ -83,7 +83,7 @@ class TileSelector(WidgetBase):
         self.rule_hints = hints
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        # Handle timer for queue processing
+
         if event.type == pygame.USEREVENT + 1 and self._queue_timer_active:
             print("DEBUG: Timer triggered, continuing queue")
             self._queue_timer_active = False
@@ -92,7 +92,6 @@ class TileSelector(WidgetBase):
 
         mouse_pos = pygame.mouse.get_pos()
 
-        # Handle legacy wheel scroll button events and mousewheel
         is_wheel = False
         wy = 0
         if event.type == pygame.MOUSEWHEEL:
@@ -115,7 +114,7 @@ class TileSelector(WidgetBase):
                 if ctrl_held or meta_held:
                     old_zoom = self.zoom
                     self.zoom = max(0.25, min(self.zoom * (1.0 + wy * 0.15), 8.0))
-                    # Zoom toward mouse
+
                     mx, my = pygame.mouse.get_pos()
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
@@ -131,7 +130,6 @@ class TileSelector(WidgetBase):
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
-                # Check if right click on selected tile to open properties
                 if self.selected_tile:
                     sx, sy, sw, sh = self.selected_tile
                     ts = self.tilesets[self.active_idx]
@@ -145,7 +143,7 @@ class TileSelector(WidgetBase):
                         variant_ids = self._get_selected_variant_ids(ts)
                         if not variant_ids:
                             return True
-                        # Use top-left tile of selection as reference for properties if multi-tile
+
                         variant_id = variant_ids[0]
 
                         self.editor.property_editor = PropertyEditor(
@@ -164,7 +162,6 @@ class TileSelector(WidgetBase):
                 self.pan_start_offset = tuple(self.tilesets[self.active_idx].offset)
                 return True
 
-            # Check for right-click on tabs for tileset properties
             if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
                 tab_idx = self._get_tab_at_pos(mouse_pos)
                 if tab_idx is not None:
@@ -194,7 +191,6 @@ class TileSelector(WidgetBase):
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
-                # Check arrow buttons first
                 if self._tab_arrow_left.collidepoint(mouse_pos):
                     self._scroll_tabs(100)
                     return True
@@ -247,7 +243,6 @@ class TileSelector(WidgetBase):
                         self.update_selection_rect(self.hover_pos)
                 else:
                     self.hover_pos = None
-
 
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
             if self.selected_tile and self.active_idx != -1:
@@ -427,7 +422,9 @@ class TileSelector(WidgetBase):
                     elif sheet_cols % frame_count == 0:
                         animation["frame_stride"] = sheet_cols // frame_count
                     elif sheet_rows % frame_count == 0:
-                        animation["frame_stride"] = (sheet_rows // frame_count) * sheet_cols
+                        animation["frame_stride"] = (
+                            sheet_rows // frame_count
+                        ) * sheet_cols
                     else:
                         total = sheet_cols * sheet_rows
                         animation["frame_stride"] = math.ceil(total / frame_count)
@@ -547,7 +544,6 @@ class TileSelector(WidgetBase):
 
         ts = self.tilesets[self.active_idx]
 
-        # Launch collision editor as subprocess (routes based on tileset type)
         self.editor.launch_collision_editor(ts.tileset_type)
 
     def check_tab_click(self, pos):
@@ -629,7 +625,6 @@ class TileSelector(WidgetBase):
 
         ts = self.tilesets[tileset_index]
         if ts.tileset_type == "object":
-            # For object tilesets, select the whole image
             self.active_idx = tileset_index
             self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
             return True
@@ -646,7 +641,6 @@ class TileSelector(WidgetBase):
         col = variant_id % cols
         row = variant_id // cols
 
-        # Verify the variant is within the tileset bounds
         if col * tw >= sheet_w or row * th >= ts.surface.get_height():
             return False
 
@@ -734,7 +728,9 @@ class TileSelector(WidgetBase):
 
             pygame.draw.rect(screen, (0, 255, 255), Rect(x, y, ztw, zth), 1)
 
-    def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int, zoom: float = 1.0):
+    def draw_tileset_image(
+        self, screen, ts: TilesetData, img_x: int, img_y: int, zoom: float = 1.0
+    ):
         if zoom != 1.0:
             w = int(ts.surface.get_width() * zoom)
             h = int(ts.surface.get_height() * zoom)
@@ -882,18 +878,16 @@ class TileSelector(WidgetBase):
             bar_rect = Rect(bar_x, self.rect.y + self.top_bar_h - 4, bar_w, 3)
             pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
 
-        # Tooltip for tab name
         if tab_area.collidepoint(mx, my) and not (
-            show_arrows and (
-                self._tab_arrow_left.collidepoint(mx, my) or
-                self._tab_arrow_right.collidepoint(mx, my)
+            show_arrows
+            and (
+                self._tab_arrow_left.collidepoint(mx, my)
+                or self._tab_arrow_right.collidepoint(mx, my)
             )
         ):
             idx = self._get_tab_at_pos((mx, my))
             if idx is not None and 0 <= idx < len(self.tilesets):
-                self.editor.tooltip.show(
-                    self.tilesets[idx].name, (mx + 10, my + 10)
-                )
+                self.editor.tooltip.show(self.tilesets[idx].name, (mx + 10, my + 10))
 
         screen.set_clip(clip)
 

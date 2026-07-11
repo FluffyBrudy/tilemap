@@ -43,13 +43,17 @@ class MapSetup(WidgetBase):
             )
 
         self.btn_create = Button(
-            Rect(0, 0, BTN_W, BTN_H), "Create",
-            accent=True, font=self.font,
+            Rect(0, 0, BTN_W, BTN_H),
+            "Create",
+            accent=True,
+            font=self.font,
             on_click=self.submit,
         )
         self.btn_open = Button(
-            Rect(0, 0, BTN_W, BTN_H), "Open map",
-            accent=True, font=self.font_sm,
+            Rect(0, 0, BTN_W, BTN_H),
+            "Open map",
+            accent=True,
+            font=self.font_sm,
             on_click=self._open_map,
         )
 
@@ -163,9 +167,10 @@ class MapSetup(WidgetBase):
         self.btn_create.draw(screen)
 
         or_surf = self.font_sm.render("─ OR ─", True, COLORS.text_dim)
-        or_center_y = self.btn_create.rect.bottom + (
-            self.btn_open.rect.top - self.btn_create.rect.bottom
-        ) // 2
+        or_center_y = (
+            self.btn_create.rect.bottom
+            + (self.btn_open.rect.top - self.btn_create.rect.bottom) // 2
+        )
         or_rect = or_surf.get_rect(center=(self.rect.centerx, or_center_y))
         screen.blit(or_surf, or_rect)
 

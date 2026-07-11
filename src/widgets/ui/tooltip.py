@@ -29,7 +29,7 @@ class TooltipManager:
         w = text_surf.get_width() + pad_x * 2
         h = text_surf.get_height() + pad_y * 2
         x, y = self.pos
-        # Keep inside window
+
         x = min(max(5, x), surface.get_width() - w - 5)
         y = min(max(5, y), surface.get_height() - h - 5)
         rect = pygame.Rect(x, y, w, h)

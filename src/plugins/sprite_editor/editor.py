@@ -25,7 +25,7 @@ STATUS_H = 22
 BTN_W = 64
 BTN_H = 28
 
-# Map toolbar labels to icon_manager keys (None = text only)
+
 _BUTTON_ICONS: dict[str, str | None] = {
     "Flip X": None,
     "Flip Y": None,
@@ -53,7 +53,6 @@ class SpriteEditor:
         self.image_path = image_path
         self._data_root = data_root or (image_path.parent if image_path else Path.cwd())
 
-        # Start blank if no surface provided; track real sheets separately
         if surface is None:
             placeholder = Surface((1, 1), SRCALPHA)
             self._sheet_surfaces: List[Surface] = []
@@ -61,31 +60,26 @@ class SpriteEditor:
             placeholder = surface
             self._sheet_surfaces = [surface]
 
-        # Grid
-        grid_rect = Rect(rect.x, rect.y + TOOLBAR_H, rect.w, rect.h - TOOLBAR_H - STATUS_H)
+        grid_rect = Rect(
+            rect.x, rect.y + TOOLBAR_H, rect.w, rect.h - TOOLBAR_H - STATUS_H
+        )
         self.grid = SpritesheetGrid(grid_rect, placeholder, tile_size)
 
-        # Clipboard for copy/paste
         self._clipboard: Dict[int, Surface] = {}
         self._paste_mode: bool = False
 
-        # Scale dialog state
         self._scale_active: bool = False
         self._scale_text: str = "2.0"
         self._scale_error: Optional[str] = None
 
-        # Grid dialog state
         self._grid_active: bool = False
         self._grid_text: str = f"{tile_size[0]}x{tile_size[1]}"
         self._grid_error: Optional[str] = None
 
-        # Save path — never auto-overwrite original
         self._save_path: Optional[Path] = None
 
-        # File manager modal
         self._file_manager: Optional[object] = None
 
-        # Toolbar button rects
         self._btn_rects: dict[str, Rect] = {}
         self._layout_toolbar()
 
@@ -96,7 +90,18 @@ class SpriteEditor:
         ty = self.rect.y + (TOOLBAR_H - BTN_H) // 2
         gap = 6
         x = self.rect.x + gap
-        labels = ["Flip X", "Flip Y", "Copy", "Paste", "Undo", "Redo", "Scale", "Grid", "Open", "Save"]
+        labels = [
+            "Flip X",
+            "Flip Y",
+            "Copy",
+            "Paste",
+            "Undo",
+            "Redo",
+            "Scale",
+            "Grid",
+            "Open",
+            "Save",
+        ]
         for lbl in labels:
             self._btn_rects[lbl] = Rect(x, ty, BTN_W, BTN_H)
             x += BTN_W + gap
@@ -104,7 +109,9 @@ class SpriteEditor:
     def _get_status_text(self) -> str:
         n = len(self._sheet_surfaces)
         if n == 0:
-            return "  No spritesheets loaded  —  Click [Open] to load one or more sheets"
+            return (
+                "  No spritesheets loaded  —  Click [Open] to load one or more sheets"
+            )
         tw, th = self.grid.tile_size
         parts = [f"Tile: {tw}×{th}  Zoom: {self.grid.zoom:.1f}x"]
         if n > 1:
@@ -118,12 +125,8 @@ class SpriteEditor:
             parts.append(f"Undo ({len(self.grid._undo_stack)})")
         return "  |  ".join(parts)
 
-    # ------------------------------------------------------------------
-    # Events
-    # ------------------------------------------------------------------
-
     def handle_event(self, event: pygame.event.Event) -> bool:
-        # File manager modal blocks everything
+
         if self._file_manager is not None:
             return self._file_manager.handle_event(event)
 
@@ -135,7 +138,6 @@ class SpriteEditor:
 
         mouse = pygame.mouse.get_pos()
 
-        # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
@@ -168,14 +170,16 @@ class SpriteEditor:
                             self.grid.paste_preview_idx = -1
                     return True
 
-        # Toolbar clicks
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for lbl, r in self._btn_rects.items():
                 if r.collidepoint(mouse):
                     return self._handle_tool(lbl)
 
-        # Paste mode: click places (or exits if outside grid)
-        if self._paste_mode and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if (
+            self._paste_mode
+            and event.type == pygame.MOUSEBUTTONDOWN
+            and event.button == 1
+        ):
             idx = self.grid.index_at_pos(mouse)
             if idx >= 0 and self.grid.rect.collidepoint(mouse):
                 self.grid.paste_at(idx, self._clipboard)
@@ -183,7 +187,6 @@ class SpriteEditor:
             self.grid.paste_preview_idx = -1
             return True
 
-        # Paste preview on hover (consume event to prevent grid overlap)
         if self._paste_mode and event.type == pygame.MOUSEMOTION:
             idx = self.grid.index_at_pos(mouse)
             self.grid.paste_preview_idx = idx if idx >= 0 else -1
@@ -260,7 +263,11 @@ class SpriteEditor:
             elif event.key == pygame.K_BACKSPACE:
                 self._scale_text = self._scale_text[:-1]
                 return True
-            elif event.unicode and event.unicode in "0123456789." and len(self._scale_text) < 8:
+            elif (
+                event.unicode
+                and event.unicode in "0123456789."
+                and len(self._scale_text) < 8
+            ):
                 self._scale_text += event.unicode
                 return True
         return False
@@ -288,7 +295,11 @@ class SpriteEditor:
             elif event.key == pygame.K_BACKSPACE:
                 self._grid_text = self._grid_text[:-1]
                 return True
-            elif event.unicode and event.unicode in "0123456789xX" and len(self._grid_text) < 10:
+            elif (
+                event.unicode
+                and event.unicode in "0123456789xX"
+                and len(self._grid_text) < 10
+            ):
                 self._grid_text += event.unicode
                 return True
         return False
@@ -308,8 +319,14 @@ class SpriteEditor:
         from widgets.filemanager import FileManager
 
         initial_dir = self._save_path.parent if self._save_path else self._data_root
-        default_name = self._save_path.name if self._save_path else (
-            f"{self.image_path.stem}_edited.png" if self.image_path else "spritesheet.png"
+        default_name = (
+            self._save_path.name
+            if self._save_path
+            else (
+                f"{self.image_path.stem}_edited.png"
+                if self.image_path
+                else "spritesheet.png"
+            )
         )
 
         fm_rect = self._file_manager_rect()
@@ -342,10 +359,6 @@ class SpriteEditor:
 
     def set_save_path(self, path: Path) -> None:
         self._save_path = path
-
-    # ------------------------------------------------------------------
-    # Multi-sheet: stack sheets vertically into one combined surface
-    # ------------------------------------------------------------------
 
     def _build_combined_surface(self) -> None:
         """Rebuild the combined surface from all loaded sheets (stacked vertically)."""
@@ -401,39 +414,49 @@ class SpriteEditor:
             self._build_combined_surface()
         self._close_file_manager()
 
-    # ------------------------------------------------------------------
-    # Drawing
-    # ------------------------------------------------------------------
-
     def draw(self, screen: Surface) -> None:
         draw_panel(screen, self.rect, COLORS.bg, COLORS.border)
 
-        # Toolbar
         toolbar_rect = Rect(self.rect.x, self.rect.y, self.rect.w, TOOLBAR_H)
         draw_panel(screen, toolbar_rect, COLORS.header, COLORS.border)
 
         mouse = pygame.mouse.get_pos()
         for lbl, r in self._btn_rects.items():
             hover = r.collidepoint(mouse)
-            active = (lbl == "Paste" and self._paste_mode)
-            disable = (lbl in ("Undo",) and not self.grid.can_undo) or \
-                      (lbl in ("Redo",) and not self.grid.can_redo)
+            active = lbl == "Paste" and self._paste_mode
+            disable = (lbl in ("Undo",) and not self.grid.can_undo) or (
+                lbl in ("Redo",) and not self.grid.can_redo
+            )
 
             icon_key = _BUTTON_ICONS.get(lbl)
             if icon_key and icon_manager.has_icon(icon_key):
                 color = COLORS.text_dim if disable else COLORS.text
                 icon = icon_manager.get_icon(icon_key, 18, color)
-                draw_button(screen, r, icon, hover=hover and not disable, active=active and not disable)
+                draw_button(
+                    screen,
+                    r,
+                    icon,
+                    hover=hover and not disable,
+                    active=active and not disable,
+                )
             else:
-                label_surf = self._font_sm.render(lbl, True, COLORS.text_dim if disable else COLORS.text)
-                draw_button(screen, r, label_surf, hover=hover and not disable, active=active and not disable)
+                label_surf = self._font_sm.render(
+                    lbl, True, COLORS.text_dim if disable else COLORS.text
+                )
+                draw_button(
+                    screen,
+                    r,
+                    label_surf,
+                    hover=hover and not disable,
+                    active=active and not disable,
+                )
 
-        # Grid
         if self._file_manager is None:
             self.grid.draw(screen)
 
-        # Status bar
-        status_rect = Rect(self.rect.x, self.rect.bottom - STATUS_H, self.rect.w, STATUS_H)
+        status_rect = Rect(
+            self.rect.x, self.rect.bottom - STATUS_H, self.rect.w, STATUS_H
+        )
         draw_panel(screen, status_rect, COLORS.header, COLORS.border)
         st = self._get_status_text()
         screen.blit(
@@ -446,7 +469,6 @@ class SpriteEditor:
         if self._grid_active:
             self._draw_grid_dialog(screen)
 
-        # File manager overlay
         if self._file_manager is not None:
             self._file_manager.draw(screen)
 
@@ -463,7 +485,9 @@ class SpriteEditor:
         pygame.draw.rect(screen, COLORS.selected, inp, border_radius=4)
         pygame.draw.rect(screen, COLORS.accent, inp, 2, border_radius=4)
         txt = self._scale_text + ("|" if (pygame.time.get_ticks() // 400) % 2 else "")
-        screen.blit(self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5))
+        screen.blit(
+            self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5)
+        )
 
         if self._scale_error:
             err = self._font_sm.render(self._scale_error, True, COLORS.danger)
@@ -485,7 +509,9 @@ class SpriteEditor:
         pygame.draw.rect(screen, COLORS.selected, inp, border_radius=4)
         pygame.draw.rect(screen, COLORS.accent, inp, 2, border_radius=4)
         txt = self._grid_text + ("|" if (pygame.time.get_ticks() // 400) % 2 else "")
-        screen.blit(self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5))
+        screen.blit(
+            self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5)
+        )
 
         if self._grid_error:
             err = self._font_sm.render(self._grid_error, True, COLORS.danger)

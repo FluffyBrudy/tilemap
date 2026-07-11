@@ -7,8 +7,9 @@ from .theme import COLORS, FONTS
 
 
 class DialogBase(WidgetBase):
-    def __init__(self, editor_rect: Rect, size: Tuple[int, int],
-                 title: str = "", **kwargs):
+    def __init__(
+        self, editor_rect: Rect, size: Tuple[int, int], title: str = "", **kwargs
+    ):
         rect = Rect(0, 0, *size)
         super().__init__(rect, **kwargs)
         self.editor_rect = editor_rect
@@ -47,8 +48,17 @@ class DialogBase(WidgetBase):
         surf = font.render(self.title, True, color or COLORS.text)
         surface.blit(surf, (self.rect.x + 20, self.rect.y + 15))
 
-    def _draw_button(self, surface: Surface, rect: Rect, hover: bool,
-                     text: str, *, color=None, hover_color=None, font=None):
+    def _draw_button(
+        self,
+        surface: Surface,
+        rect: Rect,
+        hover: bool,
+        text: str,
+        *,
+        color=None,
+        hover_color=None,
+        font=None,
+    ):
         if color is None:
             color = COLORS.accent
         if hover_color is None:

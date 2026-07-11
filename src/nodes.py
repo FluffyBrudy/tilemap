@@ -16,7 +16,9 @@ class NodeRect:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "NodeRect":
-        return cls(x=int(data["x"]), y=int(data["y"]), w=int(data["w"]), h=int(data["h"]))
+        return cls(
+            x=int(data["x"]), y=int(data["y"]), w=int(data["w"]), h=int(data["h"])
+        )
 
 
 @dataclass
