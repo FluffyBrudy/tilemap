@@ -177,10 +177,43 @@ if event.type == pygame.MOUSEWHEEL:
 
 ## Testing
 
-- pytest, 205+ tests in `tests/`
+- pytest, 209+ tests in `tests/`
 - Some tests require `pygame.display.init()` / `set_mode((1, 1))` (autouse fixture)
 - Run: `.venv/bin/python -m pytest tests/ -v`
 - Run single file: `.venv/bin/python -m pytest tests/test_x.py -v`
+
+---
+
+## Refactor Progress (Sessions 1–2 — WidgetBase, Theme, SidebarContainer, PropertyEditor, LayerSelector)
+
+### Done
+- **WidgetBase** (`widget_base.py`) — base class with box model (padding, border, `content_rect`), `draw_base()` using `COLORS`/`SHAPE` from theme
+- **MapSetup** — WidgetBase, Button, InputBox, SPACING; fixed OR text overlap between Create/Open buttons
+- **InputBox** (`input.py`) — `InputBox(WidgetBase)`, `BaseTextInput`, `DigitInput`/`TextInput`; hardcoded colors→COLORS
+- **Label** (`label.py`) — `Label(WidgetBase)` with alignment
+- **Button** (`button.py`) — `Button(WidgetBase)` with hover/press/disabled, accent, `on_click`
+- **DialogBase** + 3 dialogs (`confirm_dialog.py`, `layer_type_dialog.py`, `tileset_type_dialog.py`) — show/hide/center/draw helpers/handle_event_base
+- **Theme** (`theme.py`) — COLORS (dynamic proxy), SHAPE, FONTS, SPACING; applied from `settings.json`
+- **FileManager** — COLORS→theme COLORS, SysFont→FONTS, `InlineTextInput`→`InputBox`
+- **TileSelector** — WidgetBase, `draw_base()` replaces `draw_background()`, FONTS, removed bottom buttons (→SidebarContainer)
+- **SidebarContainer** (`widgets/ui/sidebar_container.py`) — tabbed container with toolbar; holds TileSelector + LayerSelector as tabs
+- **Editor sidebar** — single `self.sidebar` widget; tabs replace tileset_h/layer_h split; vertical resize drag with SYSTEM_CURSOR_SIZEWE
+- **draw_utils.py** — added `truncate_text(text, font, max_width) -> Tuple[str, bool]`
+- **PropertyEditor** — SysFont→FONTS, hardcoded colors→COLORS, manual buttons→Button widgets, truncation + hover tooltip for long values (removed font-shrinking)
+- **LayerSelector** — Button widgets replace manual rect buttons, `FONTS.get_*` replaces `font_manager.get_font(...)`, all color aliases removed in favor of `COLORS.*`, unused imports removed
+- **MapProperties** — COLOR_ constants→`COLORS.*`, `pygame.font.SysFont`→`FONTS.*`, `Rect` buttons→`Button` widgets, hardcoded colors→`COLORS.*`/`SHAPE.*`, manual draw→`Button.draw()`
+- **/tmp/editor-md/** — `INSTRUCTION.md` (≤1000 chars), `API_REFS.md`, `THEME.md` (Qwen UI agent reference)
+
+### Next
+- User has planned changes affecting `tile_grid.py` (canvas) — waiting for direction
+
+### Relevant Files
+- `src/widgets/widget_base.py`, `input.py`, `mapsetup.py`, `tile_selector.py`, `layer_selector.py`
+- `src/widgets/ui/sidebar_container.py`, `widget_base.py`, `label.py`, `button.py`, `dialog_base.py`, `theme.py`, `draw_utils.py`, `property_editor.py`
+- `src/widgets/ui/confirm_dialog.py`, `layer_type_dialog.py`, `tileset_type_dialog.py`
+- `src/widgets/filemanager.py`
+- `src/editor.py`
+- `docs/refactor.md` (plan)
 
 ---
 

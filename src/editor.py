@@ -37,7 +37,8 @@ from widgets.ui.notification import NotificationManager
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from widgets.ui.tooltip import TooltipManager
-from widgets.ui.theme import get_theme_manager, set_theme, THEMES
+from widgets.ui.theme import COLORS, get_theme_manager, set_theme, THEMES
+from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
 from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
 from utils import error_handler, error_context
@@ -148,6 +149,11 @@ class Editor:
         logger.info(f"Project base_path: {self.base_path}")
         logger.info(f"Data root: {self.data_root}")
 
+        theme_name = self.config.get("theme", "dark")
+        if theme_name in THEMES:
+            set_theme(theme_name)
+            logger.info(f"Applied theme: {theme_name}")
+
         pygame.init()
         pygame.display.set_caption("Pure Pygame Editor")
 
@@ -174,9 +180,8 @@ class Editor:
         self.tilemap = Tilemap(self)
 
         self.selector_w = 300
+        self._tileset_dragging = False
         self.left_panel_w = 380  # Width for the dockable left sidebar
-        self.tileset_h = 300
-        self.layer_h = 150
         self.map_setup_widget: Optional[MapSetup] = None
         self.map_properties_dialog: Optional[MapPropertiesDialog] = None
         self.tileset_widget: Optional[TileSelector] = None
@@ -225,16 +230,20 @@ class Editor:
         self.tilemap.init_size((32, 32), (50, 50))
 
         menu_h = 30
-        self.tileset_widget = TileSelector(
-            self, self.width - self.selector_w, menu_h, self.selector_w, self.tileset_h
-        )
-        self.layer_widget = LayerSelector(
-            self,
-            self.width - self.selector_w,
-            menu_h + self.tileset_h,
-            self.selector_w,
-            self.layer_h,
-        )
+        toolbar_h = 35
+        self.tileset_widget = TileSelector(self, 0, 0, self.selector_w, 100)
+        self.layer_widget = LayerSelector(self, 0, 0, self.selector_w, 100)
+        sidebar_x = self.width - self.selector_w
+        sidebar_h = self.height - menu_h - toolbar_h
+        tileset_actions = [
+            ToolbarAction("E", self.tileset_widget._export_selected_as_png_dialog, "E: Export selection as PNG"),
+            ToolbarAction("C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"),
+            ToolbarAction("+", self.tileset_widget.request_add_tileset, "Add Tileset"),
+            ToolbarAction("-", self.tileset_widget.remove_tileset, "Remove Tileset"),
+        ]
+        self.sidebar = SidebarContainer(self, Rect(sidebar_x, menu_h + toolbar_h, self.selector_w, sidebar_h))
+        self.sidebar.add_tab("Tilesets", self.tileset_widget, tileset_actions)
+        self.sidebar.add_tab("Layers", self.layer_widget)
         self.tile_grid_widget = TileGrid(
             self,
             Rect(0, menu_h, self.width - self.selector_w, self.height - menu_h - 25),
@@ -557,15 +566,45 @@ class Editor:
             return
 
         try:
-            self.post_map_setup()
+            self.handle_resize(self.width, self.height)
             self.tilemap.apply_map_payload(path, payload_or_error)
         except Exception as e:
             error_handler.capture(e, context="load_map_apply")
+            import traceback
+            traceback.print_exc()
         finally:
             self.loading_state["active"] = False
 
     def post_map_setup(self):
         self.handle_resize(self.width, self.height)
+        if hasattr(self, "tile_grid_widget") and self.tile_grid_widget:
+            self.tile_grid_widget.center_on_map()
+
+    def _update_side_panel_layout(self):
+        menu_h = 30
+        toolbar_h = 35
+        left_offset = self.left_panel_w if self.left_panel_visible else 0
+        
+        min_canvas_w = 200
+        available_w = self.width - left_offset
+        self._effective_selector_w = min(self.selector_w, max(0, available_w - min_canvas_w))
+
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.resize(
+                self.width - self._effective_selector_w,
+                menu_h + toolbar_h,
+                self._effective_selector_w,
+                self.height - menu_h - toolbar_h,
+            )
+
+        if hasattr(self, "tile_grid_widget") and self.tile_grid_widget:
+            canvas_w = available_w - self._effective_selector_w
+            self.tile_grid_widget.rect = Rect(
+                left_offset,
+                menu_h + toolbar_h,
+                canvas_w,
+                self.height - (menu_h + toolbar_h) - 25,
+            )
 
     def handle_resize(self, width: int, height: int):
         self.width = width
@@ -574,38 +613,13 @@ class Editor:
         menu_h = 30
         toolbar_h = 35
 
-        # Left sidebar offset
-        left_offset = self.left_panel_w if self.left_panel_visible else 0
-
         if hasattr(self, "menubar") and self.menubar:
             self.menubar.resize(width)
 
         if hasattr(self, "toolbar") and self.toolbar:
             self.toolbar.resize(width)
 
-        if hasattr(self, "tileset_widget") and self.tileset_widget:
-            self.tileset_widget.resize(
-                width - self.selector_w - left_offset,
-                menu_h + toolbar_h,
-                self.selector_w,
-                self.tileset_h,
-            )
-
-        if hasattr(self, "layer_widget") and self.layer_widget:
-            self.layer_widget.resize(
-                width - self.selector_w - left_offset,
-                menu_h + toolbar_h + self.tileset_h,
-                self.selector_w,
-                height - (menu_h + toolbar_h + self.tileset_h),
-            )
-
-        if hasattr(self, "tile_grid_widget") and self.tile_grid_widget:
-            self.tile_grid_widget.rect = Rect(
-                left_offset,
-                menu_h + toolbar_h,
-                width - self.selector_w - left_offset,
-                height - (menu_h + toolbar_h),
-            )
+        self._update_side_panel_layout()
 
         # Update animation panel rect
         if self.left_panel_visible and self.animation_panel:
@@ -673,6 +687,7 @@ class Editor:
                 self.left_panel_visible = True
         else:
             self.left_panel_visible = False
+        self.handle_resize(self.width, self.height)
 
 
     def _init_animation_panel(self):
@@ -713,9 +728,13 @@ class Editor:
 
     def undo(self):
         self.tilemap.undo()
+        if self.tile_grid_widget:
+            self.tile_grid_widget.invalidate_bounds_cache()
 
     def redo(self):
         self.tilemap.redo()
+        if self.tile_grid_widget:
+            self.tile_grid_widget.invalidate_bounds_cache()
 
     def toggle_grid(self):
         if self.tile_grid_widget:
@@ -730,6 +749,17 @@ class Editor:
         new_theme = theme_names[next_idx]
         set_theme(new_theme)
         self.notifications.notify(f"Theme: {new_theme}")
+        
+        settings_file = Path.cwd() / "settings.json"
+        if settings_file.exists():
+            try:
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                config["theme"] = new_theme
+                with open(settings_file, "w", encoding="utf-8") as f:
+                    json.dump(config, f, indent=4)
+            except Exception:
+                pass
 
     def launch_external_automap(self):
         if hasattr(self.autotiler, "_launch_external_viewer"):
@@ -1266,15 +1296,34 @@ class Editor:
                     if self.animation_panel.handle_event(event):
                         continue
 
-            # Priority 7: Side panels (layer widget first so rename captures keys)
+            # Priority 6.5: Sidebar resize drag (vertical)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                edge_x = self.width - self._effective_selector_w
+                if abs(mx - edge_x) < 6:
+                    self._tileset_dragging = True
+                    continue
+            elif event.type == pygame.MOUSEMOTION:
+                mx, my = event.pos
+                edge_x = self.width - self._effective_selector_w
+                if self._tileset_dragging:
+                    new_w = max(150, min(self.width // 2, self.width - mx))
+                    self.selector_w = new_w
+                    self._update_side_panel_layout()
+                    continue
+                near_vertical = abs(mx - edge_x) < 6
+                if near_vertical:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
+                else:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self._tileset_dragging:
+                    self._tileset_dragging = False
+                    continue
+
+            # Priority 7: Sidebar container
             consumed = False
-            if self.layer_widget and self.layer_widget.handle_event(event):
-                consumed = True
-            if (
-                not consumed
-                and self.tileset_widget
-                and self.tileset_widget.handle_event(event)
-            ):
+            if self.sidebar and self.sidebar.handle_event(event):
                 consumed = True
             
             # Priority 8: Main tile grid (lowest priority)
@@ -1306,10 +1355,13 @@ class Editor:
 
             if self.tile_grid_widget:
                 self.tile_grid_widget.draw(self.screen)
-            if self.tileset_widget:
-                self.tileset_widget.draw(self.screen)
-            if self.layer_widget:
-                self.layer_widget.draw(self.screen)
+            if self.sidebar:
+                self.sidebar.draw(self.screen)
+                edge_x = self.width - self._effective_selector_w
+                handle_rect = Rect(edge_x - 1, 0, 3, self.height)
+                pygame.draw.rect(self.screen, COLORS.border, handle_rect)
+                if self._tileset_dragging:
+                    pygame.draw.rect(self.screen, COLORS.accent, handle_rect)
             
             # Draw autotiler and regex designer with modal overlay
             if self.autotiler:

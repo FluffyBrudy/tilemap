@@ -4,12 +4,12 @@ Displays list of layers with ability to select, reorder, and manage them.
 """
 
 import pygame
-from pygame import Rect, Surface, Color
+from pygame import Rect, Surface
 from typing import TYPE_CHECKING, Optional
 from layers import Layer
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
-from utils.font_manager import font_manager, FontWeight, FontStyle
+from widgets.ui.button import Button
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -49,24 +49,17 @@ class LayerSelector:
         btn_h = 25
         btn_w = 25
         btn_y = self.footer_rect.y + 5
-        self.btn_add = Rect(x + 5, btn_y, btn_w, btn_h)
-        self.btn_remove = Rect(x + 35, btn_y, btn_w, btn_h)
-
-        self.font_header = font_manager.get_font(
-            FONTS.name, FONTS.size_md, FontWeight.BOLD
+        self.btn_add = Button(
+            Rect(x + 5, btn_y, btn_w, btn_h), "+",
+            on_click=self._add_layer,
         )
-        self.font_layer = font_manager.get_font(
-            FONTS.name, FONTS.size_sm, FontWeight.REGULAR
+        self.btn_remove = Button(
+            Rect(x + 35, btn_y, btn_w, btn_h), "-",
+            on_click=self._remove_layer,
         )
 
-        self.bg_color = COLORS.panel
-        self.header_color = COLORS.accent
-        self.item_color = COLORS.panel_alt
-        self.item_hover_color = COLORS.hover
-        self.item_active_color = COLORS.selected
-        self.item_drag_color = COLORS.accent_active
-        self.text_color = COLORS.text
-        self.text_muted = COLORS.text_dim
+        self.font_header = FONTS.get_bold_font(FONTS.size_md)
+        self.font_layer = FONTS.get_small_font()
 
     def resize(self, x: int, y: int, w: int, h: int):
         self.rect = Rect(x, y, w, h)
@@ -77,23 +70,20 @@ class LayerSelector:
         self.footer_rect = Rect(x, y + h - self.footer_h, w, self.footer_h)
 
         btn_y = self.footer_rect.y + 5
-        self.btn_add = Rect(x + 5, btn_y, 25, 25)
-        self.btn_remove = Rect(x + 35, btn_y, 25, 25)
+        self.btn_add.resize(x + 5, btn_y, 25, 25)
+        self.btn_remove.resize(x + 35, btn_y, 25, 25)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle pygame events. Returns True if event was consumed."""
         mouse_pos = pygame.mouse.get_pos()
 
+        if self.btn_add.handle_event(event):
+            return True
+        if self.btn_remove.handle_event(event):
+            return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                if self.btn_add.collidepoint(mouse_pos):
-                    self._add_layer()
-                    return True
-
-                if self.btn_remove.collidepoint(mouse_pos):
-                    self._remove_layer()
-                    return True
-
                 if self.list_rect.collidepoint(mouse_pos):
                     layer_idx = self._get_layer_at_pos(mouse_pos)
                     if layer_idx is not None:
@@ -202,6 +192,11 @@ class LayerSelector:
                 self.hover_idx = None
 
             if self.dragging_layer_idx is not None:
+                return True
+
+        elif event.type == pygame.MOUSEWHEEL:
+            if self.list_rect.collidepoint(mouse_pos):
+                self._scroll(-event.y * self.scroll_speed)
                 return True
 
         elif event.type == pygame.KEYDOWN:
@@ -383,11 +378,11 @@ class LayerSelector:
     def draw(self, screen: Surface) -> None:
         """Draw the layer selector widget."""
 
-        pygame.draw.rect(screen, self.bg_color, self.rect)
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
         pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
-        pygame.draw.rect(screen, self.header_color, self.header_rect)
-        header_txt = self.font_header.render("LAYERS", True, Color("white"))
+        pygame.draw.rect(screen, COLORS.accent, self.header_rect)
+        header_txt = self.font_header.render("LAYERS", True, COLORS.text)
         screen.blit(header_txt, (self.header_rect.x + 5, self.header_rect.y + 8))
 
         self._draw_layer_list(screen)
@@ -421,13 +416,13 @@ class LayerSelector:
             )
 
             if i == self.dragging_layer_idx:
-                color = self.item_drag_color
+                color = COLORS.accent_active
             elif i == active_idx:
-                color = self.item_active_color
+                color = COLORS.selected
             elif i == self.hover_idx:
-                color = self.item_hover_color
+                color = COLORS.hover
             else:
-                color = self.item_color
+                color = COLORS.panel_alt
 
             pygame.draw.rect(screen, color, item_rect)
             pygame.draw.rect(screen, COLORS.border_soft, item_rect, 1)
@@ -448,10 +443,10 @@ class LayerSelector:
                     border_radius=SHAPE.radius_sm,
                 )
                 name_txt = self.font_layer.render(
-                    self.rename_text + "|", True, self.text_color
+                    self.rename_text + "|", True, COLORS.text
                 )
             else:
-                name_txt = self.font_layer.render(layer.name, True, self.text_color)
+                name_txt = self.font_layer.render(layer.name, True, COLORS.text)
             screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
 
             opacity_bar = self._get_opacity_bar_rect(i)
@@ -463,7 +458,7 @@ class LayerSelector:
                     fill_rect = Rect(opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height)
                     green = int(180 * layer.opacity) + 40
                     pygame.draw.rect(screen, (40, green, 40), fill_rect, border_radius=2)
-                pct_txt = self.font_layer.render(f"{int(layer.opacity * 100)}%", True, self.text_muted)
+                pct_txt = self.font_layer.render(f"{int(layer.opacity * 100)}%", True, COLORS.text_dim)
                 screen.blit(pct_txt, (opacity_bar.x - 32, opacity_bar.y - 2))
 
             eye_x = item_rect.right - 25
@@ -512,12 +507,12 @@ class LayerSelector:
             )
 
             drag_surf = pygame.Surface((preview_rect.width, preview_rect.height))
-            drag_surf.fill(self.item_drag_color)
+            drag_surf.fill(COLORS.accent_active)
             drag_surf.set_alpha(200)
             screen.blit(drag_surf, preview_rect)
 
             name_txt = self.font_layer.render(
-                dragging_layer.name, True, self.text_color
+                dragging_layer.name, True, COLORS.text
             )
             screen.blit(name_txt, (preview_rect.x + 5, preview_rect.y + 5))
 
@@ -544,24 +539,14 @@ class LayerSelector:
             (self.footer_rect.right, self.footer_rect.y),
             1,
         )
-        pygame.draw.rect(
-            screen, COLORS.accent, self.btn_add, border_radius=SHAPE.radius_sm
-        )
-        pygame.draw.rect(screen, (70, 130, 180), self.btn_add)
-        add_txt = self.font_layer.render("+", True, Color("white"))
-        screen.blit(add_txt, (self.btn_add.x + 8, self.btn_add.y + 5))
-        pygame.draw.rect(
-            screen, COLORS.danger, self.btn_remove, border_radius=SHAPE.radius_sm
-        )
-        pygame.draw.rect(screen, (180, 100, 100), self.btn_remove)
-        rem_txt = self.font_layer.render("-", True, Color("white"))
-        screen.blit(rem_txt, (self.btn_remove.x + 8, self.btn_remove.y + 5))
+        self.btn_add.draw(screen)
+        self.btn_remove.draw(screen)
 
         count = self.editor.tilemap.layer_manager.get_layer_count()
-        info_txt = self.font_layer.render(f"{count} layer(s)", True, self.text_muted)
-        screen.blit(info_txt, (self.btn_remove.right + 10, self.footer_rect.y + 8))
+        info_txt = self.font_layer.render(f"{count} layer(s)", True, COLORS.text_dim)
+        screen.blit(info_txt, (self.btn_remove.rect.right + 10, self.footer_rect.y + 8))
         mx, my = pygame.mouse.get_pos()
-        if self.btn_add.collidepoint(mx, my):
+        if self.btn_add.rect.collidepoint(mx, my):
             self.editor.tooltip.show("Add Layer", (mx + 10, my + 10))
-        elif self.btn_remove.collidepoint(mx, my):
+        elif self.btn_remove.rect.collidepoint(mx, my):
             self.editor.tooltip.show("Remove Layer", (mx + 10, my + 10))

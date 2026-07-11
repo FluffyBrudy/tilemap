@@ -8,24 +8,8 @@ from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
 from utils.icons_cache import get_icon, prewarm_common_icons
 from utils.standalone import launch_standalone
-from widgets.input import InlineTextInput
-
-
-COLORS = {
-    "overlay": (0, 0, 0, 180),
-    "bg": (30, 32, 36),
-    "sidebar": (25, 27, 30),
-    "header": (40, 42, 46),
-    "border": (60, 62, 65),
-    "text_main": (230, 230, 230),
-    "text_dim": (140, 140, 140),
-    "highlight": (50, 60, 80),
-    "selected": (70, 90, 130),
-    "accent": (80, 120, 200),
-    "folder": (220, 180, 80),
-    "file": (180, 180, 180),
-    "image": (100, 180, 120),
-}
+from .input import InputBox, InlineTextInput
+from .ui.theme import COLORS, FONTS
 
 
 class FileItem:
@@ -197,8 +181,8 @@ class ResizeHandler:
             surface: pygame.Surface to draw on
         """
 
-        handle_color = COLORS["border"]
-        handle_hover_color = COLORS["accent"]
+        handle_color = COLORS.border
+        handle_hover_color = COLORS.accent
 
         mouse_pos = pygame.mouse.get_pos()
         hovered_handle = self.get_handle_at_pos(mouse_pos)
@@ -360,8 +344,8 @@ class ImagePreview:
             rect: pygame.Rect defining the preview panel area
         """
 
-        pygame.draw.rect(surface, COLORS["bg"], rect)
-        pygame.draw.rect(surface, COLORS["border"], rect, 1)
+        pygame.draw.rect(surface, COLORS.panel, rect)
+        pygame.draw.rect(surface, COLORS.border, rect, 1)
 
         close_button_size = 24
         close_button_margin = 8
@@ -374,11 +358,11 @@ class ImagePreview:
 
         mouse_pos = pygame.mouse.get_pos()
         is_hovering = close_button_rect.collidepoint(mouse_pos)
-        close_bg_color = COLORS["highlight"] if is_hovering else COLORS["sidebar"]
+        close_bg_color = COLORS.hover if is_hovering else COLORS.panel_alt
 
         pygame.draw.rect(surface, close_bg_color, close_button_rect, border_radius=4)
 
-        x_color = COLORS["text_main"]
+        x_color = COLORS.text
         margin = 6
         pygame.draw.line(
             surface,
@@ -398,20 +382,18 @@ class ImagePreview:
         self.close_button_rect = close_button_rect
 
         if self.error_message:
-            font = pygame.font.SysFont("Arial", 14)
             error_lines = self.error_message.split("\n")
             y_offset = rect.centery - (len(error_lines) * 20) // 2
 
             for line in error_lines:
-                text_surf = font.render(line, True, COLORS["text_dim"])
+                text_surf = FONTS.get_medium_font().render(line, True, COLORS.text_dim)
                 text_rect = text_surf.get_rect(center=(rect.centerx, y_offset))
                 surface.blit(text_surf, text_rect)
                 y_offset += 20
             return
 
         if not self.current_image:
-            font = pygame.font.SysFont("Arial", 14)
-            text_surf = font.render("No preview available", True, COLORS["text_dim"])
+            text_surf = FONTS.get_medium_font().render("No preview available", True, COLORS.text_dim)
             text_rect = text_surf.get_rect(center=rect.center)
             surface.blit(text_surf, text_rect)
             return
@@ -436,9 +418,8 @@ class ImagePreview:
             surface.blit(scaled_image, image_rect)
 
             if self.image_dimensions:
-                font = pygame.font.SysFont("Arial", 12)
                 dim_text = f"{self.image_dimensions[0]} × {self.image_dimensions[1]} px"
-                text_surf = font.render(dim_text, True, COLORS["text_dim"])
+                text_surf = FONTS.get_small_font().render(dim_text, True, COLORS.text_dim)
                 text_rect = text_surf.get_rect(
                     centerx=rect.centerx, top=image_rect.bottom + 5
                 )
@@ -454,13 +435,12 @@ class ImagePreview:
             )
 
             button_hover = self.open_viewer_button_rect.collidepoint(mouse_pos)
-            button_color = COLORS["accent"] if button_hover else COLORS["selected"]
+            button_color = COLORS.accent if button_hover else COLORS.selected
             pygame.draw.rect(
                 surface, button_color, self.open_viewer_button_rect, border_radius=4
             )
 
-            font = pygame.font.SysFont("Arial", 13, bold=True)
-            button_text = font.render("Open in Viewer", True, COLORS["text_main"])
+            button_text = FONTS.get_bold_font().render("Open in Viewer", True, COLORS.text)
             text_rect = button_text.get_rect(center=self.open_viewer_button_rect.center)
             surface.blit(button_text, text_rect)
 
@@ -511,13 +491,12 @@ class FileManager:
         self.footer_height = 50
         self.item_height = 30
 
-        self.font_main = pygame.font.SysFont("Arial", 14)
-        self.font_bold = pygame.font.SysFont("Arial", 14, bold=True)
-        self.font_small = pygame.font.SysFont("Arial", 11)
-        self.font_icon = pygame.font.SysFont("Consolas", 20)
+        self.font_main = FONTS.get_medium_font()
+        self.font_bold = FONTS.get_bold_font()
+        self.font_small = FONTS.get_small_font()
+        self.font_icon = FONTS.get_mono_font(20)
 
-        self.search_input = InlineTextInput("search", "")
-        self.is_search_focused = False
+        self.search_input = InputBox(pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font())
         self.search_rect = pygame.Rect(
             self.rect.x + self.sidebar_width + 10,
             self.rect.y + self.header_height + 5,
@@ -527,13 +506,14 @@ class FileManager:
         self.search_header_height = 35
         self.is_searching = False
 
-        self.save_input = InlineTextInput("save", default_name)
-        self.is_save_name_focused = False
+        self.save_input = InputBox(pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font())
+        self.save_input.text = default_name
+        self.save_input.cursor_pos = len(default_name)
         self.save_name_rect = pygame.Rect(0, 0, 0, 0)
         self.new_folder_button_rect = pygame.Rect(0, 0, 0, 0)
 
         # Rename functionality
-        self.rename_input = InlineTextInput("rename", "")
+        self.rename_input = InputBox(pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font())
         self.renaming_item_idx: Optional[int] = None
 
         self.recents_path = self.data_root / "recents.json" if self.data_root else BASE_PATH / "data" / "recents.json"
@@ -757,9 +737,7 @@ class FileManager:
         self.rename_input.is_focused = True
         
         # Deselect search and save inputs
-        self.is_search_focused = False
         self.search_input.is_focused = False
-        self.is_save_name_focused = False
         self.save_input.is_focused = False
 
     def _confirm_rename(self) -> None:
@@ -814,7 +792,6 @@ class FileManager:
                 self._save_recents()
             
             # Refresh and reselect the renamed item
-            old_selected = self.selected_index
             self.refresh_items()
             
             # Try to find and reselect the renamed item
@@ -861,20 +838,19 @@ class FileManager:
         self._update_save_name_rect(footer_rect)
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if not self.is_search_focused and not self.is_save_name_focused:
-                # Cancel rename if active
+            if not self.search_input.is_focused and not self.save_input.is_focused:
                 if self.renaming_item_idx is not None:
                     self._cancel_rename()
                     return True
-                
+
                 self.on_cancel_callback()
                 return True
 
-            if self.is_search_focused:
-                self.is_search_focused = False
+            if self.search_input.is_focused:
+                self.search_input.is_focused = False
                 return True
-            if self.is_save_name_focused:
-                self.is_save_name_focused = False
+            if self.save_input.is_focused:
+                self.save_input.is_focused = False
                 return True
 
         if event.type == pygame.MOUSEMOTION:
@@ -964,15 +940,15 @@ class FileManager:
 
             return True
 
-        if event.type == pygame.KEYDOWN and self.is_save_name_focused:
+        if event.type == pygame.KEYDOWN and self.save_input.is_focused:
             if event.key == pygame.K_ESCAPE:
-                self.is_save_name_focused = False
+                self.save_input.is_focused = False
                 return True
             elif event.key == pygame.K_RETURN:
                 self._attempt_save()
                 return True
 
-            if self.save_input.handle_event(event, self.font_main):
+            if self.save_input.handle_event(event):
                 return True
 
         # Handle rename input
@@ -984,22 +960,22 @@ class FileManager:
                 self._cancel_rename()
                 return True
             else:
-                if self.rename_input.handle_event(event, self.font_main):
+                if self.rename_input.handle_event(event):
                     return True
 
         # Handle F2 key for rename
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
             if self.selected_index >= 0 and self.renaming_item_idx is None:
-                if not self.is_search_focused and not self.is_save_name_focused:
+                if not self.search_input.is_focused and not self.save_input.is_focused:
                     self._start_rename(self.selected_index)
                     return True
 
-        if event.type == pygame.KEYDOWN and self.is_search_focused:
+        if event.type == pygame.KEYDOWN and self.search_input.is_focused:
             if event.key == pygame.K_ESCAPE:
-                self.is_search_focused = False
+                self.search_input.is_focused = False
                 return True
 
-            if self.search_input.handle_event(event, self.font_main):
+            if self.search_input.handle_event(event):
                 self.refresh_items()
                 return True
 
@@ -1032,19 +1008,16 @@ class FileManager:
                     return True
 
                 if self.search_rect.collidepoint(mouse_pos):
-                    self.is_search_focused = True
-                    self.is_save_name_focused = False
+                    self.save_input.is_focused = False
                     self.search_input.is_focused = True
                     return True
                 else:
-                    self.is_search_focused = False
                     self.search_input.is_focused = False
                 if self.mode == "save" and self.save_name_rect.collidepoint(mouse_pos):
-                    self.is_save_name_focused = True
+                    self.search_input.is_focused = False
                     self.save_input.is_focused = True
                     return True
                 else:
-                    self.is_save_name_focused = False
                     self.save_input.is_focused = False
 
                 if ly < self.header_height:
@@ -1079,6 +1052,7 @@ class FileManager:
                         else:
                             if self.mode == "save":
                                 self.save_input.text = item.name
+                                self.save_input.cursor_pos = len(item.name)
                                 self._attempt_save()
                             else:
                                 if self.multi_select and self.selected_indices:
@@ -1124,6 +1098,7 @@ class FileManager:
                         self.double_click_timer = current_time
                         if not item.is_dir and self.mode == "save":
                             self.save_input.text = item.name
+                            self.save_input.cursor_pos = len(item.name)
 
                         if not item.is_dir:
                             if item.ext in [".png", ".jpg", ".jpeg"]:
@@ -1335,19 +1310,19 @@ class FileManager:
 
         if self.draw_overlay:
             overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-            overlay.fill(COLORS["overlay"])
+            overlay.fill((0, 0, 0, 180))
             screen.blit(overlay, (0, 0))
 
-        pygame.draw.rect(screen, COLORS["bg"], self.rect)
-        pygame.draw.rect(screen, COLORS["border"], self.rect, 1)
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
         sidebar_rect = pygame.Rect(
             self.rect.x, self.rect.y, self.sidebar_width, self.rect.height
         )
-        pygame.draw.rect(screen, COLORS["sidebar"], sidebar_rect)
+        pygame.draw.rect(screen, COLORS.panel_alt, sidebar_rect)
         pygame.draw.line(
             screen,
-            COLORS["border"],
+            COLORS.border,
             (sidebar_rect.right, sidebar_rect.top),
             (sidebar_rect.right, sidebar_rect.bottom),
         )
@@ -1360,10 +1335,10 @@ class FileManager:
             self.rect.width - self.sidebar_width,
             self.header_height,
         )
-        pygame.draw.rect(screen, COLORS["header"], header_rect)
+        pygame.draw.rect(screen, COLORS.header, header_rect)
         pygame.draw.line(
             screen,
-            COLORS["border"],
+            COLORS.border,
             (header_rect.left, header_rect.bottom),
             (header_rect.right, header_rect.bottom),
         )
@@ -1376,41 +1351,19 @@ class FileManager:
             header_rect.width,
             self.search_header_height,
         )
-        pygame.draw.rect(screen, COLORS["bg"], search_bg_rect)
+        pygame.draw.rect(screen, COLORS.panel, search_bg_rect)
 
         self.search_rect.x = search_bg_rect.x + 10
         self.search_rect.y = search_bg_rect.y + 5
         self.search_rect.width = search_bg_rect.width - 20
 
-        box_col = COLORS["selected"] if self.is_search_focused else COLORS["border"]
-        pygame.draw.rect(screen, box_col, self.search_rect, border_radius=4)
-        pygame.draw.rect(
-            screen, COLORS["sidebar"], self.search_rect.inflate(-2, -2), border_radius=4
-        )
+        self.search_input.resize(self.search_rect.x, self.search_rect.y,
+                                 self.search_rect.w, self.search_rect.h)
+        self.search_input.draw(screen)
 
-        search_text = self.search_input.text
-        if not search_text and not self.is_search_focused:
-            search_text = "Search files..."
-            search_col = COLORS["text_dim"]
-            txt = self.font_main.render(search_text, True, search_col)
-        else:
-            search_col = COLORS["text_main"]
-            if self.is_search_focused:
-                display_text = search_text
-                cursor_offset = self.search_input.cursor_pos
-                prefix = display_text[:cursor_offset]
-                if (pygame.time.get_ticks() // 500) % 2:
-                    display_text = prefix + "|" + display_text[cursor_offset:]
-                else:
-                    display_text = prefix + " " + display_text[cursor_offset:]
-                txt = self.font_main.render(display_text or " ", True, search_col)
-            else:
-                txt = self.font_main.render(search_text, True, search_col)
-
-        clip = screen.get_clip()
-        screen.set_clip(self.search_rect)
-        screen.blit(txt, (self.search_rect.x + 8, self.search_rect.y + 4))
-        screen.set_clip(clip)
+        if not self.search_input.text and not self.search_input.is_focused:
+            placeholder = FONTS.get_medium_font().render("Search files...", True, COLORS.text_dim)
+            screen.blit(placeholder, (self.search_input.content_rect.x, self.search_input.content_rect.y))
 
         file_list_rect = self._get_file_list_rect()
         self._draw_file_list(screen, file_list_rect)
@@ -1422,10 +1375,10 @@ class FileManager:
             self.footer_height,
         )
         self._update_save_name_rect(footer_rect)
-        pygame.draw.rect(screen, COLORS["header"], footer_rect)
+        pygame.draw.rect(screen, COLORS.header, footer_rect)
         pygame.draw.line(
             screen,
-            COLORS["border"],
+            COLORS.border,
             (footer_rect.left, footer_rect.top),
             (footer_rect.right, footer_rect.top),
         )
@@ -1455,23 +1408,23 @@ class FileManager:
                 is_active = True
 
             col = (
-                COLORS["selected"]
+                COLORS.selected
                 if is_active
                 else (
-                    COLORS["highlight"]
+                    COLORS.hover
                     if btn_rect.collidepoint(mx, my)
-                    else COLORS["sidebar"]
+                    else COLORS.panel_alt
                 )
             )
             pygame.draw.rect(screen, col, btn_rect, border_radius=4)
 
-            txt = self.font_bold.render(name, True, COLORS["text_main"])
+            txt = self.font_bold.render(name, True, COLORS.text)
             screen.blit(txt, (rect.x + 15, y + 7))
 
     def _draw_header(self, screen, rect):
         up_btn = pygame.Rect(rect.x + 5, rect.y + 5, 30, 30)
         # Use arrow-up icon (rotate arrow-down or use folder-up)
-        up_icon = icon_manager.get_icon("arrow-down", 16, COLORS["text_main"])
+        up_icon = icon_manager.get_icon("arrow-down", 16, COLORS.text)
         # Rotate the icon 90 degrees for up
         up_icon = pygame.transform.rotate(up_icon, 180)
         screen.blit(up_icon, up_icon.get_rect(center=up_btn.center))
@@ -1484,12 +1437,12 @@ class FileManager:
         self.new_folder_button_rect = pygame.Rect(rect.right - 110, rect.y + 6, 100, 28)
         mx, my = pygame.mouse.get_pos()
         folder_bg = (
-            COLORS["selected"]
+            COLORS.selected
             if self.new_folder_button_rect.collidepoint(mx, my)
-            else COLORS["highlight"]
+            else COLORS.hover
         )
         pygame.draw.rect(screen, folder_bg, self.new_folder_button_rect, border_radius=4)
-        folder_icon = icon_manager.get_icon("folder", 16, COLORS["folder"])
+        folder_icon = icon_manager.get_icon("folder", 16, COLORS.warning)
         screen.blit(
             folder_icon,
             folder_icon.get_rect(
@@ -1499,7 +1452,7 @@ class FileManager:
                 )
             ),
         )
-        folder_text = self.font_bold.render("New", True, COLORS["text_main"])
+        folder_text = self.font_bold.render("New", True, COLORS.text)
         screen.blit(
             folder_text,
             folder_text.get_rect(
@@ -1513,7 +1466,7 @@ class FileManager:
         path_max_w = max(30, self.new_folder_button_rect.x - (rect.x + 45) - 10)
         while path_str and self.font_main.size(path_str)[0] > path_max_w:
             path_str = "..." + path_str[4:]
-        txt = self.font_main.render(path_str, True, COLORS["text_dim"])
+        txt = self.font_main.render(path_str, True, COLORS.text_dim)
         screen.blit(txt, (rect.x + 45, rect.y + 12))
 
     def _draw_file_list(self, screen, rect):
@@ -1536,9 +1489,9 @@ class FileManager:
             if i == self.selected_index or (
                 self.multi_select and i in self.selected_indices
             ):
-                pygame.draw.rect(screen, COLORS["selected"], row_rect)
+                pygame.draw.rect(screen, COLORS.selected, row_rect)
             elif i == self.hover_index:
-                pygame.draw.rect(screen, COLORS["highlight"], row_rect)
+                pygame.draw.rect(screen, COLORS.hover, row_rect)
             
             # Highlight renaming item with different color
             if i == self.renaming_item_idx:
@@ -1549,11 +1502,11 @@ class FileManager:
             icon_y = y + (self.item_height - icon_size[1]) // 2
 
             if item.is_dir:
-                icon = icon_manager.get_icon("folder", 20, COLORS["folder"])
+                icon = icon_manager.get_icon("folder", 20, COLORS.warning)
             elif item.ext in [".png", ".jpg", ".jpeg"]:
-                icon = icon_manager.get_icon("image", 20, COLORS["image"])
+                icon = icon_manager.get_icon("image", 20, COLORS.success)
             else:
-                icon = icon_manager.get_icon("file", 20, COLORS["file"])
+                icon = icon_manager.get_icon("file", 20, COLORS.text_dim)
 
             screen.blit(icon, (icon_x, icon_y))
 
@@ -1561,46 +1514,13 @@ class FileManager:
             if i == self.renaming_item_idx:
                 text_x = rect.x + 35
                 text_y = y + 7
-                
-                # Draw selection highlight if text is selected
-                if self.rename_input.selection_start is not None:
-                    start = min(self.rename_input.selection_start, self.rename_input.cursor_pos)
-                    end = max(self.rename_input.selection_start, self.rename_input.cursor_pos)
-                    
-                    if start != end:
-                        # Calculate pixel positions for selection
-                        prefix = self.rename_input.text[:start]
-                        selected = self.rename_input.text[start:end]
-                        
-                        prefix_width = self.font_main.size(prefix)[0]
-                        selected_width = self.font_main.size(selected)[0]
-                        
-                        # Draw selection background
-                        selection_rect = pygame.Rect(
-                            text_x + prefix_width,
-                            text_y - 2,
-                            selected_width,
-                            self.item_height - 10
-                        )
-                        pygame.draw.rect(screen, COLORS["accent"], selection_rect)
-                
-                # Draw the text
-                display_name = self.rename_input.text
-                cursor_offset = self.rename_input.cursor_pos
-                prefix = display_name[:cursor_offset]
-                
-                # Blinking cursor (only show if no selection or cursor at edge)
-                show_cursor = self.rename_input.selection_start is None or \
-                             self.rename_input.selection_start == self.rename_input.cursor_pos
-                
-                if show_cursor and (pygame.time.get_ticks() // 500) % 2:
-                    display_name = prefix + "|" + display_name[cursor_offset:]
-                
-                txt = self.font_main.render(display_name, True, COLORS["text_main"])
-                screen.blit(txt, (text_x, text_y))
+                text_w = rect.width - 45
+                text_h = self.item_height - 10
+                self.rename_input.resize(text_x, text_y - 2, text_w, text_h)
+                self.rename_input.draw(screen)
             else:
                 col = (
-                    COLORS["text_main"] if i == self.selected_index else COLORS["text_main"]
+                    COLORS.accent if i == self.selected_index else COLORS.text
                 )
                 txt = self.font_main.render(item.name, True, col)
                 screen.blit(txt, (rect.x + 35, y + 7))
@@ -1614,7 +1534,7 @@ class FileManager:
             bar_y = rect.y + scroll_pct * (rect.height - bar_h)
 
             bar_rect = pygame.Rect(rect.right - 6, bar_y, 4, bar_h)
-            pygame.draw.rect(screen, COLORS["border"], bar_rect, border_radius=2)
+            pygame.draw.rect(screen, COLORS.border, bar_rect, border_radius=2)
 
     def _draw_footer(self, screen, rect):
         sel_txt: str
@@ -1626,11 +1546,11 @@ class FileManager:
             sel_txt = "No file selected"
 
         if self.mode == "open":
-            txt_surf = self.font_main.render(sel_txt, True, COLORS["text_dim"])
+            txt_surf = self.font_main.render(sel_txt, True, COLORS.text_dim)
             screen.blit(txt_surf, (rect.x + 10, rect.y + 12))
             if self.multi_select:
                 hint = "[Ctrl+Click] toggle  [Shift+Click] range  [Open] confirm"
-                hint_surf = self.font_small.render(hint, True, COLORS["text_dim"])
+                hint_surf = self.font_small.render(hint, True, COLORS.text_dim)
                 screen.blit(hint_surf, (rect.x + 10, rect.y + 28))
 
         btn_w, btn_h = 80, 30
@@ -1638,14 +1558,14 @@ class FileManager:
 
         def draw_btn(x, label, accent=False):
             r = pygame.Rect(x, rect.y + 10, btn_w, btn_h)
-            bg = COLORS["accent"] if accent else COLORS["highlight"]
+            bg = COLORS.accent if accent else COLORS.hover
 
             mx, my = pygame.mouse.get_pos()
             if r.collidepoint(mx, my):
                 bg = (min(bg[0] + 20, 255), min(bg[1] + 20, 255), min(bg[2] + 20, 255))
 
             pygame.draw.rect(screen, bg, r, border_radius=4)
-            lbl = self.font_bold.render(label, True, COLORS["text_main"])
+            lbl = self.font_bold.render(label, True, COLORS.text)
             lbl_r = lbl.get_rect(center=r.center)
             screen.blit(lbl, lbl_r)
 
@@ -1656,33 +1576,12 @@ class FileManager:
         draw_btn(open_x, "Save" if self.mode == "save" else "Open", accent=True)
 
         if self.mode == "save":
-            label = self.font_bold.render("File name:", True, COLORS["text_dim"])
+            label = self.font_bold.render("File name:", True, COLORS.text_dim)
             screen.blit(label, (rect.x + 10, rect.y + 16))
 
-            box_col = (
-                COLORS["selected"] if self.is_save_name_focused else COLORS["border"]
-            )
-            pygame.draw.rect(screen, box_col, self.save_name_rect, border_radius=4)
-            pygame.draw.rect(
-                screen,
-                COLORS["sidebar"],
-                self.save_name_rect.inflate(-2, -2),
-                border_radius=4,
-            )
-
-            display_name = self.save_input.text
-            if self.is_save_name_focused:
-                cursor_offset = self.save_input.cursor_pos
-                prefix = display_name[:cursor_offset]
-                if (pygame.time.get_ticks() // 500) % 2:
-                    display_name = prefix + "|" + display_name[cursor_offset:]
-                else:
-                    display_name = prefix + " " + display_name[cursor_offset:]
-            txt = self.font_main.render(display_name, True, COLORS["text_main"])
-            clip = screen.get_clip()
-            screen.set_clip(self.save_name_rect)
-            screen.blit(txt, (self.save_name_rect.x + 6, self.save_name_rect.y + 6))
-            screen.set_clip(clip)
+            self.save_input.resize(self.save_name_rect.x, self.save_name_rect.y,
+                                   self.save_name_rect.w, self.save_name_rect.h)
+            self.save_input.draw(screen)
 
     def _draw_icon_arrow_up(self, surface, cx, cy, color):
         points = [(cx, cy - 5), (cx - 5, cy + 2), (cx + 5, cy + 2)]

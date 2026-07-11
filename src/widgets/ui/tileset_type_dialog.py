@@ -6,28 +6,18 @@ import pygame
 from pygame import Rect, Surface
 from typing import Callable, Optional
 
+from .dialog_base import DialogBase
+from .theme import COLORS, FONTS
 
-class TilesetTypeDialog:
+
+class TilesetTypeDialog(DialogBase):
     """Dialog to select whether a tileset is tile-based or object-based."""
 
     def __init__(self, editor_rect: Rect):
-        self.editor_rect = editor_rect
-        self.rect = Rect(0, 0, 400, 420)
-        self.rect.center = editor_rect.center
-
-        self.active = False
+        super().__init__(editor_rect, (400, 420), title="Tileset Type")
         self.selected_type: Optional[str] = None
         self.on_confirm: Optional[Callable[[str], None]] = None
         self.on_cancel: Optional[Callable[[], None]] = None
-
-        self.bg_color = (40, 40, 40)
-        self.border_color = (100, 100, 100)
-        self.text_color = (255, 255, 255)
-        self.field_color = (55, 55, 55)
-        self.field_border = (80, 80, 80)
-        self.radio_color = (100, 150, 255)
-        self.button_color = (60, 100, 180)
-        self.button_hover_color = (80, 120, 200)
 
         self.radio_tile_rect = Rect(0, 0, 20, 20)
         self.radio_object_rect = Rect(0, 0, 20, 20)
@@ -38,10 +28,6 @@ class TilesetTypeDialog:
 
         self.btn_ok = Rect(0, 0, 80, 30)
         self.btn_cancel = Rect(0, 0, 80, 30)
-
-        self.font_title = pygame.font.SysFont("Arial", 18, bold=True)
-        self.font_text = pygame.font.SysFont("Arial", 14)
-        self.font_field = pygame.font.SysFont("Arial", 13)
 
         self.btn_ok_hover = False
         self.btn_cancel_hover = False
@@ -70,6 +56,7 @@ class TilesetTypeDialog:
     def _layout(self):
         """Position child controls from the current dialog rect."""
         self.rect.center = self.editor_rect.center
+        self._update_content_rect()
 
         h = 260
         if self.animated or self._editing_field is not None:
@@ -315,12 +302,8 @@ class TilesetTypeDialog:
             return
 
         self._layout()
-        pygame.draw.rect(surface, self.bg_color, self.rect)
-        pygame.draw.rect(surface, self.border_color, self.rect, 2)
-
-        title = self.font_title.render("Tileset Type", True, self.text_color)
-        title_rect = title.get_rect(topleft=(self.rect.x + 20, self.rect.y + 15))
-        surface.blit(title, title_rect)
+        super().draw_base(surface)
+        self._draw_title(surface)
 
         self._draw_radio(
             surface,
@@ -351,22 +334,8 @@ class TilesetTypeDialog:
         if self.animated:
             self._draw_animation_fields(surface)
 
-        ok_color = self.button_hover_color if self.btn_ok_hover else self.button_color
-        cancel_color = (
-            self.button_hover_color if self.btn_cancel_hover else self.button_color
-        )
-
-        pygame.draw.rect(surface, ok_color, self.btn_ok)
-        pygame.draw.rect(surface, cancel_color, self.btn_cancel)
-
-        ok_text = self.font_text.render("OK", True, self.text_color)
-        cancel_text = self.font_text.render("Cancel", True, self.text_color)
-
-        ok_text_rect = ok_text.get_rect(center=self.btn_ok.center)
-        cancel_text_rect = cancel_text.get_rect(center=self.btn_cancel.center)
-
-        surface.blit(ok_text, ok_text_rect)
-        surface.blit(cancel_text, cancel_text_rect)
+        self._draw_button(surface, self.btn_ok, self.btn_ok_hover, "OK")
+        self._draw_button(surface, self.btn_cancel, self.btn_cancel_hover, "Cancel")
 
     def _draw_animation_fields(self, surface: Surface):
         """Draw the animation configuration fields."""
@@ -375,15 +344,15 @@ class TilesetTypeDialog:
             rects = self.anim_fields_rects.get(key)
             if rects is None:
                 continue
-            label_surf = self.font_text.render(rects["label_text"], True, self.text_color)
+            label_surf = FONTS.get_medium_font().render(rects["label_text"], True, COLORS.text)
             surface.blit(label_surf, rects["label"])
 
             value_str = self._get_display_value(key)
-            value_color = self.radio_color if self._editing_field == key else self.text_color
-            border = self.field_border if self._editing_field != key else self.radio_color
-            pygame.draw.rect(surface, self.field_color, rects["value"])
+            value_color = COLORS.accent if self._editing_field == key else COLORS.text
+            border = COLORS.border if self._editing_field != key else COLORS.accent
+            pygame.draw.rect(surface, COLORS.panel_alt, rects["value"])
             pygame.draw.rect(surface, border, rects["value"], 1)
-            val_surf = self.font_field.render(value_str, True, value_color)
+            val_surf = FONTS.get_medium_font().render(value_str, True, value_color)
             val_rect = val_surf.get_rect(midleft=(rects["value"].x + 4, rects["value"].centery))
             surface.blit(val_surf, val_rect)
 
@@ -400,28 +369,32 @@ class TilesetTypeDialog:
         # Animation mode (below loop)
         mode_rects = self.anim_fields_rects.get("mode")
         if mode_rects:
-            label_surf = self.font_text.render(mode_rects["label_text"], True, self.text_color)
+            label_surf = FONTS.get_medium_font().render(mode_rects["label_text"], True, COLORS.text)
             surface.blit(label_surf, mode_rects["label"])
-            mode_border = self.field_border
-            pygame.draw.rect(surface, self.field_color, mode_rects["value"])
+            mode_border = COLORS.border
+            pygame.draw.rect(surface, COLORS.panel_alt, mode_rects["value"])
             pygame.draw.rect(surface, mode_border, mode_rects["value"], 1)
             mode_text = self.anim_mode_labels[self.anim_mode_index]
-            val_surf = self.font_field.render(mode_text, True, self.text_color)
+            val_surf = FONTS.get_medium_font().render(mode_text, True, COLORS.text)
             val_rect = val_surf.get_rect(midleft=(mode_rects["value"].x + 4, mode_rects["value"].centery))
             surface.blit(val_surf, val_rect)
 
         # Stride hint (auto-computed, below mode)
-        hint_color = (160, 160, 160)
-        hint_surf = self.font_field.render(f"Stride: {self._computed_stride}  (auto)", True, hint_color)
+        hint_color = COLORS.text_dim
+        hint_surf = FONTS.get_medium_font().render(
+            f"Stride: {self._computed_stride}  (auto)", True, hint_color
+        )
         surface.blit(hint_surf, self._stride_hint_rect)
 
     def _draw_checkbox(self, surface: Surface, rect: Rect, checked: bool, label: str, label_x: int):
-        pygame.draw.rect(surface, self.field_color, rect)
-        pygame.draw.rect(surface, self.field_border, rect, 1)
+        pygame.draw.rect(surface, COLORS.panel_alt, rect)
+        pygame.draw.rect(surface, COLORS.border, rect, 1)
         if checked:
-            pygame.draw.line(surface, self.radio_color, (rect.x + 3, rect.centery), (rect.centerx - 2, rect.bottom - 3), 2)
-            pygame.draw.line(surface, self.radio_color, (rect.centerx - 2, rect.bottom - 3), (rect.right - 3, rect.y + 3), 2)
-        label_surf = self.font_text.render(label, True, self.text_color)
+            pygame.draw.line(surface, COLORS.accent, (rect.x + 3, rect.centery),
+                             (rect.centerx - 2, rect.bottom - 3), 2)
+            pygame.draw.line(surface, COLORS.accent, (rect.centerx - 2, rect.bottom - 3),
+                             (rect.right - 3, rect.y + 3), 2)
+        label_surf = FONTS.get_medium_font().render(label, True, COLORS.text)
         label_pos = label_surf.get_rect(midleft=(label_x, rect.centery))
         surface.blit(label_surf, label_pos)
 
@@ -435,17 +408,17 @@ class TilesetTypeDialog:
         label_rect: Rect,
     ):
         """Draw a radio button with label."""
-        pygame.draw.rect(surface, (48, 48, 48), row_rect, border_radius=6)
-        pygame.draw.rect(surface, self.border_color, row_rect, 1, border_radius=6)
+        pygame.draw.rect(surface, COLORS.panel, row_rect, border_radius=6)
+        pygame.draw.rect(surface, COLORS.border, row_rect, 1, border_radius=6)
 
         center = (radio_rect.centerx, radio_rect.centery)
         radius = radio_rect.width // 2
 
-        pygame.draw.circle(surface, self.border_color, center, radius, 2)
+        pygame.draw.circle(surface, COLORS.border, center, radius, 2)
 
         if is_selected:
-            pygame.draw.circle(surface, self.radio_color, center, radius - 4)
+            pygame.draw.circle(surface, COLORS.accent, center, radius - 4)
 
-        label_surf = self.font_text.render(label, True, self.text_color)
+        label_surf = FONTS.get_medium_font().render(label, True, COLORS.text)
         label_pos = label_surf.get_rect(midleft=(label_rect.x, radio_rect.centery))
         surface.blit(label_surf, label_pos)

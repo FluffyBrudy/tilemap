@@ -37,6 +37,17 @@ def draw_separator(surface: pygame.Surface, x: int, y: int, h: int, color=None):
     pygame.draw.line(surface, color, (x, y), (x, y + h))
 
 
+def truncate_text(text: str, font: pygame.font.Font, max_width: int) -> Tuple[str, bool]:
+    if font.size(text)[0] <= max_width:
+        return text, False
+    ellipsis = "..."
+    ellipsis_w = font.size(ellipsis)[0]
+    available = max_width - ellipsis_w
+    while text and font.size(text)[0] > available:
+        text = text[:-1].rstrip()
+    return text + ellipsis, True
+
+
 def draw_soft_rect(surface: pygame.Surface, rect: pygame.Rect, color: Tuple[int, int, int], radius=4, alpha=255):
     if alpha >= 255:
         pygame.draw.rect(surface, color, rect, border_radius=radius)

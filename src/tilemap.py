@@ -477,8 +477,7 @@ class Tilemap:
         try:
             self.tile_size = deserialize_point(payload["meta"]["tile_size"])
             self.map_size = deserialize_point(payload["meta"].get("map_size", "50;50"))
-            # If the file tells us the map is large, we assume that was intended
-            # But the 'initial' setup might be in meta or we use map_size as base
+
             self.initial_map_size = payload["meta"].get("initial_map_size")
             if self.initial_map_size:
                 self.initial_map_size = deserialize_point(self.initial_map_size)
@@ -487,16 +486,6 @@ class Tilemap:
             self.render_scale = float(payload["meta"].get("render_scale", 1.0))
         except (KeyError, ValueError) as e:
             raise ValueError(f"Error loading map metadata: {e}") from e
-
-        # Restore view state
-        if self.editor.tile_grid_widget:
-            if "zoom_level" in payload["meta"]:
-                self.editor.tile_grid_widget.zoom_level = payload["meta"]["zoom_level"]
-            if "scroll" in payload["meta"]:
-                scroll = deserialize_point(payload["meta"]["scroll"])
-                self.editor.tile_grid_widget.scroll_x = scroll[0]
-                self.editor.tile_grid_widget.scroll_y = scroll[1]
-            self.editor.tile_grid_widget.clamp_view()
 
         resources = payload.get("resources", {})
         tilesets = []
@@ -668,6 +657,18 @@ class Tilemap:
                 self.editor.node_selector._rebuild_filter()
 
         self.initialized = True
+
+        # Restore view state and invalidate bounds cache after map load
+        if self.editor.tile_grid_widget:
+            if "zoom_level" in payload["meta"]:
+                self.editor.tile_grid_widget.zoom_level = payload["meta"]["zoom_level"]
+            if "scroll" in payload["meta"]:
+                scroll = deserialize_point(payload["meta"]["scroll"])
+                self.editor.tile_grid_widget.scroll_x = scroll[0]
+                self.editor.tile_grid_widget.scroll_y = scroll[1]
+            if hasattr(self.editor.tile_grid_widget, "clamp_scroll"):
+                self.editor.tile_grid_widget.clamp_scroll()
+            self.editor.tile_grid_widget.invalidate_bounds_cache()
 
     def _object_tileset_indices_from_payload(self, payload: dict) -> set[int]:
         """Infer legacy object tileset resources from object-layer references."""

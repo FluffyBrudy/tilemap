@@ -8,7 +8,7 @@ from utils.error_handler import error_handler
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 from widgets.ui.tileset_type_dialog import TilesetTypeDialog
-from utils.font_manager import font_manager, FontWeight, FontStyle
+from widgets.widget_base import WidgetBase
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -31,20 +31,17 @@ class TilesetData:
         self.animation: Optional[dict] = None
 
 
-class TileSelector:
+class TileSelector(WidgetBase):
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int):
+        super().__init__(Rect(x, y, w, h), border_radius=SHAPE.radius)
         self.editor = editor
-        self.rect = Rect(x, y, w, h)
         self.tilesets: List[TilesetData] = []
 
         self.tileset_map: Dict[int, TilesetData] = {}
         self.active_idx = -1
 
         self.top_bar_h = 30
-        self.btm_bar_h = 40
-        self.view_rect = Rect(
-            x, y + self.top_bar_h, w, h - self.top_bar_h - self.btm_bar_h
-        )
+        self.view_rect = Rect(x, y + self.top_bar_h, w, h - self.top_bar_h)
         self.tab_scroll_x = 0
         arrow_h = self.top_bar_h - 4
         arrow_y = y + (self.top_bar_h - arrow_h) // 2
@@ -64,13 +61,7 @@ class TileSelector:
         self._queue_timer_active = False
 
         self.zoom: float = 1.0
-
-        btn_y = y + h - 35
-        self.btn_export = Rect(x + w - 140, btn_y, 30, 30)
-        self.btn_collision = Rect(x + w - 105, btn_y, 30, 30)
-        self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
-        self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
-        self.font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
+        self.font = FONTS.get_medium_font()
 
     def _on_tileset_type_cancel(self):
         if hasattr(self, "_pending_tileset_path"):
@@ -81,15 +72,8 @@ class TileSelector:
             self._start_tileset_queue()
 
     def resize(self, x: int, y: int, w: int, h: int):
-        self.rect = Rect(x, y, w, h)
-        self.view_rect = Rect(
-            x, y + self.top_bar_h, w, h - self.top_bar_h - self.btm_bar_h
-        )
-        btn_y = y + h - 35
-        self.btn_export = Rect(x + w - 140, btn_y, 30, 30)
-        self.btn_collision = Rect(x + w - 105, btn_y, 30, 30)
-        self.btn_add = Rect(x + w - 70, btn_y, 30, 30)
-        self.btn_rem = Rect(x + w - 35, btn_y, 30, 30)
+        super().resize(x, y, w, h)
+        self.view_rect = Rect(x, y + self.top_bar_h, w, h - self.top_bar_h)
         arrow_h = self.top_bar_h - 4
         arrow_y = y + (self.top_bar_h - arrow_h) // 2
         self._tab_arrow_left = Rect(x + 2, arrow_y, 18, arrow_h)
@@ -107,6 +91,43 @@ class TileSelector:
             return True
 
         mouse_pos = pygame.mouse.get_pos()
+
+        # Handle legacy wheel scroll button events and mousewheel
+        is_wheel = False
+        wy = 0
+        if event.type == pygame.MOUSEWHEEL:
+            is_wheel = True
+            wy = event.y
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+            is_wheel = True
+            wy = 1 if event.button == 4 else -1
+
+        if is_wheel:
+            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
+                self._scroll_tabs(wy * 30)
+                return True
+            if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
+                mods = pygame.key.get_mods()
+                shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+                ts = self.tilesets[self.active_idx]
+                if ctrl_held or meta_held:
+                    old_zoom = self.zoom
+                    self.zoom = max(0.25, min(self.zoom * (1.0 + wy * 0.15), 8.0))
+                    # Zoom toward mouse
+                    mx, my = pygame.mouse.get_pos()
+                    img_x = self.view_rect.x + ts.offset[0]
+                    img_y = self.view_rect.y + ts.offset[1]
+                    img_rel_x = (mx - img_x) / old_zoom
+                    img_rel_y = (my - img_y) / old_zoom
+                    ts.offset[0] = int(mx - self.view_rect.x - img_rel_x * self.zoom)
+                    ts.offset[1] = int(my - self.view_rect.y - img_rel_y * self.zoom)
+                elif shift_held:
+                    ts.offset[0] += wy * 20
+                else:
+                    ts.offset[1] += wy * 20
+                return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
@@ -135,7 +156,6 @@ class TileSelector:
                                 ts, variant_ids, props
                             ),
                             on_close=lambda: None,
-                            shrink_value_font=True,
                         )
                         return True
 
@@ -173,19 +193,6 @@ class TileSelector:
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.btn_export.collidepoint(mouse_pos):
-                self._export_selected_as_png_dialog()
-                return True
-            if self.btn_collision.collidepoint(mouse_pos):
-                self.open_collision_editor()
-                return True
-            if self.btn_add.collidepoint(mouse_pos):
-                self.request_add_tileset()
-                return True
-            if self.btn_rem.collidepoint(mouse_pos):
-                self.remove_tileset()
-                return True
-
             if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
                 # Check arrow buttons first
                 if self._tab_arrow_left.collidepoint(mouse_pos):
@@ -240,32 +247,7 @@ class TileSelector:
                         self.update_selection_rect(self.hover_pos)
                 else:
                     self.hover_pos = None
-        elif event.type == pygame.MOUSEWHEEL:
-            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
-                self._scroll_tabs(event.y * 30)
-                return True
-            if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
-                mods = pygame.key.get_mods()
-                shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
-                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
-                meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
-                ts = self.tilesets[self.active_idx]
-                if ctrl_held or meta_held:
-                    old_zoom = self.zoom
-                    self.zoom = max(0.25, min(self.zoom * (1.0 + event.y * 0.15), 8.0))
-                    # Zoom toward mouse
-                    mx, my = pygame.mouse.get_pos()
-                    img_x = self.view_rect.x + ts.offset[0]
-                    img_y = self.view_rect.y + ts.offset[1]
-                    img_rel_x = (mx - img_x) / old_zoom
-                    img_rel_y = (my - img_y) / old_zoom
-                    ts.offset[0] = int(mx - self.view_rect.x - img_rel_x * self.zoom)
-                    ts.offset[1] = int(my - self.view_rect.y - img_rel_y * self.zoom)
-                elif shift_held:
-                    ts.offset[0] += event.y * 20
-                else:
-                    ts.offset[1] += event.y * 20
-                return True
+
 
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
             if self.selected_tile and self.active_idx != -1:
@@ -694,14 +676,9 @@ class TileSelector:
             error_handler.capture(e, context="export_selected_png")
 
     def draw(self, screen: pygame.Surface):
-        self.draw_background(screen)
+        self.draw_base(screen)
         self.draw_view_area(screen)
-        self.draw_buttons(screen)
         self.draw_tabs(screen)
-
-    def draw_background(self, screen: pygame.Surface):
-        pygame.draw.rect(screen, COLORS.panel, self.rect)
-        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
     def draw_view_area(self, screen: pygame.Surface):
         pygame.draw.rect(screen, COLORS.panel_alt, self.view_rect)
@@ -725,7 +702,6 @@ class TileSelector:
         self.draw_selection(screen, img_x, img_y)
 
         screen.set_clip(clip)
-        self.draw_tileset_name(screen, ts)
 
     def _draw_rule_hints(self, screen, ts, img_x, img_y):
         if not self.rule_hints:
@@ -847,53 +823,6 @@ class TileSelector:
             int(sh * self.zoom),
         )
         pygame.draw.rect(screen, COLORS.success, sel_rect, 2)
-
-    def draw_tileset_name(self, screen, ts: TilesetData):
-        name_surf = self.font.render(f"{ts.name}", True, COLORS.text)
-        screen.blit(name_surf, (self.rect.x + 5, self.rect.bottom - 30))
-
-    def draw_buttons(self, screen):
-        # Export selection as PNG button
-        pygame.draw.rect(
-            screen, COLORS.header, self.btn_export, border_radius=SHAPE.radius_sm
-        )
-        screen.blit(
-            self.font.render("E", True, COLORS.text),
-            (self.btn_export.x + 9, self.btn_export.y + 5),
-        )
-
-        # Collision editor button
-        pygame.draw.rect(
-            screen, COLORS.header, self.btn_collision, border_radius=SHAPE.radius_sm
-        )
-        screen.blit(
-            self.font.render("C", True, COLORS.text),
-            (self.btn_collision.x + 9, self.btn_collision.y + 5),
-        )
-        
-        pygame.draw.rect(
-            screen, COLORS.header, self.btn_add, border_radius=SHAPE.radius_sm
-        )
-        pygame.draw.rect(
-            screen, COLORS.header, self.btn_rem, border_radius=SHAPE.radius_sm
-        )
-        screen.blit(
-            self.font.render("+", True, COLORS.text),
-            (self.btn_add.x + 10, self.btn_add.y + 5),
-        )
-        screen.blit(
-            self.font.render("-", True, COLORS.text),
-            (self.btn_rem.x + 10, self.btn_rem.y + 5),
-        )
-        mx, my = pygame.mouse.get_pos()
-        if self.btn_export.collidepoint(mx, my):
-            self.editor.tooltip.show("E: Export selection as PNG", (mx + 10, my + 10))
-        elif self.btn_collision.collidepoint(mx, my):
-            self.editor.tooltip.show("Edit Collision Shapes", (mx + 10, my + 10))
-        elif self.btn_add.collidepoint(mx, my):
-            self.editor.tooltip.show("Add Tileset", (mx + 10, my + 10))
-        elif self.btn_rem.collidepoint(mx, my):
-            self.editor.tooltip.show("Remove Tileset", (mx + 10, my + 10))
 
     def draw_tabs(self, screen: Surface):
         if not self.tilesets:
