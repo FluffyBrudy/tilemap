@@ -1,48 +1,48 @@
-import os
-import pygame
-import threading
-import queue
-import logging
-import sys
-import subprocess
 import json
-from typing import Optional, List, Callable, Tuple, Dict, Any
+import logging
+import os
+import queue
+import subprocess
+import sys
+import threading
 from pathlib import Path
-from pygame import Rect
-from typing import TYPE_CHECKING
-from utils.font_manager import font_manager, FontWeight, FontStyle
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+import pygame
+from pygame import Rect
+
+from utils.font_manager import FontStyle, FontWeight, font_manager
 
 if sys.platform == "darwin":
     os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
 from constants import BASE_PATH
+from node_manager import NodeManager
 from tilemap import Tilemap
-from widgets.autotiler import AutotileRuleDesigner
-from widgets.regex_automap_designer import RegexAutomapDesigner
-from widgets.mapsetup import MapSetup
-from widgets.map_properties import MapPropertiesDialog
-from widgets.tile_selector import TileSelector
-from widgets.tile_grid import TileGrid
-from widgets.layer_selector import LayerSelector
-from widgets.ui.fileinput import FilenameInput
-from widgets.ui.tileset_type_dialog import TilesetTypeDialog
-from widgets.ui.confirm_dialog import ConfirmDialog
-from widgets.ui.layer_type_dialog import LayerTypeDialog
-from widgets.ui.menubar import MenuBar
-from widgets.ui.toolbar import Toolbar
-from widgets.ui.node_selector import NodeSelector
-from widgets.ui.node_editor import NodeEditor
-from widgets.ui.notification import NotificationManager
-from widgets.ui.property_editor import PropertyEditor
-from widgets.ui.particle_config_dialog import ParticleConfigDialog
-from widgets.ui.tooltip import TooltipManager
-from widgets.ui.theme import COLORS, get_theme_manager, set_theme, THEMES
-from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
+from utils import error_context, error_handler
 from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
-from utils import error_handler, error_context
-from node_manager import NodeManager
+from widgets.autotiler import AutotileRuleDesigner
+from widgets.layer_selector import LayerSelector
+from widgets.map_properties import MapPropertiesDialog
+from widgets.mapsetup import MapSetup
+from widgets.regex_automap_designer import RegexAutomapDesigner
+from widgets.tile_grid import TileGrid
+from widgets.tile_selector import TileSelector
+from widgets.ui.confirm_dialog import ConfirmDialog
+from widgets.ui.fileinput import FilenameInput
+from widgets.ui.layer_type_dialog import LayerTypeDialog
+from widgets.ui.menubar import MenuBar
+from widgets.ui.node_editor import NodeEditor
+from widgets.ui.node_selector import NodeSelector
+from widgets.ui.notification import NotificationManager
+from widgets.ui.particle_config_dialog import ParticleConfigDialog
+from widgets.ui.property_editor import PropertyEditor
+from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
+from widgets.ui.theme import COLORS, THEMES, get_theme_manager, set_theme
+from widgets.ui.tileset_type_dialog import TilesetTypeDialog
+from widgets.ui.toolbar import Toolbar
+from widgets.ui.tooltip import TooltipManager
 
 if TYPE_CHECKING:
     from plugins.sprite_animation import SpriteAnimationEditor
@@ -66,9 +66,7 @@ def setup_error_logging():
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-        logging.error(
-            "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
-        )
+        logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
     sys.excepthook = exception_handler
 
@@ -236,15 +234,11 @@ class Editor:
                 self.tileset_widget._export_selected_as_png_dialog,
                 "E: Export selection as PNG",
             ),
-            ToolbarAction(
-                "C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"
-            ),
+            ToolbarAction("C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"),
             ToolbarAction("+", self.tileset_widget.request_add_tileset, "Add Tileset"),
             ToolbarAction("-", self.tileset_widget.remove_tileset, "Remove Tileset"),
         ]
-        self.sidebar = SidebarContainer(
-            self, Rect(sidebar_x, menu_h + toolbar_h, self.selector_w, sidebar_h)
-        )
+        self.sidebar = SidebarContainer(self, Rect(sidebar_x, menu_h + toolbar_h, self.selector_w, sidebar_h))
         self.sidebar.add_tab("Tilesets", self.tileset_widget, tileset_actions)
         self.sidebar.add_tab("Layers", self.layer_widget)
         self.tile_grid_widget = TileGrid(
@@ -258,9 +252,7 @@ class Editor:
         center_y = (self.height - 400) // 2
         self.map_setup_widget = MapSetup(self, Rect(center_x, center_y, 400, 400))
         self.map_setup_widget.visible = True
-        self.map_properties_dialog = MapPropertiesDialog(
-            self, Rect(center_x, center_y, 400, 260)
-        )
+        self.map_properties_dialog = MapPropertiesDialog(self, Rect(center_x, center_y, 400, 260))
         self.node_manager = NodeManager(self)
         self.node_selector = NodeSelector(self, 0, 65, 260, 240)
         self.node_editor = NodeEditor(self, 0, 310, 260, 230)
@@ -327,9 +319,7 @@ class Editor:
 
             self.child_processes.append(self.file_manager_process)
 
-            print(
-                f"Launched file manager subprocess (PID: {self.file_manager_process.pid})"
-            )
+            print(f"Launched file manager subprocess (PID: {self.file_manager_process.pid})")
         except Exception as e:
             error_handler.capture(e, context="launch_file_manager")
             self.file_manager_process = None
@@ -344,11 +334,7 @@ class Editor:
                 stdout, stderr = self.file_manager_process.communicate(timeout=0.1)
 
                 if stdout:
-                    lines = [
-                        line.strip()
-                        for line in stdout.strip().split("\n")
-                        if line.strip()
-                    ]
+                    lines = [line.strip() for line in stdout.strip().split("\n") if line.strip()]
                     if lines:
                         result_line = lines[-1]
                         try:
@@ -375,9 +361,7 @@ class Editor:
                             elif status == "cancelled":
                                 print("File manager cancelled")
                         except json.JSONDecodeError as e:
-                            error_handler.capture(
-                                e, context="parse_file_manager_result"
-                            )
+                            error_handler.capture(e, context="parse_file_manager_result")
                             print(f"Output was: {result_line}")
 
                 if stderr:
@@ -428,7 +412,7 @@ class Editor:
             default_name = self.tilemap.active_project_path.name
         self.open_file_manager(
             initial_dir=self.data_root,
-            allowed_exts=[".json"],
+            allowed_exts=[".json", ".tmx"],
             mode="save",
             default_name=default_name,
             on_save=self.on_map_save_selected,
@@ -517,7 +501,7 @@ class Editor:
         self.open_file_manager(
             on_select=self.on_map_file_selected,
             initial_dir=self.data_root,
-            allowed_exts=[".json"],
+            allowed_exts=[".json", ".tmx"],
         )
 
     def on_map_file_selected(self, path: Path):
@@ -552,9 +536,7 @@ class Editor:
         if status == "error":
             self.loading_state["active"] = False
             self.loading_state["error"] = payload_or_error
-            error_handler.capture(
-                Exception(payload_or_error), context="load_map_status"
-            )
+            error_handler.capture(Exception(payload_or_error), context="load_map_status")
             return
 
         try:
@@ -580,9 +562,7 @@ class Editor:
 
         min_canvas_w = 200
         available_w = self.width - left_offset
-        self._effective_selector_w = min(
-            self.selector_w, max(0, available_w - min_canvas_w)
-        )
+        self._effective_selector_w = min(self.selector_w, max(0, available_w - min_canvas_w))
 
         if hasattr(self, "sidebar") and self.sidebar:
             self.sidebar.resize(
@@ -617,9 +597,7 @@ class Editor:
         self._update_side_panel_layout()
 
         if self.left_panel_visible and self.animation_panel:
-            panel_rect = Rect(
-                0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h)
-            )
+            panel_rect = Rect(0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h))
             if hasattr(self.animation_panel, "rect"):
                 self.animation_panel.rect = panel_rect
                 if hasattr(self.animation_panel, "_relayout"):
@@ -692,14 +670,10 @@ class Editor:
                 editor_instance = self
 
                 def on_animation_saved(self, name: str, data: dict) -> None:
-                    self.editor_instance.notifications.notify(
-                        f"Animation saved: {name}"
-                    )
+                    self.editor_instance.notifications.notify(f"Animation saved: {name}")
 
                 def on_animation_deleted(self, name: str) -> None:
-                    self.editor_instance.notifications.notify(
-                        f"Animation deleted: {name}"
-                    )
+                    self.editor_instance.notifications.notify(f"Animation deleted: {name}")
 
             consumer = _PanelConsumer()
 
@@ -819,9 +793,7 @@ class Editor:
             )
             self.child_processes.append(process)
 
-            print(
-                f"Launched animation editor with: {path.name} (tile size: {tile_size})"
-            )
+            print(f"Launched animation editor with: {path.name} (tile size: {tile_size})")
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
 
@@ -846,9 +818,7 @@ class Editor:
                 resolved = None
 
             if not resolved or not resolved.exists():
-                self.notifications.notify(
-                    f"Could not locate spritesheet: {path.name}", duration=2.0
-                )
+                self.notifications.notify(f"Could not locate spritesheet: {path.name}", duration=2.0)
                 return
 
             args = [
@@ -867,9 +837,7 @@ class Editor:
                 text=True,
             )
             self.child_processes.append(process)
-            print(
-                f"Launched animation editor with: {path.name} (spritesheet: {resolved.name})"
-            )
+            print(f"Launched animation editor with: {path.name} (spritesheet: {resolved.name})")
         except Exception as e:
             error_handler.capture(e, context="launch_animation_editor")
 
@@ -908,9 +876,7 @@ class Editor:
 
         self.notifications.notify("No tileset loaded. Please load a tileset first.")
 
-    def _launch_collision_editor_with_image(
-        self, path: Path, tileset_type: str = "tile"
-    ):
+    def _launch_collision_editor_with_image(self, path: Path, tileset_type: str = "tile"):
         """Launch collision editor subprocess with selected tileset."""
         try:
             if tileset_type == "object":
@@ -934,9 +900,7 @@ class Editor:
         if propagation_groups_path:
             args.extend(["--propagation-groups", str(propagation_groups_path)])
 
-        collision_dir = self.data_root / self.config.get("collision_paths", {}).get(
-            "tileset", "collision"
-        )
+        collision_dir = self.data_root / self.config.get("collision_paths", {}).get("tileset", "collision")
         collision_path = collision_dir / f"{path.stem}.collision.json"
         if collision_path.exists():
             args.extend(["--load", str(collision_path)])
@@ -1005,9 +969,7 @@ class Editor:
         """Launch object tileset collision editor (region-based)."""
         logger = self.logger if hasattr(self, "logger") else None
 
-        collision_dir = self.data_root / self.config.get("collision_paths", {}).get(
-            "object_tileset", "collision"
-        )
+        collision_dir = self.data_root / self.config.get("collision_paths", {}).get("object_tileset", "collision")
         collision_path = collision_dir / f"{path.stem}.object_collision.json"
 
         args = [
@@ -1073,9 +1035,7 @@ class Editor:
             )
             self.child_processes.append(process)
 
-            print(
-                f"Launched character collision editor with: {path.name} (character: {character_name})"
-            )
+            print(f"Launched character collision editor with: {path.name} (character: {character_name})")
         except Exception as e:
             error_handler.capture(e, context="launch_character_collision_editor")
 
@@ -1235,9 +1195,7 @@ class Editor:
                 elif event.key == pygame.K_y and (ctrl_held or meta_held):
                     self.tilemap.redo()
                     continue
-                elif (
-                    event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held
-                ):
+                elif event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
                     self.node_editing_mode = not self.node_editing_mode
                     if self.node_editing_mode:
                         self.show_nodes = False
@@ -1277,9 +1235,7 @@ class Editor:
                 elif event.key == pygame.K_g and (ctrl_held or meta_held):
                     self.toggle_grid()
                     continue
-                elif (
-                    event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held
-                ):
+                elif event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held:
                     self.export_selection_as_png()
                     continue
                 elif event.key == pygame.K_t and (ctrl_held or meta_held):
@@ -1289,11 +1245,7 @@ class Editor:
                     self.toggle_animation_panel()
                     continue
                 elif pygame.K_1 <= event.key <= pygame.K_9:
-                    if not (
-                        self.node_editor
-                        and self.node_editor.visible
-                        and self.node_editor.editing_field
-                    ):
+                    if not (self.node_editor and self.node_editor.visible and self.node_editor.editing_field):
                         idx = event.key - pygame.K_1
                         if idx < self.tilemap.layer_manager.get_layer_count():
                             self.tilemap.layer_manager.set_active_layer(idx)
@@ -1390,9 +1342,7 @@ class Editor:
                 self.regex_automap_designer.draw(self.screen)
 
             if self.left_panel_visible and self.animation_panel:
-                panel_surf = pygame.Surface(
-                    (self.left_panel_w, self.height), pygame.SRCALPHA
-                )
+                panel_surf = pygame.Surface((self.left_panel_w, self.height), pygame.SRCALPHA)
                 panel_surf.fill((28, 30, 34, 255))
                 self.screen.blit(panel_surf, (0, 65))
 
@@ -1448,9 +1398,7 @@ class Editor:
                 dot_font = font_manager.get_font("noto", 16, FontWeight.REGULAR)
                 dots = "." * ((pygame.time.get_ticks() // 400) % 4)
                 dot_surf = dot_font.render(dots, True, (180, 180, 180))
-                dot_rect = dot_surf.get_rect(
-                    center=(self.width // 2, self.height // 2 + 30)
-                )
+                dot_rect = dot_surf.get_rect(center=(self.width // 2, self.height // 2 + 30))
                 self.screen.blit(dot_surf, dot_rect)
 
             if self.toolbar:
