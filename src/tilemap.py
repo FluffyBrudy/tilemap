@@ -1,21 +1,23 @@
-from typing import TYPE_CHECKING, Any, Dict, Tuple, Optional, Union
-from pygame import Rect
-from json import load as JSONLoad, dump as JSONDump
+from json import dump as JSONDump
+from json import load as JSONLoad
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
+from pygame import Rect
+
+from layers import create_default_layer_manager
+from ttypes.tilemap import TypeObject
+from utils import error_handler
+from utils.history import HistoryManager
+from utils.project_paths import resolve_project_path, to_project_path
 from utils.serialization import (
     deserialize_point,
     serialize_point,
 )
-from utils.project_paths import resolve_project_path, to_project_path
-from ttypes.tilemap import TypeObject
-from layers import create_default_layer_manager
-from utils.history import HistoryManager
-from utils import error_handler
 
 if TYPE_CHECKING:
-    from src.ttypes import TTile, TCoor
     from editor import Editor
+    from src.ttypes import TCoor, TTile
 
 NEAREST_NEIGHBOUR_OFFSET = (
     (-1, -1),
@@ -60,9 +62,7 @@ class Tilemap:
         if active_layer:
             active_layer.tiles = value
 
-    def init_size(
-        self, tile_size: "TCoor", map_size: "TCoor", render_scale: float = 1.0
-    ):
+    def init_size(self, tile_size: "TCoor", map_size: "TCoor", render_scale: float = 1.0):
         self.tile_size = tile_size
         self.map_size = map_size
         self.initial_map_size = map_size
@@ -196,9 +196,7 @@ class Tilemap:
                 from widgets.autotiler import AutotileRule
 
                 default_group = AutotileGroup("Default")
-                default_group.rules = [
-                    AutotileRule.from_dict(R) for R in state["rules"]
-                ]
+                default_group.rules = [AutotileRule.from_dict(R) for R in state["rules"]]
                 designer.groups = [default_group]
                 designer.selected_group_idx = 0
             designer.selected_rule_index = -1
@@ -235,9 +233,7 @@ class Tilemap:
                 if data_root:
                     target_path = data_root / path_obj
                 else:
-                    raise RuntimeError(
-                        "Cannot determine data_root - Editor not initialized with settings.json"
-                    )
+                    raise RuntimeError("Cannot determine data_root - Editor not initialized with settings.json")
 
             self.active_project_path = target_path
         elif self.active_project_path:
@@ -255,22 +251,12 @@ class Tilemap:
                 "tile_size": serialize_point(self.tile_size),
                 "map_size": serialize_point(self.map_size),
                 "zoom_level": (
-                    getattr(self.editor.tile_grid_widget, "zoom_level", 1.0)
-                    if self.editor.tile_grid_widget
-                    else 1.0
+                    getattr(self.editor.tile_grid_widget, "zoom_level", 1.0) if self.editor.tile_grid_widget else 1.0
                 ),
                 "scroll": serialize_point(
                     (
-                        (
-                            getattr(self.editor.tile_grid_widget, "scroll_x", 0)
-                            if self.editor.tile_grid_widget
-                            else 0
-                        ),
-                        (
-                            getattr(self.editor.tile_grid_widget, "scroll_y", 0)
-                            if self.editor.tile_grid_widget
-                            else 0
-                        ),
+                        (getattr(self.editor.tile_grid_widget, "scroll_x", 0) if self.editor.tile_grid_widget else 0),
+                        (getattr(self.editor.tile_grid_widget, "scroll_y", 0) if self.editor.tile_grid_widget else 0),
                     )
                 ),
                 "initial_map_size": serialize_point(self.initial_map_size),
@@ -293,9 +279,7 @@ class Tilemap:
                 if ts.properties:
                     ts_data["properties"] = ts.properties
                 if ts.tile_properties:
-                    ts_data["tile_properties"] = {
-                        str(k): v for k, v in ts.tile_properties.items()
-                    }
+                    ts_data["tile_properties"] = {str(k): v for k, v in ts.tile_properties.items()}
                 if ts.animation is not None:
                     ts_data["animation"] = ts.animation
 
@@ -309,23 +293,15 @@ class Tilemap:
                 save_data["project_state"]["groups"].append(
                     {
                         "name": group.name,
-                        "rules": [
-                            self._serialize_autotile_rule(rule, map_dir)
-                            for rule in group.rules
-                        ],
+                        "rules": [self._serialize_autotile_rule(rule, map_dir) for rule in group.rules],
                     }
                 )
 
             save_data["project_state"]["rules"] = []
             for rule in self.editor.autotiler.rules:
-                save_data["project_state"]["rules"].append(
-                    self._serialize_autotile_rule(rule, map_dir)
-                )
+                save_data["project_state"]["rules"].append(self._serialize_autotile_rule(rule, map_dir))
 
-        if (
-            hasattr(self.editor, "regex_automap_designer")
-            and self.editor.regex_automap_designer
-        ):
+        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
             try:
                 automap_rules = self.editor.regex_automap_designer.serialize_rules()
                 save_data["project_state"]["automap_rules"] = automap_rules
@@ -333,9 +309,7 @@ class Tilemap:
                 import logging
 
                 logging.error(f"Error serializing automap rules: {e}", exc_info=True)
-                error_handler.capture(
-                    e, context="save_automap_rules", severity="warning"
-                )
+                error_handler.capture(e, context="save_automap_rules", severity="warning")
 
         for layer in self.layer_manager.layers:
             layer_data = {
@@ -405,9 +379,7 @@ class Tilemap:
         if data_root is not None:
             return Path(data_root).parent
 
-        raise RuntimeError(
-            "Cannot determine base_path - Editor not initialized with settings.json"
-        )
+        raise RuntimeError("Cannot determine base_path - Editor not initialized with settings.json")
 
     def _serialize_autotile_rule(self, rule: "AutotileRule", save_dir: Path) -> dict:
         data = rule.to_dict()
@@ -416,9 +388,7 @@ class Tilemap:
         return data
 
     def _path_matches_project_path(self, stored_path: str, actual_path: Path) -> bool:
-        map_dir = (
-            self.active_project_path.parent if self.active_project_path else Path()
-        )
+        map_dir = self.active_project_path.parent if self.active_project_path else Path()
         stored = Path(stored_path).expanduser()
         actual = Path(actual_path).expanduser()
 
@@ -455,7 +425,10 @@ class Tilemap:
     def read_map_payload(self, path: Path) -> dict:
         if not path.exists():
             raise FileNotFoundError(f"{path} does not exist")
-        if path.suffix.lower() != ".json":
+        suffix = path.suffix.lower()
+        if suffix == ".tmx":
+            return self._tmx_to_payload(path)
+        if suffix != ".json":
             raise ValueError(f"{path.name} is not a JSON file")
         with open(path, "r", encoding="utf-8") as f:
             payload = JSONLoad(f)
@@ -570,42 +543,28 @@ class Tilemap:
                             self._resolve_rule_resources(rule, ts_widget)
                             default_group.rules.append(rule)
                         except Exception as e:
-                            error_handler.capture(
-                                e, context="load_automap_rule", severity="warning"
-                            )
+                            error_handler.capture(e, context="load_automap_rule", severity="warning")
                     designer.groups.append(default_group)
 
             if not designer.groups:
                 designer.groups.append(AutotileGroup("Default"))
             designer.selected_group_idx = 0
 
-        if (
-            hasattr(self.editor, "regex_automap_designer")
-            and self.editor.regex_automap_designer
-        ):
-            if (
-                "project_state" in payload
-                and "automap_rules" in payload["project_state"]
-            ):
+        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
+            if "project_state" in payload and "automap_rules" in payload["project_state"]:
                 try:
                     automap_rules_data = payload["project_state"]["automap_rules"]
                     if isinstance(automap_rules_data, list):
-                        self.editor.regex_automap_designer.deserialize_rules(
-                            automap_rules_data
-                        )
+                        self.editor.regex_automap_designer.deserialize_rules(automap_rules_data)
                     else:
                         import logging
 
-                        logging.warning(
-                            "Invalid automap_rules format in project file, expected list"
-                        )
+                        logging.warning("Invalid automap_rules format in project file, expected list")
                 except Exception as e:
                     import logging
 
                     logging.error(f"Error loading automap rules: {e}", exc_info=True)
-                    error_handler.capture(
-                        e, context="load_automap_rules", severity="warning"
-                    )
+                    error_handler.capture(e, context="load_automap_rules", severity="warning")
 
         data_section = payload.get("data", {})
 
@@ -709,9 +668,7 @@ class Tilemap:
                     obj_id = int(obj_id_str)
 
                     obj_copy: TypeObject = {
-                        "area": obj_data.get(
-                            "area", {"x": 0, "y": 0, "w": 32, "h": 32}
-                        ),
+                        "area": obj_data.get("area", {"x": 0, "y": 0, "w": 32, "h": 32}),
                         "ttype": obj_data.get("ttype", 0),
                         "tileset_type": obj_data.get("tileset_type", "object"),
                         "variant": obj_data.get("variant", 0),
@@ -746,3 +703,143 @@ class Tilemap:
                         continue
                 if matched_idx is not None:
                     tile_data["ttype"] = matched_idx
+
+    def _tmx_to_payload(self, path: Path) -> dict:
+        import base64
+        import gzip
+        import struct
+        import zlib
+        from xml.etree import ElementTree
+
+        TILE_FLIP_MASK = 0x1FFFFFFF
+
+        tree = ElementTree.parse(path)
+        root = tree.getroot()
+
+        map_w = int(root.get("width", 0))
+        map_h = int(root.get("height", 0))
+        tile_w = int(root.get("tilewidth", 32))
+        tile_h = int(root.get("tileheight", 32))
+
+        meta = {
+            "tile_size": f"{tile_w},{tile_h}",
+            "map_size": f"{map_w},{map_h}",
+            "initial_map_size": f"{map_w},{map_h}",
+            "render_scale": 1.0,
+            "version": "1.1",
+            "zoom_level": 1.0,
+            "scroll": "0,0",
+        }
+
+        tilesets = []
+        firstgid_list = []
+
+        for ts_elem in root.findall("tileset"):
+            firstgid = int(ts_elem.get("firstgid", 1))
+            firstgid_list.append(firstgid)
+            source = ts_elem.get("source")
+            if source:
+                img_path = self._resolve_tsx_image(path.parent / source)
+            else:
+                img_elem = ts_elem.find("image")
+                if img_elem is not None:
+                    img_path = path.parent / img_elem.get("source", "")
+                else:
+                    img_path = None
+            img_path_str = str(img_path) if img_path else ""
+            tilesets.append({"path": img_path_str, "type": "tile"})
+
+        tileset_count = len(firstgid_list)
+        layers = []
+        z_index = 0
+
+        for layer_elem in root.findall("layer"):
+            name = layer_elem.get("name", f"Layer_{z_index}")
+            layer_w = int(layer_elem.get("width", map_w))
+            layer_h = int(layer_elem.get("height", map_h))
+            visible = layer_elem.get("visible", "1") != "0"
+            opacity = float(layer_elem.get("opacity", 1.0))
+
+            props = {}
+            props_elem = layer_elem.find("properties")
+            if props_elem is not None:
+                for prop in props_elem.findall("property"):
+                    props[prop.get("name", "")] = prop.get("value", "")
+
+            data_elem = layer_elem.find("data")
+            gids = []
+            if data_elem is not None:
+                encoding = data_elem.get("encoding", "")
+                compression = data_elem.get("compression", "")
+                raw_text = (data_elem.text or "").strip()
+                if encoding == "csv":
+                    for row in raw_text.replace("\n", ",").split(","):
+                        row = row.strip()
+                        if row:
+                            gids.append(int(row))
+                elif encoding == "base64":
+                    raw_bytes = base64.b64decode(raw_text)
+                    if compression == "zlib":
+                        raw_bytes = zlib.decompress(raw_bytes)
+                    elif compression == "gzip":
+                        raw_bytes = gzip.decompress(raw_bytes)
+                    count = len(raw_bytes) // 4
+                    vals = struct.unpack(f"<{count}I", raw_bytes)
+                    gids = list(vals)
+                else:
+                    raw_text_flat = "".join(raw_text.split())
+                    for part in raw_text_flat.split(","):
+                        part = part.strip()
+                        if part:
+                            gids.append(int(part))
+
+            tiles_dict = {}
+            for idx, raw_gid in enumerate(gids):
+                if raw_gid == 0:
+                    continue
+                local_gid = raw_gid & TILE_FLIP_MASK
+                ty = idx // layer_w
+                tx = idx % layer_w
+                if ty >= layer_h:
+                    continue
+                ttype = -1
+                for ti in range(tileset_count - 1, -1, -1):
+                    if local_gid >= firstgid_list[ti]:
+                        ttype = ti
+                        break
+                if ttype == -1:
+                    continue
+                variant = local_gid - firstgid_list[ttype]
+                key = f"{tx},{ty}"
+                tiles_dict[key] = {"ttype": ttype, "variant": variant}
+
+            layers.append(
+                {
+                    "name": name,
+                    "type": "tile",
+                    "z_index": z_index,
+                    "visible": visible,
+                    "locked": False,
+                    "opacity": opacity,
+                    "properties": props,
+                    "tiles": tiles_dict,
+                }
+            )
+            z_index += 1
+
+        return {
+            "meta": meta,
+            "resources": {"tilesets": tilesets},
+            "project_state": {"rules": []},
+            "data": {"layers": layers},
+        }
+
+    def _resolve_tsx_image(self, tsx_path: Path) -> Path:
+        from xml.etree import ElementTree
+
+        tree = ElementTree.parse(tsx_path)
+        root = tree.getroot()
+        img_elem = root.find("image")
+        if img_elem is not None:
+            return tsx_path.parent / img_elem.get("source", "")
+        return tsx_path
