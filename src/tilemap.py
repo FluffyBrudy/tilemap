@@ -711,7 +711,7 @@ class Tilemap:
         import zlib
         from xml.etree import ElementTree
 
-        TILE_FLIP_MASK = 0x1FFFFFFF
+        TILE_FLIP_MASK = 0x0FFFFFFF
 
         tree = ElementTree.parse(path)
         root = tree.getroot()
@@ -764,7 +764,10 @@ class Tilemap:
             props_elem = layer_elem.find("properties")
             if props_elem is not None:
                 for prop in props_elem.findall("property"):
-                    props[prop.get("name", "")] = prop.get("value", "")
+                    raw = prop.get("value")
+                    if raw is None:
+                        raw = (prop.text or "").strip()
+                    props[prop.get("name", "")] = raw
 
             data_elem = layer_elem.find("data")
             gids = []
@@ -793,6 +796,12 @@ class Tilemap:
                         if part:
                             gids.append(int(part))
 
+            expected = layer_w * layer_h
+            if len(gids) != expected:
+                raise ValueError(
+                    f"TMX layer {name!r}: expected {expected} tile GIDs, got {len(gids)}"
+                )
+
             tiles_dict = {}
             for idx, raw_gid in enumerate(gids):
                 if raw_gid == 0:
@@ -800,8 +809,6 @@ class Tilemap:
                 local_gid = raw_gid & TILE_FLIP_MASK
                 ty = idx // layer_w
                 tx = idx % layer_w
-                if ty >= layer_h:
-                    continue
                 ttype = -1
                 for ti in range(tileset_count - 1, -1, -1):
                     if local_gid >= firstgid_list[ti]:
