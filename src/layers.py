@@ -4,7 +4,7 @@ Supports multiple layers with independent tile and object data.
 """
 
 import random
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Any
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Any
 from ttypes.tilemap import TypeTile, TypeObject
 
 if TYPE_CHECKING:
@@ -83,6 +83,13 @@ class Layer:
     ) -> int:
         """
         Internal helper to update specific tiles according to autotile rules.
+
+        Group membership is determined by:
+        1. The tile's ``autotile_group`` field (if present)
+        2. Legacy fallback: (tileset_index, variant_id) lookup in variant_to_group
+
+        When a rule matches, the tile's variant is re-rolled from the rule's
+        variant_ids (removing the early-out that prevented re-autotile).
         """
         if self.locked or self.layer_type != "tile":
             return 0
@@ -98,9 +105,9 @@ class Layer:
         )
 
         if self._autotile_cache["rules_hash"] != rules_hash:
-            variant_to_group = {}
+            variant_to_group: Dict[Tuple[int, int], str] = {}
             rules_by_group: Dict[str, List["AutotileRule"]] = {}
-            significant_offsets = set()
+            significant_offsets: Set[Tuple[int, int]] = set()
 
             for rule in rules:
                 gid = rule.group_id
@@ -132,6 +139,13 @@ class Layer:
 
         changes_count = 0
 
+        def _get_group(t: dict) -> Optional[str]:
+            """Get group_id for a tile: autotile_group field > legacy variant lookup."""
+            ag = t.get("autotile_group")
+            if ag is not None:
+                return ag
+            return variant_to_group.get((t["ttype"], t["variant"]))
+
         for pos in positions:
             if pos not in self.tiles:
                 continue
@@ -140,8 +154,12 @@ class Layer:
             ttype = tile["ttype"]
             current_variant = tile["variant"]
 
-            target_group_id = variant_to_group.get((ttype, current_variant))
+            target_group_id = _get_group(tile)
             if not target_group_id:
+                continue
+
+            group_rules = rules_by_group.get(target_group_id)
+            if not group_rules:
                 continue
 
             actual_neighbors = []
@@ -158,8 +176,7 @@ class Layer:
                 npos = (pos[0] + dx, pos[1] + dy)
                 if npos in self.tiles:
                     n_tile = self.tiles[npos]
-                    n_group = variant_to_group.get((n_tile["ttype"], n_tile["variant"]))
-
+                    n_group = _get_group(n_tile)
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
@@ -168,8 +185,6 @@ class Layer:
             }
 
             matched_rule: Optional["AutotileRule"] = None
-            group_rules = rules_by_group.get(target_group_id, [])
-
             for rule in group_rules:
                 if (
                     rule.neighbors == neighbor_offsets_set
@@ -179,12 +194,14 @@ class Layer:
                     break
 
             if matched_rule and matched_rule.variant_ids:
-                if current_variant in matched_rule.variant_ids:
-                    continue
-
                 new_variant = random.choice(matched_rule.variant_ids)
-                tile["variant"] = new_variant
-                changes_count += 1
+
+                if new_variant != current_variant:
+                    tile["variant"] = new_variant
+                    changes_count += 1
+
+                if "autotile_group" not in tile:
+                    tile["autotile_group"] = matched_rule.group_id
 
         return changes_count
 

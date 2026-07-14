@@ -329,6 +329,8 @@ class Tilemap:
                     "ttype": tile["ttype"],
                     "variant": tile["variant"],
                 }
+                if "autotile_group" in tile:
+                    tile_data["autotile_group"] = tile["autotile_group"]
                 if "properties" in tile:
                     tile_data["properties"] = tile["properties"]
                 layer_data["tiles"][key] = tile_data
@@ -360,6 +362,8 @@ class Tilemap:
                     "ttype": tile["ttype"],
                     "variant": tile["variant"],
                 }
+                if "autotile_group" in tile:
+                    tile_data["autotile_group"] = tile["autotile_group"]
                 save_data["data"]["ongrid"][key] = tile_data
 
         with open(target_path, "w") as f:
@@ -659,6 +663,8 @@ class Tilemap:
             tile_copy["pos"] = pos
             if "properties" in tile_data:
                 tile_copy["properties"] = tile_data["properties"]
+            if "autotile_group" in tile_data:
+                tile_copy["autotile_group"] = tile_data["autotile_group"]
             self._normalize_ttype(tile_copy)
             layer.tiles[pos] = tile_copy
 
