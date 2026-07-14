@@ -5,6 +5,7 @@ class TypeTile(TypedDict, total=True):
     pos: Tuple[int, int]
     ttype: int
     variant: int
+    autotile_group: NotRequired[str]
     properties: NotRequired[Dict[str, Any]]
 
 
@@ -35,6 +36,7 @@ class TypeTileSerealized(TypedDict, total=True):
     pos: str
     ttype: str
     variant: int
+    autotile_group: NotRequired[str]
     properties: NotRequired[Dict[str, Any]]
 
 

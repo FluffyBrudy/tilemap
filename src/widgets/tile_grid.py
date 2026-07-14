@@ -659,6 +659,15 @@ class TileGrid:
                             variant_id
                         ].copy()
 
+                    if self.editor.autotile_mode and getattr(
+                        self.editor, "autotiler", None
+                    ):
+                        autotiler = self.editor.autotiler
+                        if autotiler.groups:
+                            gidx = autotiler.selected_group_idx
+                            if 0 <= gidx < len(autotiler.groups):
+                                tile_data["autotile_group"] = autotiler.groups[gidx].name
+
                     active_layer.set_tile(target_pos, tile_data)
 
                     if self.editor.autotile_mode and getattr(
