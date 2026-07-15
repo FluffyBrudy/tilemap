@@ -1,7 +1,7 @@
 from json import dump as JSONDump
 from json import load as JSONLoad
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from pygame import Rect
 
@@ -271,11 +271,22 @@ class Tilemap:
             },
         }
 
+        ttype_to_firstgid: List[int] = []
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
+            firstgid = 0
+            tile_w, tile_h = self.tile_size
             for ts in self.editor.tileset_widget.tilesets:
                 path_str = to_project_path(ts.path, map_dir)
 
-                ts_data: Dict[str, Any] = {"path": path_str, "type": ts.tileset_type}
+                ts_surf = ts.surface
+                tile_count = (ts_surf.get_width() // tile_w) * (ts_surf.get_height() // tile_h)
+
+                ttype_to_firstgid.append(firstgid)
+
+                ts_data: Dict[str, Any] = {
+                    "path": path_str, "type": ts.tileset_type,
+                    "tile_count": tile_count, "firstgid": firstgid,
+                }
                 if ts.properties:
                     ts_data["properties"] = ts.properties
                 if ts.tile_properties:
@@ -284,6 +295,7 @@ class Tilemap:
                     ts_data["animation"] = ts.animation
 
                 save_data["resources"]["tilesets"].append(ts_data)
+                firstgid += tile_count
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             if "groups" not in save_data["project_state"]:
@@ -324,13 +336,17 @@ class Tilemap:
 
             for loc, tile in layer.tiles.items():
                 key = serialize_point(loc)
+                ttype = tile["ttype"]
+                variant = tile["variant"]
                 tile_data: Dict[str, Any] = {
                     "pos": serialize_point(tile["pos"]),
-                    "ttype": tile["ttype"],
-                    "variant": tile["variant"],
+                    "ttype": ttype,
+                    "variant": variant,
                 }
                 if "autotile_group" in tile:
                     tile_data["autotile_group"] = tile["autotile_group"]
+                if ttype_to_firstgid:
+                    tile_data["gid"] = ttype_to_firstgid[ttype] + variant
                 if "properties" in tile:
                     tile_data["properties"] = tile["properties"]
                 layer_data["tiles"][key] = tile_data
@@ -357,13 +373,17 @@ class Tilemap:
         if first_layer:
             for loc, tile in first_layer.tiles.items():
                 key = serialize_point(loc)
+                ttype = tile["ttype"]
+                variant = tile["variant"]
                 tile_data: Dict[str, Any] = {
                     "pos": serialize_point(tile["pos"]),
-                    "ttype": tile["ttype"],
-                    "variant": tile["variant"],
+                    "ttype": ttype,
+                    "variant": variant,
                 }
                 if "autotile_group" in tile:
                     tile_data["autotile_group"] = tile["autotile_group"]
+                if ttype_to_firstgid:
+                    tile_data["gid"] = ttype_to_firstgid[ttype] + variant
                 save_data["data"]["ongrid"][key] = tile_data
 
         with open(target_path, "w") as f:

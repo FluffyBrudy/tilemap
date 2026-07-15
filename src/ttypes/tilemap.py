@@ -6,6 +6,7 @@ class TypeTile(TypedDict, total=True):
     ttype: int
     variant: int
     autotile_group: NotRequired[str]
+    gid: NotRequired[int]
     properties: NotRequired[Dict[str, Any]]
 
 
@@ -37,6 +38,7 @@ class TypeTileSerealized(TypedDict, total=True):
     ttype: str
     variant: int
     autotile_group: NotRequired[str]
+    gid: NotRequired[int]
     properties: NotRequired[Dict[str, Any]]
 
 
@@ -64,6 +66,8 @@ class TypeLayerSerialized(TypedDict, total=True):
 class TypeTilesetSerialized(TypedDict, total=True):
     path: str
     type: str
+    tile_count: NotRequired[int]
+    firstgid: NotRequired[int]
     properties: NotRequired[Dict[str, Any]]
     tile_properties: NotRequired[Dict[str, Dict[str, Any]]]
     animation: NotRequired[dict]
