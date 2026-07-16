@@ -494,6 +494,11 @@ class FileManager:
         self.header_height = 40
         self.footer_height = 50
         self.item_height = 30
+        self._item_icon_size = 20
+        self._item_text_left = 35
+        self._item_text_right = 10
+        self._rename_vpad = 2
+        self._text_offset_y = 7
 
         self.font_main = FONTS.get_medium_font()
         self.font_bold = FONTS.get_bold_font()
@@ -899,6 +904,7 @@ class FileManager:
                 self.enable_window_drag
                 and header_rect.collidepoint(mouse_pos)
                 and not up_button_rect.collidepoint(mouse_pos)
+                and not self.new_folder_button_rect.collidepoint(mouse_pos)
             ):
                 self.is_dragging_window = True
                 self.drag_offset_x = mouse_pos[0] - self.rect.x
@@ -1517,16 +1523,16 @@ class FileManager:
             screen.blit(icon, (icon_x, icon_y))
 
             if i == self.renaming_item_idx:
-                text_x = rect.x + 35
-                text_y = y + 7
-                text_w = rect.width - 45
-                text_h = self.item_height - 10
-                self.rename_input.resize(text_x, text_y - 2, text_w, text_h)
+                text_x = rect.x + self._item_text_left
+                text_y = y + self._rename_vpad
+                text_w = rect.width - self._item_text_left - self._item_text_right
+                text_h = self.item_height - self._rename_vpad * 2
+                self.rename_input.resize(text_x, text_y, text_w, text_h)
                 self.rename_input.draw(screen)
             else:
                 col = COLORS.accent if i == self.selected_index else COLORS.text
                 txt = self.font_main.render(item.name, True, col)
-                screen.blit(txt, (rect.x + 35, y + 7))
+                screen.blit(txt, (rect.x + self._item_text_left, y + self._text_offset_y))
 
         screen.set_clip(clip)
 
