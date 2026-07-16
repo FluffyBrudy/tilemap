@@ -1,6 +1,9 @@
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Tuple, Optional, Dict
 import pygame
+from constants import THEME_PATH
 from utils.font_manager import font_manager, FontWeight, FontStyle
 
 
@@ -26,6 +29,23 @@ class UIColorSet:
     warning: Color = (220, 180, 80)
     hover: Color = (55, 60, 70)
     selected: Color = (50, 70, 110)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, str]) -> "UIColorSet":
+        """Create UIColorSet from a dict mapping field names to hex/rgb strings.
+
+        Only fields present in data are overridden; missing fields use defaults.
+        """
+        kw = {}
+        for field_name in cls.__dataclass_fields__:
+            if field_name in data:
+                raw = data[field_name]
+                if isinstance(raw, str) and raw.startswith("#"):
+                    h = raw.lstrip("#")
+                    kw[field_name] = (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+                elif isinstance(raw, (list, tuple)) and len(raw) == 3:
+                    kw[field_name] = tuple(int(c) for c in raw)
+        return cls(**kw)
 
 
 DARK_COLORS = UIColorSet(
@@ -121,6 +141,7 @@ class ThemeManager:
     def __init__(self, theme_name: str = "dark"):
         self._theme_name = theme_name
         self._colors = THEMES.get(theme_name, DARK_COLORS)
+        self._custom_themes: Dict[str, UIColorSet] = {}
         self._listeners: list = []
 
     @property
@@ -199,12 +220,40 @@ class ThemeManager:
     def selected(self) -> Color:
         return self._colors.selected
 
-    def set_theme(self, theme_name: str) -> None:
-        if theme_name in THEMES:
-            self._theme_name = theme_name
-            self._colors = THEMES[theme_name]
-            for listener in self._listeners:
-                listener(theme_name)
+    def resolve_theme(self, name_or_path: str) -> Optional[UIColorSet]:
+        """Try built-in themes, then registered custom themes, then JSON file in THEME_PATH."""
+        if name_or_path in THEMES:
+            return THEMES[name_or_path]
+        if name_or_path in self._custom_themes:
+            return self._custom_themes[name_or_path]
+        p = Path(name_or_path)
+        if p.suffix.lower() == ".json":
+            try:
+                p = p.expanduser().resolve()
+                if not str(p).startswith(str(THEME_PATH.resolve())):
+                    return None
+                if not p.exists():
+                    return None
+                with open(p) as f:
+                    raw = json.load(f)
+                colors_raw = raw.get("colors", raw)
+                return UIColorSet.from_dict(colors_raw)
+            except Exception:
+                return None
+        return None
+
+    def set_theme(self, theme_name: str) -> bool:
+        colors = self.resolve_theme(theme_name)
+        if colors is None:
+            return False
+        self._theme_name = theme_name
+        self._colors = colors
+        for listener in self._listeners:
+            listener(theme_name)
+        return True
+
+    def register_custom_theme(self, name: str, colors: UIColorSet) -> None:
+        self._custom_themes[name] = colors
 
     def add_listener(self, callback) -> None:
         self._listeners.append(callback)
@@ -221,8 +270,8 @@ def get_theme_manager() -> ThemeManager:
     return _theme_manager
 
 
-def set_theme(theme_name: str) -> None:
-    _theme_manager.set_theme(theme_name)
+def set_theme(theme_name: str) -> bool:
+    return _theme_manager.set_theme(theme_name)
 
 
 def get_current_theme_name() -> str:

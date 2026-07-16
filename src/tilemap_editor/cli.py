@@ -43,6 +43,11 @@ def main() -> None:
         "--size", default="1500x900", help="Window size as WIDTHxHEIGHT"
     )
     run_parser.add_argument("--fps", type=int, default=60, help="Editor FPS")
+    run_parser.add_argument(
+        "--theme",
+        default=None,
+        help='Theme name or path to .json theme file (e.g. "molokai", "path/to/custom.json")',
+    )
 
     args = parser.parse_args()
 
@@ -74,7 +79,7 @@ def _run_editor(args) -> None:
     try:
         with error_context("cli_main"):
             size = _parse_size(args.size)
-            editor = Editor(size=size, fps=max(1, args.fps))
+            editor = Editor(size=size, fps=max(1, args.fps), theme=args.theme)
             editor.run()
     except KeyboardInterrupt:
         print("\nEditor interrupted by user")

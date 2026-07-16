@@ -184,7 +184,7 @@ if event.type == pygame.MOUSEWHEEL:
 
 ---
 
-## Refactor Progress (Sessions 1–2 — WidgetBase, Theme, SidebarContainer, PropertyEditor, LayerSelector)
+## Refactor Progress (Sessions 1–3 — WidgetBase, Theme, Toolbar Refactor, Bugfixes, Theme CLI)
 
 ### Done
 - **WidgetBase** (`widget_base.py`) — base class with box model (padding, border, `content_rect`), `draw_base()` using `COLORS`/`SHAPE` from theme
@@ -198,23 +198,30 @@ if event.type == pygame.MOUSEWHEEL:
 - **TileSelector** — WidgetBase, `draw_base()` replaces `draw_background()`, FONTS, removed bottom buttons (→SidebarContainer)
 - **SidebarContainer** (`widgets/ui/sidebar_container.py`) — tabbed container with toolbar; holds TileSelector + LayerSelector as tabs
 - **Editor sidebar** — single `self.sidebar` widget; tabs replace tileset_h/layer_h split; vertical resize drag with SYSTEM_CURSOR_SIZEWE
-- **draw_utils.py** — added `truncate_text(text, font, max_width) -> Tuple[str, bool]`
+- **draw_utils.py** — `truncate_text()`, `draw_separator()`
 - **PropertyEditor** — SysFont→FONTS, hardcoded colors→COLORS, manual buttons→Button widgets, truncation + hover tooltip for long values (removed font-shrinking)
 - **LayerSelector** — Button widgets replace manual rect buttons, `FONTS.get_*` replaces `font_manager.get_font(...)`, all color aliases removed in favor of `COLORS.*`, unused imports removed
 - **MapProperties** — COLOR_ constants→`COLORS.*`, `pygame.font.SysFont`→`FONTS.*`, `Rect` buttons→`Button` widgets, hardcoded colors→`COLORS.*`/`SHAPE.*`, manual draw→`Button.draw()`
-- **/tmp/editor-md/** — `INSTRUCTION.md` (≤1000 chars), `API_REFS.md`, `THEME.md` (Qwen UI agent reference)
+- **ToolManager/ToolKind** (`tool_manager.py`) — central tool state replacing 6 editor booleans; mutual exclusion enforced in one place
+- **Toolbar** — icon-only compact layout (28px), separator bars between groups, tooltips, `ToolManager` callbacks
+- **Object-aware Select** — node hit detection, priority: selection move → node → rubber-band
+- **Object-aware Eraser** — tile-size rect, unified step=1 adjustment, pixel-precise overlay
+- **DragTracker** (`drag_tracker.py`) — float-precision world-coordinate delta computation (10 tests)
+- **Bugfixes — Node resize** — 8 handle cases use `rs`-corrected absolute-position math (opposite-edge `* rs`, width delta `/ rs`)
+- **Bugfixes — Object selection** — `_draw_selection_rect` uses `eff_w` for move offset; `_begin_move`/`delete_selection` use `eff_w` for hit-test (fixes move speed and multi-object selection at rs≠1)
+- **Custom theme loading** — `UIColorSet.from_dict()` parses JSON; `ThemeManager.resolve_theme()` tries built-in → registered → file path; `ThemeManager.set_theme()` returns success bool
+- **CLI `--theme`** — argument on `run` subcommand, accepts name or path to `.json` file; overrides `settings.json` `"theme"` field
 
 ### Next
-- User has planned changes affecting `tile_grid.py` (canvas) — waiting for direction
+- (none)
 
 ### Relevant Files
 - `src/widgets/widget_base.py`, `input.py`, `mapsetup.py`, `tile_selector.py`, `layer_selector.py`
 - `src/widgets/ui/sidebar_container.py`, `widget_base.py`, `label.py`, `button.py`, `dialog_base.py`, `theme.py`, `draw_utils.py`, `property_editor.py`
 - `src/widgets/ui/confirm_dialog.py`, `layer_type_dialog.py`, `tileset_type_dialog.py`
+- `src/widgets/ui/toolbar.py`, `tool_manager.py`, `drag_tracker.py`
+- `src/widgets/tile_grid.py`
 - `src/widgets/filemanager.py`
+- `src/tilemap_editor/cli.py`
 - `src/editor.py`
-- `docs/refactor.md` (plan)
-
----
-
-**These docs may need updates when features or core refactors are added.**
+- `docs/refactor.md`, `docs/toolbar-refactor.md` (plans)

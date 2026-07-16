@@ -4,6 +4,7 @@ import pygame
 
 from ..widget_base import WidgetBase
 from .theme import COLORS, SHAPE, FONTS
+from utils.icon_manager import icon_manager
 
 
 class Button(WidgetBase):
@@ -12,6 +13,9 @@ class Button(WidgetBase):
         rect,
         text="",
         *,
+        icon_key=None,
+        icon_size=20,
+        tooltip_text="",
         font=None,
         text_color=None,
         accent=False,
@@ -32,10 +36,14 @@ class Button(WidgetBase):
             border_color=border_color,
         )
         self.text = text
+        self.icon_key = icon_key
+        self.icon_size = icon_size
+        self.tooltip_text = tooltip_text
         self.font = font or FONTS.get_medium_font()
         self._text_color = text_color
         self.accent = accent
         self.on_click = on_click
+        self._active = False
         self._hovered = False
         self._pressed = False
         self._enabled = True
@@ -47,6 +55,14 @@ class Button(WidgetBase):
     @enabled.setter
     def enabled(self, val):
         self._enabled = val
+
+    @property
+    def active(self):
+        return self._active
+
+    @active.setter
+    def active(self, val):
+        self._active = val
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self._enabled:
@@ -70,7 +86,11 @@ class Button(WidgetBase):
         return False
 
     def draw(self, surface):
-        if self._pressed:
+        if self._active:
+            bg = COLORS.accent_active
+            border = COLORS.border
+            text_color = self._text_color or COLORS.text
+        elif self._pressed:
             bg = COLORS.accent_active if self.accent else COLORS.header
             border = COLORS.border
             text_color = self._text_color or COLORS.text
@@ -97,5 +117,9 @@ class Button(WidgetBase):
         if self.bw:
             pygame.draw.rect(surface, border, rect, self.bw, border_radius=self.br)
 
-        label = self.font.render(self.text, True, text_color)
-        surface.blit(label, label.get_rect(center=rect.center))
+        if self.icon_key:
+            icon = icon_manager.get_icon(self.icon_key, self.icon_size, text_color)
+            surface.blit(icon, icon.get_rect(center=rect.center))
+        elif self.text:
+            label = self.font.render(self.text, True, text_color)
+            surface.blit(label, label.get_rect(center=rect.center))
