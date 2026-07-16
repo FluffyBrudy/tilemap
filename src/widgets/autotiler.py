@@ -246,6 +246,19 @@ class AutotileRuleDesigner:
             all_rules.extend(g.rules)
         return all_rules
 
+    @property
+    def variant_to_group(self):
+        """Map (tileset_index, variant_id) -> group_id from all rules."""
+        mapping = {}
+        for g in self.groups:
+            for rule in g.rules:
+                ts_idx = rule.tileset_index
+                for vid in rule.variant_ids:
+                    key = (ts_idx, vid)
+                    if key not in mapping:
+                        mapping[key] = g.name
+        return mapping
+
     def handle_event(self, event) -> bool:
         if not self.visible:
             return False

@@ -638,6 +638,13 @@ class TileGrid:
 
             active_layer.add_object((pixel_x, pixel_y), obj_data)
         else:
+            vg_map: dict = {}
+            autotile_ok = self.editor.autotile_mode and getattr(
+                self.editor, "autotiler", None
+            )
+            if autotile_ok:
+                vg_map = self.editor.autotiler.variant_to_group
+
             for y_off in range(sel_h_tiles):
                 for x_off in range(sel_w_tiles):
                     curr_sx = start_sx + x_off
@@ -659,20 +666,18 @@ class TileGrid:
                             variant_id
                         ].copy()
 
-                    if self.editor.autotile_mode and getattr(
-                        self.editor, "autotiler", None
-                    ):
-                        autotiler = self.editor.autotiler
-                        if autotiler.groups:
-                            gidx = autotiler.selected_group_idx
-                            if 0 <= gidx < len(autotiler.groups):
-                                tile_data["autotile_group"] = autotiler.groups[gidx].name
+                    if autotile_ok:
+                        auto_group = vg_map.get((tileset_index, variant_id))
+                        if auto_group:
+                            tile_data["autotile_group"] = auto_group
+                        elif self.editor.autotiler.groups:
+                            gidx = self.editor.autotiler.selected_group_idx
+                            if 0 <= gidx < len(self.editor.autotiler.groups):
+                                tile_data["autotile_group"] = self.editor.autotiler.groups[gidx].name
 
                     active_layer.set_tile(target_pos, tile_data)
 
-                    if self.editor.autotile_mode and getattr(
-                        self.editor, "autotiler", None
-                    ):
+                    if autotile_ok:
                         rules = self.editor.autotiler.rules
                         if rules:
                             active_layer.autotile_at_pos(target_pos, rules)
