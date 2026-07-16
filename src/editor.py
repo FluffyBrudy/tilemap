@@ -40,6 +40,7 @@ from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
 from widgets.ui.theme import COLORS, THEMES, get_theme_manager, set_theme
+from widgets.ui.tool_manager import ToolKind, ToolManager
 from widgets.ui.tileset_type_dialog import TilesetTypeDialog
 from widgets.ui.toolbar import Toolbar
 from widgets.ui.tooltip import TooltipManager
@@ -138,27 +139,31 @@ _launch_standalone_module = launch_standalone
 
 
 class Editor:
-    def __init__(self, size: Optional[Tuple[int, int]] = None, fps=60):
+    def __init__(
+        self,
+        size: Optional[Tuple[int, int]] = None,
+        fps=60,
+        theme: Optional[str] = None,
+    ):
         self.base_path, self.data_root, self.config = _load_project_config()
         logger.info(f"Project base_path: {self.base_path}")
         logger.info(f"Data root: {self.data_root}")
 
-        theme_name = self.config.get("theme", "dark")
-        if theme_name in THEMES:
-            set_theme(theme_name)
-            logger.info(f"Applied theme: {theme_name}")
+        theme_name = theme or self.config.get("theme", "dark")
+        tm = get_theme_manager()
+        if not tm.set_theme(theme_name):
+            logger.warning(f"Theme '{theme_name}' not found, falling back to dark")
+            tm.set_theme("dark")
 
         pygame.init()
         pygame.display.set_caption("Pure Pygame Editor")
 
         self.fps = fps
         self.running = False
-        self.pan_mode = False
         self.autotile_mode = False
-        self.eraser_mode = False
-        self.select_mode = False
         self.node_editing_mode = False
         self.show_nodes = False
+        self.tool_manager = ToolManager()
         self._prev_tool = None
 
         if isinstance(size, tuple) and len(size) == 2:
@@ -712,6 +717,8 @@ class Editor:
         next_idx = (current_idx + 1) % len(theme_names)
         new_theme = theme_names[next_idx]
         set_theme(new_theme)
+        from utils.icon_manager import icon_manager
+        icon_manager.clear_cache()
         self.notifications.notify(f"Theme: {new_theme}")
 
         settings_file = Path.cwd() / "settings.json"
@@ -1199,9 +1206,7 @@ class Editor:
                     self.node_editing_mode = not self.node_editing_mode
                     if self.node_editing_mode:
                         self.show_nodes = False
-                        self.pan_mode = False
-                        self.select_mode = False
-                        self.eraser_mode = False
+                        self.tool_manager.deactivate()
                     continue
                 elif event.key == pygame.K_n and (ctrl_held or meta_held):
                     self.open_map_setup()
@@ -1210,27 +1215,22 @@ class Editor:
                     self.perform_load()
                     continue
                 elif event.key == pygame.K_SPACE and (ctrl_held or meta_held):
-                    if self.pan_mode:
-                        self.pan_mode = False
-                        if getattr(self, "_prev_tool", None) == "select":
-                            self.select_mode = True
-                        elif getattr(self, "_prev_tool", None) == "eraser":
-                            self.eraser_mode = True
-                        elif getattr(self, "_prev_tool", None) == "nodes":
+                    if self.tool_manager.is_active(ToolKind.PAN):
+                        restored = self.tool_manager.restore_previous()
+                        if restored is None and self._prev_tool == "nodes":
                             self.node_editing_mode = True
+                            self._prev_tool = None
                     else:
-                        if self.select_mode:
+                        if self.tool_manager.is_active(ToolKind.SELECT):
                             self._prev_tool = "select"
-                        elif self.eraser_mode:
+                        elif self.tool_manager.is_active(ToolKind.ERASER):
                             self._prev_tool = "eraser"
                         elif self.node_editing_mode:
                             self._prev_tool = "nodes"
                         else:
                             self._prev_tool = None
-                        self.pan_mode = True
-                        self.select_mode = False
-                        self.eraser_mode = False
                         self.node_editing_mode = False
+                        self.tool_manager.activate(ToolKind.PAN)
                     continue
                 elif event.key == pygame.K_g and (ctrl_held or meta_held):
                     self.toggle_grid()

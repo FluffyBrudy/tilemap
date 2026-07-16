@@ -386,6 +386,41 @@ class IconManager:
                 thickness,
             )
 
+        elif name == "select":
+            thickness = max(2, size // 8)
+            p = padding
+            r = size - padding
+            pygame.draw.rect(surface, color, (p + 2, p + 2, r - p - 6, r - p - 6), thickness)
+            pygame.draw.line(surface, color, (r - 6, r - 6), (r, r), thickness + 1)
+
+        elif name == "eraser":
+            thickness = max(2, size // 8)
+            p = padding
+            r = size - padding
+            pygame.draw.rect(surface, color, (p, r // 2, r - p, r // 2 - p + 2))
+            pygame.draw.polygon(
+                surface, color,
+                [(r - p - 4, p + 2), (r - p, p + 2), (p + 4, r // 2), (p, r // 2)],
+            )
+
+        elif name == "auto":
+            thickness = max(2, size // 10)
+            cx, cy = size // 2, size // 2
+            pygame.draw.circle(surface, color, (cx, cy), size // 4, thickness)
+            pygame.draw.line(surface, color, (cx, cy), (cx, padding), thickness)
+            pygame.draw.line(surface, color, (cx, cy), (size - padding, cy), thickness)
+            pygame.draw.line(surface, color, (cx, cy), (cx, size - padding), thickness)
+
+        elif name == "nodes":
+            thickness = max(2, size // 10)
+            r = size // 8
+            positions = [(size // 2, size // 4), (size // 4, size * 3 // 4), (size * 3 // 4, size * 3 // 4)]
+            for px, py in positions:
+                pygame.draw.circle(surface, color, (px, py), r)
+            for i in range(len(positions)):
+                for j in range(i + 1, len(positions)):
+                    pygame.draw.line(surface, color, positions[i], positions[j], 1)
+
         elif name == "pan":
             thickness = max(2, size // 8)
             cx, cy = size // 2, size // 2
@@ -476,14 +511,15 @@ class IconManager:
         Returns:
             pygame.Surface with the rendered icon
         """
+        svg_name = _ICON_ALIASES.get(name, name)
         cache_key = (name, size, color or (0, 0, 0))
         if cache_key in self._surface_cache:
             return self._surface_cache[cache_key]
 
         surface = None
 
-        if self.has_icon(name):
-            svg_path = self._icons_path / f"{name}.svg"
+        if self.has_icon(svg_name):
+            svg_path = self._icons_path / f"{svg_name}.svg"
             try:
                 if hasattr(pygame.image, "load_sized_svg"):
                     surface = pygame.image.load_sized_svg(str(svg_path), (size, size))
@@ -496,7 +532,7 @@ class IconManager:
 
         if surface is None:
             fallback_color = color or (200, 200, 200)
-            surface = self._draw_fallback_icon(name, size, fallback_color)
+            surface = self._draw_fallback_icon(svg_name, size, fallback_color)
 
         if color and surface:
             tinted = surface.copy()
@@ -523,9 +559,16 @@ def get_icon(
     return icon_manager.get_icon(name, size, color)
 
 
+_ICON_ALIASES = {
+    "zoom_in": "zoomin",
+    "zoom_out": "zoomout",
+}
+
+
 def has_icon(name: str) -> bool:
     """Check if an icon exists (either as SVG or fallback)."""
-    return icon_manager.has_icon(name) or name in [
+    resolved = _ICON_ALIASES.get(name, name)
+    return icon_manager.has_icon(resolved) or resolved in [
         "plus",
         "close",
         "x",
@@ -547,4 +590,8 @@ def has_icon(name: str) -> bool:
         "fit",
         "pan",
         "radio",
+        "select",
+        "eraser",
+        "auto",
+        "nodes",
     ]

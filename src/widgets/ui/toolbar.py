@@ -1,91 +1,121 @@
 import pygame
 from pygame import Rect
-from typing import TYPE_CHECKING, Dict, Tuple
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from editor import Editor
-from widgets.ui.theme import COLORS, FONTS, SHAPE
+from widgets.ui.theme import COLORS
 from widgets.ui.draw_utils import draw_panel
-from utils.icon_manager import icon_manager
+from widgets.ui.tool_manager import ToolKind
+from widgets.ui.button import Button
 
 
 class Toolbar:
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int = 35):
         self.editor = editor
         self.rect = Rect(x, y, w, h)
-        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
-        self.buttons: Dict[str, Tuple[Rect, str]] = {}
+        self.btn_size = 28
+        self.gap = 4
+        self.sep_w = 6
+        self.pad = 6
+        self._buttons: List[Button] = []
+        self._separator_centers: List[int] = []
         self._layout_buttons()
+
+    def _build_tool_buttons(self, x: int, y: int, btn_h: int) -> int:
+        def add(key, ico, tip):
+            nonlocal x
+            btn = Button(
+                Rect(x, y, self.btn_size, btn_h),
+                icon_key=ico,
+                tooltip_text=tip,
+                border_radius=0,
+                on_click=lambda k=key: self._on_tool_click(k),
+            )
+            btn.tool_key = key
+            self._buttons.append(btn)
+            x += self.btn_size + self.gap
+
+        def sep():
+            nonlocal x
+            self._separator_centers.append(x + self.sep_w // 2)
+            x += self.sep_w
+
+        sep()
+        add("pan", "pan", "Pan Mode (Ctrl+Space)")
+        add("select", "select", "Select/Move Tool")
+        add("eraser", "eraser", "Eraser Tool")
+        sep()
+        add("grid", "grid", "Toggle Grid (G)")
+        add("auto", "auto", "Auto-Autotile")
+        add("nodes", "nodes", "Show Nodes (Ctrl+Shift+N)")
+        sep()
+        add("zoom_out", "zoomout", "Zoom Out (Ctrl+Wheel)")
+        add("zoom_in", "zoomin", "Zoom In (Ctrl+Wheel)")
+        add("reset", "reset", "Reset View")
+        add("fit", "fit", "Fit Map to View")
+
+        return x
+
+    def _on_tool_click(self, key: str):
+        e = self.editor
+        if key == "pan":
+            e.tool_manager.toggle(ToolKind.PAN)
+        elif key == "select":
+            e.tool_manager.toggle(ToolKind.SELECT)
+        elif key == "eraser":
+            e.tool_manager.toggle(ToolKind.ERASER)
+        elif key == "grid":
+            e.toggle_grid()
+        elif key == "auto":
+            e.toggle_auto_autotile()
+        elif key == "nodes":
+            e.show_nodes = not e.show_nodes
+            if e.show_nodes:
+                e.node_editing_mode = False
+        elif key == "zoom_in" and e.tile_grid_widget:
+            e.tile_grid_widget.zoom_by(0.1)
+        elif key == "zoom_out" and e.tile_grid_widget:
+            e.tile_grid_widget.zoom_by(-0.1)
+        elif key == "reset" and e.tile_grid_widget:
+            e.tile_grid_widget.reset_view()
+        elif key == "fit" and e.tile_grid_widget:
+            e.tile_grid_widget.fit_to_map()
+
+    def _update_active_states(self):
+        e = self.editor
+        for btn in self._buttons:
+            k = getattr(btn, "tool_key", btn.icon_key)
+            if k == "pan":
+                btn.active = e.tool_manager.is_active(ToolKind.PAN)
+            elif k == "select":
+                btn.active = e.tool_manager.is_active(ToolKind.SELECT)
+            elif k == "eraser":
+                btn.active = e.tool_manager.is_active(ToolKind.ERASER)
+            elif k == "grid":
+                btn.active = bool(e.tile_grid_widget and e.tile_grid_widget.show_grid)
+            elif k == "auto":
+                btn.active = e.autotile_mode
+            elif k == "nodes":
+                btn.active = e.show_nodes
+            else:
+                btn.active = False
 
     def resize(self, width: int):
         self.rect.width = width
         self._layout_buttons()
 
     def _layout_buttons(self):
-        pad = 8
-        x = self.rect.x + pad
-        y = self.rect.y + 5
-        h = self.rect.height - 10
-        btn_w = 74
-        gap = 6
-
-        def add_btn(key: str, label: str):
-            nonlocal x
-            self.buttons[key] = (Rect(x, y, btn_w, h), label)
-            x += btn_w + gap
-
-        add_btn("pan", "Pan")
-        add_btn("select", "Select")
-        add_btn("eraser", "Eraser")
-        add_btn("grid", "Grid")
-        add_btn("auto", "Auto")
-        add_btn("nodes", "Nodes")
-        x += 6
-        add_btn("zoom_out", "Zoom -")
-        add_btn("zoom_in", "Zoom +")
-        add_btn("reset", "Reset")
-        add_btn("fit", "Fit")
+        self._buttons.clear()
+        self._separator_centers.clear()
+        x = self.rect.x + self.pad
+        y = self.rect.y + (self.rect.height - self.btn_size) // 2
+        self._build_tool_buttons(x, y, self.btn_size)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for key, (r, label) in self.buttons.items():
-                if r.collidepoint(event.pos):
-                    if key == "pan":
-                        self.editor.pan_mode = not self.editor.pan_mode
-                        if self.editor.pan_mode:
-                            self.editor.select_mode = False
-                            self.editor.eraser_mode = False
-                    elif key == "select":
-                        self.editor.select_mode = not self.editor.select_mode
-                        if self.editor.select_mode:
-                            self.editor.pan_mode = False
-                            self.editor.eraser_mode = False
-                    elif key == "eraser":
-                        self.editor.eraser_mode = not self.editor.eraser_mode
-                        if self.editor.eraser_mode:
-                            self.editor.pan_mode = False
-                            self.editor.select_mode = False
-                    elif key == "grid":
-                        self.editor.toggle_grid()
-                    elif key == "auto":
-                        self.editor.toggle_auto_autotile()
-                    elif key == "nodes":
-                        self.editor.show_nodes = not self.editor.show_nodes
-                        if self.editor.show_nodes:
-                            self.editor.node_editing_mode = False
-                    elif key == "zoom_in":
-                        if self.editor.tile_grid_widget:
-                            self.editor.tile_grid_widget.zoom_by(0.1)
-                    elif key == "zoom_out":
-                        if self.editor.tile_grid_widget:
-                            self.editor.tile_grid_widget.zoom_by(-0.1)
-                    elif key == "reset":
-                        if self.editor.tile_grid_widget:
-                            self.editor.tile_grid_widget.reset_view()
-                    elif key == "fit":
-                        if self.editor.tile_grid_widget:
-                            self.editor.tile_grid_widget.fit_to_map()
-                    return True
+        for btn in self._buttons:
+            if btn.handle_event(event):
+                return True
         return False
 
     def draw(self, screen: pygame.Surface):
@@ -94,71 +124,23 @@ class Toolbar:
         )
         mouse_pos = pygame.mouse.get_pos()
 
-        for key, (r, label) in self.buttons.items():
-            is_active = False
-            is_show = False
-            if key == "pan":
-                is_active = self.editor.pan_mode
-            elif key == "select":
-                is_active = self.editor.select_mode
-            elif key == "eraser":
-                is_active = self.editor.eraser_mode
-            elif key == "grid":
-                is_active = bool(
-                    self.editor.tile_grid_widget
-                    and self.editor.tile_grid_widget.show_grid
-                )
-            elif key == "auto":
-                is_active = self.editor.autotile_mode
-            elif key == "nodes":
-                is_active = self.editor.show_nodes
-                is_show = False
+        self._update_active_states()
 
-            hover = r.collidepoint(mouse_pos)
-            if is_active:
-                bg = COLORS.accent_active
-            elif is_show:
-                bg = COLORS.selected
-            elif hover:
-                bg = COLORS.hover
-            else:
-                bg = COLORS.panel_alt
-            pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm)
-            pygame.draw.rect(
-                screen, COLORS.border_soft, r, 1, border_radius=SHAPE.radius_sm
+        sep_h = 16
+        sep_y = self.rect.centery - sep_h // 2
+        for sx in self._separator_centers:
+            pygame.draw.line(
+                screen, COLORS.border_soft,
+                (sx, sep_y), (sx, sep_y + sep_h), 2,
             )
 
-            if icon_manager.has_icon(key):
-                icon = icon_manager.get_icon(key, 16, COLORS.text)
-                screen.blit(icon, icon.get_rect(center=r.center))
-            else:
-                txt = self.font.render(label, True, COLORS.text)
-                screen.blit(txt, txt.get_rect(center=r.center))
+        for btn in self._buttons:
+            btn.draw(screen)
 
-            if hover:
-                tip = label
-                if key == "pan":
-                    tip = "Pan Mode (Ctrl+Space)"
-                elif key == "select":
-                    tip = "Select/Move Tool (Rect select, drag to move)"
-                elif key == "eraser":
-                    tip = "Eraser Tool (Left-click to erase)"
-                elif key == "grid":
-                    tip = "Toggle Grid (G)"
-                elif key == "auto":
-                    tip = "Auto-Autotile"
-                elif key == "nodes":
-                    tip = (
-                        "Show Nodes (Ctrl+Shift+N for Edit mode)"
-                        if not self.editor.show_nodes
-                        else "Hide Nodes"
-                    )
-                elif key == "zoom_in":
-                    tip = "Zoom In (Ctrl+Wheel)"
-                elif key == "zoom_out":
-                    tip = "Zoom Out (Ctrl+Wheel)"
-                elif key == "reset":
-                    tip = "Reset View"
-                elif key == "fit":
-                    tip = "Fit Map to View"
-                self.editor.tooltip.show(tip, (mouse_pos[0] + 10, mouse_pos[1] + 10))
+        for btn in self._buttons:
+            if btn.rect.collidepoint(mouse_pos) and btn.tooltip_text:
+                self.editor.tooltip.show(
+                    btn.tooltip_text,
+                    (mouse_pos[0] + 10, mouse_pos[1] + 10),
+                )
+                break

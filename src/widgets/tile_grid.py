@@ -4,7 +4,9 @@ from pygame import Rect, Surface, K_UP, K_LEFT, K_RIGHT
 
 from ttypes.tilemap import TypeTile, TypeObject
 from widgets.ui.theme import COLORS
+from widgets.ui.tool_manager import ToolKind
 from nodes import NodeRect
+from widgets.ui.drag_tracker import DragTracker
 from widgets.particle_system import MAX_DT, ParticlePreview
 
 if TYPE_CHECKING:
@@ -55,13 +57,14 @@ class TileGrid:
         self.move_start_mouse = None
         self.move_origin_rect = None
         self._selection_pixel_offset = (0, 0)
+        self._object_move_origins: Dict[int, dict] = {}
 
         self.clipboard = None
 
         self._node_drag_state: Optional[str] = None
         self._node_drag_handle: Optional[str] = None
-        self._node_drag_start: Tuple[int, int] = (0, 0)
         self._node_original_rect = None
+        self._node_drag_tracker = DragTracker()
 
         self._particle_previews: Dict[str, ParticlePreview] = {}
         self._last_preview_time: float = 0.0
@@ -78,6 +81,11 @@ class TileGrid:
         tw, th = self.editor.tilemap.tile_size
         rs = self.editor.tilemap.render_scale
         return (tw * rs, th * rs)
+
+    def _is_pan_event(self, event) -> bool:
+        return event.button == 2 or (
+            event.button == 1 and self.editor.tool_manager.is_active(ToolKind.PAN)
+        )
 
     def screen_to_world(self, pos: Tuple[int, int]) -> Tuple[int, int]:
         wx = (pos[0] - self.rect.x) / self.zoom_level + self.scroll_x
@@ -168,19 +176,15 @@ class TileGrid:
                 current_time = pygame.time.get_ticks()
                 if current_time - self.last_eraser_adj_time > self.adj_delay:
                     adj = 0
-                    active_layer = self.editor.tilemap.layer_manager.get_active_layer()
-                    step = (
-                        5 if active_layer and active_layer.layer_type == "object" else 1
-                    )
 
                     if (
                         keys[pygame.K_EQUALS]
                         or keys[pygame.K_PLUS]
                         or keys[pygame.K_KP_PLUS]
                     ):
-                        adj = step
+                        adj = 1
                     elif keys[pygame.K_MINUS] or keys[pygame.K_KP_MINUS]:
-                        adj = -step
+                        adj = -1
 
                     if adj != 0:
                         self.eraser_size = max(1, min(100, self.eraser_size + adj))
@@ -406,7 +410,7 @@ class TileGrid:
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 2 or (event.button == 1 and self.editor.pan_mode):
+            if self._is_pan_event(event):
                 if is_hovering:
                     self.is_panning = True
                     self.pan_start_pos = mouse_pos
@@ -414,26 +418,39 @@ class TileGrid:
                     return True
 
             if event.button == 1:
-                if self.editor.select_mode:
-                    if is_hovering and self.hover_cell:
-                        if self.selection_rect and self._point_in_selection(
-                            self.hover_cell
-                        ):
-                            self._begin_move(mouse_pos)
+                if self.editor.tool_manager.is_active(ToolKind.SELECT):
+                    if is_hovering:
+                        if self.hover_cell:
+                            if self.selection_rect and self._point_in_selection(
+                                self.hover_cell
+                            ):
+                                self._begin_move(mouse_pos)
+                            else:
+                                if self.editor.show_nodes:
+                                    nm = getattr(self.editor, "node_manager", None)
+                                    if nm and nm.nodes:
+                                        node = self._get_node_at_screen(nm, mouse_pos)
+                                        if node:
+                                            nm.set_active_node(node.node_id)
+                                            self._start_node_drag(mouse_pos, node)
+                                            return True
+                                        nm.set_active_node(None)
+
+                                self.selection_start = self.hover_cell
+                                self.is_selecting = True
+                                self.selection_rect = (
+                                    self.hover_cell[0],
+                                    self.hover_cell[1],
+                                    self.hover_cell[0],
+                                    self.hover_cell[1],
+                                )
                         else:
-                            self.selection_start = self.hover_cell
-                            self.is_selecting = True
-                            self.selection_rect = (
-                                self.hover_cell[0],
-                                self.hover_cell[1],
-                                self.hover_cell[0],
-                                self.hover_cell[1],
-                            )
+                            self.selection_rect = None
                     else:
                         self.selection_rect = None
                     return True
 
-                if self.editor.eraser_mode:
+                if self.editor.tool_manager.is_active(ToolKind.ERASER):
                     if is_hovering:
                         self.editor.tilemap.capture_history("Erase Tile")
                         self.remove_tile()
@@ -450,11 +467,14 @@ class TileGrid:
                 return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 2 or (event.button == 1 and self.editor.pan_mode):
+            if self._is_pan_event(event):
                 self.is_panning = False
                 return True
 
             if event.button == 1:
+                if self._node_drag_state is not None:
+                    self._clear_node_drag()
+                    return True
                 if self.is_selecting:
                     self.is_selecting = False
                     self._finalize_selection()
@@ -471,6 +491,10 @@ class TileGrid:
                 self.scroll_x = self.pan_start_scroll[0] - dx
                 self.scroll_y = self.pan_start_scroll[1] - dy
                 return True
+
+            if self._node_drag_state is not None and is_hovering:
+                if self._update_node_drag(mouse_pos):
+                    return True
 
             if is_hovering:
                 self.hover_cell = self.get_grid_pos(mouse_pos)
@@ -507,12 +531,12 @@ class TileGrid:
 
         buttons = pygame.mouse.get_pressed()
         if (
-            not self.editor.pan_mode
-            and not self.editor.select_mode
+            not self.editor.tool_manager.is_active(ToolKind.PAN)
+            and not self.editor.tool_manager.is_active(ToolKind.SELECT)
             and not self.is_panning
         ):
             if buttons[0] and is_hovering:
-                if self.editor.eraser_mode:
+                if self.editor.tool_manager.is_active(ToolKind.ERASER):
                     self.remove_tile()
                 else:
                     self.place_tile()
@@ -737,12 +761,14 @@ class TileGrid:
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
 
-            half_size = self.eraser_size // 2
+            tile_w, tile_h = self.tile_size
+            erase_w = tile_w * self.eraser_size
+            erase_h = tile_h * self.eraser_size
             erase_rect = Rect(
-                world_pos[0] - half_size,
-                world_pos[1] - half_size,
-                self.eraser_size,
-                self.eraser_size,
+                world_pos[0] - erase_w // 2,
+                world_pos[1] - erase_h // 2,
+                erase_w,
+                erase_h,
             )
 
             for obj_id, obj in list(active_layer.get_all_objects().items()):
@@ -857,11 +883,12 @@ class TileGrid:
                         rel_pos = (gx - x1, gy - y1)
                         self.clipboard["tiles"][rel_pos] = tile.copy()
         elif active_layer.layer_type == "object":
+            eff_w, eff_h = self.effective_tile_size
             sel_rect = Rect(
-                x1 * self.tile_size[0],
-                y1 * self.tile_size[1],
-                (x2 - x1 + 1) * self.tile_size[0],
-                (y2 - y1 + 1) * self.tile_size[1],
+                x1 * eff_w,
+                y1 * eff_h,
+                (x2 - x1 + 1) * eff_w,
+                (y2 - y1 + 1) * eff_h,
             )
             for obj_id, obj in active_layer.get_all_objects().items():
                 area = obj["area"]
@@ -910,9 +937,10 @@ class TileGrid:
             self.clipboard["layer_type"] == "object"
             and active_layer.layer_type == "object"
         ):
+            eff_w, eff_h = self.effective_tile_size
             target_pixel = (
-                target_pos[0] * self.tile_size[0],
-                target_pos[1] * self.tile_size[1],
+                target_pos[0] * eff_w,
+                target_pos[1] * eff_h,
             )
             for obj in self.clipboard["objects"]:
                 new_obj = obj.copy()
@@ -951,17 +979,18 @@ class TileGrid:
                         count += 1
             self.editor.notifications.success(f"Deleted {count} tiles")
         elif active_layer.layer_type == "object":
+            eff_w, eff_h = self.effective_tile_size
             sel_rect = Rect(
-                x1 * self.tile_size[0],
-                y1 * self.tile_size[1],
-                (x2 - x1 + 1) * self.tile_size[0],
-                (y2 - y1 + 1) * self.tile_size[1],
+                x1 * eff_w,
+                y1 * eff_h,
+                (x2 - x1 + 1) * eff_w,
+                (y2 - y1 + 1) * eff_h,
             )
             count = 0
             for obj_id, obj in list(active_layer.get_all_objects().items()):
                 area = obj["area"]
                 obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
-                if sel_rect.contains(obj_rect):
+                if sel_rect.colliderect(obj_rect):
                     active_layer.remove_object(obj_id)
                     count += 1
             self.editor.notifications.success(f"Deleted {count} objects")
@@ -976,6 +1005,30 @@ class TileGrid:
         self.move_start_mouse = mouse_pos
         self.move_origin_rect = self.selection_rect
         self.move_delta = (0, 0)
+
+        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+        if active_layer and active_layer.layer_type == "object" and self.move_origin_rect:
+            self._object_move_origins.clear()
+            x1, y1, x2, y2 = self.move_origin_rect
+            eff_w, eff_h = self.effective_tile_size
+            sel_rect = Rect(
+                x1 * eff_w,
+                y1 * eff_h,
+                (x2 - x1 + 1) * eff_w,
+                (y2 - y1 + 1) * eff_h,
+            )
+            for obj_id, obj in active_layer.get_all_objects().items():
+                obj_rect = Rect(
+                    obj["area"]["x"], obj["area"]["y"],
+                    obj["area"]["w"], obj["area"]["h"],
+                )
+                if sel_rect.colliderect(obj_rect):
+                    self._object_move_origins[obj_id] = {
+                        "x": obj["area"]["x"],
+                        "y": obj["area"]["y"],
+                        "w": obj["area"]["w"],
+                        "h": obj["area"]["h"],
+                    }
 
     def _update_move_delta(self, mouse_pos: Tuple[int, int]):
         """Update the move delta based on mouse drag distance."""
@@ -995,6 +1048,12 @@ class TileGrid:
             world_dx = dx_screen / self.zoom_level
             world_dy = dy_screen / self.zoom_level
             self.move_delta = (int(world_dx), int(world_dy))
+
+            for obj_id, orig in list(self._object_move_origins.items()):
+                if obj_id in active_layer.objects:
+                    obj = active_layer.objects[obj_id]
+                    obj["area"]["x"] = orig["x"] + int(world_dx)
+                    obj["area"]["y"] = orig["y"] + int(world_dy)
 
     def commit_move(self):
         """Apply the move delta to the actual layer data."""
@@ -1040,36 +1099,10 @@ class TileGrid:
             self._selection_pixel_offset = (0, 0)
 
         elif active_layer.layer_type == "object":
-            sel_rect = Rect(
-                x1 * self.tile_size[0],
-                y1 * self.tile_size[1],
-                (x2 - x1 + 1) * self.tile_size[0],
-                (y2 - y1 + 1) * self.tile_size[1],
-            )
-            objects_to_move = []
-            for obj_id, obj in active_layer.get_all_objects().items():
-                area = obj["area"]
-                obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
-                if sel_rect.contains(obj_rect):
-                    objects_to_move.append((obj_id, obj.copy()))
-
-            for obj_id, _ in objects_to_move:
-                active_layer.remove_object(obj_id)
-
-            for _, obj in objects_to_move:
-                new_obj = obj.copy()
-                new_obj["area"] = {
-                    "x": obj["area"]["x"] + dx,
-                    "y": obj["area"]["y"] + dy,
-                    "w": obj["area"]["w"],
-                    "h": obj["area"]["h"],
-                }
-                active_layer.add_object(
-                    (new_obj["area"]["x"], new_obj["area"]["y"]), new_obj
-                )
-
-            grid_dx = dx // self.tile_size[0]
-            grid_dy = dy // self.tile_size[1]
+            self._object_move_origins.clear()
+            eff_w, eff_h = self.effective_tile_size
+            grid_dx = int(dx // eff_w) if eff_w else 0
+            grid_dy = int(dy // eff_h) if eff_h else 0
             self.selection_rect = (
                 x1 + grid_dx,
                 y1 + grid_dy,
@@ -1077,8 +1110,8 @@ class TileGrid:
                 y2 + grid_dy,
             )
             self._selection_pixel_offset = (
-                dx % self.tile_size[0],
-                dy % self.tile_size[1],
+                dx - grid_dx * eff_w,
+                dy - grid_dy * eff_h,
             )
         else:
             self._selection_pixel_offset = (0, 0)
@@ -1092,6 +1125,17 @@ class TileGrid:
 
     def cancel_move(self):
         """Cancel the current move, restoring original positions."""
+        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+        if active_layer and active_layer.layer_type == "object" and self._object_move_origins:
+            for obj_id, orig in self._object_move_origins.items():
+                if obj_id in active_layer.objects:
+                    obj = active_layer.objects[obj_id]
+                    obj["area"]["x"] = orig["x"]
+                    obj["area"]["y"] = orig["y"]
+                    obj["area"]["w"] = orig["w"]
+                    obj["area"]["h"] = orig["h"]
+            self._object_move_origins.clear()
+
         origin = self.move_origin_rect
         self.is_moving = False
         self.move_start_mouse = None
@@ -1183,19 +1227,32 @@ class TileGrid:
     def _draw_preview(self, screen):
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
 
-        if self.editor.eraser_mode and self.hover_cell:
-            eff_w, eff_h = self.effective_tile_size
-            screen_x = (
-                self.hover_cell[0] * eff_w - self.scroll_x
-            ) * self.zoom_level + self.rect.x
-            screen_y = (
-                self.hover_cell[1] * eff_h - self.scroll_y
-            ) * self.zoom_level + self.rect.y
-            size_w = int(eff_w * self.eraser_size * self.zoom_level)
-            size_h = int(eff_h * self.eraser_size * self.zoom_level)
-            dest_rect = Rect(screen_x, screen_y, size_w, size_h)
-            pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
-            return
+        if self.editor.tool_manager.is_active(ToolKind.ERASER):
+            if active_layer and active_layer.layer_type == "object" and self.rect.collidepoint(pygame.mouse.get_pos()):
+                mouse_pos = pygame.mouse.get_pos()
+                wx, wy = self.screen_to_world(mouse_pos)
+                tile_w, tile_h = self.tile_size
+                erase_w = tile_w * self.eraser_size
+                erase_h = tile_h * self.eraser_size
+                sx = int((wx - erase_w / 2 - self.scroll_x) * self.zoom_level + self.rect.x)
+                sy = int((wy - erase_h / 2 - self.scroll_y) * self.zoom_level + self.rect.y)
+                sw = int(erase_w * self.zoom_level)
+                sh = int(erase_h * self.zoom_level)
+                pygame.draw.rect(screen, (255, 50, 50), Rect(sx, sy, sw, sh), 2)
+                return
+            if self.hover_cell:
+                eff_w, eff_h = self.effective_tile_size
+                screen_x = (
+                    self.hover_cell[0] * eff_w - self.scroll_x
+                ) * self.zoom_level + self.rect.x
+                screen_y = (
+                    self.hover_cell[1] * eff_h - self.scroll_y
+                ) * self.zoom_level + self.rect.y
+                size_w = int(eff_w * self.eraser_size * self.zoom_level)
+                size_h = int(eff_h * self.eraser_size * self.zoom_level)
+                dest_rect = Rect(screen_x, screen_y, size_w, size_h)
+                pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
+                return
 
         if self.is_moving and self.hover_cell:
             return
@@ -1396,14 +1453,14 @@ class TileGrid:
             f"Layer {layer_name}",
             f"Tileset {tileset_name}",
         ]
-        if self.editor.select_mode:
+        if self.editor.tool_manager.is_active(ToolKind.SELECT):
             if self.is_moving:
                 parts.append("Tool: Moving")
             else:
                 parts.append("Tool: Select")
-        elif self.editor.eraser_mode:
+        elif self.editor.tool_manager.is_active(ToolKind.ERASER):
             parts.append("Tool: Eraser")
-        elif self.editor.pan_mode:
+        elif self.editor.tool_manager.is_active(ToolKind.PAN):
             parts.append("Tool: Pan")
         else:
             parts.append("Tool: Paint")
@@ -1620,15 +1677,17 @@ class TileGrid:
                 x2 += dx
                 y2 += dy
             else:
-                grid_dx = dx // self.tile_size[0]
-                grid_dy = dy // self.tile_size[1]
+                eff_w = self.tile_size[0] * rs
+                eff_h = self.tile_size[1] * rs
+                grid_dx = int(dx // eff_w) if eff_w else 0
+                grid_dy = int(dy // eff_h) if eff_h else 0
                 x1 += grid_dx
                 y1 += grid_dy
                 x2 += grid_dx
                 y2 += grid_dy
 
-                px_off = (dx % self.tile_size[0]) * rs
-                py_off = (dy % self.tile_size[1]) * rs
+                px_off = int(dx - grid_dx * eff_w)
+                py_off = int(dy - grid_dy * eff_h)
 
         sx = (
             (x1 * eff_w - self.scroll_x) * self.zoom_level
@@ -1839,6 +1898,51 @@ class TileGrid:
                 return name
         return None
 
+    def _get_node_at_screen(self, nm, mouse_pos):
+        for node in nm.nodes.values():
+            sx, sy = self._node_to_screen(node.area.x, node.area.y)
+            sw, sh = self._node_screen_size(node.area.w, node.area.h)
+            if Rect(sx, sy, sw, sh).collidepoint(mouse_pos):
+                return node
+        return None
+
+    def _screen_to_world_float(self, pos):
+        wx = (pos[0] - self.rect.x) / self.zoom_level + self.scroll_x
+        wy = (pos[1] - self.rect.y) / self.zoom_level + self.scroll_y
+        return wx, wy
+
+    def _start_node_drag(self, mouse_pos, node):
+        self._node_drag_state = "moving"
+        self._node_drag_tracker.begin(
+            mouse_pos, self.zoom_level, self.scroll_x, self.scroll_y,
+            self.rect.x, self.rect.y,
+        )
+        self._node_original_rect = NodeRect(
+            node.area.x, node.area.y, node.area.w, node.area.h,
+        )
+
+    def _update_node_drag(self, mouse_pos) -> bool:
+        nm = getattr(self.editor, "node_manager", None)
+        if not nm:
+            return False
+        active = nm.get_active_node()
+        if not active or not self._node_original_rect or self._node_drag_state != "moving":
+            return False
+        orig = self._node_original_rect
+        dx, dy = self._node_drag_tracker.update(
+            mouse_pos, self.zoom_level, self.scroll_x, self.scroll_y,
+            self.rect.x, self.rect.y,
+        )
+        active.area.x = int(orig.x + dx)
+        active.area.y = int(orig.y + dy)
+        return True
+
+    def _clear_node_drag(self):
+        self._node_drag_state = None
+        self._node_drag_handle = None
+        self._node_original_rect = None
+        self._node_drag_tracker.reset()
+
     def _handle_show_node_event(self, event) -> bool:
         nm = getattr(self.editor, "node_manager", None)
         if not nm or not nm.nodes:
@@ -1849,21 +1953,13 @@ class TileGrid:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and is_hover:
-                wx, wy = self.screen_to_world(mouse_pos)
                 active = nm.get_active_node()
 
                 if active:
                     sw, sh = self._node_screen_size(active.area.w, active.area.h)
                     sx, sy = self._node_to_screen(active.area.x, active.area.y)
                     if Rect(sx, sy, sw, sh).collidepoint(mouse_pos):
-                        self._node_drag_state = "moving"
-                        self._node_drag_start = (wx, wy)
-                        self._node_original_rect = NodeRect(
-                            active.area.x,
-                            active.area.y,
-                            active.area.w,
-                            active.area.h,
-                        )
+                        self._start_node_drag(mouse_pos, active)
                         return True
 
                     for node in nm.nodes.values():
@@ -1887,22 +1983,12 @@ class TileGrid:
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self._node_drag_state is not None:
-                self._node_drag_state = None
-                self._node_drag_handle = None
-                self._node_original_rect = None
+                self._clear_node_drag()
                 return True
 
         elif event.type == pygame.MOUSEMOTION:
             if self._node_drag_state is not None and is_hover:
-                active = nm.get_active_node()
-                if active and self._node_original_rect:
-                    orig = self._node_original_rect
-                    wx, wy = self.screen_to_world(mouse_pos)
-                    dx = wx - self._node_drag_start[0]
-                    dy = wy - self._node_drag_start[1]
-                    if self._node_drag_state == "moving":
-                        active.area.x = orig.x + dx
-                        active.area.y = orig.y + dy
+                self._update_node_drag(mouse_pos)
                 return True
 
         return False
@@ -1938,14 +2024,7 @@ class TileGrid:
                     sx, sy = self._node_to_screen(active.area.x, active.area.y)
                     body = Rect(sx, sy, sw, sh)
                     if body.collidepoint(mouse_pos):
-                        self._node_drag_state = "moving"
-                        self._node_drag_start = (wx, wy)
-                        self._node_original_rect = NodeRect(
-                            active.area.x,
-                            active.area.y,
-                            active.area.w,
-                            active.area.h,
-                        )
+                        self._start_node_drag(mouse_pos, active)
                         return True
 
                     for node in nm.nodes.values():
@@ -1975,66 +2054,75 @@ class TileGrid:
                     node.area.y = wy - 32
                     nm.add_node(node)
                     nm.set_active_node(node.node_id)
-                    self._node_drag_state = "moving"
-                    self._node_drag_start = (wx, wy)
-                    self._node_original_rect = NodeRect(
-                        node.area.x,
-                        node.area.y,
-                        node.area.w,
-                        node.area.h,
-                    )
+                    self._start_node_drag(mouse_pos, node)
                 return True
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 if self._node_drag_state is not None:
-                    self._node_drag_state = None
-                    self._node_drag_handle = None
-                    self._node_original_rect = None
+                    self._clear_node_drag()
                     return True
 
         elif event.type == pygame.MOUSEMOTION:
             if self._node_drag_state is not None and is_hover:
-                active = nm.get_active_node()
-                if active and self._node_original_rect:
-                    orig = self._node_original_rect
-                    wx, wy = self.screen_to_world(mouse_pos)
-                    dx = wx - self._node_drag_start[0]
-                    dy = wy - self._node_drag_start[1]
+                if self._node_drag_state == "moving":
+                    self._update_node_drag(mouse_pos)
+                    return True
 
-                    if self._node_drag_state == "moving":
-                        active.area.x = orig.x + dx
-                        active.area.y = orig.y + dy
-                    elif self._node_drag_state == "resizing":
+                if self._node_drag_state == "resizing":
+                    active = nm.get_active_node()
+                    if active and self._node_original_rect:
+                        orig = self._node_original_rect
+                        wx, wy = self._screen_to_world_float(mouse_pos)
                         h = self._node_drag_handle
-                        x, y, w, hh = orig.x, orig.y, orig.w, orig.h
-                        if h and "l" in h:
-                            nx = x + dx
-                            nw = w - dx
-                            if nw >= 8:
-                                active.area.x = int(nx)
-                                active.area.w = int(nw)
-                        if h and "r" in h:
-                            nw = w + dx
-                            if nw >= 8:
-                                active.area.w = int(nw)
-                        if h and "t" in h:
-                            ny = y + dy
-                            nh = hh - dy
-                            if nh >= 8:
-                                active.area.y = int(ny)
-                                active.area.h = int(nh)
-                        if h and "b" in h:
-                            nh = hh + dy
-                            if nh >= 8:
-                                active.area.h = int(nh)
+                        rs = self.editor.tilemap.render_scale
+
+                        if h == "tl":
+                            old_r = orig.x + orig.w * rs
+                            old_b = orig.y + orig.h * rs
+                            nx = min(wx, old_r - 8 * rs)
+                            ny = min(wy, old_b - 8 * rs)
+                            active.area.x = int(nx)
+                            active.area.y = int(ny)
+                            active.area.w = max(8, int((old_r - nx) / rs))
+                            active.area.h = max(8, int((old_b - ny) / rs))
+                        elif h == "tr":
+                            old_b = orig.y + orig.h * rs
+                            nw = max(8, int((wx - orig.x) / rs))
+                            ny = min(wy, old_b - 8 * rs)
+                            active.area.w = nw
+                            active.area.y = int(ny)
+                            active.area.h = max(8, int((old_b - ny) / rs))
+                        elif h == "bl":
+                            old_r = orig.x + orig.w * rs
+                            nx = min(wx, old_r - 8 * rs)
+                            nh = max(8, int((wy - orig.y) / rs))
+                            active.area.x = int(nx)
+                            active.area.w = max(8, int((old_r - nx) / rs))
+                            active.area.h = nh
+                        elif h == "br":
+                            active.area.w = max(8, int((wx - orig.x) / rs))
+                            active.area.h = max(8, int((wy - orig.y) / rs))
+                        elif h == "l":
+                            old_r = orig.x + orig.w * rs
+                            nx = min(wx, old_r - 8 * rs)
+                            active.area.x = int(nx)
+                            active.area.w = max(8, int((old_r - nx) / rs))
+                        elif h == "r":
+                            active.area.w = max(8, int((wx - orig.x) / rs))
+                        elif h == "t":
+                            old_b = orig.y + orig.h * rs
+                            ny = min(wy, old_b - 8 * rs)
+                            active.area.y = int(ny)
+                            active.area.h = max(8, int((old_b - ny) / rs))
+                        elif h == "b":
+                            active.area.h = max(8, int((wy - orig.y) / rs))
                 return True
 
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 nm.set_active_node(None)
-                self._node_drag_state = None
-                self._node_drag_handle = None
+                self._clear_node_drag()
                 return True
             if event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
                 active = nm.get_active_node()
@@ -2119,54 +2207,7 @@ class TileGrid:
                             preview_surf.blit(tile_copy, (dest_x, dest_y))
 
         elif active_layer.layer_type == "object":
-            sel_rect = Rect(
-                ox1 * self.tile_size[0],
-                oy1 * self.tile_size[1],
-                (ox2 - ox1 + 1) * self.tile_size[0],
-                (oy2 - oy1 + 1) * self.tile_size[1],
-            )
-            for obj_id, obj in active_layer.get_all_objects().items():
-                area = obj["area"]
-                obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
-                if not sel_rect.contains(obj_rect):
-                    continue
-
-                ttype = obj["ttype"]
-                if ttype not in tileset_map:
-                    continue
-
-                tileset_data = tileset_map[ttype]
-                base_surf = tileset_data.surface
-                variant_id = obj["variant"]
-                obj_w, obj_h = area["w"], area["h"]
-
-                if tileset_data.tileset_type == "object":
-                    src_rect = Rect(0, 0, obj_w, obj_h)
-                else:
-                    sheet_w = base_surf.get_width()
-                    sheet_cols = sheet_w // tile_w
-                    src_x = (variant_id % sheet_cols) * tile_w
-                    src_y = (variant_id // sheet_cols) * tile_h
-                    src_rect = Rect(src_x, src_y, obj_w, obj_h)
-
-                new_x = area["x"] + dx
-                new_y = area["y"] + dy
-                dest_x = (new_x - self.scroll_x) * self.zoom_level
-                dest_y = (new_y - self.scroll_y) * self.zoom_level
-
-                if self.zoom_level != 1.0 or rs != 1.0:
-                    scaled_w = int(obj_w * rs * self.zoom_level)
-                    scaled_h = int(obj_h * rs * self.zoom_level)
-                    if base_surf.get_rect().contains(src_rect):
-                        sub = base_surf.subsurface(src_rect)
-                        scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
-                        scaled_sub.set_alpha(160)
-                        preview_surf.blit(scaled_sub, (dest_x, dest_y))
-                else:
-                    if base_surf.get_rect().contains(src_rect):
-                        tile_copy = base_surf.subsurface(src_rect).copy()
-                        tile_copy.set_alpha(160)
-                        preview_surf.blit(tile_copy, (dest_x, dest_y))
+            return
 
         screen.blit(preview_surf, self.rect.topleft)
 
