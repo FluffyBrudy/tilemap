@@ -776,6 +776,206 @@ class TestTtypeNormalization:
 # Propagation — neighbor changes cascade
 # ===================================================================
 
+# ===================================================================
+# Multi-group scenario (the reported bug)
+# ===================================================================
+
+class TestMultiGroupScenario:
+    """Reproduce the reported bug: autotile group A then group B.
+
+    Scenario: two tilesets (ts0=grass, ts1=water), each with its own
+    autotile group and rules.  Paint grass at (5,5), then water at (5,6).
+    Expected: grass matches grass rules, water matches water rules.
+    """
+
+    def test_paint_grass_first_then_water_neighbor(self):
+        layer = Layer("test")
+
+        # --- Rules ---
+        # Grass group (tileset 0): solo + top neighbor
+        g_solo = make_rule("g_solo", set(),           variant_ids=[0], tileset_index=0, group_id="Grass")
+        g_top  = make_rule("g_top",  {(0, -1)},       variant_ids=[1], tileset_index=0, group_id="Grass")
+        # Water group (tileset 1): solo + top neighbor
+        w_solo = make_rule("w_solo", set(),           variant_ids=[0], tileset_index=1, group_id="Water")
+        w_top  = make_rule("w_top",  {(0, -1)},       variant_ids=[1], tileset_index=1, group_id="Water")
+
+        all_rules = [g_solo, g_top, w_solo, w_top]
+
+        # --- Step 1: place grass at (5,5), autotile ---
+        set_tiles(layer, tile((5, 5), ttype=0, variant=0, autotile_group="Grass"))
+        layer._autotile_tiles(all_rules, [(5, 5)])
+        # grass at (5,5): 0 grass neighbors → g_solo matches → variant 0 is in [0] → no change
+        assert layer.tiles[(5, 5)]["variant"] == 0, "grass solo should keep variant 0"
+        assert layer.tiles[(5, 5)].get("autotile_group") == "Grass"
+
+        # --- Step 2: place water at (5,6), autotile (simulates painting water) ---
+        set_tiles(layer, tile((5, 6), ttype=1, variant=0, autotile_group="Water"))
+
+        # autotile_at_pos((5,6)) processes (5,6) AND all 8 neighbors including (5,5)
+        positions = [(5, 6)]
+        for dx, dy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
+            positions.append((5+dx, 6+dy))
+        existing = [p for p in positions if p in layer.tiles]
+        changes = layer._autotile_tiles(all_rules, existing)
+
+        # Water tile at (5,6): should use Water group rules
+        w_tile = layer.tiles[(5, 6)]
+        assert w_tile.get("autotile_group") == "Water", "water tile should keep Water group"
+        # Water has NO water neighbors → w_solo matches → variant should be 0
+        assert w_tile["variant"] == 0, (
+            f"water solo should keep variant 0, got {w_tile['variant']}"
+        )
+
+        # Grass tile at (5,5): should NOT be changed to a water variant
+        g_tile = layer.tiles[(5, 5)]
+        assert g_tile.get("autotile_group") == "Grass", "grass tile should keep Grass group"
+        # grass still has 0 grass neighbors → g_solo → variant stays 0
+        assert g_tile["variant"] == 0, (
+            f"grass tile should keep variant 0, got {g_tile['variant']}"
+        )
+
+    def test_autotile_at_pos_multi_group(self):
+        """Simulates real editor flow: paint grass then water via autotile_at_pos."""
+        layer = Layer("test")
+
+        g_solo = make_rule("g_solo", set(),           variant_ids=[0], tileset_index=0, group_id="Grass")
+        g_top  = make_rule("g_top",  {(0, -1)},       variant_ids=[1], tileset_index=0, group_id="Grass")
+        w_solo = make_rule("w_solo", set(),           variant_ids=[0], tileset_index=1, group_id="Water")
+        w_top  = make_rule("w_top",  {(0, -1)},       variant_ids=[1], tileset_index=1, group_id="Water")
+        all_rules = [g_solo, g_top, w_solo, w_top]
+
+        # Step 1: paint grass at (5,5)
+        set_tiles(layer, tile((5, 5), ttype=0, variant=0, autotile_group="Grass"))
+        layer.autotile_at_pos((5, 5), all_rules)
+        g = layer.tiles[(5, 5)]
+        print(f"After grass: pos=(5,5) group={g.get('autotile_group')} variant={g['variant']}")
+        assert g.get("autotile_group") == "Grass"
+        assert g["variant"] == 0  # solo, no neighbors
+
+        # Step 2: paint grass at (5,6) — neighbor to (5,5)
+        set_tiles(layer, tile((5, 6), ttype=0, variant=0, autotile_group="Grass"))
+        layer.autotile_at_pos((5, 6), all_rules)
+        g1 = layer.tiles[(5, 5)]
+        g2 = layer.tiles[(5, 6)]
+        print(f"After 2nd grass: (5,5) group={g1.get('autotile_group')} variant={g1['variant']}")
+        print(f"After 2nd grass: (5,6) group={g2.get('autotile_group')} variant={g2['variant']}")
+        # (5,6) has (5,5) above it at (0,-1) → g_top → variant 1
+        # (5,5) has (5,6) below it at (0,1) → no rule for (0,1) → g_solo → variant 0
+        assert g2["variant"] == 1, f"grass bottom should be variant 1, got {g2['variant']}"
+
+        # Step 3: paint water at (5,7) — neighbor to grass at (5,6)
+        set_tiles(layer, tile((5, 7), ttype=1, variant=0, autotile_group="Water"))
+        layer.autotile_at_pos((5, 7), all_rules)
+        w = layer.tiles[(5, 7)]
+        print(f"After water: (5,7) group={w.get('autotile_group')} variant={w['variant']}")
+        # water solo, no water neighbors → variant 0
+        assert w.get("autotile_group") == "Water"
+        assert w["variant"] == 0, f"water should be variant 0, got {w['variant']}"
+
+        # Grass tiles should be UNCHANGED by water placement
+        g1 = layer.tiles[(5, 5)]
+        g2 = layer.tiles[(5, 6)]
+        assert g1["variant"] == 0, f"grass (5,5) should still be 0, got {g1['variant']}"
+        assert g2["variant"] == 1, f"grass (5,6) should still be 1, got {g2['variant']}"
+        assert g1.get("autotile_group") == "Grass"
+        assert g2.get("autotile_group") == "Grass"
+
+    def test_variant_to_group_auto_detects_group(self):
+        """variant_to_group property maps (ts_idx, vid) → group_id for auto-stamping."""
+        from widgets.autotiler import AutotileRuleDesigner, AutotileGroup, AutotileRule
+
+        d = AutotileRuleDesigner.__new__(AutotileRuleDesigner)
+        d.groups = [
+            AutotileGroup("Grass", [
+                AutotileRule("g_solo", set(), variant_ids=[0, 1], tileset_index=0, group_id="Grass"),
+            ]),
+            AutotileGroup("Water", [
+                AutotileRule("w_solo", set(), variant_ids=[2, 3], tileset_index=0, group_id="Water"),
+            ]),
+        ]
+        for g in d.groups:
+            for r in g.rules:
+                r.group_id = g.name
+
+        mapping = d.variant_to_group
+        assert mapping[(0, 0)] == "Grass"
+        assert mapping[(0, 1)] == "Grass"
+        assert mapping[(0, 2)] == "Water"
+        assert mapping[(0, 3)] == "Water"
+        # Variant not in any rule → not mapped
+        assert (0, 99) not in mapping
+
+    def test_variant_to_group_first_group_wins(self):
+        """If two groups define the same (ts_idx, vid), first group wins."""
+        from widgets.autotiler import AutotileRuleDesigner, AutotileGroup, AutotileRule
+
+        d = AutotileRuleDesigner.__new__(AutotileRuleDesigner)
+        d.groups = [
+            AutotileGroup("A", [
+                AutotileRule("a", set(), variant_ids=[0], tileset_index=0, group_id="A"),
+            ]),
+            AutotileGroup("B", [
+                AutotileRule("b", set(), variant_ids=[0], tileset_index=0, group_id="B"),
+            ]),
+        ]
+        for g in d.groups:
+            for r in g.rules:
+                r.group_id = g.name
+
+        mapping = d.variant_to_group
+        assert mapping[(0, 0)] == "A", "first group should win"
+
+    def test_wrong_group_does_not_cross_tilesets(self):
+        """
+        Even with wrong autotile_group, the tileset_index check in rule
+        matching prevents cross-contamination.  A water tile (ttype=1)
+        stamped with "Grass" group cannot match grass rules (tileset_index=0).
+        """
+        layer = Layer("test")
+        g_solo = make_rule("g_solo", set(),           variant_ids=[0], tileset_index=0, group_id="Grass")
+        g_top  = make_rule("g_top",  {(0, -1)},       variant_ids=[1], tileset_index=0, group_id="Grass")
+        w_solo = make_rule("w_solo", set(),           variant_ids=[0], tileset_index=1, group_id="Water")
+        all_rules = [g_solo, g_top, w_solo]
+
+        set_tiles(layer, tile((5, 5), ttype=0, variant=0, autotile_group="Grass"))
+        set_tiles(layer, tile((5, 6), ttype=1, variant=0, autotile_group="Grass"))
+
+        positions = [(5, 6)]
+        for dx, dy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
+            positions.append((5+dx, 6+dy))
+        existing = [p for p in positions if p in layer.tiles]
+        layer._autotile_tiles(all_rules, existing)
+
+        # Water tile has ttype=1, grass rules have tileset_index=0 → no match
+        # Water tile keeps its original variant
+        assert layer.tiles[(5, 6)]["variant"] == 0
+        assert layer.tiles[(5, 5)]["variant"] == 0
+
+    def test_water_with_water_neighbor(self):
+        """Two adjacent water tiles → top neighbor pattern matches."""
+        layer = Layer("test")
+        g_solo = make_rule("g_solo", set(),           variant_ids=[0], tileset_index=0, group_id="Grass")
+        w_solo = make_rule("w_solo", set(),           variant_ids=[0], tileset_index=1, group_id="Water")
+        w_top  = make_rule("w_top",  {(0, -1)},       variant_ids=[1], tileset_index=1, group_id="Water")
+        all_rules = [g_solo, w_solo, w_top]
+
+        # Place water at (5,5) and (5,4) — (5,4) is above (5,5)
+        set_tiles(layer,
+            tile((5, 4), ttype=1, variant=0, autotile_group="Water"),
+            tile((5, 5), ttype=1, variant=0, autotile_group="Water"),
+        )
+        # Autotile both
+        changes = layer._autotile_tiles(all_rules, [(5, 4), (5, 5)])
+        # (5,5) has neighbor (5,4) at (0,-1) → w_top matches → variant 1
+        # (5,4) has no water neighbor above it → w_solo → variant 0
+        assert layer.tiles[(5, 5)]["variant"] == 1, (
+            f"water bottom should be variant 1, got {layer.tiles[(5,5)]['variant']}"
+        )
+        assert layer.tiles[(5, 4)]["variant"] == 0, (
+            f"water top should be variant 0, got {layer.tiles[(5,4)]['variant']}"
+        )
+
+
 class TestPropagation:
     def test_neighbor_variant_change_triggers_re_evaluation(self):
         """

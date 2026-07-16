@@ -4,8 +4,9 @@ Supports multiple layers with independent tile and object data.
 """
 
 import random
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Any
-from ttypes.tilemap import TypeTile, TypeObject
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+
+from ttypes.tilemap import TypeObject, TypeTile
 
 if TYPE_CHECKING:
     from widgets.autotiler import AutotileRule
@@ -78,9 +79,7 @@ class Layer:
         existing_positions = [p for p in positions if p in self.tiles]
         return self._autotile_tiles(rules, existing_positions)
 
-    def _autotile_tiles(
-        self, rules: List["AutotileRule"], positions: List[Tuple[int, int]]
-    ) -> int:
+    def _autotile_tiles(self, rules: List["AutotileRule"], positions: List[Tuple[int, int]]) -> int:
         """
         Internal helper to update specific tiles according to autotile rules.
 
@@ -97,12 +96,7 @@ class Layer:
         if not rules or not positions:
             return 0
 
-        rules_hash = hash(
-            tuple(
-                (r.group_id, r.tileset_index, tuple(sorted(r.variant_ids)))
-                for r in rules
-            )
-        )
+        rules_hash = hash(tuple((r.group_id, r.tileset_index, tuple(sorted(r.variant_ids))) for r in rules))
 
         if self._autotile_cache["rules_hash"] != rules_hash:
             variant_to_group: Dict[Tuple[int, int], str] = {}
@@ -180,21 +174,23 @@ class Layer:
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            neighbor_offsets_set = {
-                n for n in actual_neighbors if n in significant_offsets
-            }
+            neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
 
             matched_rule: Optional["AutotileRule"] = None
+            new_variant: Optional[int] = None
             for rule in group_rules:
-                if (
-                    rule.neighbors == neighbor_offsets_set
-                    and rule.tileset_index == ttype
-                ):
+                if rule.neighbors == neighbor_offsets_set and rule.tileset_index == ttype:
                     matched_rule = rule
                     break
 
             if matched_rule and matched_rule.variant_ids:
-                new_variant = random.choice(matched_rule.variant_ids)
+                # only reroll if current variant isnt already
+                # in the matched rule's set to prevents re-randomization
+                # of neighbors whose pattern hasnt actually changed.
+                if current_variant not in matched_rule.variant_ids:
+                    new_variant = random.choice(matched_rule.variant_ids)
+                else:
+                    new_variant = current_variant
 
                 if new_variant != current_variant:
                     tile["variant"] = new_variant
@@ -238,12 +234,7 @@ class Layer:
         while queue:
             curr = queue.pop(0)
 
-            if (
-                curr[0] < 0
-                or curr[0] >= map_size[0]
-                or curr[1] < 0
-                or curr[1] >= map_size[1]
-            ):
+            if curr[0] < 0 or curr[0] >= map_size[0] or curr[1] < 0 or curr[1] >= map_size[1]:
                 continue
 
             curr_tile = self.tiles.get(curr)
@@ -476,9 +467,7 @@ class LayerManager:
         if not manager.layers:
             manager.create_layer("Default")
 
-        if manager.active_layer_idx < 0 or manager.active_layer_idx >= len(
-            manager.layers
-        ):
+        if manager.active_layer_idx < 0 or manager.active_layer_idx >= len(manager.layers):
             manager.active_layer_idx = 0
 
         return manager
