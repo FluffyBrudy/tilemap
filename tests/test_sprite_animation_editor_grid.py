@@ -10,12 +10,12 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-from pathlib import Path
-import pytest
-import pygame
-from pygame import Rect
-
 import sys
+from pathlib import Path
+
+import pygame
+import pytest
+from pygame import Rect
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -34,8 +34,7 @@ def _make_editor(tile_size=(32, 32)):
     surf = pygame.Surface((128, 128))
     surf.fill((80, 80, 80))
     rect = Rect(0, 0, 900, 600)
-    ed = SpriteAnimationEditor(rect=rect, surface=surf, tile_size=tile_size)
-    return ed
+    return SpriteAnimationEditor(rect=rect, surface=surf, tile_size=tile_size)
 
 
 class TestApplyLibraryGridSettings:
@@ -114,7 +113,7 @@ class TestApplyLibraryGridSettings:
 
     def test_timeline_cache_cleared_after_apply(self):
         """_apply_library_grid_settings must invalidate the timeline's thumb cache."""
-        from plugins.sprite_animation.models import AnimationLibrary, AnimationFrame
+        from plugins.sprite_animation.models import AnimationFrame, AnimationLibrary
 
         ed = _make_editor(tile_size=(32, 32))
         ed.timeline.frames = [AnimationFrame(variant_id=0)]
@@ -145,3 +144,21 @@ class TestApplyLibraryGridSettings:
         ed.library = AnimationLibrary(tile_size=(24, 24), grid_offset=(0, 0))
         ed._apply_library_grid_settings()
         assert ed.library.tile_size == (24, 24)
+
+
+class TestSpriteAnimationKeyboardShortcuts:
+    def test_ctrl_shift_s_opens_save_dialog(self, monkeypatch):
+        ed = _make_editor()
+
+        calls: list[str] = []
+        monkeypatch.setattr(ed, "_save_dialog", lambda: calls.append("save_dialog"))
+        monkeypatch.setattr(ed, "_quick_save", lambda: calls.append("quick_save"))
+
+        old_mods = pygame.key.get_mods()
+        try:
+            pygame.key.set_mods(pygame.KMOD_CTRL | pygame.KMOD_SHIFT)
+            event = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_s})
+            assert ed.handle_event(event) is True
+            assert calls == ["save_dialog"]
+        finally:
+            pygame.key.set_mods(old_mods)

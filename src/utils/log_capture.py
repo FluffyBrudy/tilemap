@@ -2,7 +2,7 @@ import atexit
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+
 from constants import MAX_LOG_FILES
 
 
@@ -47,7 +47,7 @@ class StreamTee:
         return -1
 
 
-def _ensure_log_dir(base_path: Path) -> Optional[Path]:
+def _ensure_log_dir(base_path: Path) -> Path | None:
     candidates = [
         base_path / "data" / "logs",
         base_path / "logs",
@@ -66,7 +66,7 @@ def _ensure_log_dir(base_path: Path) -> Optional[Path]:
     return None
 
 
-def setup_console_log(base_path: Path, prefix: str = "tilemap") -> Optional[Path]:
+def setup_console_log(base_path: Path, prefix: str = "tilemap") -> Path | None:
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 

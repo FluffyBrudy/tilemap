@@ -1,10 +1,9 @@
+
 import pygame
-from typing import Optional
 from pygame import Rect
 
-from .widget_base import WidgetBase
 from .ui.theme import COLORS, FONTS, SHAPE
-from .ui.draw_utils import draw_panel
+from .widget_base import WidgetBase
 
 
 class InputBox(WidgetBase):
@@ -13,7 +12,7 @@ class InputBox(WidgetBase):
         self._text = ""
         self.is_focused = False
         self.cursor_pos = 0
-        self.selection_start: Optional[int] = None
+        self.selection_start: int | None = None
         self.allowed_chars = allowed_chars
         self.font = font or FONTS.get_font(16)
 
@@ -80,13 +79,31 @@ class InputBox(WidgetBase):
     def clear_selection(self) -> None:
         self.selection_start = None
 
+    def delete_word_left(self) -> None:
+        if self.selection_start is not None:
+            start = min(self.selection_start, self.cursor_pos)
+            end = max(self.selection_start, self.cursor_pos)
+            self._text = self._text[:start] + self._text[end:]
+            self.cursor_pos = start
+            self.selection_start = None
+            return
+        if self.cursor_pos == 0:
+            return
+        idx = self.cursor_pos - 1
+        while idx >= 0 and self._text[idx] == " ":
+            idx -= 1
+        while idx >= 0 and self._text[idx] != " ":
+            idx -= 1
+        self._text = self._text[: idx + 1] + self._text[self.cursor_pos :]
+        self.cursor_pos = idx + 1
+
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.is_focused = self.rect.collidepoint(event.pos)
             if self.is_focused:
                 mouse_x = event.pos[0] - self.content_rect.x
                 self.cursor_pos = 0
-                for i, char in enumerate(self._text):
+                for i, _char in enumerate(self._text):
                     if self.font.size(self._text[: i + 1])[0] > mouse_x:
                         self.cursor_pos = i
                         break
@@ -103,29 +120,31 @@ class InputBox(WidgetBase):
                 self.select_all()
                 return True
 
+            if ctrl_held and event.key == pygame.K_BACKSPACE:
+                self.delete_word_left()
+                return True
+
             if event.key == pygame.K_LEFT:
                 self.move_cursor(-1)
                 return True
-            elif event.key == pygame.K_RIGHT:
+            if event.key == pygame.K_RIGHT:
                 self.move_cursor(1)
                 return True
-            elif event.key == pygame.K_HOME:
+            if event.key == pygame.K_HOME:
                 self.move_cursor(-self.cursor_pos)
                 return True
-            elif event.key == pygame.K_END:
+            if event.key == pygame.K_END:
                 self.move_cursor(len(self._text) - self.cursor_pos)
                 return True
-            elif event.key == pygame.K_BACKSPACE:
+            if event.key == pygame.K_BACKSPACE:
                 self.delete_char(forward=False)
                 return True
-            elif event.key == pygame.K_DELETE:
+            if event.key == pygame.K_DELETE:
                 self.delete_char(forward=True)
                 return True
-            elif event.key == pygame.K_RETURN:
+            if event.key == pygame.K_RETURN or event.key == pygame.K_TAB:
                 return False
-            elif event.key == pygame.K_TAB:
-                return False
-            elif event.unicode:
+            if event.unicode:
                 self.insert_text(event.unicode)
                 return True
 
@@ -196,8 +215,8 @@ class BaseTextInput:
         label: str,
         key: str,
         default_val: str = "",
-        tab_index: Optional[int] = None,
-        allowed_chars: Optional[str] = None,
+        tab_index: int | None = None,
+        allowed_chars: str | None = None,
     ):
         self.rect_area = rect
         self.label = label
@@ -290,7 +309,7 @@ class TextInput(BaseTextInput):
         label: str,
         key: str,
         default_val: str = "",
-        tab_index: Optional[int] = None,
+        tab_index: int | None = None,
     ):
         super().__init__(rect, label, key, default_val, tab_index, allowed_chars=None)
 
@@ -300,13 +319,13 @@ class InlineTextInput:
         self,
         key: str,
         default_val: str = "",
-        allowed_chars: Optional[str] = None,
+        allowed_chars: str | None = None,
     ):
         self.key = key
         self.text = default_val
         self.is_focused = False
         self.cursor_pos = len(default_val)
-        self.selection_start: Optional[int] = None
+        self.selection_start: int | None = None
         self.allowed_chars = allowed_chars
 
     def is_char_allowed(self, char: str) -> bool:
@@ -402,26 +421,24 @@ class InlineTextInput:
             if event.key == pygame.K_LEFT:
                 self.move_cursor(-1)
                 return True
-            elif event.key == pygame.K_RIGHT:
+            if event.key == pygame.K_RIGHT:
                 self.move_cursor(1)
                 return True
-            elif event.key == pygame.K_HOME:
+            if event.key == pygame.K_HOME:
                 self.move_cursor(-self.cursor_pos)
                 return True
-            elif event.key == pygame.K_END:
+            if event.key == pygame.K_END:
                 self.move_cursor(len(self.text) - self.cursor_pos)
                 return True
-            elif event.key == pygame.K_BACKSPACE:
+            if event.key == pygame.K_BACKSPACE:
                 self.delete_char(forward=False)
                 return True
-            elif event.key == pygame.K_DELETE:
+            if event.key == pygame.K_DELETE:
                 self.delete_char(forward=True)
                 return True
-            elif event.key == pygame.K_RETURN:
+            if event.key == pygame.K_RETURN or event.key == pygame.K_TAB:
                 return False
-            elif event.key == pygame.K_TAB:
-                return False
-            elif event.unicode:
+            if event.unicode:
                 self.insert_text(event.unicode)
                 return True
 
@@ -442,7 +459,7 @@ class DigitInput(BaseTextInput):
         label: str,
         key: str,
         default_val: str = "",
-        tab_index: Optional[int] = None,
+        tab_index: int | None = None,
     ):
         super().__init__(
             rect, label, key, default_val, tab_index, allowed_chars="0123456789"

@@ -16,14 +16,10 @@ import os
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-import json
+import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
-
-import pytest
-
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -188,7 +184,6 @@ class TestLaunchAnimationEditorRouting:
         without touching actual subprocess or the file system.
         """
         from pathlib import Path
-        import types
 
         # We only need the two methods from editor.py. Use a plain namespace.
         class MinEditor:

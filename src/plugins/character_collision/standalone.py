@@ -13,7 +13,6 @@ import argparse
 import sys
 from pathlib import Path
 
-
 _current_file = Path(__file__).resolve()
 _src_dir = _current_file.parent.parent.parent
 if str(_src_dir) not in sys.path:
@@ -25,7 +24,8 @@ try:
     from .editor import CharacterCollisionEditor
 except ImportError:
     from plugins.character_collision.editor import CharacterCollisionEditor
-from utils import error_handler, error_context
+from utils import error_context, error_handler
+from utils.standalone import load_standalone_theme
 
 
 def parse_window_size(s: str) -> tuple[int, int]:
@@ -55,7 +55,9 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument(
             "image",
             type=Path,
-            help="Path to a character sprite image (PNG, JPG, etc.)",
+            nargs="?",
+            default=None,
+            help="Path to a character sprite image (optional — start blank)",
         )
         parser.add_argument(
             "--name",
@@ -86,7 +88,7 @@ def main(argv: list[str] | None = None) -> None:
 
         data_root = args.data_root
 
-        if not args.image.exists():
+        if args.image is not None and not args.image.exists():
             error_handler.capture(
                 Exception(f"File not found: {args.image}"),
                 context="character_collision_editor_args",
@@ -98,8 +100,13 @@ def main(argv: list[str] | None = None) -> None:
             window_size = parse_window_size(args.window_size)
 
             pygame.init()
-            pygame.display.set_caption(f"Character Collision Editor — {args.name}")
+            caption = f"Character Collision Editor — {args.name}"
+            if args.image is not None:
+                caption += f" [{args.image.name}]"
+            pygame.display.set_caption(caption)
             pygame.display.set_mode(window_size, pygame.RESIZABLE)
+
+            load_standalone_theme()
 
             editor = CharacterCollisionEditor.from_path(
                 args.image,

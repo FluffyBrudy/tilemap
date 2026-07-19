@@ -1,7 +1,7 @@
+import time
+
 import pygame
 from pygame import Rect, Surface
-import time
-from typing import List
 
 
 class Notification:
@@ -20,7 +20,7 @@ class Notification:
 class NotificationManager:
     def __init__(self, editor):
         self.editor = editor
-        self.notifications: List[Notification] = []
+        self.notifications: list[Notification] = []
         self.font = pygame.font.SysFont("Arial", 14, bold=True)
 
     def notify(self, text: str, color=(200, 200, 200), duration=3.0):

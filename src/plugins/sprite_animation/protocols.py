@@ -8,7 +8,7 @@ inheritance required, just implement the methods.
 
 from __future__ import annotations
 
-from typing import Protocol, Tuple, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import pygame
 
@@ -26,7 +26,7 @@ class SpriteSheetProvider(Protocol):
         """Return the full spritesheet surface."""
         ...
 
-    def get_tile_size(self) -> Tuple[int, int]:
+    def get_tile_size(self) -> tuple[int, int]:
         """Return (tile_width, tile_height) in pixels."""
         ...
 

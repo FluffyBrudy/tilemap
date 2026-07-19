@@ -1,3 +1,32 @@
+target-version = "py311"
 line-length = 88
-select = ["E722", "E701", "F821", "F841"]
-ignore = []
+
+[lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "A",
+    "C4",
+    "PIE",
+    "RET",
+    "SIM",
+    "ASYNC",
+]
+
+ignore = [
+    "E501",
+    "E203",
+    "SIM105",
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"tests/*" = ["F401", "F811"]
+
+[lint.isort]
+known-first-party = ["tilemap_editor"]

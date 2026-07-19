@@ -3,16 +3,16 @@ Standalone Image Viewer with Grid/Spritesheet Support
 Opens images in a scrollable window with optional grid overlay for spritesheets.
 """
 
-import pygame
 import sys
 from pathlib import Path
-from typing import Tuple
+
+import pygame
 
 
 class ImageViewer:
     """Standalone image viewer with scrolling and grid support."""
 
-    def __init__(self, image_path: Path, window_size: Tuple[int, int] = (1000, 700)):
+    def __init__(self, image_path: Path, window_size: tuple[int, int] = (1000, 700)):
         """Initialize the image viewer.
 
         Args:
@@ -114,9 +114,8 @@ class ImageViewer:
                     self.scroll_y -= event.y * self.scroll_speed
                     self.clamp_scroll()
 
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    self.handle_mouse_click(event.pos)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self.handle_mouse_click(event.pos)
 
     def handle_general_keydown(self, event):
         """Handle keyboard input when not in text input mode."""

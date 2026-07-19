@@ -12,16 +12,17 @@ Features:
 
 from __future__ import annotations
 
-import math
-from typing import List, Tuple, Optional, Callable, Dict, Any
-from enum import Enum, auto
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Any
 
 import pygame
 from pygame import Rect, Surface
 
-from widgets.ui.theme import COLORS, SHAPE
-from utils.font_manager import font_manager, FontWeight
+from utils.font_manager import FontWeight, font_manager
+from widgets.ui.drag_tracker import ResizeEdge, ResizeTracker
+from widgets.ui.theme import COLORS
 
 
 class ResizeHandle(Enum):
@@ -46,7 +47,7 @@ class Region:
     rect: Rect
     name: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "rect": [self.rect.x, self.rect.y, self.rect.width, self.rect.height],
@@ -54,7 +55,7 @@ class Region:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Region":
+    def from_dict(cls, data: dict[str, Any]) -> Region:
         r = data.get("rect", [0, 0, 32, 32])
         return cls(
             id=data.get("id", ""),
@@ -78,52 +79,58 @@ class RegionSelector:
     def __init__(
         self,
         rect: Rect,
-        image: Optional[Surface] = None,
+        image: Surface | None = None,
         zoom: float = 1.0,
     ):
         self.rect = rect
         self.image = image
         self.zoom = zoom
 
-        self.regions: List[Region] = []
-        self.selected_id: Optional[str] = None
+        self.regions: list[Region] = []
+        self.selected_id: str | None = None
 
-        self._hover_region_id: Optional[str] = None
+        self._hover_region_id: str | None = None
         self._hover_handle = ResizeHandle.NONE
         self._dragging = False
-        self._drag_start_mouse: Tuple[int, int] = (0, 0)
+        self._drag_start_image: tuple[float, float] = (0.0, 0.0)
         self._drag_start_rect: Rect = Rect(0, 0, 0, 0)
         self._creating = False
-        self._create_start: Tuple[int, int] = (0, 0)
+        self._create_start: tuple[int, int] = (0, 0)
         self._resizing = False
+        self._resize_tracker = ResizeTracker()
 
         self.scroll_x = 0
         self.scroll_y = 0
         self._panning = False
         self._pan_mode = False
-        self._pan_start: Tuple[int, int] = (0, 0)
-        self._pan_start_scroll: Tuple[int, int] = (0, 0)
+        self._pan_start: tuple[int, int] = (0, 0)
+        self._pan_start_scroll: tuple[int, int] = (0, 0)
 
         self._font = font_manager.get_font("Arial", 11, FontWeight.REGULAR)
         self._font_sm = font_manager.get_font("Arial", 10, FontWeight.REGULAR)
 
-        self.on_region_added: Optional[Callable[[Region], None]] = None
-        self.on_region_removed: Optional[Callable[[str], None]] = None
-        self.on_region_modified: Optional[Callable[[Region], None]] = None
-        self.on_selection_changed: Optional[Callable[[Optional[str]], None]] = None
+        self.on_region_added: Callable[[Region], None] | None = None
+        self.on_region_removed: Callable[[str], None] | None = None
+        self.on_region_modified: Callable[[Region], None] | None = None
+        self.on_selection_changed: Callable[[str | None], None] | None = None
 
-    def _image_to_screen(self, x: int, y: int) -> Tuple[int, int]:
+    def _image_to_screen(self, x: int, y: int) -> tuple[int, int]:
         """Convert image coordinates to screen coordinates"""
         return (
             self.rect.x + int(x * self.zoom) - self.scroll_x,
             self.rect.y + int(y * self.zoom) - self.scroll_y,
         )
 
-    def _screen_to_image(self, x: int, y: int) -> Tuple[int, int]:
-        """Convert screen coordinates to image coordinates"""
+    def _screen_to_image(self, x: int, y: int) -> tuple[int, int]:
         return (
             int((x - self.rect.x + self.scroll_x) / self.zoom),
             int((y - self.rect.y + self.scroll_y) / self.zoom),
+        )
+
+    def _screen_to_image_float(self, x: int, y: int) -> tuple[float, float]:
+        return (
+            (x - self.rect.x + self.scroll_x) / self.zoom,
+            (y - self.rect.y + self.scroll_y) / self.zoom,
         )
 
     def _clamp_scroll(self) -> None:
@@ -155,7 +162,7 @@ class RegionSelector:
         h = int(region.rect.height * self.zoom)
         return Rect(x, y, w, h)
 
-    def _get_handle_rects(self, region: Region) -> Dict[ResizeHandle, Rect]:
+    def _get_handle_rects(self, region: Region) -> dict[ResizeHandle, Rect]:
         """Get resize handle rects in screen coordinates"""
         r = self._get_region_screen_rect(region)
         hs = self.HANDLE_SIZE
@@ -172,8 +179,22 @@ class RegionSelector:
             ResizeHandle.BOTTOM_RIGHT: Rect(r.right - hs2, r.bottom - hs2, hs, hs),
         }
 
+    @staticmethod
+    def _handle_to_edges(handle: ResizeHandle) -> ResizeEdge:
+        mapping = {
+            ResizeHandle.LEFT: ResizeEdge.LEFT,
+            ResizeHandle.RIGHT: ResizeEdge.RIGHT,
+            ResizeHandle.TOP: ResizeEdge.TOP,
+            ResizeHandle.BOTTOM: ResizeEdge.BOTTOM,
+            ResizeHandle.TOP_LEFT: ResizeEdge.LEFT | ResizeEdge.TOP,
+            ResizeHandle.TOP_RIGHT: ResizeEdge.RIGHT | ResizeEdge.TOP,
+            ResizeHandle.BOTTOM_LEFT: ResizeEdge.LEFT | ResizeEdge.BOTTOM,
+            ResizeHandle.BOTTOM_RIGHT: ResizeEdge.RIGHT | ResizeEdge.BOTTOM,
+        }
+        return mapping.get(handle, ResizeEdge(0))
+
     def _get_handle_at(
-        self, screen_pos: Tuple[int, int], region: Region
+        self, screen_pos: tuple[int, int], region: Region
     ) -> ResizeHandle:
         """Get resize handle at screen position"""
         handles = self._get_handle_rects(region)
@@ -182,7 +203,7 @@ class RegionSelector:
                 return handle
         return ResizeHandle.NONE
 
-    def _find_region_at(self, screen_pos: Tuple[int, int]) -> Optional[str]:
+    def _find_region_at(self, screen_pos: tuple[int, int]) -> str | None:
         """Find region ID at screen position (returns topmost)"""
 
         for region in reversed(self.regions):
@@ -238,20 +259,20 @@ class RegionSelector:
                 return True
         return False
 
-    def get_region(self, region_id: str) -> Optional[Region]:
+    def get_region(self, region_id: str) -> Region | None:
         """Get region by ID"""
         for region in self.regions:
             if region.id == region_id:
                 return region
         return None
 
-    def get_selected_region(self) -> Optional[Region]:
+    def get_selected_region(self) -> Region | None:
         """Get currently selected region"""
         if self.selected_id:
             return self.get_region(self.selected_id)
         return None
 
-    def select_region(self, region_id: Optional[str]) -> None:
+    def select_region(self, region_id: str | None) -> None:
         """Select a region by ID"""
         if region_id != self.selected_id:
             self.selected_id = region_id
@@ -266,12 +287,11 @@ class RegionSelector:
         mouse = pygame.mouse.get_pos()
         in_bounds = self.rect.collidepoint(mouse)
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                self._pan_mode = not self._pan_mode
-                if not self._pan_mode and self._panning:
-                    self._panning = False
-                return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+            self._pan_mode = not self._pan_mode
+            if not self._pan_mode and self._panning:
+                self._panning = False
+            return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if (
@@ -290,12 +310,11 @@ class RegionSelector:
                 self._pan_start_scroll = (self.scroll_x, self.scroll_y)
                 return True
 
-        if event.type == pygame.MOUSEBUTTONUP:
-            if (
-                event.button == 2 or (event.button == 1 and self._pan_mode)
-            ) and self._panning:
-                self._panning = False
-                return True
+        if event.type == pygame.MOUSEBUTTONUP and (
+            event.button == 2 or (event.button == 1 and self._pan_mode)
+        ) and self._panning:
+            self._panning = False
+            return True
 
         if event.type == pygame.MOUSEMOTION:
             if self._panning:
@@ -306,7 +325,7 @@ class RegionSelector:
                 self._clamp_scroll()
                 return True
 
-            if in_bounds:
+            if in_bounds and not self._resizing and not self._dragging:
                 self._update_hover(mouse)
 
         if event.type == pygame.MOUSEWHEEL and in_bounds:
@@ -325,23 +344,27 @@ class RegionSelector:
             return True
 
         if event.type == pygame.KEYDOWN:
-            old_zoom = self.zoom
-            if event.key == pygame.K_EQUALS or event.key == pygame.K_KP_PLUS:
-                self.zoom = min(self.zoom * 1.15, 8.0)
-            elif event.key == pygame.K_MINUS or event.key == pygame.K_KP_MINUS:
-                self.zoom = max(self.zoom * 0.87, 0.25)
-            else:
-                return False
+            is_zoom = event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS, pygame.K_MINUS, pygame.K_KP_MINUS)
+            if is_zoom:
+                old_zoom = self.zoom
+                if event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    self.zoom = min(self.zoom * 1.15, 8.0)
+                else:
+                    self.zoom = max(self.zoom * 0.87, 0.25)
 
-            if self.image:
-                cx = self.rect.width // 2
-                cy = self.rect.height // 2
-                img_x = (cx + self.scroll_x) / old_zoom
-                img_y = (cy + self.scroll_y) / old_zoom
-                self.scroll_x = int(img_x * self.zoom - cx)
-                self.scroll_y = int(img_y * self.zoom - cy)
-                self._clamp_scroll()
-            return True
+                if self.image:
+                    cx = mouse[0] - self.rect.x
+                    cy = mouse[1] - self.rect.y
+                    img_x = (cx + self.scroll_x) / old_zoom
+                    img_y = (cy + self.scroll_y) / old_zoom
+                    self.scroll_x = int(img_x * self.zoom - cx)
+                    self.scroll_y = int(img_y * self.zoom - cy)
+                    self._clamp_scroll()
+                return True
+
+            if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE) and self.selected_id:
+                self.remove_region(self.selected_id)
+                return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if not in_bounds:
@@ -353,15 +376,14 @@ class RegionSelector:
                 if handle != ResizeHandle.NONE:
                     self._resizing = True
                     self._hover_handle = handle
-                    self._drag_start_mouse = mouse
-                    self._drag_start_rect = Rect(selected.rect)
+                    self._resize_tracker.begin(selected.rect.x, selected.rect.y, selected.rect.w, selected.rect.h)
                     return True
 
             hit_id = self._find_region_at(mouse)
             if hit_id:
                 self.select_region(hit_id)
                 self._dragging = True
-                self._drag_start_mouse = mouse
+                self._drag_start_image = self._screen_to_image_float(mouse[0], mouse[1])
                 region = self.get_region(hit_id)
                 if region:
                     self._drag_start_rect = Rect(region.rect)
@@ -407,6 +429,7 @@ class RegionSelector:
 
                 if self._resizing:
                     self._resizing = False
+                    self._resize_tracker.reset()
                     self._hover_handle = ResizeHandle.NONE
                     region = self.get_selected_region()
                     if region and self.on_region_modified:
@@ -418,10 +441,11 @@ class RegionSelector:
             if self._dragging and self.selected_id:
                 region = self.get_region(self.selected_id)
                 if region:
-                    dx = int((mouse[0] - self._drag_start_mouse[0]) / self.zoom)
-                    dy = int((mouse[1] - self._drag_start_mouse[1]) / self.zoom)
-                    region.rect.x = self._drag_start_rect.x + dx
-                    region.rect.y = self._drag_start_rect.y + dy
+                    ix, iy = self._screen_to_image_float(mouse[0], mouse[1])
+                    dx = ix - self._drag_start_image[0]
+                    dy = iy - self._drag_start_image[1]
+                    region.rect.x = int(self._drag_start_rect.x + dx)
+                    region.rect.y = int(self._drag_start_rect.y + dy)
 
                     if self.image:
                         img_w = self.image.get_width()
@@ -438,67 +462,24 @@ class RegionSelector:
             if self._resizing and self.selected_id:
                 region = self.get_region(self.selected_id)
                 if region:
-                    dx = int((mouse[0] - self._drag_start_mouse[0]) / self.zoom)
-                    dy = int((mouse[1] - self._drag_start_mouse[1]) / self.zoom)
+                    ix, iy = self._screen_to_image_float(mouse[0], mouse[1])
+                    edges = self._handle_to_edges(self._hover_handle)
+                    nx, ny, nw, nh = self._resize_tracker.update(ix, iy, edges, self.MIN_REGION_SIZE)
 
-                    new_rect = Rect(self._drag_start_rect)
+                    if self.image:
+                        img_w = self.image.get_width()
+                        img_h = self.image.get_height()
+                        nx = max(0, min(nx, img_w - self.MIN_REGION_SIZE))
+                        ny = max(0, min(ny, img_h - self.MIN_REGION_SIZE))
+                        nw = min(nw, img_w - nx)
+                        nh = min(nh, img_h - ny)
 
-                    if self._hover_handle in (
-                        ResizeHandle.LEFT,
-                        ResizeHandle.TOP_LEFT,
-                        ResizeHandle.BOTTOM_LEFT,
-                    ):
-                        new_rect.x += dx
-                        new_rect.width -= dx
-                    if self._hover_handle in (
-                        ResizeHandle.RIGHT,
-                        ResizeHandle.TOP_RIGHT,
-                        ResizeHandle.BOTTOM_RIGHT,
-                    ):
-                        new_rect.width += dx
-                    if self._hover_handle in (
-                        ResizeHandle.TOP,
-                        ResizeHandle.TOP_LEFT,
-                        ResizeHandle.TOP_RIGHT,
-                    ):
-                        new_rect.y += dy
-                        new_rect.height -= dy
-                    if self._hover_handle in (
-                        ResizeHandle.BOTTOM,
-                        ResizeHandle.BOTTOM_LEFT,
-                        ResizeHandle.BOTTOM_RIGHT,
-                    ):
-                        new_rect.height += dy
-
-                    if (
-                        new_rect.width >= self.MIN_REGION_SIZE
-                        and new_rect.height >= self.MIN_REGION_SIZE
-                    ):
-                        if self.image:
-                            img_w = self.image.get_width()
-                            img_h = self.image.get_height()
-                            new_rect.x = max(
-                                0, min(new_rect.x, img_w - self.MIN_REGION_SIZE)
-                            )
-                            new_rect.y = max(
-                                0, min(new_rect.y, img_h - self.MIN_REGION_SIZE)
-                            )
-                            new_rect.width = min(new_rect.width, img_w - new_rect.x)
-                            new_rect.height = min(new_rect.height, img_h - new_rect.y)
-
-                        region.rect = new_rect
-
-                    return True
-
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_DELETE or event.key == pygame.K_BACKSPACE:
-                if self.selected_id:
-                    self.remove_region(self.selected_id)
+                    region.rect = Rect(nx, ny, nw, nh)
                     return True
 
         return False
 
-    def _update_hover(self, mouse: Tuple[int, int]) -> None:
+    def _update_hover(self, mouse: tuple[int, int]) -> None:
         """Update hover state based on mouse position"""
 
         selected = self.get_selected_region()
@@ -642,11 +623,11 @@ class RegionSelector:
         """Set the image to select regions from"""
         self.image = image
 
-    def set_regions(self, regions: List[Region]) -> None:
+    def set_regions(self, regions: list[Region]) -> None:
         """Set all regions at once"""
         self.regions = regions
         self.select_region(None)
 
-    def get_regions(self) -> List[Region]:
+    def get_regions(self) -> list[Region]:
         """Get all regions"""
         return list(self.regions)

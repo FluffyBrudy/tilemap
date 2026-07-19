@@ -1,13 +1,13 @@
-from typing import Dict, Tuple, TypedDict, Any, NotRequired
+from typing import Any, NotRequired, TypedDict
 
 
 class TypeTile(TypedDict, total=True):
-    pos: Tuple[int, int]
+    pos: tuple[int, int]
     ttype: int
     variant: int
     autotile_group: NotRequired[str]
     gid: NotRequired[int]
-    properties: NotRequired[Dict[str, Any]]
+    properties: NotRequired[dict[str, Any]]
 
 
 class TypeArea(TypedDict, total=True):
@@ -30,7 +30,7 @@ class TypeObject(TypedDict, total=True):
     ttype: int
     tileset_type: str
     variant: int
-    properties: NotRequired[Dict[str, Any]]
+    properties: NotRequired[dict[str, Any]]
 
 
 class TypeTileSerealized(TypedDict, total=True):
@@ -39,7 +39,7 @@ class TypeTileSerealized(TypedDict, total=True):
     variant: int
     autotile_group: NotRequired[str]
     gid: NotRequired[int]
-    properties: NotRequired[Dict[str, Any]]
+    properties: NotRequired[dict[str, Any]]
 
 
 class TypeObjectSerialized(TypedDict, total=True):
@@ -47,7 +47,7 @@ class TypeObjectSerialized(TypedDict, total=True):
     ttype: int
     tileset_type: str
     variant: int
-    properties: NotRequired[Dict[str, Any]]
+    properties: NotRequired[dict[str, Any]]
 
 
 class TypeLayerSerialized(TypedDict, total=True):
@@ -57,10 +57,10 @@ class TypeLayerSerialized(TypedDict, total=True):
     locked: bool
     opacity: float
     z_index: int
-    tiles: Dict[str, TypeTileSerealized]
-    objects: NotRequired[Dict[str, TypeObjectSerialized]]
+    tiles: dict[str, TypeTileSerealized]
+    objects: NotRequired[dict[str, TypeObjectSerialized]]
     next_object_id: NotRequired[int]
-    properties: NotRequired[Dict[str, Any]]
+    properties: NotRequired[dict[str, Any]]
 
 
 class TypeTilesetSerialized(TypedDict, total=True):
@@ -68,12 +68,12 @@ class TypeTilesetSerialized(TypedDict, total=True):
     type: str
     tile_count: NotRequired[int]
     firstgid: NotRequired[int]
-    properties: NotRequired[Dict[str, Any]]
-    tile_properties: NotRequired[Dict[str, Dict[str, Any]]]
+    properties: NotRequired[dict[str, Any]]
+    tile_properties: NotRequired[dict[str, dict[str, Any]]]
     animation: NotRequired[dict]
 
 
-TTile = Dict[Tuple[int, int], TypeTile]
-TObject = Dict[int, TypeObject]
-TOngridParsedTile = Dict[str, TypeTileSerealized]
-TOngridParsedObject = Dict[str, TypeObjectSerialized]
+TTile = dict[tuple[int, int], TypeTile]
+TObject = dict[int, TypeObject]
+TOngridParsedTile = dict[str, TypeTileSerealized]
+TOngridParsedObject = dict[str, TypeObjectSerialized]

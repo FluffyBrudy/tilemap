@@ -17,10 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from typing import Set, Tuple, List, Optional
-import pytest
-from layers import Layer
+from typing import List, Optional, Set, Tuple
 
+from layers import Layer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,10 +27,10 @@ from layers import Layer
 
 def make_rule(
     name: str,
-    neighbors: Set[Tuple[int, int]],
-    variant_ids: Optional[List[int]] = None,
+    neighbors: set[tuple[int, int]],
+    variant_ids: list[int] | None = None,
     tileset_index: int = 0,
-    group_id: Optional[str] = None,
+    group_id: str | None = None,
 ):
     from widgets.autotiler import AutotileRule
     return AutotileRule(
@@ -816,7 +815,7 @@ class TestMultiGroupScenario:
         for dx, dy in [(-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)]:
             positions.append((5+dx, 6+dy))
         existing = [p for p in positions if p in layer.tiles]
-        changes = layer._autotile_tiles(all_rules, existing)
+        layer._autotile_tiles(all_rules, existing)
 
         # Water tile at (5,6): should use Water group rules
         w_tile = layer.tiles[(5, 6)]
@@ -882,7 +881,7 @@ class TestMultiGroupScenario:
 
     def test_variant_to_group_auto_detects_group(self):
         """variant_to_group property maps (ts_idx, vid) → group_id for auto-stamping."""
-        from widgets.autotiler import AutotileRuleDesigner, AutotileGroup, AutotileRule
+        from widgets.autotiler import AutotileGroup, AutotileRule, AutotileRuleDesigner
 
         d = AutotileRuleDesigner.__new__(AutotileRuleDesigner)
         d.groups = [
@@ -907,7 +906,7 @@ class TestMultiGroupScenario:
 
     def test_variant_to_group_first_group_wins(self):
         """If two groups define the same (ts_idx, vid), first group wins."""
-        from widgets.autotiler import AutotileRuleDesigner, AutotileGroup, AutotileRule
+        from widgets.autotiler import AutotileGroup, AutotileRule, AutotileRuleDesigner
 
         d = AutotileRuleDesigner.__new__(AutotileRuleDesigner)
         d.groups = [
@@ -965,7 +964,7 @@ class TestMultiGroupScenario:
             tile((5, 5), ttype=1, variant=0, autotile_group="Water"),
         )
         # Autotile both
-        changes = layer._autotile_tiles(all_rules, [(5, 4), (5, 5)])
+        layer._autotile_tiles(all_rules, [(5, 4), (5, 5)])
         # (5,5) has neighbor (5,4) at (0,-1) → w_top matches → variant 1
         # (5,4) has no water neighbor above it → w_solo → variant 0
         assert layer.tiles[(5, 5)]["variant"] == 1, (

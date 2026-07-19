@@ -1,19 +1,20 @@
-import pygame
-from typing import Optional, Tuple
 
+import pygame
+
+from utils.font_manager import FontWeight, font_manager
 from widgets.ui.theme import COLORS, FONTS, SHAPE
-from utils.font_manager import font_manager, FontWeight, FontStyle
+
 from .draw_utils import draw_soft_rect
 
 
 class TooltipManager:
     def __init__(self):
-        self.text: Optional[str] = None
-        self.pos: Tuple[int, int] = (0, 0)
+        self.text: str | None = None
+        self.pos: tuple[int, int] = (0, 0)
         self.visible = False
         self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
 
-    def show(self, text: str, pos: Tuple[int, int]):
+    def show(self, text: str, pos: tuple[int, int]):
         self.text = text
         self.pos = pos
         self.visible = True

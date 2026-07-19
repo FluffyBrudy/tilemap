@@ -10,15 +10,14 @@ Features:
 
 from __future__ import annotations
 
-from typing import List, Tuple, Optional, Callable, Dict, Any
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum, auto
 
 import pygame
 from pygame import Rect, Surface
 
+from utils.font_manager import FontWeight, font_manager
 from widgets.ui.theme import COLORS, SHAPE
-from utils.font_manager import font_manager, FontWeight
 
 
 @dataclass
@@ -28,9 +27,9 @@ class Mode:
     id: str
     label: str
     description: str = ""
-    icon: Optional[Surface] = None
-    can_enter: Optional[Callable[[], bool]] = None
-    on_enter: Optional[Callable[[], None]] = None
+    icon: Surface | None = None
+    can_enter: Callable[[], bool] | None = None
+    on_enter: Callable[[], None] | None = None
 
 
 class ModeIndicator:
@@ -44,11 +43,11 @@ class ModeIndicator:
     def __init__(
         self,
         rect: Rect,
-        modes: Optional[List[Mode]] = None,
+        modes: list[Mode] | None = None,
         active_mode: str = "",
     ):
         self.rect = rect
-        self.modes: List[Mode] = modes or []
+        self.modes: list[Mode] = modes or []
         self.active_mode_id = active_mode
 
         self.button_padding = 12
@@ -58,8 +57,8 @@ class ModeIndicator:
         self._font = font_manager.get_font("Arial", 12, FontWeight.REGULAR)
         self._font_sm = font_manager.get_font("Arial", 10, FontWeight.REGULAR)
 
-        self.on_mode_changed: Optional[Callable[[str, str], None]] = None
-        self.on_mode_change_rejected: Optional[Callable[[str, str], None]] = None
+        self.on_mode_changed: Callable[[str, str], None] | None = None
+        self.on_mode_change_rejected: Callable[[str, str], None] | None = None
 
     def add_mode(self, mode: Mode) -> None:
         """Add a mode"""
@@ -92,11 +91,10 @@ class ModeIndicator:
         if not new_mode:
             return False
 
-        if not force and new_mode.can_enter:
-            if not new_mode.can_enter():
-                if self.on_mode_change_rejected:
-                    self.on_mode_change_rejected(self.active_mode_id, mode_id)
-                return False
+        if not force and new_mode.can_enter and not new_mode.can_enter():
+            if self.on_mode_change_rejected:
+                self.on_mode_change_rejected(self.active_mode_id, mode_id)
+            return False
 
         old_mode_id = self.active_mode_id
         self.active_mode_id = mode_id
@@ -109,14 +107,14 @@ class ModeIndicator:
 
         return True
 
-    def get_active_mode(self) -> Optional[Mode]:
+    def get_active_mode(self) -> Mode | None:
         """Get currently active mode"""
         for mode in self.modes:
             if mode.id == self.active_mode_id:
                 return mode
         return None
 
-    def get_mode(self, mode_id: str) -> Optional[Mode]:
+    def get_mode(self, mode_id: str) -> Mode | None:
         """Get mode by ID"""
         for mode in self.modes:
             if mode.id == mode_id:
@@ -139,7 +137,7 @@ class ModeIndicator:
 
         return False
 
-    def _get_button_rects(self) -> List[Tuple[Mode, Rect]]:
+    def _get_button_rects(self) -> list[tuple[Mode, Rect]]:
         """Get button rectangles for each mode"""
         if not self.modes:
             return []
@@ -226,7 +224,7 @@ class ModeIndicator:
         """Resize the component"""
         self.rect = rect
 
-    def set_modes(self, modes: List[Mode]) -> None:
+    def set_modes(self, modes: list[Mode]) -> None:
         """Set all modes at once"""
         self.modes = modes
         if not self.active_mode_id and modes:

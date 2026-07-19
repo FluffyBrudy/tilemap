@@ -1,308 +1,474 @@
-"""
-SpriteEditor — standalone widget wrapping SpritesheetGrid with editing toolbar.
-
-Toolbar:
-  [Flip X] [Flip Y] [Copy] [Paste] [Undo] [Redo] [Scale...] [Grid WxH] [Open] [Save PNG]
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 
 import pygame
-from pygame import Rect, Surface, SRCALPHA
+from pygame import SRCALPHA, Rect, Surface
 
 from widgets.spritesheet_grid import SpritesheetGrid
-from widgets.ui.theme import COLORS
-from widgets.ui.draw_utils import draw_panel, draw_button
-from utils.font_manager import font_manager, FontWeight
-from utils.icon_manager import icon_manager
+from widgets.ui.button import Button
+from widgets.ui.draw_utils import draw_panel
+from widgets.ui.region_selector import Region, RegionSelector
+from widgets.ui.status_bar import StatusBar, StatusType
+from widgets.ui.theme import COLORS, FONTS
 
+from .dialogs import GridSizeDialog, ScaleDialog
+from .region_export import (
+    export_all_regions,
+    load_regions_json,
+    regions_sidecar_path,
+    save_regions_json,
+)
 
 TOOLBAR_H = 42
-STATUS_H = 22
-BTN_W = 64
+STATUS_H = 26
+BTN_W = 60
 BTN_H = 28
-
-
-_BUTTON_ICONS: dict[str, str | None] = {
-    "Flip X": None,
-    "Flip Y": None,
-    "Copy": "duplicate",
-    "Paste": None,
-    "Undo": None,
-    "Redo": None,
-    "Scale": None,
-    "Grid": None,
-    "Open": None,
-    "Save": "save",
-}
+BTN_GAP = 5
+SEP_W = 8
 
 
 class SpriteEditor:
     def __init__(
         self,
         rect: Rect,
-        surface: Optional[Surface] = None,
+        surface: Surface | None = None,
         tile_size: tuple[int, int] = (32, 32),
-        image_path: Optional[Path] = None,
-        data_root: Optional[Path] = None,
+        image_path: Path | None = None,
+        data_root: Path | None = None,
     ):
         self.rect = rect
         self.image_path = image_path
         self._data_root = data_root or (image_path.parent if image_path else Path.cwd())
 
+        self._content_rect = self._calc_content_rect()
         if surface is None:
             placeholder = Surface((1, 1), SRCALPHA)
-            self._sheet_surfaces: List[Surface] = []
+            self._sheet_surfaces: list[Surface] = []
         else:
             placeholder = surface
             self._sheet_surfaces = [surface]
 
-        grid_rect = Rect(
-            rect.x, rect.y + TOOLBAR_H, rect.w, rect.h - TOOLBAR_H - STATUS_H
-        )
-        self.grid = SpritesheetGrid(grid_rect, placeholder, tile_size)
+        self.grid = SpritesheetGrid(Rect(self._content_rect), placeholder, tile_size)
 
-        self._clipboard: Dict[int, Surface] = {}
+        self._clipboard: dict[int, Surface] = {}
         self._paste_mode: bool = False
 
-        self._scale_active: bool = False
-        self._scale_text: str = "2.0"
-        self._scale_error: Optional[str] = None
+        self._save_path: Path | None = None
+        self._file_manager: object | None = None
 
-        self._grid_active: bool = False
-        self._grid_text: str = f"{tile_size[0]}x{tile_size[1]}"
-        self._grid_error: Optional[str] = None
+        
+        self._mode: str = "grid"
 
-        self._save_path: Optional[Path] = None
+        
+        self._region_selector = RegionSelector(
+            Rect(self._content_rect),
+            image=placeholder if self._sheet_surfaces else None,
+        )
 
-        self._file_manager: Optional[object] = None
+        
+        self._scale_dialog = ScaleDialog(self.rect)
+        self._grid_dialog = GridSizeDialog(self.rect)
 
-        self._btn_rects: dict[str, Rect] = {}
-        self._layout_toolbar()
+        
+        self._status_bar = StatusBar(
+            Rect(rect.x, rect.bottom - STATUS_H, rect.w, STATUS_H),
+        )
+        self._update_status()
 
-        self._font = font_manager.get_font("monospace", 13, FontWeight.BOLD)
-        self._font_sm = font_manager.get_font("monospace", 11, FontWeight.BOLD)
+        
+        self._buttons: list[Button] = []
+        self._separator_xs: list[int] = []
+        self._build_toolbar()
 
-    def _layout_toolbar(self) -> None:
+    
+    
+    
+
+    def _calc_content_rect(self) -> Rect:
+        return Rect(
+            self.rect.x,
+            self.rect.y + TOOLBAR_H,
+            self.rect.w,
+            self.rect.h - TOOLBAR_H - STATUS_H,
+        )
+
+    def resize(self, x: int, y: int, w: int, h: int) -> None:
+        """Resize the editor and cascade to all child widgets."""
+        self.rect = Rect(x, y, w, h)
+        self._content_rect = self._calc_content_rect()
+        self.grid.rect = Rect(self._content_rect)
+        self._region_selector.resize(Rect(self._content_rect))
+        self._status_bar.resize(Rect(self.rect.x, self.rect.bottom - STATUS_H, self.rect.w, STATUS_H))
+        self._scale_dialog.editor_rect = self.rect
+        self._grid_dialog.editor_rect = self.rect
+        self._build_toolbar()
+
+    def _build_toolbar(self) -> None:
+        """Create toolbar Button instances with separators."""
+        self._buttons.clear()
+        self._separator_xs.clear()
+
         ty = self.rect.y + (TOOLBAR_H - BTN_H) // 2
-        gap = 6
-        x = self.rect.x + gap
-        labels = [
-            "Flip X",
-            "Flip Y",
-            "Copy",
-            "Paste",
-            "Undo",
-            "Redo",
-            "Scale",
-            "Grid",
-            "Open",
-            "Save",
-        ]
-        for lbl in labels:
-            self._btn_rects[lbl] = Rect(x, ty, BTN_W, BTN_H)
-            x += BTN_W + gap
+        x = self.rect.x + BTN_GAP + 2
 
-    def _get_status_text(self) -> str:
+        def add_btn(text: str, *, icon_key: str = "", tooltip: str = "", on_click=None, tag: str = "") -> Button:
+            nonlocal x
+            btn = Button(
+                Rect(x, ty, BTN_W, BTN_H),
+                text=text if not icon_key else "",
+                icon_key=icon_key or None,
+                tooltip_text=tooltip or text,
+                border_radius=3,
+                on_click=on_click or (lambda: None),
+            )
+            btn._tag = tag or text.lower().replace(" ", "_")
+            self._buttons.append(btn)
+            x += BTN_W + BTN_GAP
+            return btn
+
+        def sep() -> None:
+            nonlocal x
+            self._separator_xs.append(x + SEP_W // 2)
+            x += SEP_W
+
+        
+        add_btn("Flip X", tooltip="Flip Horizontal", on_click=self._on_flip_x, tag="flip_x")
+        add_btn("Flip Y", tooltip="Flip Vertical", on_click=self._on_flip_y, tag="flip_y")
+        sep()
+
+        
+        add_btn("Copy", icon_key="duplicate", tooltip="Copy (Ctrl+C)", on_click=self._on_copy, tag="copy")
+        add_btn("Paste", tooltip="Paste (Ctrl+V)", on_click=self._on_paste, tag="paste")
+        sep()
+
+        
+        add_btn("Undo", tooltip="Undo (Ctrl+Z)", on_click=self._on_undo, tag="undo")
+        add_btn("Redo", tooltip="Redo (Ctrl+Y)", on_click=self._on_redo, tag="redo")
+        sep()
+
+        
+        add_btn("Scale", tooltip="Scale spritesheet", on_click=self._on_scale, tag="scale")
+        add_btn("Grid", tooltip="Change tile size", on_click=self._on_grid, tag="grid")
+        sep()
+
+        
+        add_btn("Open", tooltip="Open spritesheets", on_click=self._on_open, tag="open")
+        add_btn("Save", icon_key="save", tooltip="Save PNG", on_click=self._on_save, tag="save")
+        sep()
+
+        
+        add_btn("Regions", tooltip="Toggle region mode", on_click=self._on_toggle_regions, tag="regions")
+        add_btn("Export", tooltip="Export all regions", on_click=self._on_export_all, tag="export_all")
+
+    def _get_btn(self, tag: str) -> Button | None:
+        for btn in self._buttons:
+            if getattr(btn, "_tag", "") == tag:
+                return btn
+        return None
+
+    
+    
+    
+
+    def _on_flip_x(self) -> None:
+        if self.grid.has_selection():
+            self.grid.flip_selected(True, False)
+            self._status_bar.success("Flipped horizontally")
+
+    def _on_flip_y(self) -> None:
+        if self.grid.has_selection():
+            self.grid.flip_selected(False, True)
+            self._status_bar.success("Flipped vertically")
+
+    def _on_copy(self) -> None:
+        if self.grid.has_selection():
+            self._clipboard = self.grid.copy_selected()
+            self._paste_mode = False
+            self.grid.paste_preview_idx = -1
+            n = len(self._clipboard)
+            self._status_bar.info(f"Copied {n} tile{'s' if n != 1 else ''}")
+
+    def _on_paste(self) -> None:
+        if self._clipboard:
+            self._paste_mode = not self._paste_mode
+            if not self._paste_mode:
+                self.grid.paste_preview_idx = -1
+                self._status_bar.clear()
+            else:
+                self._status_bar.info("Click grid to paste", detail="Esc to cancel")
+
+    def _on_undo(self) -> None:
+        if self.grid.undo():
+            self.grid.selected_indices.clear()
+            self._status_bar.info("Undo")
+
+    def _on_redo(self) -> None:
+        if self.grid.redo():
+            self.grid.selected_indices.clear()
+            self._status_bar.info("Redo")
+
+    def _on_scale(self) -> None:
+        self._scale_dialog.show_scale(
+            on_apply=self._apply_scale,
+        )
+
+    def _apply_scale(self, factor: float) -> None:
+        self.grid.scale(factor)
+        self._status_bar.success(f"Scaled ×{factor:.2f}")
+
+    def _on_grid(self) -> None:
+        self._grid_dialog.show_grid(
+            on_apply=self._apply_grid_size,
+            current_size=self.grid.tile_size,
+        )
+
+    def _apply_grid_size(self, tw: int, th: int) -> None:
+        self.grid.set_tile_size(tw, th)
+        self._status_bar.success(f"Tile size: {tw}×{th}")
+
+    def _on_open(self) -> None:
+        self._open_add_sheets_dialog()
+
+    def _on_save(self) -> None:
+        self._open_save_dialog()
+
+    def _on_toggle_regions(self) -> None:
+        if self._mode == "grid":
+            self._mode = "regions"
+            
+            if self._sheet_surfaces:
+                self._region_selector.set_image(self.grid.surface)
+            self._status_bar.info("Region mode", detail="Draw regions to export")
+        else:
+            self._mode = "grid"
+            self._status_bar.clear()
+
+    def _on_export_all(self) -> None:
+        regions = self._region_selector.get_regions()
+        if not regions:
+            self._status_bar.warning("No regions defined")
+            return
+        if not self._sheet_surfaces:
+            self._status_bar.warning("No spritesheet loaded")
+            return
+        self._open_export_dir_dialog(regions)
+
+    
+    
+    
+
+    def _update_status(self) -> None:
+        """Update status bar with current editor state."""
         n = len(self._sheet_surfaces)
         if n == 0:
-            return (
-                "  No spritesheets loaded  —  Click [Open] to load one or more sheets"
+            self._status_bar.set_status(
+                "No spritesheets loaded",
+                StatusType.NEUTRAL,
+                detail="Click [Open] to load",
             )
+            return
+
         tw, th = self.grid.tile_size
-        parts = [f"Tile: {tw}×{th}  Zoom: {self.grid.zoom:.1f}x"]
+        parts = [f"Tile: {tw}×{th}", f"Zoom: {self.grid.zoom:.1f}x"]
         if n > 1:
             parts.append(f"Sheets: {n}")
         sel = len(self.grid.selected_indices)
         if sel:
-            parts.append(f"Selected: {sel}")
+            parts.append(f"Sel: {sel}")
         if self._paste_mode:
-            parts.append("Click grid to paste")
-        if self.grid.can_undo:
-            parts.append(f"Undo ({len(self.grid._undo_stack)})")
-        return "  |  ".join(parts)
+            parts.append("Paste mode")
+        if self._mode == "regions":
+            nr = len(self._region_selector.regions)
+            parts.append(f"Regions: {nr}")
+
+        self._status_bar.set_status(
+            "  |  ".join(parts),
+            StatusType.INFO,
+        )
+
+    
+    
+    
+
+    def _update_button_states(self) -> None:
+        """Sync active/enabled states for toolbar buttons."""
+        paste_btn = self._get_btn("paste")
+        if paste_btn:
+            paste_btn.active = self._paste_mode
+
+        undo_btn = self._get_btn("undo")
+        if undo_btn:
+            undo_btn.enabled = self.grid.can_undo
+
+        redo_btn = self._get_btn("redo")
+        if redo_btn:
+            redo_btn.enabled = self.grid.can_redo
+
+        regions_btn = self._get_btn("regions")
+        if regions_btn:
+            regions_btn.active = self._mode == "regions"
+
+        export_btn = self._get_btn("export_all")
+        if export_btn:
+            export_btn.enabled = (
+                self._mode == "regions" and len(self._region_selector.regions) > 0 and len(self._sheet_surfaces) > 0
+            )
+
+    
+    
+    
 
     def handle_event(self, event: pygame.event.Event) -> bool:
 
+        
         if self._file_manager is not None:
             return self._file_manager.handle_event(event)
 
-        if self._scale_active:
-            return self._handle_scale_dialog(event)
+        
+        if self._scale_dialog.active:
+            return self._scale_dialog.handle_event(event)
+        if self._grid_dialog.active:
+            return self._grid_dialog.handle_event(event)
 
-        if self._grid_active:
-            return self._handle_grid_dialog(event)
-
-        mouse = pygame.mouse.get_pos()
-
+        
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
 
             if ctrl:
                 if event.key == pygame.K_z:
-                    if self.grid.undo():
-                        self.grid.selected_indices.clear()
+                    self._on_undo()
                     return True
-                elif event.key == pygame.K_y:
-                    if self.grid.redo():
-                        self.grid.selected_indices.clear()
+                if event.key == pygame.K_y:
+                    self._on_redo()
                     return True
-                elif event.key == pygame.K_c:
-                    if self.grid.has_selection():
-                        self._clipboard = self.grid.copy_selected()
-                        self._paste_mode = False
-                        self.grid.paste_preview_idx = -1
+                if event.key == pygame.K_c:
+                    self._on_copy()
                     return True
-                elif event.key == pygame.K_x:
+                if event.key == pygame.K_x:
                     if self.grid.has_selection():
                         self._clipboard = self.grid.cut_selected()
-                        self._paste_mode = False
-                        self.grid.paste_preview_idx = -1
+                        self._status_bar.info("Cut")
                     return True
-                elif event.key == pygame.K_v:
-                    if self._clipboard:
-                        self._paste_mode = not self._paste_mode
-                        if not self._paste_mode:
-                            self.grid.paste_preview_idx = -1
+                if event.key == pygame.K_v:
+                    self._on_paste()
                     return True
 
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for lbl, r in self._btn_rects.items():
-                if r.collidepoint(mouse):
-                    return self._handle_tool(lbl)
+            
+            if event.key == pygame.K_ESCAPE:
+                if self._paste_mode:
+                    self._paste_mode = False
+                    self.grid.paste_preview_idx = -1
+                    self._status_bar.clear()
+                    return True
+                if self._mode == "regions":
+                    self._mode = "grid"
+                    self._status_bar.clear()
+                    return True
 
-        if (
-            self._paste_mode
-            and event.type == pygame.MOUSEBUTTONDOWN
-            and event.button == 1
-        ):
-            idx = self.grid.index_at_pos(mouse)
-            if idx >= 0 and self.grid.rect.collidepoint(mouse):
-                self.grid.paste_at(idx, self._clipboard)
-            self._paste_mode = False
-            self.grid.paste_preview_idx = -1
-            return True
+        
+        for btn in self._buttons:
+            if btn.handle_event(event):
+                return True
 
-        if self._paste_mode and event.type == pygame.MOUSEMOTION:
-            idx = self.grid.index_at_pos(mouse)
-            self.grid.paste_preview_idx = idx if idx >= 0 else -1
-            return True
-
-        return self.grid.handle_event(event)
-
-    def _handle_tool(self, lbl: str) -> bool:
-        if lbl == "Flip X":
-            if self.grid.has_selection():
-                self.grid.flip_selected(True, False)
-            return True
-        elif lbl == "Flip Y":
-            if self.grid.has_selection():
-                self.grid.flip_selected(False, True)
-            return True
-        elif lbl == "Copy":
-            if self.grid.has_selection():
-                self._clipboard = self.grid.copy_selected()
+        
+        mouse = pygame.mouse.get_pos()
+        if self._paste_mode:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                idx = self.grid.index_at_pos(mouse)
+                if idx >= 0 and self.grid.rect.collidepoint(mouse):
+                    self.grid.paste_at(idx, self._clipboard)
+                    self._status_bar.success("Pasted")
                 self._paste_mode = False
                 self.grid.paste_preview_idx = -1
-            return True
-        elif lbl == "Paste":
-            if self._clipboard:
-                self._paste_mode = not self._paste_mode
-                if not self._paste_mode:
-                    self.grid.paste_preview_idx = -1
-            return True
-        elif lbl == "Undo":
-            self.grid.undo()
-            self.grid.selected_indices.clear()
-            return True
-        elif lbl == "Redo":
-            self.grid.redo()
-            self.grid.selected_indices.clear()
-            return True
-        elif lbl == "Scale":
-            self._scale_active = True
-            self._scale_text = "2.0"
-            self._scale_error = None
-            return True
-        elif lbl == "Grid":
-            self._grid_active = True
-            tw, th = self.grid.tile_size
-            self._grid_text = f"{tw}x{th}"
-            self._grid_error = None
-            return True
-        elif lbl == "Open":
-            self._open_add_sheets_dialog()
-            return True
-        elif lbl == "Save":
-            self._open_save_dialog()
-            return True
-        return False
+                return True
+            if event.type == pygame.MOUSEMOTION:
+                idx = self.grid.index_at_pos(mouse)
+                self.grid.paste_preview_idx = idx if idx >= 0 else -1
+                return True
 
-    def _handle_scale_dialog(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.KEYDOWN:
-            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                try:
-                    factor = float(self._scale_text)
-                    if factor <= 0:
-                        self._scale_error = "Must be > 0"
-                    else:
-                        self.grid.scale(factor)
-                        self._scale_active = False
-                        self._scale_error = None
-                except ValueError:
-                    self._scale_error = "Invalid number"
-                return True
-            elif event.key == pygame.K_ESCAPE:
-                self._scale_active = False
-                self._scale_error = None
-                return True
-            elif event.key == pygame.K_BACKSPACE:
-                self._scale_text = self._scale_text[:-1]
-                return True
-            elif (
-                event.unicode
-                and event.unicode in "0123456789."
-                and len(self._scale_text) < 8
-            ):
-                self._scale_text += event.unicode
-                return True
-        return False
+        
+        if self._mode == "regions":
+            return self._region_selector.handle_event(event)
+        return self.grid.handle_event(event)
 
-    def _handle_grid_dialog(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.KEYDOWN:
-            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                parts = self._grid_text.lower().split("x")
-                try:
-                    tw = int(parts[0])
-                    th = int(parts[1]) if len(parts) > 1 else tw
-                    if tw < 1 or th < 1:
-                        self._grid_error = "Must be >= 1"
-                    else:
-                        self.grid.set_tile_size(tw, th)
-                        self._grid_active = False
-                        self._grid_error = None
-                except ValueError:
-                    self._grid_error = "Use format: WxH or N"
-                return True
-            elif event.key == pygame.K_ESCAPE:
-                self._grid_active = False
-                self._grid_error = None
-                return True
-            elif event.key == pygame.K_BACKSPACE:
-                self._grid_text = self._grid_text[:-1]
-                return True
-            elif (
-                event.unicode
-                and event.unicode in "0123456789xX"
-                and len(self._grid_text) < 10
-            ):
-                self._grid_text += event.unicode
-                return True
-        return False
+    
+    
+    
+
+    def draw(self, screen: Surface) -> None:
+        
+        draw_panel(screen, self.rect, COLORS.bg, COLORS.border)
+
+        
+        toolbar_rect = Rect(self.rect.x, self.rect.y, self.rect.w, TOOLBAR_H)
+        draw_panel(screen, toolbar_rect, COLORS.header, COLORS.border)
+
+        
+        sep_h = 16
+        sep_y = toolbar_rect.centery - sep_h // 2
+        for sx in self._separator_xs:
+            pygame.draw.line(
+                screen,
+                COLORS.border_soft,
+                (sx, sep_y),
+                (sx, sep_y + sep_h),
+                2,
+            )
+
+        
+        self._update_button_states()
+        for btn in self._buttons:
+            btn.draw(screen)
+
+        
+        if self._file_manager is None:
+            if self._mode == "regions":
+                self._region_selector.draw(screen)
+            else:
+                self.grid.draw(screen)
+
+        
+        self._update_status()
+        self._status_bar.draw(screen)
+
+        
+        if self._scale_dialog.active:
+            self._scale_dialog.draw(screen)
+        if self._grid_dialog.active:
+            self._grid_dialog.draw(screen)
+
+        
+        if self._file_manager is not None:
+            self._file_manager.draw(screen)
+
+        
+        mouse_pos = pygame.mouse.get_pos()
+        for btn in self._buttons:
+            if btn.rect.collidepoint(mouse_pos) and btn.tooltip_text:
+                self._draw_tooltip(screen, btn.tooltip_text, mouse_pos)
+                break
+
+    def _draw_tooltip(self, screen: Surface, text: str, pos: tuple[int, int]) -> None:
+        """Draw a simple tooltip near the cursor."""
+        font = FONTS.get_small_font()
+        surf = font.render(text, True, COLORS.text)
+        tw, th = surf.get_size()
+        pad = 4
+        tx = pos[0] + 12
+        ty = pos[1] + 16
+        
+        if tx + tw + pad * 2 > screen.get_width():
+            tx = pos[0] - tw - pad * 2 - 4
+        bg = Rect(tx - pad, ty - pad, tw + pad * 2, th + pad * 2)
+        pygame.draw.rect(screen, COLORS.panel, bg, border_radius=3)
+        pygame.draw.rect(screen, COLORS.border_soft, bg, 1, border_radius=3)
+        screen.blit(surf, (tx, ty))
+
+    
+    
+    
 
     @staticmethod
     def _detect_tile_size(surface: Surface) -> tuple[int, int]:
@@ -314,6 +480,14 @@ class SpriteEditor:
                 best = s
         return (best, best)
 
+    def _file_manager_rect(self) -> Rect:
+        w, h = 600, 400
+        cx, cy = self.rect.center
+        return Rect(cx - w // 2, cy - h // 2, w, h)
+
+    def _close_file_manager(self) -> None:
+        self._file_manager = None
+
     def _open_save_dialog(self) -> None:
         """Open FileManager in save mode to pick a PNG path."""
         from widgets.filemanager import FileManager
@@ -322,11 +496,7 @@ class SpriteEditor:
         default_name = (
             self._save_path.name
             if self._save_path
-            else (
-                f"{self.image_path.stem}_edited.png"
-                if self.image_path
-                else "spritesheet.png"
-            )
+            else (f"{self.image_path.stem}_edited.png" if self.image_path else "spritesheet.png")
         )
 
         fm_rect = self._file_manager_rect()
@@ -343,41 +513,12 @@ class SpriteEditor:
 
     def _on_save_path_selected(self, path: Path) -> None:
         try:
-            self.grid.save_png(path)
-            self._save_path = path
+            pygame.image.save(self.grid.surface, str(path))
+            self.set_save_path(path)
+            self._status_bar.success(f"Saved {path.name}")
         except Exception as e:
-            print(f"Save failed: {e}")
+            self._status_bar.error(f"Save failed: {e}")
         self._close_file_manager()
-
-    def _close_file_manager(self) -> None:
-        self._file_manager = None
-
-    def _file_manager_rect(self) -> Rect:
-        w, h = 600, 400
-        cx, cy = self.rect.center
-        return Rect(cx - w // 2, cy - h // 2, w, h)
-
-    def set_save_path(self, path: Path) -> None:
-        self._save_path = path
-
-    def _build_combined_surface(self) -> None:
-        """Rebuild the combined surface from all loaded sheets (stacked vertically)."""
-        n = len(self._sheet_surfaces)
-        if n == 0:
-            return
-        if n == 1:
-            self.grid.set_surface(self._sheet_surfaces[0])
-            return
-
-        max_w = max(s.get_width() for s in self._sheet_surfaces)
-        total_h = sum(s.get_height() for s in self._sheet_surfaces)
-        combined = Surface((max_w, total_h), SRCALPHA)
-        combined.fill((0, 0, 0, 0))
-        y = 0
-        for surf in self._sheet_surfaces:
-            combined.blit(surf, (0, y))
-            y += surf.get_height()
-        self.grid.set_surface(combined)
 
     def _open_add_sheets_dialog(self) -> None:
         """Open FileManager in multi-select mode to pick one or more sheets."""
@@ -395,7 +536,7 @@ class SpriteEditor:
             data_root=self._data_root,
         )
 
-    def _on_add_sheets(self, selection: Union[Path, List[Path]]) -> None:
+    def _on_add_sheets(self, selection: Path | list[Path]) -> None:
         if isinstance(selection, Path):
             selection = [selection]
         was_empty = len(self._sheet_surfaces) == 0
@@ -406,116 +547,85 @@ class SpriteEditor:
                 self._sheet_surfaces.append(surf)
                 loaded += 1
             except Exception as e:
-                print(f"Failed to load {path.name}: {e}")
+                self._status_bar.error(f"Failed: {path.name}: {e}")
         if loaded:
             if was_empty:
                 detected = self._detect_tile_size(self._sheet_surfaces[0])
                 self.grid.set_tile_size(*detected)
             self._build_combined_surface()
+            self._status_bar.success(f"Loaded {loaded} sheet{'s' if loaded != 1 else ''}")
         self._close_file_manager()
 
-    def draw(self, screen: Surface) -> None:
-        draw_panel(screen, self.rect, COLORS.bg, COLORS.border)
+    def _build_combined_surface(self) -> None:
+        """Rebuild the combined surface from all loaded sheets (stacked vertically)."""
+        n = len(self._sheet_surfaces)
+        if n == 0:
+            return
+        if n == 1:
+            self.grid.set_surface(self._sheet_surfaces[0])
+            self._region_selector.set_image(self._sheet_surfaces[0])
+            return
 
-        toolbar_rect = Rect(self.rect.x, self.rect.y, self.rect.w, TOOLBAR_H)
-        draw_panel(screen, toolbar_rect, COLORS.header, COLORS.border)
+        max_w = max(s.get_width() for s in self._sheet_surfaces)
+        total_h = sum(s.get_height() for s in self._sheet_surfaces)
+        combined = Surface((max_w, total_h), SRCALPHA)
+        combined.fill((0, 0, 0, 0))
+        y = 0
+        for surf in self._sheet_surfaces:
+            combined.blit(surf, (0, y))
+            y += surf.get_height()
+        self.grid.set_surface(combined)
+        self._region_selector.set_image(combined)
 
-        mouse = pygame.mouse.get_pos()
-        for lbl, r in self._btn_rects.items():
-            hover = r.collidepoint(mouse)
-            active = lbl == "Paste" and self._paste_mode
-            disable = (lbl in ("Undo",) and not self.grid.can_undo) or (
-                lbl in ("Redo",) and not self.grid.can_redo
+    def set_save_path(self, path: Path) -> None:
+        self._save_path = path
+
+    
+    
+    
+
+    def _open_export_dir_dialog(self, regions: list[Region]) -> None:
+        """Open FileManager in save mode to pick an output directory for bulk export."""
+        from widgets.filemanager import FileManager
+
+        default_name = "export"
+        if self.image_path:
+            default_name = self.image_path.stem
+
+        fm_rect = self._file_manager_rect()
+        self._file_manager = FileManager(
+            rect=fm_rect,
+            initial_dir=self._data_root,
+            allowed_exts=[".png"],
+            on_save=lambda path: self._do_export_all(path.parent, path.stem, regions),
+            mode="save",
+            default_name=f"{default_name}.png",
+            on_cancel=self._close_file_manager,
+            data_root=self._data_root,
+        )
+
+    def _do_export_all(self, output_dir: Path, prefix: str, regions: list[Region]) -> None:
+        """Execute bulk region export."""
+        try:
+            saved = export_all_regions(
+                self.grid.surface,
+                regions,
+                output_dir,
+                prefix=prefix,
             )
+            self._status_bar.success(f"Exported {len(saved)} region{'s' if len(saved) != 1 else ''}")
+            
+            if self.image_path:
+                sidecar = regions_sidecar_path(self.image_path)
+                save_regions_json(regions, sidecar)
+        except Exception as e:
+            self._status_bar.error(f"Export failed: {e}")
+        self._close_file_manager()
 
-            icon_key = _BUTTON_ICONS.get(lbl)
-            if icon_key and icon_manager.has_icon(icon_key):
-                color = COLORS.text_dim if disable else COLORS.text
-                icon = icon_manager.get_icon(icon_key, 18, color)
-                draw_button(
-                    screen,
-                    r,
-                    icon,
-                    hover=hover and not disable,
-                    active=active and not disable,
-                )
-            else:
-                label_surf = self._font_sm.render(
-                    lbl, True, COLORS.text_dim if disable else COLORS.text
-                )
-                draw_button(
-                    screen,
-                    r,
-                    label_surf,
-                    hover=hover and not disable,
-                    active=active and not disable,
-                )
-
-        if self._file_manager is None:
-            self.grid.draw(screen)
-
-        status_rect = Rect(
-            self.rect.x, self.rect.bottom - STATUS_H, self.rect.w, STATUS_H
-        )
-        draw_panel(screen, status_rect, COLORS.header, COLORS.border)
-        st = self._get_status_text()
-        screen.blit(
-            self._font_sm.render(st, True, COLORS.text_dim),
-            (status_rect.x + 6, status_rect.y + 4),
-        )
-
-        if self._scale_active:
-            self._draw_scale_dialog(screen)
-        if self._grid_active:
-            self._draw_grid_dialog(screen)
-
-        if self._file_manager is not None:
-            self._file_manager.draw(screen)
-
-    def _draw_scale_dialog(self, screen: Surface) -> None:
-        dw, dh = 260, 100
-        cx, cy = self.rect.center
-        dlg = Rect(cx - dw // 2, cy - dh // 2, dw, dh)
-        draw_panel(screen, dlg, COLORS.panel, COLORS.border)
-
-        title = self._font.render("Scale Factor", True, COLORS.text)
-        screen.blit(title, title.get_rect(centerx=dlg.centerx, top=dlg.top + 10))
-
-        inp = Rect(dlg.x + 20, dlg.top + 36, dw - 40, 28)
-        pygame.draw.rect(screen, COLORS.selected, inp, border_radius=4)
-        pygame.draw.rect(screen, COLORS.accent, inp, 2, border_radius=4)
-        txt = self._scale_text + ("|" if (pygame.time.get_ticks() // 400) % 2 else "")
-        screen.blit(
-            self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5)
-        )
-
-        if self._scale_error:
-            err = self._font_sm.render(self._scale_error, True, COLORS.danger)
-            screen.blit(err, (dlg.x + 20, dlg.bottom - 22))
-
-        hint = self._font_sm.render("Enter / Esc", True, COLORS.text_dim)
-        screen.blit(hint, (dlg.right - 90, dlg.bottom - 22))
-
-    def _draw_grid_dialog(self, screen: Surface) -> None:
-        dw, dh = 260, 100
-        cx, cy = self.rect.center
-        dlg = Rect(cx - dw // 2, cy - dh // 2, dw, dh)
-        draw_panel(screen, dlg, COLORS.panel, COLORS.border)
-
-        title = self._font.render("Tile Size (WxH)", True, COLORS.text)
-        screen.blit(title, title.get_rect(centerx=dlg.centerx, top=dlg.top + 10))
-
-        inp = Rect(dlg.x + 20, dlg.top + 36, dw - 40, 28)
-        pygame.draw.rect(screen, COLORS.selected, inp, border_radius=4)
-        pygame.draw.rect(screen, COLORS.accent, inp, 2, border_radius=4)
-        txt = self._grid_text + ("|" if (pygame.time.get_ticks() // 400) % 2 else "")
-        screen.blit(
-            self._font_sm.render(txt, True, COLORS.text), (inp.x + 6, inp.y + 5)
-        )
-
-        if self._grid_error:
-            err = self._font_sm.render(self._grid_error, True, COLORS.danger)
-            screen.blit(err, (dlg.x + 20, dlg.bottom - 22))
-
-        hint = self._font_sm.render("Enter / Esc", True, COLORS.text_dim)
-        screen.blit(hint, (dlg.right - 90, dlg.bottom - 22))
+    def load_regions_for_image(self) -> None:
+        """Load regions from sidecar JSON if it exists."""
+        if self.image_path:
+            sidecar = regions_sidecar_path(self.image_path)
+            regions = load_regions_json(sidecar)
+            if regions:
+                self._region_selector.set_regions(regions)

@@ -22,7 +22,6 @@ from pathlib import Path
 
 import pygame
 import pytest
-from pygame import Rect
 
 from widgets.tile_selector import TileSelector
 
@@ -56,8 +55,7 @@ class FakeEditor:
 def _make_selector(tile_size=(32, 32)) -> "TileSelector":
 
     editor = FakeEditor(tile_size=tile_size)
-    ts = TileSelector(editor, x=0, y=0, w=400, h=600)
-    return ts
+    return TileSelector(editor, x=0, y=0, w=400, h=600)
 
 
 def _add_tile_tileset(selector, surface) -> int:

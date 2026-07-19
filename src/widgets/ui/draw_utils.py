@@ -1,5 +1,5 @@
+
 import pygame
-from typing import Tuple
 
 from .theme import COLORS, SHAPE
 
@@ -54,7 +54,7 @@ def draw_separator(surface: pygame.Surface, x: int, y: int, h: int, color=None):
 
 def truncate_text(
     text: str, font: pygame.font.Font, max_width: int
-) -> Tuple[str, bool]:
+) -> tuple[str, bool]:
     if font.size(text)[0] <= max_width:
         return text, False
     ellipsis = "..."
@@ -68,7 +68,7 @@ def truncate_text(
 def draw_soft_rect(
     surface: pygame.Surface,
     rect: pygame.Rect,
-    color: Tuple[int, int, int],
+    color: tuple[int, int, int],
     radius=4,
     alpha=255,
 ):

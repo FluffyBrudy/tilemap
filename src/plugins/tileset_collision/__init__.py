@@ -6,7 +6,7 @@ Godot-like collision painter for tilesets with polygon drawing/erasing capabilit
 
 from .editor import TilesetCollisionEditor
 from .models import CollisionPolygon, TileCollisionData
-from .protocols import TilesetProvider, CollisionDataConsumer
+from .protocols import CollisionDataConsumer, TilesetProvider
 
 __all__ = [
     "TilesetCollisionEditor",

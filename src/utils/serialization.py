@@ -1,6 +1,6 @@
 import re
-from typing import Sequence, TYPE_CHECKING
-from pygame.typing import IntPoint
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ttypes.tilemap import TypeObject
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 def serialize_point(point: Sequence, sep=";"):
     if not isinstance(point, Sequence):
         raise TypeError("point must be sequence")
-    elif len(point) < 2:
+    if len(point) < 2:
         raise ValueError("point must have at least 2 elements")
 
     def format_val(v):
@@ -38,7 +38,7 @@ def deserialize_point(point_str: str):
 
 def copy_object(obj: "TypeObject") -> "TypeObject":
     """Create a deep copy of a TypeObject, copying the area dict as well."""
-    from ttypes.tilemap import TypeObject, TypeArea
+    from ttypes.tilemap import TypeArea, TypeObject
 
     area_copy: TypeArea = {
         "x": obj["area"]["x"],

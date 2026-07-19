@@ -7,13 +7,13 @@ thread-safe operation, and unified logging.
 Initialized via dependency injection from Editor - no global config dependency.
 """
 
-import threading
 import json
+import threading
 import traceback
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from contextlib import contextmanager
+from typing import Any
 
 
 class ErrorHandler:
@@ -96,10 +96,10 @@ class ErrorHandler:
 
     def _capture_impl(
         self,
-        error: Optional[Exception],
+        error: Exception | None,
         context: str = "",
         severity: str = "error",
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> None:
         """
         Internal implementation of error capture.
@@ -135,7 +135,7 @@ class ErrorHandler:
 
         self._notify_console(error_data)
 
-    def _write_to_log(self, error_data: Dict[str, Any]) -> None:
+    def _write_to_log(self, error_data: dict[str, Any]) -> None:
         """Write error data to log file."""
         try:
             with open(self.log_file, "a", encoding="utf-8") as f:
@@ -144,7 +144,7 @@ class ErrorHandler:
             print(f"Failed to write to error log: {e}")
             print(f"Original error: {error_data}")
 
-    def _console_output(self, error_data: Dict[str, Any]) -> None:
+    def _console_output(self, error_data: dict[str, Any]) -> None:
         """Output error to console with formatting."""
         severity_symbol = {"error": "ERROR", "warning": "WARN", "info": "INFO"}.get(
             error_data["severity"], "ERROR"
@@ -155,7 +155,7 @@ class ErrorHandler:
             f"[{severity_symbol}]{context_str} {error_data['error_type']}: {error_data['message']}"
         )
 
-    def get_recent_errors(self, count: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_errors(self, count: int = 10) -> list[dict[str, Any]]:
         """Get recent errors from memory."""
         with self._lock:
             return (
@@ -169,7 +169,7 @@ class ErrorHandler:
         with self._lock:
             self._recent_errors.clear()
 
-    def get_error_summary(self) -> Dict[str, Any]:
+    def get_error_summary(self) -> dict[str, Any]:
         """Get summary of error statistics."""
         with self._lock:
             if not self._recent_errors:
@@ -197,7 +197,7 @@ class ErrorHandler:
                 "latest": self._recent_errors[-1] if self._recent_errors else None,
             }
 
-    def _notify_console(self, error_data: Dict[str, Any]) -> None:
+    def _notify_console(self, error_data: dict[str, Any]) -> None:
         """Notify error console of new error (if available)."""
         with self._lock:
             if self._console:

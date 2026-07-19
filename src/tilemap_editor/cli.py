@@ -4,7 +4,8 @@ import argparse
 import sys
 
 from editor import Editor
-from utils import error_handler, error_context
+from utils import error_context, error_handler
+
 from .settings import init_settings, update_settings
 
 

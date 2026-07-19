@@ -1,9 +1,9 @@
 """Tests for GID-based collision resolution (no firstgid in collision library)."""
 
 from plugins.tileset_collision.models import (
-    TilesetCollisionLibrary,
-    TileCollisionData,
     CollisionPolygon,
+    TileCollisionData,
+    TilesetCollisionLibrary,
 )
 
 

@@ -1,13 +1,12 @@
-import pygame
-import sys
-import os
 import json
+import os
+import sys
 from pathlib import Path
 
+import pygame
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from constants import BASE_PATH
 
 
 class StandaloneAutomap:
@@ -37,7 +36,7 @@ class StandaloneAutomap:
 
         if self.target_path.is_file():
             try:
-                with open(self.target_path, "r", encoding="utf-8") as f:
+                with open(self.target_path, encoding="utf-8") as f:
                     data = json.load(f)
 
                     project_state = data.get("project_state", {})
@@ -52,7 +51,7 @@ class StandaloneAutomap:
         else:
             for p in self.target_path.glob("*.json"):
                 try:
-                    with open(p, "r", encoding="utf-8") as f:
+                    with open(p, encoding="utf-8") as f:
                         data = json.load(f)
                         self.rules.append(data)
                 except Exception as e:

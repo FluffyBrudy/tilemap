@@ -4,7 +4,7 @@ Protocol definitions for object tileset collision system.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable, Dict, Any
+from typing import Any, Protocol, runtime_checkable
 
 import pygame
 
@@ -26,7 +26,7 @@ class ObjectTilesetProvider(Protocol):
 class ObjectTilesetCollisionConsumer(Protocol):
     """Anything that wants to receive collision data updates."""
 
-    def on_region_collision_saved(self, region_id: str, data: Dict[str, Any]) -> None:
+    def on_region_collision_saved(self, region_id: str, data: dict[str, Any]) -> None:
         """Called when collision data for a region is saved or updated.
 
         Args:

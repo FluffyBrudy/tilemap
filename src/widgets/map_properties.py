@@ -1,10 +1,11 @@
-import pygame
 from typing import TYPE_CHECKING
+
+import pygame
 from pygame import Rect
 
 from .input import BaseTextInput
-from .ui.theme import COLORS, FONTS, SHAPE
 from .ui.button import Button
+from .ui.theme import COLORS, FONTS, SHAPE
 
 if TYPE_CHECKING:
     from editor import Editor

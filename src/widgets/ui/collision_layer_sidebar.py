@@ -11,14 +11,15 @@ Wraps CollisionLayerMaskWidget with:
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import pygame
 from pygame import Rect, Surface
 
-from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils.font_manager import FontWeight, font_manager
+from utils.icon_manager import icon_manager
 from widgets.ui.collision_layer_mask import CollisionLayerMaskWidget
-from utils.font_manager import font_manager, FontWeight
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class CollisionLayerSidebar:
@@ -35,7 +36,7 @@ class CollisionLayerSidebar:
         max_layers: int = 16,
         initial_layer: int = 1,
         initial_mask: int = 0xFFFF,
-        on_changed: Optional[Callable[[int, int], None]] = None,
+        on_changed: Callable[[int, int], None] | None = None,
     ):
         self._parent_rect = parent_rect
         self._visible = False
@@ -104,10 +105,7 @@ class CollisionLayerSidebar:
                 self._visible = False
                 return True
 
-        if self.widget.handle_event(event):
-            return True
-
-        return False
+        return bool(self.widget.handle_event(event))
 
     def draw(self, screen: Surface) -> None:
         if not self._visible:
@@ -167,9 +165,8 @@ class CollisionLayerSidebar:
             border_radius=SHAPE.radius_sm,
         )
 
-        font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
-        icon = font.render("⚙", True, COLORS.text)
-        screen.blit(icon, icon.get_rect(center=self._toggle_rect.center))
+        gear_icon = icon_manager.get_icon("gear", 18, COLORS.text)
+        screen.blit(gear_icon, gear_icon.get_rect(center=self._toggle_rect.center))
 
     def handle_toggle_event(self, event: pygame.event.Event) -> bool:
         """Handle events for the toggle button only."""
@@ -182,7 +179,7 @@ class CollisionLayerSidebar:
 
     def _rebuild_layout(self) -> None:
         self._toggle_rect = Rect(
-            self._parent_rect.right - self._sidebar_width - 42,
+            self._parent_rect.right - 42,
             self._parent_rect.y + 6,
             32,
             32,

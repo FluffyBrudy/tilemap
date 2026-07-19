@@ -14,14 +14,15 @@ Features:
 from __future__ import annotations
 
 import math
-from typing import List, Tuple, Optional, Set, Callable
+from collections.abc import Callable
 from enum import Enum
 
 import pygame
 from pygame import Rect
-from utils.font_manager import font_manager, FontWeight
+
+from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
-from utils.error_handler import error_handler, error_context
+from widgets.ui.theme import COLORS
 
 
 class PaintMode(Enum):
@@ -83,27 +84,27 @@ class CollisionPainter:
         self,
         rect: Rect,
         tile_surface: pygame.Surface,
-        tile_size: Tuple[int, int],
+        tile_size: tuple[int, int],
     ):
         self.rect = rect
         self.tile_surface = tile_surface
         self.tile_size = tile_size
 
-        self.polygons: List[List[Tuple[float, float]]] = []
-        self.polygon_one_way: List[bool] = []
+        self.polygons: list[list[tuple[float, float]]] = []
+        self.polygon_one_way: list[bool] = []
 
         self.mode = PaintMode.DRAW
-        self.current_polygon: List[Tuple[float, float]] = []
-        self.selected_polygon_idx: Optional[int] = None
-        self.selected_vertex_idx: Optional[int] = None
+        self.current_polygon: list[tuple[float, float]] = []
+        self.selected_polygon_idx: int | None = None
+        self.selected_vertex_idx: int | None = None
 
         self.offset_x: float = 0.0
         self.offset_y: float = 0.0
         self.zoom: float = 2.0
 
-        self.hover_vertex: Optional[Tuple[int, int]] = None
-        self.hover_polygon_idx: Optional[int] = None
-        self.mouse_pos: Tuple[int, int] = (0, 0)
+        self.hover_vertex: tuple[int, int] | None = None
+        self.hover_polygon_idx: int | None = None
+        self.mouse_pos: tuple[int, int] = (0, 0)
         self._panning = False
         self._pan_start = (0, 0)
         self._pan_start_offset = (0.0, 0.0)
@@ -114,7 +115,7 @@ class CollisionPainter:
         self.show_grid = True
         self.show_angle_hints = False
         self.edge_draw_mode = False
-        self._edge_start: Optional[Tuple[int, int]] = None
+        self._edge_start: tuple[int, int] | None = None
         self._shift_held = False
 
         self.show_help = False
@@ -137,14 +138,14 @@ class CollisionPainter:
             INFO_BTN_SIZE,
         )
 
-        self.on_polygon_added: Optional[Callable[[List[Tuple[float, float]]], None]] = (
+        self.on_polygon_added: Callable[[list[tuple[float, float]]], None] | None = (
             None
         )
-        self.on_polygon_removed: Optional[Callable[[int], None]] = None
-        self.on_polygon_modified: Optional[Callable[[int], None]] = None
+        self.on_polygon_removed: Callable[[int], None] | None = None
+        self.on_polygon_modified: Callable[[int], None] | None = None
 
-        self._font: Optional[pygame.font.Font] = None
-        self._font_sm: Optional[pygame.font.Font] = None
+        self._font: pygame.font.Font | None = None
+        self._font_sm: pygame.font.Font | None = None
 
         self._center_view()
 
@@ -161,19 +162,19 @@ class CollisionPainter:
         if self._font_sm is None:
             self._font_sm = font_manager.get_font("Arial", 11, FontWeight.REGULAR)
 
-    def _screen_to_tile(self, screen_pos: Tuple[int, int]) -> Tuple[float, float]:
+    def _screen_to_tile(self, screen_pos: tuple[int, int]) -> tuple[float, float]:
         """Convert screen coordinates to tile-local coordinates"""
         x = (screen_pos[0] - self.rect.x - self.offset_x) / self.zoom
         y = (screen_pos[1] - self.rect.y - self.offset_y) / self.zoom
         return (x, y)
 
-    def _tile_to_screen(self, tile_pos: Tuple[float, float]) -> Tuple[int, int]:
+    def _tile_to_screen(self, tile_pos: tuple[float, float]) -> tuple[int, int]:
         """Convert tile-local coordinates to screen coordinates"""
         x = int(self.rect.x + self.offset_x + tile_pos[0] * self.zoom)
         y = int(self.rect.y + self.offset_y + tile_pos[1] * self.zoom)
         return (x, y)
 
-    def _snap_to_grid(self, pos: Tuple[float, float]) -> Tuple[float, float]:
+    def _snap_to_grid(self, pos: tuple[float, float]) -> tuple[float, float]:
         """Snap position to grid if enabled"""
         if not self.snap_to_grid:
             return pos
@@ -181,7 +182,7 @@ class CollisionPainter:
         y = round(pos[1] / self.grid_size) * self.grid_size
         return (x, y)
 
-    def _find_vertex_at(self, screen_pos: Tuple[int, int]) -> Optional[Tuple[int, int]]:
+    def _find_vertex_at(self, screen_pos: tuple[int, int]) -> tuple[int, int] | None:
         """Find vertex at screen position, returns (polygon_idx, vertex_idx) or None"""
         for poly_idx, polygon in enumerate(self.polygons):
             for vert_idx, vertex in enumerate(polygon):
@@ -193,7 +194,7 @@ class CollisionPainter:
                     return (poly_idx, vert_idx)
         return None
 
-    def _find_polygon_at(self, screen_pos: Tuple[int, int]) -> Optional[int]:
+    def _find_polygon_at(self, screen_pos: tuple[int, int]) -> int | None:
         """Find polygon containing the screen position"""
         tile_pos = self._screen_to_tile(screen_pos)
 
@@ -205,7 +206,7 @@ class CollisionPainter:
         return None
 
     def _point_in_polygon(
-        self, point: Tuple[float, float], polygon: List[Tuple[float, float]]
+        self, point: tuple[float, float], polygon: list[tuple[float, float]]
     ) -> bool:
         """Check if point is inside polygon using ray casting"""
         if len(polygon) < 3:
@@ -247,8 +248,8 @@ class CollisionPainter:
 
     def set_polygons(
         self,
-        polygons: List[List[Tuple[float, float]]],
-        one_way_flags: Optional[List[bool]] = None,
+        polygons: list[list[tuple[float, float]]],
+        one_way_flags: list[bool] | None = None,
     ) -> None:
         """Load existing polygons"""
         self.polygons = [list(p) for p in polygons]
@@ -259,11 +260,11 @@ class CollisionPainter:
         self.current_polygon = []
         self.selected_polygon_idx = None
 
-    def get_polygons(self) -> List[List[Tuple[float, float]]]:
+    def get_polygons(self) -> list[list[tuple[float, float]]]:
         """Get all completed polygons"""
         return [list(p) for p in self.polygons]
 
-    def get_one_way_flags(self) -> List[bool]:
+    def get_one_way_flags(self) -> list[bool]:
         """Get one-way collision flags for all polygons"""
         return list(self.polygon_one_way)
 
@@ -276,7 +277,7 @@ class CollisionPainter:
                 self.on_polygon_modified(idx)
 
     def _get_interior_angle(
-        self, polygon: List[Tuple[float, float]], idx: int
+        self, polygon: list[tuple[float, float]], idx: int
     ) -> float:
         """Compute interior angle (degrees) at polygon vertex idx."""
         n = len(polygon)
@@ -298,7 +299,7 @@ class CollisionPainter:
     def _draw_angle_hint(
         self,
         screen: pygame.Surface,
-        screen_pos: Tuple[int, int],
+        screen_pos: tuple[int, int],
         angle_deg: float,
     ) -> None:
         """Draw a small arc + angle text at a vertex."""
@@ -373,28 +374,26 @@ class CollisionPainter:
                 self._help_scroll = 0
                 return True
 
-            if event.type == pygame.MOUSEBUTTONUP:
-                if self._help_scrolling:
-                    self._help_scrolling = False
-                    return True
+            if event.type == pygame.MOUSEBUTTONUP and self._help_scrolling:
+                self._help_scrolling = False
+                return True
 
-            if event.type == pygame.MOUSEMOTION:
-                if self._help_scrolling:
-                    dy = mouse[1] - self._help_scroll_start_y
-                    self._help_scroll = self._help_scroll_start + dy * 2
-                    self._help_scroll = max(
-                        0,
-                        min(
-                            self._help_scroll,
-                            max(
-                                0,
-                                self._help_content_height
-                                - self._help_rect.h
-                                + HELP_SCROLL_MARGIN,
-                            ),
+            if event.type == pygame.MOUSEMOTION and self._help_scrolling:
+                dy = mouse[1] - self._help_scroll_start_y
+                self._help_scroll = self._help_scroll_start + dy * 2
+                self._help_scroll = max(
+                    0,
+                    min(
+                        self._help_scroll,
+                        max(
+                            0,
+                            self._help_content_height
+                            - self._help_rect.h
+                            + HELP_SCROLL_MARGIN,
                         ),
-                    )
-                    return True
+                    ),
+                )
+                return True
 
             if event.type == pygame.MOUSEWHEEL:
                 if self._help_rect.collidepoint(mouse) or (
@@ -552,7 +551,7 @@ class CollisionPainter:
                 if len(self.current_polygon) >= 3:
                     self._complete_polygon()
                     return True
-                elif self.current_polygon:
+                if self.current_polygon:
                     self.current_polygon = []
                     return True
 
@@ -581,7 +580,7 @@ class CollisionPainter:
                 if self.current_polygon:
                     self.current_polygon = []
                     return True
-                elif self.selected_polygon_idx is not None:
+                if self.selected_polygon_idx is not None:
                     self.selected_polygon_idx = None
                     self.selected_vertex_idx = None
                     return True
@@ -590,7 +589,7 @@ class CollisionPainter:
                 if self.selected_polygon_idx is not None:
                     self._delete_polygon(self.selected_polygon_idx)
                     return True
-                elif self.current_polygon:
+                if self.current_polygon:
                     self.current_polygon.pop()
                     return True
 
@@ -650,7 +649,7 @@ class CollisionPainter:
 
         screen.set_clip(self.rect)
 
-        screen.fill(_COLORS["bg"], self.rect)
+        screen.fill(COLORS.bg, self.rect)
 
         tw, th = self.tile_size
         scaled_w = int(tw * self.zoom)
@@ -762,7 +761,7 @@ class CollisionPainter:
         close_btn = Rect(panel_rect.right - 30, panel_rect.y + 10, 20, 20)
         mouse = pygame.mouse.get_pos()
         close_hover = close_btn.collidepoint(mouse)
-        close_bg = _COLORS["polygon_stroke"] if close_hover else _COLORS["bg"]
+        close_bg = _COLORS["polygon_stroke"] if close_hover else COLORS.bg
         pygame.draw.rect(screen, close_bg, close_btn)
         pygame.draw.rect(screen, _COLORS["border"], close_btn, 1)
         close_icon = icon_manager.get_icon("close", 14, _COLORS["text"])
@@ -844,7 +843,7 @@ class CollisionPainter:
                 key_bg = Rect(
                     key_x, y - 2, key_surf.get_width() + 10, key_surf.get_height() + 4
                 )
-                pygame.draw.rect(screen, (*_COLORS["bg"], 180), key_bg, border_radius=3)
+                pygame.draw.rect(screen, (*COLORS.bg, 180), key_bg, border_radius=3)
                 screen.blit(key_surf, (key_x + 5, y))
 
                 desc_x = key_x + key_bg.width + 8
@@ -858,7 +857,7 @@ class CollisionPainter:
 
         scrollbar_rect = Rect(panel_rect.right - 20, content_rect.y, 12, content_rect.h)
 
-        pygame.draw.rect(screen, (*_COLORS["bg"], 100), scrollbar_rect, border_radius=6)
+        pygame.draw.rect(screen, (*COLORS.bg, 100), scrollbar_rect, border_radius=6)
 
         if self._help_content_height > content_rect.h:
             thumb_height = max(
@@ -907,7 +906,7 @@ class CollisionPainter:
     def _draw_polygon(
         self,
         screen: pygame.Surface,
-        polygon: List[Tuple[float, float]],
+        polygon: list[tuple[float, float]],
         selected: bool,
         hovered: bool,
         one_way: bool,

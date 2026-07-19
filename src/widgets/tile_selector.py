@@ -1,13 +1,15 @@
-import pygame
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Set, Any
 from pathlib import Path
-from pygame import Rect, Surface
+from typing import TYPE_CHECKING, Any
 
-from utils.validation import is_image_multipleof
+import pygame
+from pygame import Rect
+
 from utils.error_handler import error_handler
+from utils.validation import is_image_multipleof
+from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
-from widgets.ui.theme import COLORS, FONTS, SHAPE
-from widgets.ui.tileset_type_dialog import TilesetTypeDialog
+from widgets.ui.theme import COLORS, FONTS
+from widgets.ui.tree_widget import TreeNode, TreeWidget
 from widgets.widget_base import WidgetBase
 
 if TYPE_CHECKING:
@@ -15,53 +17,150 @@ if TYPE_CHECKING:
 
 
 class TilesetData:
-    def __init__(
-        self, name: str, path: Path, surface: pygame.Surface, tileset_type: str = "tile"
-    ):
+    _next_uid: int = 0
+
+    def __init__(self, name: str, path: Path, surface: pygame.Surface, tileset_type: str = "tile"):
+        self.uid: str = f"ts_{TilesetData._next_uid}"
+        TilesetData._next_uid += 1
         self.name = name
         self.path = path
         self.surface = surface
         self.tileset_type = tileset_type
         self.offset = [0, 0]
-        self.properties: Dict[str, Any] = {}
+        self.properties: dict[str, Any] = {}
 
-        self.tile_properties: Dict[int, Dict[str, Any]] = {}
-        self.object_collision_path: Optional[Path] = None
-        self.object_collision_data: Optional[Dict[str, Any]] = None
-        self.animation: Optional[dict] = None
+        self.tile_properties: dict[int, dict[str, Any]] = {}
+        self.object_collision_path: Path | None = None
+        self.object_collision_data: dict[str, Any] | None = None
+        self.animation: dict | None = None
 
 
 class TileSelector(WidgetBase):
+    TREE_W = 140
+
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int):
-        super().__init__(Rect(x, y, w, h), border_radius=SHAPE.radius)
+        super().__init__(Rect(x, y, w, h))
         self.editor = editor
-        self.tilesets: List[TilesetData] = []
+        self.tilesets: list[TilesetData] = []
+        self.tileset_map: dict[int, TilesetData] = {}
 
-        self.tileset_map: Dict[int, TilesetData] = {}
-        self.active_idx = -1
+        self._tree = TreeWidget(Rect(x, y, self.TREE_W, h - 28))
+        self._tree.on_selection_changed = self._on_tree_selection
+        self._tree.on_item_activated = self._on_tree_activate
+        self._tree.on_item_context = self._on_tree_context
+        self._tree.on_structure_changed = self._on_tree_structure_changed
 
-        self.top_bar_h = 30
-        self.view_rect = Rect(x, y + self.top_bar_h, w, h - self.top_bar_h)
-        self.tab_scroll_x = 0
-        arrow_h = self.top_bar_h - 4
-        arrow_y = y + (self.top_bar_h - arrow_h) // 2
-        self._tab_arrow_left = Rect(x + 2, arrow_y, 18, arrow_h)
-        self._tab_arrow_right = Rect(x + w - 20, arrow_y, 18, arrow_h)
+        self._folder_btn = Button(
+            Rect(x, h - 26, self.TREE_W, 24),
+            "+ Folder",
+            font=FONTS.get_small_font(),
+            on_click=self._add_folder,
+        )
+
+        self.view_rect = Rect(x + self.TREE_W, y, w - self.TREE_W, h)
         self.is_panning = False
         self.pan_start = (0, 0)
         self.pan_start_offset = (0, 0)
 
         self.is_selecting = False
-        self.selection_start_grid: Optional[Tuple[int, int]] = None
-        self.hover_pos: Optional[Tuple[int, int]] = None
-        self.selected_tile: Optional[Tuple[int, int, int, int]] = None
+        self.selection_start_grid: tuple[int, int] | None = None
+        self.hover_pos: tuple[int, int] | None = None
+        self.selected_tile: tuple[int, int, int, int] | None = None
 
-        self.rule_hints: Set[int] = set()
-        self._pending_tileset_queue: List[Tuple[Path, pygame.Surface]] = []
+        self.active_idx = -1
+        self.rule_hints: set[int] = set()
+        self._folder_id_counter = 0
+
+        self._pending_tileset_queue: list[tuple[Path, pygame.Surface]] = []
         self._queue_timer_active = False
 
         self.zoom: float = 1.0
         self.font = FONTS.get_medium_font()
+
+    def _add_folder(self) -> None:
+        self._folder_id_counter += 1
+        folder = TreeNode(
+            id=f"_folder_{self._folder_id_counter}",
+            label=f"Folder {self._folder_id_counter}",
+            is_folder=True,
+        )
+        self._tree.roots.append(folder)
+        self._tree.set_data(self._tree.roots)
+
+    def _ts_node(self, node_id: str) -> TilesetData | None:
+        node = self._tree.find_node(node_id)
+        if node and isinstance(node.data, int) and 0 <= node.data < len(self.tilesets):
+            return self.tilesets[node.data]
+        return None
+
+    def _on_tree_selection(self, selected_ids: list[str]) -> None:
+        if not selected_ids:
+            return
+        ts = self._ts_node(selected_ids[0])
+        if ts is None:
+            return
+        self.active_idx = self.tilesets.index(ts)
+        if ts.tileset_type == "object":
+            self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+        else:
+            self.selected_tile = None
+        self.rule_hints.clear()
+
+    def _on_tree_activate(self, item_id: str) -> None:
+        self._on_tree_selection([item_id])
+
+    def _on_tree_context(self, item_id: str) -> None:
+        ts = self._ts_node(item_id)
+        if ts is None:
+            return
+        self.editor.property_editor = PropertyEditor(
+            self.editor,
+            f"Tileset Properties: {ts.name}",
+            ts.properties,
+            on_save=lambda props: self._save_tileset_properties(ts, props),
+            on_close=lambda: None,
+        )
+
+    def _on_tree_structure_changed(self) -> None:
+        pass
+
+    def _sync_tree(self) -> None:
+        uid_to_idx = {ts.uid: i for i, ts in enumerate(self.tilesets)}
+
+        def walk(nodes):
+            kept: list[TreeNode] = []
+            for n in nodes:
+                if n.is_folder:
+                    n.children = walk(n.children)
+                    kept.append(n)
+                elif n.id in uid_to_idx:
+                    n.data = uid_to_idx[n.id]
+                    n.label = self.tilesets[uid_to_idx[n.id]].name
+                    kept.append(n)
+            return kept
+
+        roots = walk(self._tree.roots)
+        existing = {n.id for n in self._walk_all(roots) if not n.is_folder}
+
+        for ts in self.tilesets:
+            if ts.uid not in existing:
+                roots.append(
+                    TreeNode(
+                        id=ts.uid,
+                        label=ts.name,
+                        icon_key="miniobj" if ts.tileset_type == "object" else "tileset",
+                        data=uid_to_idx[ts.uid],
+                    )
+                )
+
+        self._tree.set_data(roots)
+
+    def _walk_all(self, nodes: list[TreeNode]) -> list[TreeNode]:
+        result: list[TreeNode] = []
+        for n in nodes:
+            result.append(n)
+            result.extend(self._walk_all(n.children))
+        return result
 
     def _on_tileset_type_cancel(self):
         if hasattr(self, "_pending_tileset_path"):
@@ -73,13 +172,12 @@ class TileSelector(WidgetBase):
 
     def resize(self, x: int, y: int, w: int, h: int):
         super().resize(x, y, w, h)
-        self.view_rect = Rect(x, y + self.top_bar_h, w, h - self.top_bar_h)
-        arrow_h = self.top_bar_h - 4
-        arrow_y = y + (self.top_bar_h - arrow_h) // 2
-        self._tab_arrow_left = Rect(x + 2, arrow_y, 18, arrow_h)
-        self._tab_arrow_right = Rect(x + w - 20, arrow_y, 18, arrow_h)
+        tw = self.TREE_W
+        self._tree.resize(x, y, tw, h - 28)
+        self._folder_btn.resize(x, y + h - 26, tw, 24)
+        self.view_rect = Rect(x + tw, y, w - tw, h)
 
-    def set_rule_hints(self, hints: Set[int]):
+    def set_rule_hints(self, hints: set[int]):
         self.rule_hints = hints
 
     def handle_event(self, event: pygame.event.Event) -> bool:
@@ -92,29 +190,22 @@ class TileSelector(WidgetBase):
 
         mouse_pos = pygame.mouse.get_pos()
 
-        is_wheel = False
-        wy = 0
-        if event.type == pygame.MOUSEWHEEL:
-            is_wheel = True
-            wy = event.y
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
-            is_wheel = True
-            wy = 1 if event.button == 4 else -1
+        if self._tree.handle_event(event):
+            return True
 
-        if is_wheel:
-            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
-                self._scroll_tabs(wy * 30)
-                return True
+        if self._folder_btn.handle_event(event):
+            return True
+
+        if event.type == pygame.MOUSEWHEEL:
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 mods = pygame.key.get_mods()
-                shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
                 ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
                 meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+                shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
                 ts = self.tilesets[self.active_idx]
                 if ctrl_held or meta_held:
                     old_zoom = self.zoom
-                    self.zoom = max(0.25, min(self.zoom * (1.0 + wy * 0.15), 8.0))
-
+                    self.zoom = max(0.25, min(self.zoom * (1.0 + event.y * 0.15), 8.0))
                     mx, my = pygame.mouse.get_pos()
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
@@ -123,9 +214,9 @@ class TileSelector(WidgetBase):
                     ts.offset[0] = int(mx - self.view_rect.x - img_rel_x * self.zoom)
                     ts.offset[1] = int(my - self.view_rect.y - img_rel_y * self.zoom)
                 elif shift_held:
-                    ts.offset[0] += wy * 20
+                    ts.offset[0] += event.y * 20
                 else:
-                    ts.offset[1] += wy * 20
+                    ts.offset[1] += event.y * 20
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -150,9 +241,7 @@ class TileSelector(WidgetBase):
                             self.editor,
                             f"Tile Properties: {ts.name} (ID: {variant_id})",
                             ts.tile_properties.get(variant_id, {}),
-                            on_save=lambda props: self._save_tile_properties_multi(
-                                ts, variant_ids, props
-                            ),
+                            on_save=lambda props: self._save_tile_properties_multi(ts, variant_ids, props),
                             on_close=lambda: None,
                         )
                         return True
@@ -162,26 +251,10 @@ class TileSelector(WidgetBase):
                 self.pan_start_offset = tuple(self.tilesets[self.active_idx].offset)
                 return True
 
-            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
-                tab_idx = self._get_tab_at_pos(mouse_pos)
-                if tab_idx is not None:
-                    ts = self.tilesets[tab_idx]
-                    self.editor.property_editor = PropertyEditor(
-                        self.editor,
-                        f"Tileset Properties: {ts.name}",
-                        ts.properties,
-                        on_save=lambda props: self._save_tileset_properties(ts, props),
-                        on_close=lambda: None,
-                    )
-                    return True
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
             self.is_panning = False
             return True
-        elif (
-            event.type == pygame.MOUSEMOTION
-            and self.is_panning
-            and self.active_idx != -1
-        ):
+        elif event.type == pygame.MOUSEMOTION and self.is_panning and self.active_idx != -1:
             dx = mouse_pos[0] - self.pan_start[0]
             dy = mouse_pos[1] - self.pan_start[1]
             ts = self.tilesets[self.active_idx]
@@ -190,16 +263,6 @@ class TileSelector(WidgetBase):
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(mouse_pos) and mouse_pos[1] < self.view_rect.top:
-                if self._tab_arrow_left.collidepoint(mouse_pos):
-                    self._scroll_tabs(100)
-                    return True
-                if self._tab_arrow_right.collidepoint(mouse_pos):
-                    self._scroll_tabs(-100)
-                    return True
-                self.check_tab_click(mouse_pos)
-                return True
-
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 if self.hover_pos:
                     ts = self.tilesets[self.active_idx]
@@ -230,10 +293,7 @@ class TileSelector(WidgetBase):
                 rel_x = (mouse_pos[0] - img_x) / self.zoom
                 rel_y = (mouse_pos[1] - img_y) / self.zoom
 
-                if (
-                    0 <= rel_x < ts.surface.get_width()
-                    and 0 <= rel_y < ts.surface.get_height()
-                ):
+                if 0 <= rel_x < ts.surface.get_width() and 0 <= rel_y < ts.surface.get_height():
                     tw, th = self.editor.tilemap.tile_size
                     col = int(rel_x // tw)
                     row = int(rel_y // th)
@@ -251,7 +311,7 @@ class TileSelector(WidgetBase):
 
         return False
 
-    def update_selection_rect(self, current_grid: Tuple[int, int]):
+    def update_selection_rect(self, current_grid: tuple[int, int]):
         if not self.selection_start_grid:
             return
         start_col, start_row = self.selection_start_grid
@@ -277,9 +337,7 @@ class TileSelector(WidgetBase):
         )
 
     def on_files_selected(self, paths):
-        print(
-            f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)"
-        )
+        print(f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)")
         if isinstance(paths, Path):
             self.on_file_selected(paths)
             return
@@ -304,9 +362,7 @@ class TileSelector(WidgetBase):
                     self._start_tileset_queue()
             except Exception as e:
                 error_msg = f"Error loading image {path}: {e}"
-                error_handler.capture(
-                    Exception(error_msg), context="load_tileset_image"
-                )
+                error_handler.capture(Exception(error_msg), context="load_tileset_image")
                 import logging
 
                 logging.error(error_msg, exc_info=True)
@@ -321,12 +377,8 @@ class TileSelector(WidgetBase):
         if not self._pending_tileset_queue:
             print("DEBUG: Queue is empty, nothing to process")
             return
-        print(
-            f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining"
-        )
-        self._pending_tileset_path, self._pending_tileset_surf = (
-            self._pending_tileset_queue.pop(0)
-        )
+        print(f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining")
+        self._pending_tileset_path, self._pending_tileset_surf = self._pending_tileset_queue.pop(0)
         print(f"DEBUG: Processing tileset: {self._pending_tileset_path}")
         tw, th = self.editor.tilemap.tile_size
         sheet_cols = self._pending_tileset_surf.get_width() // tw
@@ -341,50 +393,39 @@ class TileSelector(WidgetBase):
         self,
         path: Path,
         tileset_type: str,
-        properties: dict = {},
-        tile_properties: dict = {},
-        animation: Optional[dict] = None,
+        properties: dict = None,
+        tile_properties: dict = None,
+        animation: dict | None = None,
     ):
-        """Load tileset from path without showing dialog (used when loading maps).
-
-        Args:
-            path: Path to the tileset image file
-            tileset_type: Type of tileset ("tile" or "object") - already known from saved map
-            properties: Custom properties for the tileset
-            tile_properties: Custom properties for individual tiles in the tileset (variant_id str -> dict)
-            animation: Animation config dict (frame_count, frame_duration_ms, frame_stride, loop, animation_mode)
-        """
+        if tile_properties is None:
+            tile_properties = {}
+        if properties is None:
+            properties = {}
         if path.exists():
             try:
                 surf = pygame.image.load(path).convert_alpha()
-                tileset_data = TilesetData(
-                    path.name, path, surf, tileset_type=tileset_type
-                )
+                tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
                 tileset_data.properties = properties
-                tileset_data.tile_properties = {
-                    int(k): v for k, v in tile_properties.items()
-                }
+                tileset_data.tile_properties = {int(k): v for k, v in tile_properties.items()}
                 tileset_data.animation = animation
                 self._load_collision_data_for_tileset(tileset_data)
 
                 self.tilesets.append(tileset_data)
-                self.active_idx = len(self.tilesets) - 1
-                self.tileset_map[self.active_idx] = tileset_data
+                self.tileset_map[len(self.tilesets) - 1] = tileset_data
+                self._sync_tree()
+                self._tree.selected_ids = {tileset_data.uid}
                 if tileset_type == "object":
                     self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
             except Exception as e:
                 error_handler.capture(e, context="load_tileset_surface")
 
     def _on_tileset_type_selected(self, tileset_type: str):
-        """Callback when user selects tileset type from dialog."""
         if not hasattr(self, "_pending_tileset_path"):
             return
 
         surf = self._pending_tileset_surf
 
-        if tileset_type == "tile" and not is_image_multipleof(
-            surf.get_size(), self.editor.tilemap.tile_size
-        ):
+        if tileset_type == "tile" and not is_image_multipleof(surf.get_size(), self.editor.tilemap.tile_size):
             w, h = surf.get_size()
             tw, th = self.editor.tilemap.tile_size
             self.editor.confirm_dialog.show(
@@ -422,9 +463,7 @@ class TileSelector(WidgetBase):
                     elif sheet_cols % frame_count == 0:
                         animation["frame_stride"] = sheet_cols // frame_count
                     elif sheet_rows % frame_count == 0:
-                        animation["frame_stride"] = (
-                            sheet_rows // frame_count
-                        ) * sheet_cols
+                        animation["frame_stride"] = (sheet_rows // frame_count) * sheet_cols
                     else:
                         total = sheet_cols * sheet_rows
                         animation["frame_stride"] = math.ceil(total / frame_count)
@@ -436,8 +475,9 @@ class TileSelector(WidgetBase):
 
         if tileset_type == "object":
             self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
-        else:
-            self.selected_tile = None
+
+        self._sync_tree()
+        self._tree.selected_ids = {tileset_data.uid}
 
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
@@ -446,7 +486,6 @@ class TileSelector(WidgetBase):
             self._queue_timer_active = True
 
     def _load_collision_data_for_tileset(self, tileset_data: TilesetData) -> None:
-        """Attach existing collision data for tilesets that have sidecar files."""
         if tileset_data.tileset_type != "object":
             return
 
@@ -479,22 +518,13 @@ class TileSelector(WidgetBase):
             "object_tileset",
             "collision",
         )
-        return (
-            Path(data_root)
-            / collision_dir_name
-            / f"{tileset_path.stem}.object_collision.json"
-        )
+        return Path(data_root) / collision_dir_name / f"{tileset_path.stem}.object_collision.json"
 
     def load_object_tileset_companions(self) -> None:
-        """Auto-add object tileset tabs for tile images with object collision data."""
         previous_active_idx = self.active_idx
         previous_selected_tile = self.selected_tile
 
-        existing = {
-            (ts.path.resolve(), ts.tileset_type)
-            for ts in self.tilesets
-            if ts.path.exists()
-        }
+        existing = {(ts.path.resolve(), ts.tileset_type) for ts in self.tilesets if ts.path.exists()}
 
         for ts in list(self.tilesets):
             if ts.tileset_type != "tile":
@@ -512,10 +542,7 @@ class TileSelector(WidgetBase):
             if not collision_path.exists():
                 continue
 
-            print(
-                "Auto-loading object tileset companion from collision sidecar: "
-                f"{collision_path}"
-            )
+            print(f"Auto-loading object tileset companion from collision sidecar: {collision_path}")
             self.load_tileset_from_path(ts.path, "object")
             existing.add((resolved_path, "object"))
 
@@ -533,11 +560,9 @@ class TileSelector(WidgetBase):
             self.active_idx = max(0, len(self.tilesets) - 1)
             if not self.tilesets:
                 self.active_idx = -1
-            self.selected_tile = None
-            self.rule_hints.clear()
+                self._sync_tree()
 
     def open_collision_editor(self):
-        """Open collision editor for the active tileset"""
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):
             self.editor.notifications.notify("No tileset selected")
             return
@@ -545,31 +570,6 @@ class TileSelector(WidgetBase):
         ts = self.tilesets[self.active_idx]
 
         self.editor.launch_collision_editor(ts.tileset_type)
-
-    def check_tab_click(self, pos):
-        idx = self._get_tab_at_pos(pos)
-        if idx is not None:
-            self.active_idx = int(idx)
-            ts = self.tilesets[self.active_idx]
-            if ts.tileset_type == "object":
-                self.selected_tile = (
-                    0,
-                    0,
-                    ts.surface.get_width(),
-                    ts.surface.get_height(),
-                )
-            else:
-                self.selected_tile = None
-            self.rule_hints.clear()
-
-    def _get_tab_at_pos(self, pos) -> Optional[int]:
-        if not self.tilesets:
-            return None
-        tab_w = 100
-        idx = (pos[0] - self.rect.x + self.tab_scroll_x) // tab_w
-        if 0 <= idx < len(self.tilesets):
-            return int(idx)
-        return None
 
     def _save_tileset_properties(self, ts: TilesetData, props: dict):
         ts.properties = props
@@ -579,19 +579,15 @@ class TileSelector(WidgetBase):
         ts.tile_properties[variant_id] = props
         print(f"Saved properties for tile {variant_id} in tileset: {ts.name}")
 
-    def _save_tile_properties_multi(
-        self, ts: TilesetData, variant_ids: List[int], props: dict
-    ):
+    def _save_tile_properties_multi(self, ts: TilesetData, variant_ids: list[int], props: dict):
         for vid in variant_ids:
             ts.tile_properties[vid] = props.copy()
         if len(variant_ids) == 1:
             print(f"Saved properties for tile {variant_ids[0]} in tileset: {ts.name}")
         else:
-            print(
-                f"Saved properties for {len(variant_ids)} tiles in tileset: {ts.name}"
-            )
+            print(f"Saved properties for {len(variant_ids)} tiles in tileset: {ts.name}")
 
-    def _get_selected_variant_ids(self, ts: TilesetData) -> List[int]:
+    def _get_selected_variant_ids(self, ts: TilesetData) -> list[int]:
         if not self.selected_tile:
             return []
         sx, sy, sw, sh = self.selected_tile
@@ -601,7 +597,7 @@ class TileSelector(WidgetBase):
         start_row = sy // th
         sel_w_tiles = max(1, sw // tw)
         sel_h_tiles = max(1, sh // th)
-        variant_ids: List[int] = []
+        variant_ids: list[int] = []
         for row in range(start_row, start_row + sel_h_tiles):
             for col in range(start_col, start_col + sel_w_tiles):
                 variant_ids.append((row * cols) + col)
@@ -613,13 +609,6 @@ class TileSelector(WidgetBase):
         return self.tilesets[self.active_idx]
 
     def select_tile_by_variant(self, tileset_index: int, variant_id: int) -> bool:
-        """Select a specific tile in the tileset panel by tileset index and variant ID.
-
-        Switches to the specified tileset tab and selects the tile region
-        corresponding to the variant ID.
-
-        Returns True if the selection was successful.
-        """
         if tileset_index < 0 or tileset_index >= len(self.tilesets):
             return False
 
@@ -671,8 +660,20 @@ class TileSelector(WidgetBase):
 
     def draw(self, screen: pygame.Surface):
         self.draw_base(screen)
+
+        tree_bg = Rect(self.rect.x, self.rect.y, self.TREE_W, self.rect.height)
+        pygame.draw.rect(screen, COLORS.panel_alt, tree_bg)
+        pygame.draw.line(
+            screen,
+            COLORS.border,
+            (tree_bg.right, tree_bg.top),
+            (tree_bg.right, tree_bg.bottom),
+        )
+
+        self._tree.draw(screen)
+        self._folder_btn.draw(screen)
+
         self.draw_view_area(screen)
-        self.draw_tabs(screen)
 
     def draw_view_area(self, screen: pygame.Surface):
         pygame.draw.rect(screen, COLORS.panel_alt, self.view_rect)
@@ -728,9 +729,7 @@ class TileSelector(WidgetBase):
 
             pygame.draw.rect(screen, (0, 255, 255), Rect(x, y, ztw, zth), 1)
 
-    def draw_tileset_image(
-        self, screen, ts: TilesetData, img_x: int, img_y: int, zoom: float = 1.0
-    ):
+    def draw_tileset_image(self, screen, ts: TilesetData, img_x: int, img_y: int, zoom: float = 1.0):
         if zoom != 1.0:
             w = int(ts.surface.get_width() * zoom)
             h = int(ts.surface.get_height() * zoom)
@@ -781,10 +780,7 @@ class TileSelector(WidgetBase):
                 while display_name and self.font.size(display_name)[0] > max_label_w:
                     display_name = display_name[:-1].rstrip()
                 if display_name != name and max_label_w > self.font.size("...")[0]:
-                    while (
-                        display_name
-                        and self.font.size(display_name + "...")[0] > max_label_w
-                    ):
+                    while display_name and self.font.size(display_name + "...")[0] > max_label_w:
                         display_name = display_name[:-1].rstrip()
                     display_name += "..."
                 label = self.font.render(display_name, True, COLORS.text)
@@ -819,86 +815,3 @@ class TileSelector(WidgetBase):
             int(sh * self.zoom),
         )
         pygame.draw.rect(screen, COLORS.success, sel_rect, 2)
-
-    def draw_tabs(self, screen: Surface):
-        if not self.tilesets:
-            return
-        clip = screen.get_clip()
-        tab_area = Rect(self.rect.x, self.rect.y, self.rect.width, self.top_bar_h)
-        screen.set_clip(tab_area)
-
-        pygame.draw.rect(screen, COLORS.header, tab_area)
-
-        tab_w = 100
-        total_w = tab_w * len(self.tilesets)
-        has_overflow = total_w > self.rect.width
-        if has_overflow:
-            self.tab_scroll_x = max(
-                0, min(self.tab_scroll_x, total_w - self.rect.width)
-            )
-        else:
-            self.tab_scroll_x = 0
-
-        for i, ts in enumerate(self.tilesets):
-            r = Rect(
-                self.rect.x + i * tab_w - self.tab_scroll_x,
-                self.rect.y,
-                tab_w,
-                self.top_bar_h,
-            )
-            if r.right < self.rect.x or r.x > self.rect.right:
-                continue
-            is_active = i == self.active_idx
-            col = COLORS.selected if is_active else COLORS.header
-            pygame.draw.rect(screen, col, r)
-            if not is_active:
-                pygame.draw.line(screen, COLORS.border, r.bottomleft, r.bottomright, 1)
-            t = ts.name[:8] + ".." if len(ts.name) > 10 else ts.name
-            screen.blit(self.font.render(t, True, COLORS.text), (r.x + 5, r.y + 5))
-
-        mx, my = pygame.mouse.get_pos()
-        show_arrows = has_overflow and tab_area.collidepoint(mx, my)
-
-        if show_arrows:
-            for arrow_rect, label in [
-                (self._tab_arrow_left, "<"),
-                (self._tab_arrow_right, ">"),
-            ]:
-                pygame.draw.rect(screen, COLORS.selected, arrow_rect)
-                pygame.draw.rect(screen, COLORS.border, arrow_rect, 1)
-                arrow_surf = self.font.render(label, True, COLORS.text)
-                arrow_rect_text = arrow_surf.get_rect(center=arrow_rect.center)
-                screen.blit(arrow_surf, arrow_rect_text)
-
-            bar_w = max(30, int(self.rect.width * (self.rect.width / total_w)))
-            bar_x = self.rect.x + int(
-                (self.tab_scroll_x / (total_w - self.rect.width))
-                * (self.rect.width - bar_w)
-            )
-            bar_rect = Rect(bar_x, self.rect.y + self.top_bar_h - 4, bar_w, 3)
-            pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
-
-        if tab_area.collidepoint(mx, my) and not (
-            show_arrows
-            and (
-                self._tab_arrow_left.collidepoint(mx, my)
-                or self._tab_arrow_right.collidepoint(mx, my)
-            )
-        ):
-            idx = self._get_tab_at_pos((mx, my))
-            if idx is not None and 0 <= idx < len(self.tilesets):
-                self.editor.tooltip.show(self.tilesets[idx].name, (mx + 10, my + 10))
-
-        screen.set_clip(clip)
-
-    def _scroll_tabs(self, delta: float):
-        if not self.tilesets:
-            return
-        tab_w = 100
-        total_w = tab_w * len(self.tilesets)
-        if total_w <= self.rect.width:
-            self.tab_scroll_x = 0
-            return
-        self.tab_scroll_x = max(
-            0, min(self.tab_scroll_x - delta, total_w - self.rect.width)
-        )

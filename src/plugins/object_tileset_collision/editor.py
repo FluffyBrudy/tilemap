@@ -23,27 +23,29 @@ Status feedback shows what's done and what's missing.
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, List, Dict, Any, Set
-from pathlib import Path
-from enum import Enum, auto
 from dataclasses import dataclass
+from enum import Enum, auto
+from pathlib import Path
 
 import pygame
 from pygame import Rect, Surface
 
 from plugins.tileset_collision.collision_painter import CollisionPainter
 from plugins.tileset_collision.models import CollisionPolygon
-from .models import RegionCollisionData, ObjectTilesetCollisionLibrary
-from widgets.ui.region_selector import RegionSelector, Region
-from widgets.ui.status_bar import StatusBar, StatusType
-from widgets.ui.mode_indicator import ModeIndicator, Mode
-from widgets.ui.draw_utils import draw_panel, draw_button
-from widgets.ui.theme import COLORS, FONTS, SHAPE
-from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
-from widgets.input import InlineTextInput
-from utils.font_manager import font_manager, FontWeight
-from utils.icon_manager import icon_manager
 from utils.error_handler import error_handler
+from utils.font_manager import FontWeight, font_manager
+from utils.icon_manager import icon_manager
+from widgets.input import InlineTextInput
+from widgets.ui.button import Button
+from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
+from widgets.ui.draw_utils import draw_panel
+from widgets.ui.mode_indicator import Mode, ModeIndicator
+from widgets.ui.region_selector import Region, RegionSelector
+from widgets.ui.splitter import Splitter
+from widgets.ui.status_bar import StatusBar
+from widgets.ui.theme import COLORS, FONTS, SHAPE
+
+from .models import ObjectTilesetCollisionLibrary, RegionCollisionData
 
 
 class EditorMode(Enum):
@@ -65,7 +67,7 @@ class RegionStatus:
 def _render_fit_text(
     font: pygame.font.Font,
     text: str,
-    color: Tuple[int, int, int],
+    color: tuple[int, int, int],
     max_width: int,
 ) -> Surface:
     """Render text constrained to max_width with an ellipsis."""
@@ -106,19 +108,19 @@ class ObjectTilesetCollisionEditor:
     def __init__(
         self,
         rect: Rect,
-        tileset_surface: Optional[Surface] = None,
+        tileset_surface: Surface | None = None,
     ):
         self.rect = rect
         self.visible = True
 
         self._tileset_surface = tileset_surface
         self._tileset_name = "Object Tileset"
-        self._data_root: Optional[Path] = None
-        self._collision_dir: Optional[Path] = None
-        self._tileset_path_stem: Optional[str] = None
+        self._data_root: Path | None = None
+        self._collision_dir: Path | None = None
+        self._tileset_path_stem: str | None = None
 
         self.library = ObjectTilesetCollisionLibrary(tileset_name=self._tileset_name)
-        self._current_region_id: Optional[str] = None
+        self._current_region_id: str | None = None
 
         self._mode = EditorMode.DEFINE_REGIONS
 
@@ -127,11 +129,14 @@ class ObjectTilesetCollisionEditor:
         self.regions_list_width = 200
         self.tileset_selector_height = 220
 
+        self._splitter = Splitter(orientation="horizontal")
+        self._splitter.on_drag = self._on_splitter_drag
+
         self._update_layout()
 
         self._init_components()
 
-        self._renaming_region_id: Optional[str] = None
+        self._renaming_region_id: str | None = None
         self._rename_input = InlineTextInput("region_rename", "")
 
         self._show_help = False
@@ -150,6 +155,9 @@ class ObjectTilesetCollisionEditor:
 
     def _init_components(self) -> None:
         """Initialize UI components"""
+
+        self._toolbar_buttons: list[Button] = []
+        self._init_toolbar_buttons()
 
         self.region_selector = RegionSelector(
             self.tileset_selector_rect,
@@ -204,6 +212,40 @@ class ObjectTilesetCollisionEditor:
         self.painter.on_polygon_removed = self._on_polygon_removed
         self.painter.on_polygon_modified = self._on_polygon_modified
 
+    def _init_toolbar_buttons(self) -> None:
+        self._toolbar_buttons.clear()
+        btn_save = Button(
+            Rect(0, 0, 60, 28),
+            "Save",
+            on_click=self._save_collision,
+        )
+        btn_load = Button(
+            Rect(0, 0, 60, 28),
+            "Load",
+            on_click=self._load_collision,
+        )
+        btn_help = Button(
+            Rect(0, 0, 28, 28),
+            "?",
+            on_click=self._toggle_help,
+        )
+        self._toolbar_buttons.extend([btn_save, btn_load, btn_help])
+
+    def _layout_toolbar_buttons(self) -> None:
+        x = self.toolbar_rect.x + 10
+        y = self.toolbar_rect.y + 8
+        for i, btn in enumerate(self._toolbar_buttons):
+            if btn.text == "?":
+                w, h = 28, 28
+            else:
+                w, h = 60, 28
+            btn.resize(x + i * (w + 8), y, w, h)
+
+    def _on_splitter_drag(self, pos: int) -> None:
+        self.tileset_selector_height = max(
+            100, min(600, self.rect.bottom - pos)
+        )
+
     def _update_layout(self) -> None:
         """Update all layout rectangles"""
 
@@ -239,8 +281,14 @@ class ObjectTilesetCollisionEditor:
             middle_h,
         )
 
+        if hasattr(self, "_toolbar_buttons") and self._toolbar_buttons:
+            self._layout_toolbar_buttons()
         if hasattr(self, "region_selector"):
             self.region_selector.resize(self.tileset_selector_rect)
+        if hasattr(self, "_splitter"):
+            self._splitter.resize(
+                self.rect.x, self.tileset_selector_rect.y - 4, self.rect.w, 8
+            )
         if hasattr(self, "status_bar"):
             self.status_bar.resize(self.status_bar_rect)
         if hasattr(self, "painter"):
@@ -347,7 +395,7 @@ class ObjectTilesetCollisionEditor:
         ):
             self._update_painter_for_current_region()
 
-    def _on_region_selection_changed(self, region_id: Optional[str]) -> None:
+    def _on_region_selection_changed(self, region_id: str | None) -> None:
         """Called when region selection changes"""
         self._current_region_id = region_id
 
@@ -379,7 +427,7 @@ class ObjectTilesetCollisionEditor:
         else:
             self.status_bar.info("No region selected")
 
-    def _get_current_region(self) -> Optional[Region]:
+    def _get_current_region(self) -> Region | None:
         """Get the currently selected region"""
         if self._current_region_id:
             return self.region_selector.get_region(self._current_region_id)
@@ -484,7 +532,7 @@ class ObjectTilesetCollisionEditor:
         surf.blit(self._tileset_surface, (0, 0), region.rect)
         return surf
 
-    def _on_polygon_added(self, vertices: List[Tuple[float, float]]) -> None:
+    def _on_polygon_added(self, vertices: list[tuple[float, float]]) -> None:
         """Called when a polygon is added to the painter"""
         error_handler.capture_info(
             f"Polygon added with {len(vertices)} vertices",
@@ -517,7 +565,7 @@ class ObjectTilesetCollisionEditor:
 
         shapes = [
             CollisionPolygon(vertices=poly, one_way=one_way)
-            for poly, one_way in zip(polygons, one_way_flags)
+            for poly, one_way in zip(polygons, one_way_flags, strict=False)
         ]
 
         region = self._get_current_region()
@@ -817,10 +865,9 @@ class ObjectTilesetCollisionEditor:
             self._help_scroll = max(0, min(self._help_scroll, max_scroll))
             return True
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                self._show_help = False
-                return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._show_help = False
+            return True
 
         return True
 
@@ -840,7 +887,7 @@ class ObjectTilesetCollisionEditor:
                 if event.key == pygame.K_RETURN:
                     self._commit_rename()
                     return True
-                elif event.key == pygame.K_ESCAPE:
+                if event.key == pygame.K_ESCAPE:
                     self._cancel_rename()
                     return True
 
@@ -855,13 +902,17 @@ class ObjectTilesetCollisionEditor:
         if self.mode_indicator.handle_event(event):
             return True
 
+        if self._splitter.handle_event(event):
+            if self._splitter._dragging:
+                self._update_layout()
+            return True
+
         if self._mode == EditorMode.DEFINE_REGIONS:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F2:
-                    selected = self.region_selector.get_selected_region()
-                    if selected:
-                        self._start_rename(selected.id)
-                        return True
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
+                selected = self.region_selector.get_selected_region()
+                if selected:
+                    self._start_rename(selected.id)
+                    return True
 
             if self.region_selector.handle_event(event):
                 return True
@@ -901,29 +952,10 @@ class ObjectTilesetCollisionEditor:
                             self.region_selector.select_region(region.id)
                         return True
 
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse = pygame.mouse.get_pos()
-
-            save_btn_rect = Rect(
-                self.toolbar_rect.x + 10, self.toolbar_rect.y + 8, 60, 28
-            )
-            if save_btn_rect.collidepoint(mouse):
-                self._save_collision()
-                return True
-
-            load_btn_rect = Rect(
-                save_btn_rect.right + 8, self.toolbar_rect.y + 8, 60, 28
-            )
-            if load_btn_rect.collidepoint(mouse):
-                self._load_collision()
-                return True
-
-            help_btn_rect = Rect(
-                self.toolbar_rect.right - 38, self.toolbar_rect.y + 8, 28, 28
-            )
-            if help_btn_rect.collidepoint(mouse):
-                self._toggle_help()
-                return True
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            for btn in self._toolbar_buttons:
+                if btn.handle_event(event):
+                    return True
 
         if event.type == pygame.MOUSEWHEEL:
             mouse = pygame.mouse.get_pos()
@@ -947,7 +979,7 @@ class ObjectTilesetCollisionEditor:
                 if event.key == pygame.K_s:
                     self._save_collision()
                     return True
-                elif event.key == pygame.K_l:
+                if event.key == pygame.K_l:
                     self._load_collision()
                     return True
 
@@ -958,7 +990,7 @@ class ObjectTilesetCollisionEditor:
         if not self.visible:
             return
 
-        screen.fill((20, 20, 20))
+        screen.fill(COLORS.bg)
 
         self._draw_toolbar(screen)
 
@@ -977,6 +1009,8 @@ class ObjectTilesetCollisionEditor:
 
         self.region_selector.draw(screen)
 
+        self._splitter.draw(screen)
+
         self.mode_indicator.draw(screen)
 
         self._draw_help_panel(screen)
@@ -985,40 +1019,14 @@ class ObjectTilesetCollisionEditor:
         """Draw the toolbar"""
         draw_panel(screen, self.toolbar_rect, COLORS.header, COLORS.border)
 
-        mouse = pygame.mouse.get_pos()
+        for btn in self._toolbar_buttons:
+            btn.draw(screen)
 
-        save_btn_rect = Rect(self.toolbar_rect.x + 10, self.toolbar_rect.y + 8, 60, 28)
-        save_hover = save_btn_rect.collidepoint(mouse)
-        save_label = self._font.render("Save", True, COLORS.text)
-        from widgets.ui.draw_utils import draw_button
-
-        draw_button(screen, save_btn_rect, save_label, hover=save_hover)
-
-        load_btn_rect = Rect(save_btn_rect.right + 8, self.toolbar_rect.y + 8, 60, 28)
-        load_hover = load_btn_rect.collidepoint(mouse)
-        load_label = self._font.render("Load", True, COLORS.text)
-        draw_button(screen, load_btn_rect, load_label, hover=load_hover)
-
-        help_btn_rect = Rect(
-            self.toolbar_rect.right - 38, self.toolbar_rect.y + 8, 28, 28
-        )
-        help_hover = help_btn_rect.collidepoint(mouse)
-        help_icon = icon_manager.get_icon(
-            "info", 20, COLORS.text if not help_hover else COLORS.accent
-        )
-        pygame.draw.rect(
-            screen,
-            COLORS.panel_alt if help_hover else COLORS.panel,
-            help_btn_rect,
-            border_radius=SHAPE.radius_sm,
-        )
-        pygame.draw.rect(
-            screen, COLORS.border_soft, help_btn_rect, 1, border_radius=SHAPE.radius_sm
-        )
-        screen.blit(help_icon, (help_btn_rect.centerx - 10, help_btn_rect.centery - 10))
+        help_btn = self._toolbar_buttons[-1] if self._toolbar_buttons else None
+        help_right = help_btn.rect.x if help_btn else self.toolbar_rect.right
 
         title_x = self.mode_indicator.rect.right + 20
-        title_max_w = help_btn_rect.x - title_x - 10
+        title_max_w = help_right - title_x - 10
         title = _render_fit_text(
             self._font,
             f"- {self._tileset_name}",
@@ -1167,10 +1175,10 @@ class ObjectTilesetCollisionEditor:
     def from_path(
         cls,
         tileset_path: Path,
-        window_size: Tuple[int, int] = (1200, 800),
+        window_size: tuple[int, int] = (1200, 800),
         data_root: Path = None,
         collision_dir: Path = None,
-    ) -> "ObjectTilesetCollisionEditor":
+    ) -> ObjectTilesetCollisionEditor:
         """Create editor from tileset image path"""
         surface = pygame.image.load(tileset_path).convert_alpha()
         rect = Rect(0, 0, window_size[0], window_size[1])
@@ -1202,7 +1210,7 @@ class ObjectTilesetCollisionEditor:
 
                 self.handle_event(event)
 
-            screen.fill((20, 20, 20))
+            screen.fill(COLORS.bg)
             self.draw(screen)
             pygame.display.flip()
             clock.tick(60)

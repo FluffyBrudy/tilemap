@@ -1,27 +1,18 @@
-"""
-Standalone Error Console - Professional Version
-Fixes: Text overlapping, compact layout, font clarity, and unicode support.
-Updated: Improved keyboard shortcut handling for Ctrl+Left, Ctrl+Backspace, etc.
-"""
-
 import json
+import logging
 import sys
-import os
-import time
-import threading
 import textwrap
+import threading
+import time
 from pathlib import Path
-from typing import List, Dict, Any, Set, Tuple, Optional
-from datetime import datetime
+from typing import Any
 
 import pygame
-from pygame import Rect, Surface, Color, KEYDOWN, K_ESCAPE
-from utils.font_manager import font_manager, FontWeight, FontStyle
-from utils.icon_manager import icon_manager
-import logging
+from pygame import KEYDOWN, Rect
 
 from utils.error_handler import error_handler
-
+from utils.font_manager import FontWeight, font_manager
+from utils.icon_manager import icon_manager
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -58,9 +49,7 @@ C = PALETTE_DARK
 
 
 class StandaloneErrorConsole:
-    def __init__(
-        self, window_size: tuple[int, int] = (1280, 500), log_file: Path = None
-    ):
+    def __init__(self, window_size: tuple[int, int] = (1280, 500), log_file: Path = None):
         pygame.init()
         pygame.font.init()
         self.font_family = self._auto_select_font()
@@ -112,8 +101,7 @@ class StandaloneErrorConsole:
         """Get normalized selection start and end positions."""
         if self.selection_start <= self.selection_end:
             return self.selection_start, self.selection_end
-        else:
-            return self.selection_end, self.selection_start
+        return self.selection_end, self.selection_start
 
     def _select_all(self):
         """Select all text in search box."""
@@ -138,23 +126,13 @@ class StandaloneErrorConsole:
             return
 
         pos = self.cursor_pos
-        while (
-            pos > 0
-            and pos <= len(self.search_text)
-            and self.search_text[pos - 1].isspace()
-        ):
+        while pos > 0 and pos <= len(self.search_text) and self.search_text[pos - 1].isspace():
             pos -= 1
-        while (
-            pos > 0
-            and pos <= len(self.search_text)
-            and not self.search_text[pos - 1].isspace()
-        ):
+        while pos > 0 and pos <= len(self.search_text) and not self.search_text[pos - 1].isspace():
             pos -= 1
 
         if pos < self.cursor_pos:
-            self.search_text = (
-                self.search_text[:pos] + self.search_text[self.cursor_pos :]
-            )
+            self.search_text = self.search_text[:pos] + self.search_text[self.cursor_pos :]
             self.cursor_pos = pos
             self.selection_start = self.selection_end = self.cursor_pos
             self._refresh_entries()
@@ -162,17 +140,9 @@ class StandaloneErrorConsole:
     def _move_cursor_word_left(self, shift_held: bool = False):
         """Move cursor one word left."""
         pos = self.cursor_pos
-        while (
-            pos > 0
-            and pos <= len(self.search_text)
-            and self.search_text[pos - 1].isspace()
-        ):
+        while pos > 0 and pos <= len(self.search_text) and self.search_text[pos - 1].isspace():
             pos -= 1
-        while (
-            pos > 0
-            and pos <= len(self.search_text)
-            and not self.search_text[pos - 1].isspace()
-        ):
+        while pos > 0 and pos <= len(self.search_text) and not self.search_text[pos - 1].isspace():
             pos -= 1
         self.cursor_pos = pos
         if not shift_held:
@@ -233,7 +203,7 @@ class StandaloneErrorConsole:
         if not self.log_file.exists():
             return
         try:
-            with open(self.log_file, "r", encoding="utf-8") as f:
+            with open(self.log_file, encoding="utf-8") as f:
                 lines = f.readlines()
                 self._all_entries = []
                 for i, line in enumerate(lines):
@@ -284,14 +254,10 @@ class StandaloneErrorConsole:
             e
             for e in self._all_entries
             if e.get("severity") in self.active_filters
-            and (
-                not q
-                or q in e.get("message", "").lower()
-                or q in e.get("context", "").lower()
-            )
+            and (not q or q in e.get("message", "").lower() or q in e.get("context", "").lower())
         ]
 
-    def _get_entry_layout(self, entry: Dict, width: int) -> Dict[str, Any]:
+    def _get_entry_layout(self, entry: dict, width: int) -> dict[str, Any]:
         """Calculates dynamic height and text wrapping for a specific entry."""
         wrap_w = width - 245
         msg_text = entry.get("message", "No message")
@@ -327,9 +293,7 @@ class StandaloneErrorConsole:
                 if self._search_rect.collidepoint(event.pos):
                     self.search_focused = True
 
-                    text_surface = self.f_main.render(
-                        self.search_text, True, C["text_primary"]
-                    )
+                    text_surface = self.f_main.render(self.search_text, True, C["text_primary"])
                     text_width = text_surface.get_width()
                     click_x = event.pos[0] - self._search_rect.x - 8
 
@@ -338,17 +302,9 @@ class StandaloneErrorConsole:
                     elif click_x >= text_width:
                         self.cursor_pos = len(self.search_text)
                     else:
-                        avg_char_width = (
-                            text_width / len(self.search_text)
-                            if self.search_text
-                            else 0
-                        )
-                        self.cursor_pos = (
-                            int(click_x / avg_char_width) if avg_char_width > 0 else 0
-                        )
-                        self.cursor_pos = max(
-                            0, min(self.cursor_pos, len(self.search_text))
-                        )
+                        avg_char_width = text_width / len(self.search_text) if self.search_text else 0
+                        self.cursor_pos = int(click_x / avg_char_width) if avg_char_width > 0 else 0
+                        self.cursor_pos = max(0, min(self.cursor_pos, len(self.search_text)))
 
                     self.selection_start = self.selection_end = self.cursor_pos
                 else:
@@ -419,8 +375,7 @@ class StandaloneErrorConsole:
                     if not self._delete_selected():
                         if self.cursor_pos > 0:
                             self.search_text = (
-                                self.search_text[: self.cursor_pos - 1]
-                                + self.search_text[self.cursor_pos :]
+                                self.search_text[: self.cursor_pos - 1] + self.search_text[self.cursor_pos :]
                             )
                             self.cursor_pos -= 1
                             self.selection_start = self.selection_end = self.cursor_pos
@@ -435,7 +390,7 @@ class StandaloneErrorConsole:
                         else:
                             self.selection_end = self.cursor_pos
                     return
-                elif event.key == pygame.K_RIGHT:
+                if event.key == pygame.K_RIGHT:
                     if self.cursor_pos < len(self.search_text):
                         self.cursor_pos += 1
                         if not shift_held:
@@ -451,7 +406,7 @@ class StandaloneErrorConsole:
                     else:
                         self.selection_end = self.cursor_pos
                     return
-                elif event.key == pygame.K_END:
+                if event.key == pygame.K_END:
                     self.cursor_pos = len(self.search_text)
                     if not shift_held:
                         self.selection_start = self.selection_end = self.cursor_pos
@@ -489,9 +444,7 @@ class StandaloneErrorConsole:
                 if row_rect.collidepoint(self.mouse_pos):
                     pygame.draw.rect(self.screen, C["bg_secondary"], row_rect)
 
-                pygame.draw.rect(
-                    self.screen, C[f"{sev}_stripe"], Rect(0, curr_y, self.STRIPE_W, eh)
-                )
+                pygame.draw.rect(self.screen, C[f"{sev}_stripe"], Rect(0, curr_y, self.STRIPE_W, eh))
 
                 icon_name = {
                     "error": "error",
@@ -503,11 +456,7 @@ class StandaloneErrorConsole:
                 self.screen.blit(sev_icon, (8, curr_y + self.CELL_PADDING))
 
                 raw_ts = entry.get("timestamp", "")
-                ts = (
-                    raw_ts[:10].replace("T", " ") + " " + raw_ts[11:19]
-                    if raw_ts
-                    else ""
-                )
+                ts = raw_ts[:10].replace("T", " ") + " " + raw_ts[11:19] if raw_ts else ""
                 ts_surf = self.f_small.render(ts, True, C["text_tertiary"])
                 self.screen.blit(ts_surf, (12, curr_y + self.CELL_PADDING))
 
@@ -525,19 +474,15 @@ class StandaloneErrorConsole:
 
                 text_x = 245
                 text_y = curr_y + self.CELL_PADDING
-                for i, line in enumerate(layout["msg_lines"]):
+                for _i, line in enumerate(layout["msg_lines"]):
                     m_surf = self.f_main.render(line, True, C["text_primary"])
                     self.screen.blit(m_surf, (text_x, text_y))
                     text_y += 18
 
                 if layout["ctx"]:
-                    arrow_icon = icon_manager.get_icon(
-                        "arrow-down", 10, C["text_secondary"]
-                    )
+                    arrow_icon = icon_manager.get_icon("arrow-down", 10, C["text_secondary"])
                     self.screen.blit(arrow_icon, (text_x, text_y + 2))
-                    c_surf = self.f_small.render(
-                        f" {layout['ctx']}", True, C["text_secondary"]
-                    )
+                    c_surf = self.f_small.render(f" {layout['ctx']}", True, C["text_secondary"])
                     self.screen.blit(c_surf, (text_x + 12, text_y))
                     text_y += 18
 
@@ -556,9 +501,7 @@ class StandaloneErrorConsole:
                             border_radius=4,
                         )
                         for s_line in stack.split("\n"):
-                            st_surf = self.f_code.render(
-                                s_line, True, C["text_secondary"]
-                            )
+                            st_surf = self.f_code.render(s_line, True, C["text_secondary"])
                             self.screen.blit(st_surf, (text_x + 10, text_y + 10))
                             text_y += 16
 
@@ -583,9 +526,7 @@ class StandaloneErrorConsole:
             (0, 0, self.width, self.TITLEBAR_H + self.TOOLBAR_H),
         )
 
-        pygame.draw.rect(
-            self.screen, C["bg_secondary"], (0, 0, self.width, self.TITLEBAR_H)
-        )
+        pygame.draw.rect(self.screen, C["bg_secondary"], (0, 0, self.width, self.TITLEBAR_H))
         title = self.f_bold.render("ERROR CONSOLE", True, C["text_secondary"])
         self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 10))
 
@@ -593,9 +534,7 @@ class StandaloneErrorConsole:
         border_color = C["border_focus"] if self.search_focused else C["border"]
 
         pygame.draw.rect(self.screen, bg_color, self._search_rect, border_radius=4)
-        pygame.draw.rect(
-            self.screen, border_color, self._search_rect, 1, border_radius=4
-        )
+        pygame.draw.rect(self.screen, border_color, self._search_rect, 1, border_radius=4)
 
         if self.search_focused and self.selection_start != self.selection_end:
             start, end = self._get_text_selection()
@@ -603,12 +542,8 @@ class StandaloneErrorConsole:
                 before_text = self.search_text[:start]
                 selected_text = self.search_text[start:end]
 
-                before_surface = self.f_main.render(
-                    before_text, True, C["text_primary"]
-                )
-                selected_surface = self.f_main.render(
-                    selected_text, True, C["text_primary"]
-                )
+                before_surface = self.f_main.render(before_text, True, C["text_primary"])
+                selected_surface = self.f_main.render(selected_text, True, C["text_primary"])
 
                 sel_x = self._search_rect.x + 8 + before_surface.get_width()
                 sel_width = selected_surface.get_width()
@@ -623,9 +558,7 @@ class StandaloneErrorConsole:
         display_text = self.search_text if self.search_text else "Filter logs (type...)"
         text_color = C["text_primary"] if self.search_text else C["text_tertiary"]
         text_surface = self.f_main.render(display_text, True, text_color)
-        self.screen.blit(
-            text_surface, (self._search_rect.x + 8, self._search_rect.y + 5)
-        )
+        self.screen.blit(text_surface, (self._search_rect.x + 8, self._search_rect.y + 5))
 
         if self.search_focused:
             cursor_text = self.search_text[: self.cursor_pos]
@@ -661,9 +594,7 @@ class StandaloneErrorConsole:
                 ),
             )
 
-        pygame.draw.rect(
-            self.screen, C["bg_secondary"], self._clear_btn, border_radius=4
-        )
+        pygame.draw.rect(self.screen, C["bg_secondary"], self._clear_btn, border_radius=4)
         ctxt = self.f_small.render("Clear All", True, C["text_secondary"])
         self.screen.blit(
             ctxt,
@@ -719,9 +650,7 @@ def parse_args():
         default="1280x500",
         help="Window size as WIDTHxHEIGHT",
     )
-    parser.add_argument(
-        "--log-file", type=str, required=True, help="Path to error log file (REQUIRED)"
-    )
+    parser.add_argument("--log-file", type=str, required=True, help="Path to error log file (REQUIRED)")
     return parser.parse_args()
 
 

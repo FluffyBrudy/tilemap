@@ -1,6 +1,8 @@
+from collections.abc import Callable
+
 import pygame
-from pygame import Rect, Color
-from typing import List, Callable
+from pygame import Rect
+
 from widgets.ui.theme import COLORS, FONTS
 
 
@@ -12,7 +14,7 @@ class MenuAction:
 
 
 class Menu:
-    def __init__(self, label: str, actions: List[MenuAction]):
+    def __init__(self, label: str, actions: list[MenuAction]):
         self.label = label
         self.actions = actions
         self.is_open = False
@@ -24,15 +26,8 @@ class MenuBar:
     def __init__(self, editor, width: int, height: int = 30):
         self.editor = editor
         self.rect = Rect(0, 0, width, height)
-        self.bg_color = COLORS.header
-        self.border_color = COLORS.border_soft
-        self.text_color = COLORS.text
-        self.hover_color = COLORS.hover
-        self.open_color = COLORS.panel_alt
-        self.accent_color = COLORS.accent
-
-        self.font = pygame.font.SysFont(FONTS.name, FONTS.size_md)
-        self.font_shortcut = pygame.font.SysFont(FONTS.name, FONTS.size_sm)
+        self.font = FONTS.get_medium_font()
+        self.font_shortcut = FONTS.get_small_font()
 
         self.menus = [
             Menu(
@@ -106,7 +101,7 @@ class MenuBar:
     def _layout_menus(self):
         x = 5
         for menu in self.menus:
-            txt_surf = self.font.render(menu.label, True, self.text_color)
+            txt_surf = self.font.render(menu.label, True, COLORS.text)
             w = txt_surf.get_width() + 24
             menu.rect = Rect(x, 0, w, self.rect.height)
 
@@ -114,7 +109,7 @@ class MenuBar:
             max_w = 180
             for action in menu.actions:
                 label_w = self.font.render(
-                    action.label, True, self.text_color
+                    action.label, True, COLORS.text
                 ).get_width()
                 if action.shortcut:
                     shortcut_w = self.font_shortcut.render(
@@ -179,10 +174,10 @@ class MenuBar:
 
     def draw(self, screen: pygame.Surface):
 
-        pygame.draw.rect(screen, self.bg_color, self.rect)
+        pygame.draw.rect(screen, COLORS.header, self.rect)
         pygame.draw.line(
             screen,
-            self.border_color,
+            COLORS.border_soft,
             (0, self.rect.height - 1),
             (self.rect.width, self.rect.height - 1),
         )
@@ -192,25 +187,27 @@ class MenuBar:
         for menu in self.menus:
             is_hover = menu.rect.collidepoint(mouse_pos)
             if menu.is_open:
-                pygame.draw.rect(screen, self.open_color, menu.rect)
+                pygame.draw.rect(screen, COLORS.panel_alt, menu.rect)
                 pygame.draw.rect(
                     screen,
-                    self.accent_color,
+                    COLORS.accent,
                     (menu.rect.x, menu.rect.height - 2, menu.rect.width, 2),
                 )
             elif is_hover:
-                pygame.draw.rect(screen, self.hover_color, menu.rect)
+                pygame.draw.rect(screen, COLORS.hover, menu.rect)
 
-            txt_surf = self.font.render(menu.label, True, self.text_color)
+            txt_surf = self.font.render(menu.label, True, COLORS.text)
             screen.blit(txt_surf, txt_surf.get_rect(center=menu.rect.center))
 
             if menu.is_open:
                 shadow_rect = menu.dropdown_rect.copy()
                 shadow_rect.inflate_ip(4, 4)
-                pygame.draw.rect(screen, (20, 20, 25, 100), shadow_rect)
+                shadow = pygame.Surface((shadow_rect.w, shadow_rect.h), pygame.SRCALPHA)
+                shadow.fill((*COLORS.bg, 160))
+                screen.blit(shadow, shadow_rect.topleft)
 
-                pygame.draw.rect(screen, self.bg_color, menu.dropdown_rect)
-                pygame.draw.rect(screen, self.border_color, menu.dropdown_rect, 1)
+                pygame.draw.rect(screen, COLORS.panel, menu.dropdown_rect)
+                pygame.draw.rect(screen, COLORS.border, menu.dropdown_rect, 1)
 
                 for i, action in enumerate(menu.actions):
                     item_rect = Rect(
@@ -220,11 +217,11 @@ class MenuBar:
                         26,
                     )
                     if item_rect.collidepoint(mouse_pos):
-                        pygame.draw.rect(screen, self.accent_color, item_rect)
-                        color = Color("white")
-                        shortcut_color = Color("white")
+                        pygame.draw.rect(screen, COLORS.accent, item_rect)
+                        color = COLORS.text
+                        shortcut_color = COLORS.text
                     else:
-                        color = self.text_color
+                        color = COLORS.text
                         shortcut_color = COLORS.text_dim
 
                     label_surf = self.font.render(action.label, True, color)

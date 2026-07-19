@@ -13,7 +13,6 @@ import argparse
 import sys
 from pathlib import Path
 
-
 _current_file = Path(__file__).resolve()
 _src_dir = _current_file.parent.parent.parent
 if str(_src_dir) not in sys.path:
@@ -25,7 +24,8 @@ try:
     from .editor import SpriteAnimationEditor
 except ImportError:
     from plugins.sprite_animation.editor import SpriteAnimationEditor
-from utils import error_handler, error_context
+from utils import error_context, error_handler
+from utils.standalone import load_standalone_theme
 
 
 def parse_tile_size(s: str) -> tuple[int, int]:
@@ -99,6 +99,7 @@ def main(argv: list[str] | None = None) -> None:
             window_size = parse_tile_size(args.window_size)
 
             pygame.init()
+            load_standalone_theme()
             editor = SpriteAnimationEditor.from_path(
                 args.image,
                 tile_size=tile_size,

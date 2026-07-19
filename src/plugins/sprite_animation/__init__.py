@@ -21,9 +21,9 @@ Protocol-based integration:
     editor = SpriteAnimationEditor(rect, provider=my_provider)
 """
 
-from .protocols import SpriteSheetProvider, AnimationConsumer
-from .models import AnimationFrame, Animation, AnimationLibrary, AnimationMarker
 from .editor import SpriteAnimationEditor
+from .models import Animation, AnimationFrame, AnimationLibrary, AnimationMarker
+from .protocols import AnimationConsumer, SpriteSheetProvider
 from .runtime_load import (
     AnimationParseError,
     SpriteAnimRuntime,

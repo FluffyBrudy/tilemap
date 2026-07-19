@@ -3,13 +3,12 @@ Centralized Font Manager - Singleton Pattern
 Provides efficient font loading and management with customizable weight variants.
 """
 
-import os
-import pygame
 import logging
-from typing import Dict, Optional, Tuple
+import os
 from enum import Enum
 from pathlib import Path
 
+import pygame
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +47,8 @@ class FontManager:
 
     def __init__(self):
         if not self._initialized:
-            self._fonts: Dict[str, pygame.font.Font] = {}
-            self._font_families: Dict[str, Dict[str, str]] = {}
+            self._fonts: dict[str, pygame.font.Font] = {}
+            self._font_families: dict[str, dict[str, str]] = {}
             self._default_family = "Arial"
             self._assets_path = Path(__file__).parent.parent.parent / "assets" / "fonts"
             logger.info(f"Font Manager initializing - Assets path: {self._assets_path}")
@@ -85,7 +84,7 @@ class FontManager:
                     f"Font family '{family_name}': {font_count} variants loaded"
                 )
 
-    def _parse_font_filename(self, filename: str) -> Tuple[FontWeight, FontStyle]:
+    def _parse_font_filename(self, filename: str) -> tuple[FontWeight, FontStyle]:
         """Parse font filename to extract weight and style."""
         filename_lower = filename.lower()
 
@@ -103,12 +102,12 @@ class FontManager:
 
     def get_font(
         self,
-        family: Optional[str] = None,
+        family: str | None = None,
         size: int = 12,
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
-        bold: Optional[bool] = None,
-        italic: Optional[bool] = None,
+        bold: bool | None = None,
+        italic: bool | None = None,
     ) -> pygame.font.Font:
         """
         Get a font with specified properties.
@@ -152,14 +151,13 @@ class FontManager:
             self._fonts[cache_key] = font
             logger.info(f"Font loaded successfully: {cache_key}")
             return font
-        else:
-            logger.warning(f"Failed to load font: {cache_key}, using fallback")
+        logger.warning(f"Failed to load font: {cache_key}, using fallback")
 
         return pygame.font.Font(None, size)
 
     def _load_custom_font(
         self, family: str, size: int, weight: FontWeight, style: FontStyle
-    ) -> Optional[pygame.font.Font]:
+    ) -> pygame.font.Font | None:
         """Load custom font from assets directory."""
         family_lower = family.lower()
 
@@ -196,7 +194,7 @@ class FontManager:
 
     def _load_system_font(
         self, family: str, size: int, weight: FontWeight, style: FontStyle
-    ) -> Optional[pygame.font.Font]:
+    ) -> pygame.font.Font | None:
         """Load system font with fallback."""
 
         try:
@@ -265,7 +263,7 @@ class FontManager:
         """Clear font cache."""
         self._fonts.clear()
 
-    def get_font_info(self, family: str) -> Dict[str, str]:
+    def get_font_info(self, family: str) -> dict[str, str]:
         """Get information about available font variants for a family."""
         family_lower = family.lower()
         return self._font_families.get(family_lower, {})
@@ -275,7 +273,7 @@ font_manager = FontManager()
 
 
 def get_font(
-    family: Optional[str] = None,
+    family: str | None = None,
     size: int = 12,
     weight: FontWeight = FontWeight.REGULAR,
     style: FontStyle = FontStyle.NORMAL,
@@ -285,7 +283,7 @@ def get_font(
 
 
 def get_system_font(
-    name: Optional[str] = None,
+    name: str | None = None,
     size: int = 12,
     bold: bool = False,
     italic: bool = False,

@@ -1,6 +1,7 @@
+from typing import TYPE_CHECKING
+
 import pygame
 from pygame import Rect, Surface
-from typing import TYPE_CHECKING, List, Tuple, Set
 
 if TYPE_CHECKING:
     from .autotiler import AutotileRule
@@ -18,7 +19,7 @@ DR = (1, 1)
 
 class TemplateDefinition:
     def __init__(
-        self, name: str, mappings: List[Tuple[int, int, Set[Tuple[int, int]]]]
+        self, name: str, mappings: list[tuple[int, int, set[tuple[int, int]]]]
     ):
         self.name = name
         self.mappings = mappings
@@ -54,11 +55,11 @@ class AutotileTemplateApplier:
     def __init__(self, designer):
         self.designer = designer
         self.visible = False
-        self.active_templates: List[TemplateDefinition] = []
+        self.active_templates: list[TemplateDefinition] = []
         self.rect = Rect(0, 0, 200, 10)
         self.font = pygame.font.SysFont("Arial", 12)
 
-    def show_at(self, pos: Tuple[int, int]):
+    def show_at(self, pos: tuple[int, int]):
         self.active_templates = self._get_active_templates()
         self.rect.height = len(self.active_templates) * 25 + 10
         self.rect.topleft = pos
@@ -70,7 +71,7 @@ class AutotileTemplateApplier:
 
         self.visible = True
 
-    def _get_active_templates(self) -> List[TemplateDefinition]:
+    def _get_active_templates(self) -> list[TemplateDefinition]:
         all_templates = list(TEMPLATES)
 
         rules_by_ts = {}
@@ -98,7 +99,7 @@ class AutotileTemplateApplier:
         return all_templates
 
     def _create_template_from_rules(
-        self, name: str, rules: List["AutotileRule"]
+        self, name: str, rules: list["AutotileRule"]
     ) -> TemplateDefinition:
         if not rules:
             return TemplateDefinition(name, [])
@@ -146,8 +147,7 @@ class AutotileTemplateApplier:
                         self.apply_template(self.active_templates[idx])
                     self.visible = False
                     return True
-                else:
-                    self.visible = False
+                self.visible = False
             return False
         return False
 

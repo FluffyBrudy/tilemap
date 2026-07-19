@@ -7,7 +7,7 @@ Published on PyPI as `tilemap-editor`.
 
 ## Python Rules
 
-- **Requires Python >= 3.10**
+- **Requires Python >= 3.11**
 - **Never use system/global Python** — always use the project venv
 - Venv at project root: `.venv/`
 - Activate: `.venv/bin/python` (do NOT `source .venv/bin/activate` in scripts)
@@ -55,11 +55,21 @@ src/
       node_selector.py    # Node list sidebar
       particle_config_dialog.py  # Full particle config dialog
       property_editor.py  # Generic property editor
-      menubar.py, toolbar.py, status_bar.py, notification.py, etc.
+      tree_widget.py      # Reusable tree with drag-drop, folders, icons
+      region_selector.py  # Freeform region drawing/selection on images
+      button.py           # Button(WidgetBase) with icon_key, hover/press/active
+      toolbar.py          # Icon-only toolbar using Button + ToolManager
+      menubar.py          # Top menu bar
+      status_bar.py       # Status bar with status types
+      notification.py     # Notification toasts
+      sidebar_container.py # Tabbed sidebar container
+      dialog_base.py      # Base modal dialog
+      confirm_dialog.py, layer_type_dialog.py, tileset_type_dialog.py
+      draw_utils.py       # truncate_text, draw_separator, draw_panel
     particle_presets.py   # 66 particle presets (11 categories)
     particle_system.py    # Editor-side particle simulation for preview
     tile_grid.py          # Main tile canvas — rendering, selection, particle preview
-    tile_selector.py      # Tileset sidebar
+    tile_selector.py      # Tileset sidebar with tree panel (left 140px)
     filemanager.py        # File navigation
     autotiler.py          # Autotile rule designer
     spritesheet_grid.py   # Spritesheet grid overlay
@@ -69,7 +79,7 @@ src/
     tileset_collision/    # Tileset collision shape editor
     character_collision/  # Character collision shape editor
     object_tileset_collision/  # Object collision editor
-    sprite_editor/        # Sprite editor
+    sprite_editor/        # Sprite editor (editor.py, standalone.py, dialogs.py, region_export.py)
   utils/
     error_handler.py      # Error capture + logging
     font_manager.py       # Font loading/caching
@@ -91,7 +101,7 @@ Editor (editor.py)
   ├── Tilemap (tilemap.py)          — map data: layers, tiles, tile_size, map_size
   ├── NodeManager (node_manager.py) — node state + sidecar JSON persistence
   ├── TileGrid (widgets/tile_grid.py) — main rendering canvas
-  ├── TileSelector (widgets/tile_selector.py) — tileset sidebar
+  ├── TileSelector (widgets/tile_selector.py) — tileset sidebar with tree panel (left 140px)
   ├── LayerSelector                 — layer list
   ├── NodeSelector / NodeEditor     — node list + property panel
   ├── MenuBar, Toolbar, StatusBar   — chrome
@@ -105,12 +115,12 @@ The Editor is the central orchestrator. Widgets communicate through the Editor r
 
 Editor saves state as sidecar `.json` files alongside each map:
 
-| Sidecar | Directory | Contents |
-|---------|-----------|----------|
-| `<map>.nodes.json` | `nodes/` | Nodes (area, particle_emitter, group) |
-| `<tileset>.collision.json` | `collision/` | Tileset collision shapes |
-| `<spritesheet>.collision.json` | `collision/` | Character collision shapes |
-| `settings.json` | root | Project settings (paths, etc.) |
+| Sidecar                        | Directory    | Contents                              |
+| ------------------------------ | ------------ | ------------------------------------- |
+| `<map>.nodes.json`             | `nodes/`     | Nodes (area, particle_emitter, group) |
+| `<tileset>.collision.json`     | `collision/` | Tileset collision shapes              |
+| `<spritesheet>.collision.json` | `collision/` | Character collision shapes            |
+| `settings.json`                | root         | Project settings (paths, etc.)        |
 
 Nodes are saved via `NodeManager.save()` — writes `nodes/<map_stem>.nodes.json` with `{"nodes": [...], "groups": [...]}`.
 
@@ -118,13 +128,14 @@ Nodes are saved via `NodeManager.save()` — writes `nodes/<map_stem>.nodes.json
 
 Three node types defined in `widgets/ui/node_selector.py`:
 
-| Type | Label | Color |
-|------|-------|-------|
-| `area` | Area Zone | Green |
-| `group` | Group / Folder | Yellow |
-| `particle_emitter` | Particle Emitter | Pink |
+| Type               | Label            | Color  |
+| ------------------ | ---------------- | ------ |
+| `area`             | Area Zone        | Green  |
+| `group`            | Group / Folder   | Yellow |
+| `particle_emitter` | Particle Emitter | Pink   |
 
 `Node` dataclass (`nodes.py`):
+
 ```python
 @dataclass
 class Node:
@@ -150,11 +161,13 @@ class Node:
 ## UI Patterns
 
 **Every widget follows:**
+
 - `draw(screen)` — render to screen surface
 - `handle_event(event)` — process pygame events, return `True` if consumed
 - `resize(x, y, w, h)` — set position/size (called by parent)
 
 **Scroll handling** — two paths for backward compatibility:
+
 ```python
 # Legacy (button 4/5 events)
 if event.button == 4:  # scroll up
@@ -184,9 +197,10 @@ if event.type == pygame.MOUSEWHEEL:
 
 ---
 
-## Refactor Progress (Sessions 1–3 — WidgetBase, Theme, Toolbar Refactor, Bugfixes, Theme CLI)
+## Refactor Progress (Sessions 1–4 — WidgetBase, Theme, Toolbar, Plugin Refactor, Collision Editors)
 
 ### Done
+
 - **WidgetBase** (`widget_base.py`) — base class with box model (padding, border, `content_rect`), `draw_base()` using `COLORS`/`SHAPE` from theme
 - **MapSetup** — WidgetBase, Button, InputBox, SPACING; fixed OR text overlap between Create/Open buttons
 - **InputBox** (`input.py`) — `InputBox(WidgetBase)`, `BaseTextInput`, `DigitInput`/`TextInput`; hardcoded colors→COLORS
@@ -201,7 +215,7 @@ if event.type == pygame.MOUSEWHEEL:
 - **draw_utils.py** — `truncate_text()`, `draw_separator()`
 - **PropertyEditor** — SysFont→FONTS, hardcoded colors→COLORS, manual buttons→Button widgets, truncation + hover tooltip for long values (removed font-shrinking)
 - **LayerSelector** — Button widgets replace manual rect buttons, `FONTS.get_*` replaces `font_manager.get_font(...)`, all color aliases removed in favor of `COLORS.*`, unused imports removed
-- **MapProperties** — COLOR_ constants→`COLORS.*`, `pygame.font.SysFont`→`FONTS.*`, `Rect` buttons→`Button` widgets, hardcoded colors→`COLORS.*`/`SHAPE.*`, manual draw→`Button.draw()`
+- **MapProperties** — COLOR\_ constants→`COLORS.*`, `pygame.font.SysFont`→`FONTS.*`, `Rect` buttons→`Button` widgets, hardcoded colors→`COLORS.*`/`SHAPE.*`, manual draw→`Button.draw()`
 - **ToolManager/ToolKind** (`tool_manager.py`) — central tool state replacing 6 editor booleans; mutual exclusion enforced in one place
 - **Toolbar** — icon-only compact layout (28px), separator bars between groups, tooltips, `ToolManager` callbacks
 - **Object-aware Select** — node hit detection, priority: selection move → node → rubber-band
@@ -211,17 +225,61 @@ if event.type == pygame.MOUSEWHEEL:
 - **Bugfixes — Object selection** — `_draw_selection_rect` uses `eff_w` for move offset; `_begin_move`/`delete_selection` use `eff_w` for hit-test (fixes move speed and multi-object selection at rs≠1)
 - **Custom theme loading** — `UIColorSet.from_dict()` parses JSON; `ThemeManager.resolve_theme()` tries built-in → registered → file path; `ThemeManager.set_theme()` returns success bool
 - **CLI `--theme`** — argument on `run` subcommand, accepts name or path to `.json` file; overrides `settings.json` `"theme"` field
+- **TreeWidget** (`tree_widget.py`) — reusable tree widget with `TreeNode` dataclass, expand/collapse, multi-select, drag-drop, keyboard nav, scrollbar; integrated into TileSelector as 140px left panel replacing tab bar
+- **TileSelector tree integration** — virtual folders (`+ Folder` button), `_sync_tree()` walks folder hierarchy, tileset/object icons via SVG, drag-drop folder reparenting with `while node in self.roots` dedup and `set_data` ID sanitization
+- **Icons** — `folder.svg`, `tileset.svg`, `miniobj.svg`, `fold_down_arrow.svg`, `unfold_right_arrow.svg` in assets; icon_manager tints SVGs via `BLEND_RGBA_MULT` for theme compliance
+- **Bugfixes — Sprite editor** — fixed missing `if ctrl:` block around keyboard shortcuts, incomplete `_detect_tile_size` return, bare `try` without `except` in `_on_add_sheets`, missing `SpritesheetGrid` import, missing `"""` on module docstring
+- **Bugfixes — Standalone** — missing `try:` before `from .editor import SpriteEditor`, wrong indentation on `load_regions_for_image()`, broken `pygame.display.set_mode` call
+
+### Session 4 — Plugin Refactor, Collision Editors, New Widgets
+
+- **Scrollbar** (`scrollbar.py`) — reusable scrollbar with drag, track-click, mouse wheel; used by TreeWidget
+- **Checkbox** (`checkbox.py`) — toggleable checkbox with label, hover/disabled states, `on_changed` callback
+- **Tooltip** (`tooltip.py`) — `TooltipManager` with soft-rect background, auto-clamping to screen edges
+- **FilenameInput** (`fileinput.py`) — modal filename input with autocomplete suggestions from data/ tree
+- **ModeIndicator** (`mode_indicator.py`) — mode switcher with `Mode` dataclass, `can_enter`/`on_enter` callbacks
+- **CollisionLayerMaskWidget** (`collision_layer_mask.py`) — Godot-inspired physics layer (radio) + mask (checkbox) bit selector, 16 layers
+- **CollisionLayerSidebar** (`collision_layer_sidebar.py`) — slide-in overlay sidebar wrapping mask widget with toggle/close/dim
+- **Character Collision plugin** (`plugins/character_collision/`) — shape editor for character collision polygons (editor, standalone, models, protocols)
+- **Object Tileset Collision plugin** (`plugins/object_tileset_collision/`) — shape editor for object tileset collision (editor, standalone, models, protocols)
+- **Sprite Animation refactor** — major timeline/frame-picker/preview cleanup, `clipboard_util`, `runtime_load`, `validation` modules
+- **Sprite Editor refactor** — dialogs.py (+197 lines), region_export.py (+49 lines), editor.py significantly restructured
+- **Tileset Collision refactor** — collision_painter, editor, models cleaned up
+- **FileManager refactor** — 294 lines changed, folder creation blocker fix, input field sizing
+- **TileGrid refactor** — node resize cleanup (`_node_drag_start` removal, explicit `int()` casts)
+- **TileSelector refactor** — tree panel integration, folder hierarchy sync, icon-only tree
+- **ttypes package** (`src/ttypes/`) — typed tilemap model definitions
+- **New utils** — `icons_cache.py`, `editor_preference.py`, `log_capture.py`, `standalone.py`, `validation.py`
+- **14 new test files** — collision layer mask/sidebar, editor pan mode, render scale, tile grid selection, tile selector pick, toolbar tools, autotile layers, GID collision, serialization regression, sprite animation grid, project paths, tilemap save
+- **Bugfix — Folder blocker** — fixed filemanager folder creation blocking input
+- **Bugfix — Input field inner size** — adjusted fileinput inner sizing
 
 ### Next
+
 - (none)
 
 ### Relevant Files
+
 - `src/widgets/widget_base.py`, `input.py`, `mapsetup.py`, `tile_selector.py`, `layer_selector.py`
-- `src/widgets/ui/sidebar_container.py`, `widget_base.py`, `label.py`, `button.py`, `dialog_base.py`, `theme.py`, `draw_utils.py`, `property_editor.py`
+- `src/widgets/ui/button.py`, `checkbox.py`, `collision_layer_mask.py`, `collision_layer_sidebar.py`
+- `src/widgets/ui/sidebar_container.py`, `widget_base.py`, `label.py`, `dialog_base.py`, `theme.py`, `draw_utils.py`
+- `src/widgets/ui/property_editor.py`, `tree_widget.py`, `scrollbar.py`, `tooltip.py`, `fileinput.py`, `mode_indicator.py`
+- `src/widgets/ui/region_selector.py`
 - `src/widgets/ui/confirm_dialog.py`, `layer_type_dialog.py`, `tileset_type_dialog.py`
 - `src/widgets/ui/toolbar.py`, `tool_manager.py`, `drag_tracker.py`
-- `src/widgets/tile_grid.py`
-- `src/widgets/filemanager.py`
+- `src/widgets/tile_grid.py`, `tile_selector.py`, `filemanager.py`, `spritesheet_grid.py`, `autotiler.py`
 - `src/tilemap_editor/cli.py`
+- `src/tilemap_editor/assets/icons/` — SVG icons
 - `src/editor.py`
-- `docs/refactor.md`, `docs/toolbar-refactor.md` (plans)
+- `src/plugins/sprite_editor/editor.py`, `standalone.py`, `dialogs.py`, `region_export.py`
+- `src/plugins/sprite_animation/` — full plugin directory
+- `src/plugins/tileset_collision/` — full plugin directory
+- `src/plugins/character_collision/` — full plugin directory
+- `src/plugins/object_tileset_collision/` — full plugin directory
+- `src/ttypes/` — typed tilemap model definitions
+- `src/utils/icons_cache.py`, `editor_preference.py`, `log_capture.py`, `standalone.py`, `validation.py`
+- `tests/test_collision_layer_mask.py`, `test_collision_layer_sidebar.py`, `test_editor_pan_mode.py`
+- `tests/test_render_scale.py`, `test_tile_grid_selection.py`, `test_tile_selector_pick.py`
+- `tests/test_toolbar_tools.py`, `test_layers_autotile.py`, `test_gid_collision.py`
+- `tests/test_serialization_regression.py`, `test_sprite_animation_editor_grid.py`
+- `tests/test_project_paths.py`, `test_tilemap_save.py`

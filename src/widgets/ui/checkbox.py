@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import pygame
 from pygame import Rect, Surface
 
+from utils.font_manager import FontWeight, font_manager
 from widgets.ui.theme import COLORS, FONTS
-from utils.font_manager import font_manager, FontWeight
-
 
 CHECKBOX_SIZE = 16
 CHECKBOX_RADIUS = 3
@@ -30,7 +29,7 @@ class Checkbox:
         label: str,
         checked: bool = False,
         disabled: bool = False,
-        on_changed: Optional[Callable[[bool], None]] = None,
+        on_changed: Callable[[bool], None] | None = None,
     ):
         self.rect = rect
         self.label = label

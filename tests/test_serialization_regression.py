@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from utils.serialization import serialize_point, deserialize_point
+from utils.serialization import deserialize_point, serialize_point
 
 
 def test_serialize_point_fractional():
@@ -75,6 +76,7 @@ def test_tile_grid_map_bounds_calculation():
             self.tileset_widget = None
 
     from pygame import Rect
+
     from widgets.tile_grid import TileGrid
 
     # Test empty layers boundary (should match initial map size 0 to 50 * 32 = 1600)

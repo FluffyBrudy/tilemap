@@ -1,6 +1,7 @@
+from collections.abc import Callable
+
 import pygame
 from pygame import Rect, Surface
-from typing import Callable, Optional, Tuple
 
 from ..widget_base import WidgetBase
 from .theme import COLORS, FONTS
@@ -8,7 +9,7 @@ from .theme import COLORS, FONTS
 
 class DialogBase(WidgetBase):
     def __init__(
-        self, editor_rect: Rect, size: Tuple[int, int], title: str = "", **kwargs
+        self, editor_rect: Rect, size: tuple[int, int], title: str = "", **kwargs
     ):
         rect = Rect(0, 0, *size)
         super().__init__(rect, **kwargs)
@@ -18,8 +19,8 @@ class DialogBase(WidgetBase):
 
         self.active = False
         self.title = title
-        self.on_confirm: Optional[Callable] = None
-        self.on_cancel: Optional[Callable] = None
+        self.on_confirm: Callable | None = None
+        self.on_cancel: Callable | None = None
 
     def center(self):
         self.rect.center = self.editor_rect.center

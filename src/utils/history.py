@@ -1,5 +1,5 @@
-from typing import List, Any
 import copy
+from typing import Any
 
 
 class HistoryState:
@@ -11,8 +11,8 @@ class HistoryState:
 class HistoryManager:
     def __init__(self, max_states: int = 50):
         self.max_states = max_states
-        self.undo_stack: List[HistoryState] = []
-        self.redo_stack: List[HistoryState] = []
+        self.undo_stack: list[HistoryState] = []
+        self.redo_stack: list[HistoryState] = []
 
     def save_state(self, data: Any, description: str):
 

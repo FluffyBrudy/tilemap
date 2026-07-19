@@ -6,11 +6,11 @@ Supports rectangle, circle, capsule, and polygon shapes.
 """
 
 from .models import (
-    CharacterCollisionData,
-    RectangleCollisionData,
-    CircleCollisionData,
     CapsuleCollisionData,
+    CharacterCollisionData,
+    CircleCollisionData,
     PolygonCollisionData,
+    RectangleCollisionData,
 )
 from .protocols import CollisionShapeType
 

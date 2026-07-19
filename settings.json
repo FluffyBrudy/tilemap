@@ -15,5 +15,13 @@
             "warning",
             "info"
         ]
-    }
+    },
+    "theme": "dark",
+    "themes_list": [
+        "dark",
+        "molokai",
+        "light",
+        "semi_light"
+    ],
+    "nodes_path": "nodes"
 }

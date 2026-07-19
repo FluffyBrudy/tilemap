@@ -19,13 +19,13 @@ if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
 import pygame
-from pygame import Rect
 
 try:
-    from .editor import SpriteEditor, TOOLBAR_H, STATUS_H
+    from .editor import SpriteEditor
 except ImportError:
-    from plugins.sprite_editor.editor import SpriteEditor, TOOLBAR_H, STATUS_H
-from utils import error_handler, error_context
+    from plugins.sprite_editor.editor import SpriteEditor
+from utils import error_context, error_handler
+from utils.standalone import load_standalone_theme
 
 
 def parse_window_size(s: str) -> tuple[int, int]:
@@ -54,12 +54,8 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Path to spritesheet image (optional — start blank)",
     )
-    parser.add_argument(
-        "--tile-size", type=str, default="32", help="Tile size (e.g. 32 or 32x32)"
-    )
-    parser.add_argument(
-        "--save", type=str, default=None, help="Output path for modified spritesheet"
-    )
+    parser.add_argument("--tile-size", type=str, default="32", help="Tile size (e.g. 32 or 32x32)")
+    parser.add_argument("--save", type=str, default=None, help="Output path for modified spritesheet")
     parser.add_argument(
         "--window-size",
         type=str,
@@ -84,6 +80,8 @@ def main(argv: list[str] | None = None) -> None:
     pygame.init()
     screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
 
+    load_standalone_theme()
+
     if args.image:
         image_path = Path(args.image)
         if not image_path.is_file():
@@ -97,8 +95,8 @@ def main(argv: list[str] | None = None) -> None:
             surface,
             (tw, th),
             image_path=image_path,
-            data_root=data_root,
         )
+        editor.load_regions_for_image()
         if args.save:
             editor.set_save_path(Path(args.save))
     else:
@@ -120,16 +118,9 @@ def main(argv: list[str] | None = None) -> None:
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.VIDEORESIZE:
-                    screen = pygame.display.set_mode(
-                        (event.w, event.h), pygame.RESIZABLE
-                    )
-                    editor.rect = screen.get_rect()
-                    editor.grid.rect = Rect(
-                        editor.rect.x,
-                        editor.rect.y + TOOLBAR_H,
-                        editor.rect.w,
-                        editor.rect.h - TOOLBAR_H - STATUS_H,
-                    )
+                    screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
+                    r = screen.get_rect()
+                    editor.resize(r.x, r.y, r.w, r.h)
                 else:
                     editor.handle_event(event)
 

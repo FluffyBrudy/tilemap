@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -11,11 +11,11 @@ class NodeRect:
     w: int
     h: int
 
-    def to_dict(self) -> Dict[str, int]:
+    def to_dict(self) -> dict[str, int]:
         return {"x": self.x, "y": self.y, "w": self.w, "h": self.h}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "NodeRect":
+    def from_dict(cls, data: dict[str, Any]) -> NodeRect:
         return cls(
             x=int(data["x"]), y=int(data["y"]), w=int(data["w"]), h=int(data["h"])
         )
@@ -28,10 +28,10 @@ class Node:
     node_type: str
     area: NodeRect
     layer_name: str
-    properties: Dict[str, Any] = field(default_factory=dict)
-    group: Optional[str] = None
+    properties: dict[str, Any] = field(default_factory=dict)
+    group: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "node_id": self.node_id,
             "name": self.name,
@@ -43,7 +43,7 @@ class Node:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Node":
+    def from_dict(cls, data: dict[str, Any]) -> Node:
         return cls(
             node_id=str(data["node_id"]),
             name=str(data["name"]),

@@ -2,20 +2,18 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Dict, List, Optional, Tuple
 
 import pygame
 from pygame import Rect, Surface
 
 PARTICLE_TEXTURE_SIZE = 24
 MAX_PREVIEW_PARTICLES = 200
-# Base texture is 24px; dividing by this factor normalizes it to ~4px,
-# matching the middle of the particle_size_min..particle_size_max range.
+
 PARTICLE_TEXTURE_SCALE_FACTOR = 6
 MAX_DT = 0.05
 
 
-DEFAULT_PARTICLE_CONFIG: Dict[str, object] = {
+DEFAULT_PARTICLE_CONFIG: dict[str, object] = {
     "emission_shape": "point",
     "particle_shape": "circle",
     "particle_size_min": 2,
@@ -78,7 +76,7 @@ COLOR_FIELDS = [
 ]
 
 
-_TEXTURE_CACHE: Dict[str, Surface] = {}
+_TEXTURE_CACHE: dict[str, Surface] = {}
 
 
 def _make_circle_texture() -> Surface:
@@ -117,7 +115,7 @@ def _make_star_texture() -> Surface:
     s = Surface((PARTICLE_TEXTURE_SIZE, PARTICLE_TEXTURE_SIZE), pygame.SRCALPHA)
     cx = cy = PARTICLE_TEXTURE_SIZE // 2
     r = PARTICLE_TEXTURE_SIZE // 2 - 2
-    points: List[Tuple[float, float]] = []
+    points: list[tuple[float, float]] = []
     for i in range(8):
         angle = math.pi * 2 * i / 8 - math.pi / 2
         radius = r if i % 2 == 0 else r * 0.4
@@ -158,7 +156,7 @@ def _make_heart_texture() -> Surface:
     s = Surface((PARTICLE_TEXTURE_SIZE, PARTICLE_TEXTURE_SIZE), pygame.SRCALPHA)
     cx = PARTICLE_TEXTURE_SIZE // 2
     cy = PARTICLE_TEXTURE_SIZE // 2
-    points: List[Tuple[float, float]] = []
+    points: list[tuple[float, float]] = []
     for i in range(60):
         t = math.pi * 2 * i / 60
         x = 16 * math.sin(t) ** 3
@@ -194,7 +192,7 @@ def get_particle_texture(shape: str) -> Surface:
     return _TEXTURE_CACHE[shape]
 
 
-def get_default_config() -> Dict[str, object]:
+def get_default_config() -> dict[str, object]:
     return dict(DEFAULT_PARTICLE_CONFIG)
 
 
@@ -213,8 +211,8 @@ class Particle:
         vx: float, vy: float,
         lifetime: float,
         size: float,
-        start_color: Tuple[int, int, int, int],
-        end_color: Tuple[int, int, int, int],
+        start_color: tuple[int, int, int, int],
+        end_color: tuple[int, int, int, int],
         start_scale: float, end_scale: float,
         rotation_speed: float,
         alpha_fade: str,
@@ -257,7 +255,7 @@ class Particle:
         return self.start_size + (self.end_size - self.start_size) * t
 
     @property
-    def current_color(self) -> Tuple[int, int, int, int]:
+    def current_color(self) -> tuple[int, int, int, int]:
         t = self.progress
         r = int(self.start_color[0] + (self.end_color[0] - self.start_color[0]) * t)
         g = int(self.start_color[1] + (self.end_color[1] - self.start_color[1]) * t)
@@ -280,9 +278,9 @@ class Particle:
 
 
 class ParticlePreview:
-    def __init__(self, config: Dict[str, object]):
+    def __init__(self, config: dict[str, object]):
         self.config = dict(config)
-        self.particles: List[Particle] = []
+        self.particles: list[Particle] = []
         self.spawn_timer: float = 0.0
         self.texture = get_particle_texture(str(self.config.get("particle_shape", "circle")))
         self._current_shape = str(self.config.get("particle_shape", "circle"))
@@ -428,7 +426,7 @@ class ParticlePreview:
         self.particles.clear()
         self.spawn_timer = 0.0
 
-    def reset(self, config: Dict[str, object]):
+    def reset(self, config: dict[str, object]):
         self.config = dict(config)
         self.clear()
         shape = str(config.get("particle_shape", "circle"))
