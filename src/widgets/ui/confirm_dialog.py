@@ -1,6 +1,7 @@
+from collections.abc import Callable
+
 import pygame
 from pygame import Rect, Surface
-from typing import Callable, Optional
 
 from .dialog_base import DialogBase
 from .theme import COLORS, FONTS
@@ -10,8 +11,8 @@ class ConfirmDialog(DialogBase):
     def __init__(self, editor_rect: Rect):
         super().__init__(editor_rect, (420, 180))
         self.message = ""
-        self.on_confirm: Optional[Callable[[], None]] = None
-        self.on_cancel: Optional[Callable[[], None]] = None
+        self.on_confirm: Callable[[], None] | None = None
+        self.on_cancel: Callable[[], None] | None = None
 
         self.btn_proceed = Rect(0, 0, 110, 30)
         self.btn_cancel = Rect(0, 0, 110, 30)

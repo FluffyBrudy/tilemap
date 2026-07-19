@@ -5,16 +5,18 @@ This module provides a visual interface for creating and managing automap patter
 allowing users to define input patterns that match tiles and output patterns that replace them.
 """
 
+from typing import TYPE_CHECKING
+
 import pygame
-from pygame import Surface, Rect, Color
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from pygame import Color, Rect, Surface
+
 from utils import error_handler
 from widgets.automap_models import (
     AutomapEngine,
+    MatchMode,
+    PatternCell,
     PatternGrid,
     PatternRule,
-    PatternCell,
-    MatchMode,
 )
 
 if TYPE_CHECKING:
@@ -73,7 +75,7 @@ class RegexAutomapDesigner:
         self.is_dragging = False
         self.drag_offset = (0, 0)
 
-        self.pattern_rules: List[PatternRule] = []
+        self.pattern_rules: list[PatternRule] = []
         self.selected_rule_idx: int = -1
 
         self.pattern_width = 3
@@ -83,9 +85,9 @@ class RegexAutomapDesigner:
 
         self.cell_size = 40
 
-        self.current_tile_id: Optional[int] = None
-        self.current_tileset_index: Optional[int] = None
-        self.current_preview_surf: Optional[Surface] = None
+        self.current_tile_id: int | None = None
+        self.current_tileset_index: int | None = None
+        self.current_preview_surf: Surface | None = None
 
         self.current_match_mode = MatchMode.EXACT
 
@@ -282,7 +284,7 @@ class RegexAutomapDesigner:
                 if self.close_btn_rect.collidepoint(mouse_pos):
                     self.hide()
                     return True
-                elif header_rect.collidepoint(mouse_pos):
+                if header_rect.collidepoint(mouse_pos):
                     self.is_dragging = True
                     self.drag_offset = (
                         mouse_pos[0] - self.rect.x,
@@ -320,17 +322,13 @@ class RegexAutomapDesigner:
             if event.button == 1:
                 self.is_dragging = False
 
-        elif event.type == pygame.MOUSEMOTION:
-            if self.is_dragging:
-                self.rect.x = mouse_pos[0] - self.drag_offset[0]
-                self.rect.y = mouse_pos[1] - self.drag_offset[1]
-                self._update_layout()
-                return True
+        elif event.type == pygame.MOUSEMOTION and self.is_dragging:
+            self.rect.x = mouse_pos[0] - self.drag_offset[0]
+            self.rect.y = mouse_pos[1] - self.drag_offset[1]
+            self._update_layout()
+            return True
 
-        if not self.rect.collidepoint(mouse_pos) and not self.is_dragging:
-            return False
-
-        return True
+        return not (not self.rect.collidepoint(mouse_pos) and not self.is_dragging)
 
     def draw(self, screen: Surface):
         """Render the automap designer UI.
@@ -445,7 +443,7 @@ class RegexAutomapDesigner:
 
         return False
 
-    def _get_grid_rects(self) -> Tuple[Rect, Rect]:
+    def _get_grid_rects(self) -> tuple[Rect, Rect]:
         """Calculate the rectangles for input and output pattern grids.
 
         Returns:
@@ -617,7 +615,7 @@ class RegexAutomapDesigner:
         else:
             print(f"Automap applied: {transformation_count} tile transformations")
 
-    def serialize_rules(self) -> List[dict]:
+    def serialize_rules(self) -> list[dict]:
         """Serialize all pattern rules to dictionary format with error handling.
 
         Returns:
@@ -639,7 +637,7 @@ class RegexAutomapDesigner:
 
         return serialized_rules
 
-    def deserialize_rules(self, rules_data: List[dict]) -> None:
+    def deserialize_rules(self, rules_data: list[dict]) -> None:
         """Deserialize pattern rules from dictionary format with error handling.
 
         Args:

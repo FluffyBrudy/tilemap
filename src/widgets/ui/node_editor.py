@@ -1,16 +1,16 @@
+from typing import TYPE_CHECKING
+
 import pygame
 from pygame import Rect
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from editor import Editor
-from nodes import NodeRect
-from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils.font_manager import FontWeight, font_manager
+from widgets.particle_presets import PRESETS, get_preset_config, get_preset_names
 from widgets.ui.draw_utils import draw_panel
+from widgets.ui.particle_config_dialog import Dropdown, ParticleConfigDialog
 from widgets.ui.property_editor import PropertyEditor
-from widgets.ui.particle_config_dialog import ParticleConfigDialog, Dropdown
-from widgets.particle_presets import PRESETS, get_preset_names, get_preset_config
-from utils.font_manager import font_manager, FontWeight
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class NodeEditor:
@@ -24,17 +24,17 @@ class NodeEditor:
         )
         self.font_input = font_manager.get_font(FONTS.name, 11, FontWeight.REGULAR)
 
-        self._editing_field: Optional[str] = None
+        self._editing_field: str | None = None
         self._input_text: str = ""
         self.text_selected: bool = False
 
         self._is_dragging = False
         self._drag_offset = (0, 0)
-        self._last_node_id: Optional[str] = None
+        self._last_node_id: str | None = None
 
-        self._preset_dd: Optional[Dropdown] = None
-        self._preset_owner: Optional[str] = None
-        self._preset_names: List[str] = get_preset_names()
+        self._preset_dd: Dropdown | None = None
+        self._preset_owner: str | None = None
+        self._preset_names: list[str] = get_preset_names()
         self._is_particle = False
 
     def resize(self, x: int, y: int, w: int):
@@ -94,7 +94,7 @@ class NodeEditor:
             or self.editor.node_manager.active_group_name is not None
         )
 
-    def _fields(self) -> List[Tuple[str, str, str]]:
+    def _fields(self) -> list[tuple[str, str, str]]:
         mgr = self.editor.node_manager
         if mgr.active_group_name is not None:
             return [("group_name", "Group", mgr.active_group_name)]
@@ -110,11 +110,11 @@ class NodeEditor:
             ("h", "H", str(node.area.h)),
         ]
 
-    def _get_field_rects(self) -> List[Tuple[str, Rect]]:
+    def _get_field_rects(self) -> list[tuple[str, Rect, Rect]]:
         x = self.rect.x + 8
         y = self.rect.y + 24
         results = []
-        for key, label, _ in self._fields():
+        for key, _label, _ in self._fields():
             label_w = 40
             label_rect = Rect(x, y, label_w, 18)
             input_rect = Rect(x + label_w + 2, y, self.rect.width - label_w - 16, 18)
@@ -122,13 +122,13 @@ class NodeEditor:
             y += 22
         return results
 
-    def _get_input_at(self, pos) -> Optional[str]:
+    def _get_input_at(self, pos) -> str | None:
         for key, _, input_rect in self._get_field_rects():
             if input_rect.collidepoint(pos):
                 return key
         return None
 
-    def _preset_rect(self) -> Optional[Rect]:
+    def _preset_rect(self) -> Rect | None:
         if not self._is_particle:
             return None
         y = self.rect.y + 24 + len(self._fields()) * 22 + 4
@@ -244,15 +244,14 @@ class NodeEditor:
                 self._is_dragging = False
                 return True
 
-        if event.type == pygame.MOUSEMOTION:
-            if self._is_dragging:
-                self.rect.x = mouse_pos[0] - self._drag_offset[0]
-                self.rect.y = mouse_pos[1] - self._drag_offset[1]
-                screen_w = self.editor.screen.get_width()
-                screen_h = self.editor.screen.get_height()
-                self.rect.x = max(0, min(self.rect.x, screen_w - self.rect.width))
-                self.rect.y = max(0, min(self.rect.y, screen_h - self.rect.height))
-                return True
+        if event.type == pygame.MOUSEMOTION and self._is_dragging:
+            self.rect.x = mouse_pos[0] - self._drag_offset[0]
+            self.rect.y = mouse_pos[1] - self._drag_offset[1]
+            screen_w = self.editor.screen.get_width()
+            screen_h = self.editor.screen.get_height()
+            self.rect.x = max(0, min(self.rect.x, screen_w - self.rect.width))
+            self.rect.y = max(0, min(self.rect.y, screen_h - self.rect.height))
+            return True
 
         if event.type == pygame.KEYDOWN and self._editing_field is not None:
             mods = pygame.key.get_mods()
@@ -263,7 +262,7 @@ class NodeEditor:
             if cmd_held and event.key == pygame.K_a:
                 self.text_selected = True
                 return True
-            elif event.key == pygame.K_BACKSPACE:
+            if event.key == pygame.K_BACKSPACE:
                 pressed = pygame.key.get_pressed()
                 meta_down = pressed[pygame.K_LMETA] or pressed[pygame.K_RMETA]
                 ctrl_down = pressed[pygame.K_LCTRL] or pressed[pygame.K_RCTRL]
@@ -273,16 +272,16 @@ class NodeEditor:
                 else:
                     self._input_text = self._input_text[:-1]
                 return True
-            elif event.key == pygame.K_RETURN:
+            if event.key == pygame.K_RETURN:
                 self._commit_field()
                 self._editing_field = None
                 self.text_selected = False
                 return True
-            elif event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_ESCAPE:
                 self._editing_field = None
                 self.text_selected = False
                 return True
-            elif event.unicode.isprintable() and event.unicode != "":
+            if event.unicode.isprintable() and event.unicode != "":
                 if self.text_selected:
                     self._input_text = event.unicode
                     self.text_selected = False
@@ -390,8 +389,8 @@ class NodeEditor:
         fields = self._fields()
         field_data = self._get_field_rects()
 
-        for (key, label_rect, input_rect), (fkey, flabel, fvalue) in zip(
-            field_data, fields
+        for (key, label_rect, input_rect), (_fkey, flabel, fvalue) in zip(
+            field_data, fields, strict=False
         ):
             lbl = self.font.render(flabel, True, COLORS.text_dim)
             screen.blit(lbl, (label_rect.x, label_rect.y + 2))

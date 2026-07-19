@@ -1,12 +1,12 @@
+from typing import TYPE_CHECKING
+
 import pygame
-from typing import TYPE_CHECKING, List
 from pygame import Rect
 
 from .input import DigitInput
-from .widget_base import WidgetBase
-from .ui.theme import COLORS, FONTS, SPACING
 from .ui.button import Button
-
+from .ui.theme import COLORS, FONTS, SPACING
+from .widget_base import WidgetBase
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -29,7 +29,7 @@ class MapSetup(WidgetBase):
         self.font = FONTS.get_title_font()
         self.font_sm = FONTS.get_medium_font()
 
-        self.inputs: List[DigitInput] = []
+        self.inputs: list[DigitInput] = []
         fields = [
             ("Map Width", "map_w", "30"),
             ("Map Height", "map_h", "20"),

@@ -1,11 +1,11 @@
-from typing import List, Tuple, Callable, Optional
+from collections.abc import Callable
 
 import pygame
 from pygame import Rect
 
 from ..widget_base import WidgetBase
-from .theme import COLORS, FONTS, SHAPE
 from .button import Button
+from .theme import COLORS, FONTS
 
 
 class ToolbarAction:
@@ -17,7 +17,7 @@ class ToolbarAction:
 
 class Tab:
     def __init__(
-        self, name: str, widget, actions: Optional[List[ToolbarAction]] = None
+        self, name: str, widget, actions: list[ToolbarAction] | None = None
     ):
         self.name = name
         self.widget = widget
@@ -28,14 +28,14 @@ class SidebarContainer(WidgetBase):
     def __init__(self, editor, rect):
         super().__init__(rect, border_radius=0)
         self.editor = editor
-        self.tabs: List[Tab] = []
+        self.tabs: list[Tab] = []
         self.active_idx = 0
 
         self.tab_bar_h = 30
         self.toolbar_h = 35
-        self._toolbar_buttons: List[Button] = []
+        self._toolbar_buttons: list[Button] = []
 
-    def add_tab(self, name: str, widget, actions: Optional[List[ToolbarAction]] = None):
+    def add_tab(self, name: str, widget, actions: list[ToolbarAction] | None = None):
         self.tabs.append(Tab(name, widget, actions or []))
         self._rebuild_toolbar()
 
@@ -78,7 +78,7 @@ class SidebarContainer(WidgetBase):
             self.rect.x, self.rect.bottom - self.toolbar_h, self.rect.w, self.toolbar_h
         )
 
-    def _get_tab_at_pos(self, pos) -> Optional[int]:
+    def _get_tab_at_pos(self, pos) -> int | None:
         if pos[1] < self.rect.y or pos[1] > self.rect.y + self.tab_bar_h:
             return None
         tab_w = self.rect.w // max(1, len(self.tabs))

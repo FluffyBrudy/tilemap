@@ -7,7 +7,7 @@ tileset system — no inheritance required, just implement the methods.
 
 from __future__ import annotations
 
-from typing import Protocol, Tuple, runtime_checkable, Dict, Any
+from typing import Any, Protocol, runtime_checkable
 
 import pygame
 
@@ -25,7 +25,7 @@ class TilesetProvider(Protocol):
         """Return the full tileset surface."""
         ...
 
-    def get_tile_size(self) -> Tuple[int, int]:
+    def get_tile_size(self) -> tuple[int, int]:
         """Return (tile_width, tile_height) in pixels."""
         ...
 
@@ -42,7 +42,7 @@ class CollisionDataConsumer(Protocol):
     shapes are created/modified/deleted.
     """
 
-    def on_collision_saved(self, tile_id: int, data: Dict[str, Any]) -> None:
+    def on_collision_saved(self, tile_id: int, data: dict[str, Any]) -> None:
         """Called when collision data for a tile is saved or updated.
 
         Args:

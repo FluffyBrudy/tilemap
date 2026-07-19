@@ -2,9 +2,10 @@
 Dialog for selecting layer type (tile vs object).
 """
 
+from collections.abc import Callable
+
 import pygame
 from pygame import Rect, Surface
-from typing import Callable, Optional
 
 from .dialog_base import DialogBase
 from .theme import COLORS, FONTS
@@ -15,9 +16,9 @@ class LayerTypeDialog(DialogBase):
 
     def __init__(self, editor_rect: Rect):
         super().__init__(editor_rect, (400, 220), title="Layer Type")
-        self.selected_type: Optional[str] = None
-        self.on_confirm: Optional[Callable[[str], None]] = None
-        self.on_cancel: Optional[Callable[[], None]] = None
+        self.selected_type: str | None = None
+        self.on_confirm: Callable[[str], None] | None = None
+        self.on_cancel: Callable[[], None] | None = None
 
         self.btn_ok_hover = False
         self.btn_cancel_hover = False

@@ -6,6 +6,7 @@ environments, eliminating the "works on PyPI but not locally" problem.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -13,13 +14,26 @@ from pathlib import Path
 
 from utils.error_handler import error_handler
 
-
 _current = Path(__file__).resolve()
 _src = _current.parent.parent
 if _src not in sys.path:
     sys.path.insert(0, str(_src))
 
 from constants import BASE_PATH
+from widgets.ui.theme import set_theme
+
+
+def load_standalone_theme() -> None:
+    """Load theme from settings.json in cwd, if present."""
+    try:
+        sf = Path.cwd() / "settings.json"
+        if sf.exists():
+            with open(sf) as f:
+                cfg = json.load(f)
+            theme = cfg.get("theme", "dark")
+            set_theme(theme)
+    except Exception:
+        pass
 
 
 def launch_standalone(
@@ -81,14 +95,13 @@ def launch_standalone(
                     f"Module not found: {module_name}", context="launch_standalone"
                 )
                 raise ModuleNotFoundError(f"Module not found: {module_name}")
-            else:
-                error_handler.capture_info(
-                    f"Module found: {module_name}", context="launch_standalone"
-                )
+            error_handler.capture_info(
+                f"Module found: {module_name}", context="launch_standalone"
+            )
             cmd = [sys.executable, "-m", module_name] + args
             error_handler.capture_info(f"Command: {cmd}", context="launch_standalone")
 
-            proc = subprocess.Popen(
+            return subprocess.Popen(
                 cmd,
                 env=env,
                 stdout=subprocess.PIPE,
@@ -97,7 +110,6 @@ def launch_standalone(
                 cwd=str(cwd) if cwd else None,
             )
 
-            return proc
         except ModuleNotFoundError as e:
             error_handler.capture_info(
                 f"Module not found: {module_name} - {e}", context="launch_standalone"

@@ -1,13 +1,14 @@
+from typing import TYPE_CHECKING
+
 import pygame
 from pygame import Rect
-from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from editor import Editor
-from widgets.ui.theme import COLORS
-from widgets.ui.draw_utils import draw_panel
-from widgets.ui.tool_manager import ToolKind
 from widgets.ui.button import Button
+from widgets.ui.draw_utils import draw_panel
+from widgets.ui.theme import COLORS
+from widgets.ui.tool_manager import ToolKind
 
 
 class Toolbar:
@@ -18,8 +19,8 @@ class Toolbar:
         self.gap = 4
         self.sep_w = 6
         self.pad = 6
-        self._buttons: List[Button] = []
-        self._separator_centers: List[int] = []
+        self._buttons: list[Button] = []
+        self._separator_centers: list[int] = []
         self._layout_buttons()
 
     def _build_tool_buttons(self, x: int, y: int, btn_h: int) -> int:
@@ -113,10 +114,7 @@ class Toolbar:
         self._build_tool_buttons(x, y, self.btn_size)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        for btn in self._buttons:
-            if btn.handle_event(event):
-                return True
-        return False
+        return any(btn.handle_event(event) for btn in self._buttons)
 
     def draw(self, screen: pygame.Surface):
         draw_panel(

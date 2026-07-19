@@ -1,10 +1,11 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import pygame
 
-from ..widget_base import WidgetBase
-from .theme import COLORS, SHAPE, FONTS
 from utils.icon_manager import icon_manager
+
+from ..widget_base import WidgetBase
+from .theme import COLORS, FONTS, SHAPE
 
 
 class Button(WidgetBase):
@@ -22,7 +23,7 @@ class Button(WidgetBase):
         bg=None,
         border_color=None,
         border_radius=None,
-        on_click: Optional[Callable[[], None]] = None,
+        on_click: Callable[[], None] | None = None,
     ):
         border_width = SHAPE.border
         super().__init__(

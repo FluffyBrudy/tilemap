@@ -13,24 +13,13 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 import pygame
-from pygame import Rect, Surface, SRCALPHA
+from pygame import SRCALPHA, Rect, Surface
 
+from widgets.ui.theme import COLORS
 
 TOP_BAR_H = 24
-_COLORS = {
-    "bg": (25, 27, 30),
-    "grid": (200, 200, 200),
-    "hover": (220, 180, 80),
-    "selected": (80, 160, 220),
-    "selected_dim": (60, 120, 180),
-    "border": (60, 62, 65),
-    "text": (230, 230, 230),
-    "text_dim": (140, 140, 140),
-    "header": (40, 42, 46),
-}
 
 
 class SpritesheetGrid:
@@ -40,7 +29,7 @@ class SpritesheetGrid:
         self,
         rect: Rect,
         surface: Surface,
-        tile_size: Tuple[int, int],
+        tile_size: tuple[int, int],
     ):
         self.rect = rect
         self.surface = surface
@@ -54,7 +43,7 @@ class SpritesheetGrid:
         self.offset_y: float = 0.0
         self.zoom: float = 1.0
 
-        self.selected_indices: Set[int] = set()
+        self.selected_indices: set[int] = set()
 
         self.hover_index: int = -1
         self._panning = False
@@ -68,18 +57,18 @@ class SpritesheetGrid:
 
         self.paste_preview_idx: int = -1
 
-        self._drag_move_anchor: Optional[Tuple[int, int]] = None
+        self._drag_move_anchor: tuple[int, int] | None = None
         self._drag_moving: bool = False
-        self._drag_move_originals: Dict[int, Surface] = {}
-        self._drag_move_ghost_offset: Tuple[int, int] = (0, 0)
+        self._drag_move_originals: dict[int, Surface] = {}
+        self._drag_move_ghost_offset: tuple[int, int] = (0, 0)
 
-        self._clipboard: Dict[int, Surface] = {}
+        self._clipboard: dict[int, Surface] = {}
 
-        self._undo_stack: List[Surface] = []
-        self._redo_stack: List[Surface] = []
+        self._undo_stack: list[Surface] = []
+        self._redo_stack: list[Surface] = []
         self._max_undo: int = 50
 
-        self._font: Optional[pygame.font.Font] = None
+        self._font: pygame.font.Font | None = None
 
     def _recalc_grid(self) -> None:
         tw, th = self.tile_size
@@ -90,7 +79,7 @@ class SpritesheetGrid:
         self.total_frames = self.cols * self.rows
 
     def set_surface(
-        self, surface: Surface, tile_size: Optional[Tuple[int, int]] = None
+        self, surface: Surface, tile_size: tuple[int, int] | None = None
     ) -> None:
         self.surface = surface
         if tile_size:
@@ -119,17 +108,17 @@ class SpritesheetGrid:
     def has_selection(self) -> bool:
         return len(self.selected_indices) > 0
 
-    def get_selected(self) -> List[int]:
+    def get_selected(self) -> list[int]:
         return sorted(self.selected_indices)
 
-    def grid_coords(self, idx: int) -> Tuple[int, int]:
+    def grid_coords(self, idx: int) -> tuple[int, int]:
         return (idx % self.cols, idx // self.cols)
 
     def index_at(self, idx: int) -> int:
         """Validate index is in range, return -1 if not."""
         return idx if 0 <= idx < self.total_frames else -1
 
-    def tile_screen_rect(self, idx: int) -> Optional[Rect]:
+    def tile_screen_rect(self, idx: int) -> Rect | None:
         if idx < 0 or idx >= self.total_frames:
             return None
         tw, th = self.tile_size
@@ -146,7 +135,7 @@ class SpritesheetGrid:
             int(cell_h),
         )
 
-    def index_at_pos(self, mouse: Tuple[int, int]) -> int:
+    def index_at_pos(self, mouse: tuple[int, int]) -> int:
         """Return tile index at screen position, or -1."""
         if mouse[1] < self.rect.y + TOP_BAR_H:
             return -1
@@ -188,7 +177,7 @@ class SpritesheetGrid:
             return row * self.cols + col
         return -1
 
-    def _grid_to_screen(self, col: int, row: int) -> Tuple[float, float]:
+    def _grid_to_screen(self, col: int, row: int) -> tuple[float, float]:
         tw, th = self.tile_size
         z = self.zoom
         return (
@@ -232,7 +221,7 @@ class SpritesheetGrid:
     def can_redo(self) -> bool:
         return len(self._redo_stack) > 0
 
-    def extract_tile(self, idx: int) -> Optional[Surface]:
+    def extract_tile(self, idx: int) -> Surface | None:
         """Return a copy of the tile's pixel region, or None."""
         if idx < 0 or idx >= self.total_frames:
             return None
@@ -293,16 +282,16 @@ class SpritesheetGrid:
         )
         self._recalc_grid()
 
-    def copy_selected(self) -> Dict[int, Surface]:
+    def copy_selected(self) -> dict[int, Surface]:
         """Return {local_index: tile_surface} for each selected tile."""
-        result: Dict[int, Surface] = {}
+        result: dict[int, Surface] = {}
         for idx in sorted(self.selected_indices):
             tile = self.extract_tile(idx)
             if tile:
                 result[idx] = tile
         return result
 
-    def paste_at(self, target_idx: int, tiles: Dict[int, Surface]) -> None:
+    def paste_at(self, target_idx: int, tiles: dict[int, Surface]) -> None:
         """Write previously copied tiles preserving 2D layout.
 
         Each source tile's row/col offset from the selection origin is
@@ -317,7 +306,7 @@ class SpritesheetGrid:
         target_col = target_idx % self.cols
         target_row = target_idx // self.cols
 
-        dst_positions: List[Tuple[int, int, Surface]] = []
+        dst_positions: list[tuple[int, int, Surface]] = []
         for src_idx, tile in tiles.items():
             src_c = src_idx % self.cols - src_origin_col
             src_r = src_idx // self.cols - src_origin_row
@@ -342,7 +331,7 @@ class SpritesheetGrid:
             if dst_row < self.rows and dst_col < self.cols:
                 self.selected_indices.add(dst_row * self.cols + dst_col)
 
-    def cut_selected(self) -> Dict[int, Surface]:
+    def cut_selected(self) -> dict[int, Surface]:
         """Cut selected tiles: copy + clear with snapshot. Returns {idx: Surface}."""
         tiles = self.copy_selected()
         if tiles:
@@ -374,7 +363,7 @@ class SpritesheetGrid:
             return
 
         old_cols = self.cols
-        dst_positions: List[Tuple[int, int, Surface]] = []
+        dst_positions: list[tuple[int, int, Surface]] = []
         for src_idx, tile in self._drag_move_originals.items():
             src_col = src_idx % old_cols
             src_row = src_idx // old_cols
@@ -549,18 +538,17 @@ class SpritesheetGrid:
             ctrl = bool(mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA))
             shift = bool(mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT))
 
-            if event.key == pygame.K_ESCAPE:
-                if self._drag_moving:
-                    self.undo()
-                    self._clear_drag_move_state()
-                    return True
+            if event.key == pygame.K_ESCAPE and self._drag_moving:
+                self.undo()
+                self._clear_drag_move_state()
+                return True
 
             if ctrl:
                 if event.key == pygame.K_c:
                     self._clipboard = self.copy_selected()
                     self.paste_preview_idx = -1
                     return True
-                elif event.key == pygame.K_x:
+                if event.key == pygame.K_x:
                     self._clipboard = self.cut_selected()
                     self.paste_preview_idx = -1
                     return True
@@ -576,7 +564,7 @@ class SpritesheetGrid:
                     self.offset_x -= (cx - self.offset_x) * (s - 1)
                     self.offset_y -= (cy - self.offset_y) * (s - 1)
                     return True
-                elif event.key == pygame.K_MINUS:
+                if event.key == pygame.K_MINUS:
                     old = self.zoom
                     self.zoom = max(self.zoom / step, 0.25)
                     cx = self.rect.w // 2
@@ -585,7 +573,7 @@ class SpritesheetGrid:
                     self.offset_x -= (cx - self.offset_x) * (s - 1)
                     self.offset_y -= (cy - self.offset_y) * (s - 1)
                     return True
-                elif event.key == pygame.K_0:
+                if event.key == pygame.K_0:
                     self.zoom = 1.0
                     self.offset_x = 0.0
                     self.offset_y = 0.0
@@ -594,13 +582,13 @@ class SpritesheetGrid:
                 if event.key == pygame.K_LEFT:
                     self.offset_x += pan
                     return True
-                elif event.key == pygame.K_RIGHT:
+                if event.key == pygame.K_RIGHT:
                     self.offset_x -= pan
                     return True
-                elif event.key == pygame.K_UP:
+                if event.key == pygame.K_UP:
                     self.offset_y += pan
                     return True
-                elif event.key == pygame.K_DOWN:
+                if event.key == pygame.K_DOWN:
                     self.offset_y -= pan
                     return True
 
@@ -619,7 +607,7 @@ class SpritesheetGrid:
         clip = screen.get_clip()
         screen.set_clip(self.rect)
 
-        screen.fill(_COLORS["bg"], self.rect)
+        screen.fill(COLORS.bg, self.rect)
 
         tw, th = self.tile_size
         z = self.zoom
@@ -649,7 +637,7 @@ class SpritesheetGrid:
                 xl = int(xw - grid_clip.x)
                 if 0 <= xl <= grid_clip.w:
                     pygame.draw.line(
-                        ga, (*_COLORS["grid"], 40), (xl, 0), (xl, grid_clip.h)
+                        ga, (*COLORS.text_muted, 40), (xl, 0), (xl, grid_clip.h)
                     )
 
             for r in range(self.rows + 1):
@@ -657,7 +645,7 @@ class SpritesheetGrid:
                 yl = int(yw - grid_clip.y)
                 if 0 <= yl <= grid_clip.h:
                     pygame.draw.line(
-                        ga, (*_COLORS["grid"], 40), (0, yl), (ga.get_width(), yl)
+                        ga, (*COLORS.text_muted, 40), (0, yl), (ga.get_width(), yl)
                     )
             screen.blit(ga, grid_clip.topleft)
 
@@ -665,9 +653,9 @@ class SpritesheetGrid:
             hr = self.tile_screen_rect(idx)
             if hr and self.rect.colliderect(hr):
                 sel_surf = pygame.Surface((hr.w, hr.h), pygame.SRCALPHA)
-                sel_surf.fill((*_COLORS["selected"], 60))
+                sel_surf.fill((*COLORS.selected, 60))
                 screen.blit(sel_surf, hr.topleft)
-                pygame.draw.rect(screen, _COLORS["selected"], hr, 2)
+                pygame.draw.rect(screen, COLORS.selected, hr, 2)
 
         if self._drag_moving and self._drag_move_originals:
             off_col, off_row = self._drag_move_ghost_offset
@@ -685,18 +673,18 @@ class SpritesheetGrid:
                     ghost_scaled = pygame.transform.scale(tile, (gw, gh))
                     ghost_scaled.set_alpha(180)
                     screen.blit(ghost_scaled, ghost_rect.topleft)
-                    pygame.draw.rect(screen, (100, 220, 100), ghost_rect, 2)
+                    pygame.draw.rect(screen, COLORS.success, ghost_rect, 2)
 
         if self.paste_preview_idx >= 0:
             hr = self.tile_screen_rect(self.paste_preview_idx)
             if hr and self.rect.colliderect(hr):
-                pygame.draw.rect(screen, (100, 220, 100), hr, 3)
+                pygame.draw.rect(screen, COLORS.success, hr, 3)
 
         if self.hover_index >= 0 and self.hover_index not in self.selected_indices:
             hr = self.tile_screen_rect(self.hover_index)
             if hr and self.rect.colliderect(hr):
-                pygame.draw.rect(screen, _COLORS["hover"], hr, 2)
-                label = self._font.render(str(self.hover_index), True, _COLORS["text"])
+                pygame.draw.rect(screen, COLORS.hover, hr, 2)
+                label = self._font.render(str(self.hover_index), True, COLORS.text)
                 lx, ly = hr.x + 2, hr.y + 2
                 bg = pygame.Surface(
                     (label.get_width() + 4, label.get_height() + 2), pygame.SRCALPHA
@@ -707,13 +695,13 @@ class SpritesheetGrid:
 
         hdr = Rect(self.rect.x, self.rect.y, self.rect.w, TOP_BAR_H)
         hdr_bg = pygame.Surface((hdr.w, hdr.h), pygame.SRCALPHA)
-        hdr_bg.fill((*_COLORS["header"], 200))
+        hdr_bg.fill((*COLORS.header, 200))
         screen.blit(hdr_bg, hdr.topleft)
 
         info = f"  {s_w}×{s_h}  Grid: {self.cols}×{self.rows}  Tile: {tw}×{th}  Zoom: {z:.1f}x"
         if self.selected_indices:
             info += f"  Selected: {len(self.selected_indices)}"
-        title = self._font.render(info, True, _COLORS["text"])
+        title = self._font.render(info, True, COLORS.text)
         screen.blit(title, (self.rect.x + 6, self.rect.y + 5))
 
         screen.set_clip(clip)

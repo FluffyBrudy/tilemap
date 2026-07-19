@@ -1,10 +1,12 @@
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
 import pygame
-from typing import TYPE_CHECKING, Dict, Any, Callable, Optional, Tuple
 from pygame import Rect, Surface
 
-from .theme import COLORS, FONTS
 from .button import Button
 from .draw_utils import truncate_text
+from .theme import COLORS, FONTS
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -15,8 +17,8 @@ class PropertyEditor:
         self,
         editor: "Editor",
         title: str,
-        properties: Dict[str, Any],
-        on_save: Callable[[Dict[str, Any]], None],
+        properties: dict[str, Any],
+        on_save: Callable[[dict[str, Any]], None],
         on_close: Callable[[], None],
     ):
         self.editor = editor
@@ -42,14 +44,14 @@ class PropertyEditor:
         self.scroll_y = 0
         self.item_height = 40
 
-        self.selected_key: Optional[str] = None
+        self.selected_key: str | None = None
         self.editing_value = False
         self.input_text = ""
 
         self.new_key_input = ""
         self.is_entering_new_key = False
 
-        self._hovered_truncated: Optional[str] = None
+        self._hovered_truncated: str | None = None
 
         btn_h = 30
         btn_w = 100
@@ -132,10 +134,9 @@ class PropertyEditor:
                         self.input_text = str(self.properties[self.selected_key])
                         self.is_entering_new_key = False
                         return True
-                    else:
-                        self.selected_key = None
-                        self.editing_value = False
-                        self.is_entering_new_key = False
+                    self.selected_key = None
+                    self.editing_value = False
+                    self.is_entering_new_key = False
 
             elif event.button == 4:
                 self.scroll_y = max(0, self.scroll_y - 20)
@@ -185,7 +186,7 @@ class PropertyEditor:
                         self.input_text = ""
                         self.is_entering_new_key = False
                     return True
-                elif event.key == pygame.K_BACKSPACE:
+                if event.key == pygame.K_BACKSPACE:
                     self.new_key_input = self.new_key_input[:-1]
                 else:
                     self.new_key_input += event.unicode
@@ -200,10 +201,7 @@ class PropertyEditor:
                         val = False
                     else:
                         try:
-                            if "." in val:
-                                val = float(val)
-                            else:
-                                val = int(val)
+                            val = float(val) if "." in val else int(val)
                         except ValueError:
                             pass
                     self.properties[self.selected_key] = val

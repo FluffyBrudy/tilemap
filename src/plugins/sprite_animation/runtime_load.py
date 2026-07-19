@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 import pygame
 from pygame import Rect, Surface
@@ -25,13 +25,13 @@ class AnimationParseError(ValueError):
     """Invalid animation JSON."""
 
 
-def _req_dict(v: Any, ctx: str) -> Dict[str, Any]:
+def _req_dict(v: Any, ctx: str) -> dict[str, Any]:
     if not isinstance(v, dict):
         raise AnimationParseError(f"{ctx}: expected object")
     return v
 
 
-def _req_list(v: Any, ctx: str) -> List[Any]:
+def _req_list(v: Any, ctx: str) -> list[Any]:
     if not isinstance(v, list):
         raise AnimationParseError(f"{ctx}: expected array")
     return v
@@ -69,21 +69,21 @@ def _coerce_float(v: Any, ctx: str) -> float:
     raise AnimationParseError(f"{ctx}: expected number")
 
 
-def _parse_marker(d: Dict[str, Any], ctx: str) -> AnimationMarker:
+def _parse_marker(d: dict[str, Any], ctx: str) -> AnimationMarker:
     return AnimationMarker(
         name=_req_str(d.get("name"), f"{ctx}.name"),
         frame_index=_coerce_int(d.get("frame_index"), f"{ctx}.frame_index"),
     )
 
 
-def _parse_frame(d: Dict[str, Any], ctx: str) -> AnimationFrame:
+def _parse_frame(d: dict[str, Any], ctx: str) -> AnimationFrame:
     return AnimationFrame(
         variant_id=_coerce_int(d.get("variant_id"), f"{ctx}.variant_id"),
         duration_ms=_coerce_float(d.get("duration_ms", 100.0), f"{ctx}.duration_ms"),
     )
 
 
-def _parse_animation(name: str, d: Dict[str, Any], ctx: str) -> Animation:
+def _parse_animation(name: str, d: dict[str, Any], ctx: str) -> Animation:
     frames_raw = _req_list(d.get("frames", []), f"{ctx}.frames")
     frames = [
         _parse_frame(_req_dict(x, f"{ctx}.frames[{i}]"), f"{ctx}.frames[{i}]")
@@ -91,14 +91,14 @@ def _parse_animation(name: str, d: Dict[str, Any], ctx: str) -> Animation:
     ]
     meta_raw = d.get("metadata")
     if meta_raw is None:
-        metadata: Dict[str, Any] = {}
+        metadata: dict[str, Any] = {}
     elif isinstance(meta_raw, dict):
         metadata = dict(meta_raw)
     else:
         raise AnimationParseError(f"{ctx}.metadata: expected object or null")
 
     markers_raw = d.get("markers")
-    markers: List[AnimationMarker] = []
+    markers: list[AnimationMarker] = []
     if markers_raw is not None:
         ml = _req_list(markers_raw, f"{ctx}.markers")
         for i, m in enumerate(ml):
@@ -120,7 +120,7 @@ def _parse_animation(name: str, d: Dict[str, Any], ctx: str) -> Animation:
     return anim
 
 
-def parse_animation_library_dict(data: Dict[str, Any]) -> AnimationLibrary:
+def parse_animation_library_dict(data: dict[str, Any]) -> AnimationLibrary:
     """Validate and build an :class:`AnimationLibrary` (raises :exc:`AnimationParseError`)."""
     root = _req_dict(data, "root")
     sp = root.get("spritesheet_path")
@@ -136,7 +136,7 @@ def parse_animation_library_dict(data: Dict[str, Any]) -> AnimationLibrary:
         raise AnimationParseError("tile_size: width and height must be >= 1")
 
     anims_raw = _req_dict(root.get("animations", {}), "animations")
-    animations: Dict[str, Animation] = {}
+    animations: dict[str, Animation] = {}
     for key, val in anims_raw.items():
         if not isinstance(key, str):
             key = str(key)
@@ -176,8 +176,8 @@ class SpriteAnimRuntime:
 
     library: AnimationLibrary
     surface: Surface
-    warnings: List[str]
-    json_path: Optional[Path] = None
+    warnings: list[str]
+    json_path: Path | None = None
     grid_offset_x: int = 0
     grid_offset_y: int = 0
 
@@ -186,12 +186,12 @@ class SpriteAnimRuntime:
         cls,
         json_path: PathLike,
         *,
-        spritesheet_path: Optional[PathLike] = None,
-        extra_search_base: Optional[Path] = None,
+        spritesheet_path: PathLike | None = None,
+        extra_search_base: Path | None = None,
     ) -> SpriteAnimRuntime:
         p = Path(json_path)
         library = parse_animation_library_file(p)
-        warnings: List[str] = []
+        warnings: list[str] = []
 
         if not pygame.get_init():
             pygame.init()
@@ -229,7 +229,7 @@ class SpriteAnimRuntime:
 
         return cls(library=library, surface=surface, warnings=warnings, json_path=p)
 
-    def get_image(self, variant: int) -> Optional[Surface]:
+    def get_image(self, variant: int) -> Surface | None:
         """Extract cel ``variant`` using tile size and optional grid offset (default 0,0)."""
         tw, th = int(self.library.tile_size[0]), int(self.library.tile_size[1])
         if tw < 1 or th < 1:

@@ -1,17 +1,11 @@
+import os
+from collections.abc import Callable
+from pathlib import Path
+
 import pygame
 from pygame import Rect, Surface
-from pathlib import Path
-from typing import List, Callable
-import os
 
-from constants import BASE_PATH
-
-
-INPUT_BG = (30, 30, 30)
-INPUT_BORDER = (100, 100, 100)
-TEXT_COLOR = (255, 255, 255)
-SUGGESTION_BG = (40, 44, 52)
-SUGGESTION_HL = (60, 100, 180)
+from .theme import COLORS, FONTS
 
 
 class FilenameInput:
@@ -30,9 +24,9 @@ class FilenameInput:
 
         self.text = ""
         self.active = False
-        self.font = pygame.font.SysFont("Consolas", 14)
+        self.font = FONTS.get_mono_font(FONTS.size_sm)
 
-        self.suggestions: List[str] = []
+        self.suggestions: list[str] = []
         self.selected_suggestion_idx = -1
         self.data_root = data_root
 
@@ -130,16 +124,16 @@ class FilenameInput:
         if not self.active:
             return
 
-        pygame.draw.rect(screen, INPUT_BG, self.rect)
-        pygame.draw.rect(screen, INPUT_BORDER, self.rect, 2)
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 2)
 
-        txt_surf = self.font.render(self.text + "_", True, TEXT_COLOR)
+        txt_surf = self.font.render(self.text + "_", True, COLORS.text)
         screen.blit(
             txt_surf, (self.rect.x + 10, self.rect.centery - txt_surf.get_height() // 2)
         )
 
         title_surf = self.font.render(
-            "Save Map As: (relative to data/)", True, (255, 255, 255)
+            "Save Map As: (relative to data/)", True, COLORS.text_dim
         )
         screen.blit(title_surf, (self.rect.x, self.rect.y - 20))
 
@@ -148,8 +142,8 @@ class FilenameInput:
             total_h = len(self.suggestions) * box_h
             sugg_rect = Rect(self.rect.x, self.rect.bottom, self.rect.width, total_h)
 
-            pygame.draw.rect(screen, SUGGESTION_BG, sugg_rect)
-            pygame.draw.rect(screen, INPUT_BORDER, sugg_rect, 1)
+            pygame.draw.rect(screen, COLORS.panel_alt, sugg_rect)
+            pygame.draw.rect(screen, COLORS.border, sugg_rect, 1)
 
             for i, suggestion in enumerate(self.suggestions):
                 row_rect = Rect(
@@ -157,7 +151,7 @@ class FilenameInput:
                 )
 
                 if i == self.selected_suggestion_idx:
-                    pygame.draw.rect(screen, SUGGESTION_HL, row_rect)
+                    pygame.draw.rect(screen, COLORS.selected, row_rect)
 
-                s_txt = self.font.render(suggestion, True, (180, 180, 180))
+                s_txt = self.font.render(suggestion, True, COLORS.text_dim)
                 screen.blit(s_txt, (row_rect.x + 10, row_rect.y + 4))

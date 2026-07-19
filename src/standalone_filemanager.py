@@ -12,24 +12,23 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import os
+import sys
 from pathlib import Path
-from typing import List, Optional
-
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 import pygame
 from pygame import Rect
 
-
 _current_file = Path(__file__).resolve()
 _src_dir = _current_file.parent
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
+from utils.standalone import load_standalone_theme
 from widgets.filemanager import FileManager
+from widgets.ui.theme import COLORS
 
 
 class StandaloneFileManager:
@@ -38,14 +37,17 @@ class StandaloneFileManager:
     def __init__(
         self,
         mode: str = "open",
-        initial_dir: Optional[Path] = None,
-        allowed_exts: List[str] = [],
+        initial_dir: Path | None = None,
+        allowed_exts: list[str] = None,
         default_name: str = "",
         multi_select: bool = False,
-        data_root: Optional[Path] = None,
+        data_root: Path | None = None,
         window_size: tuple[int, int] = (800, 600),
     ):
+        if allowed_exts is None:
+            allowed_exts = []
         pygame.init()
+        load_standalone_theme()
         self.screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
         pygame.display.set_caption(f"File Manager - {mode.capitalize()}")
         self.clock = pygame.time.Clock()
@@ -121,7 +123,7 @@ class StandaloneFileManager:
                 if event.type == pygame.QUIT:
                     self._on_cancel()
                     break
-                elif event.type == pygame.VIDEORESIZE:
+                if event.type == pygame.VIDEORESIZE:
                     self.window_size = (event.w, event.h)
 
                     self.file_manager.rect.x = 0
@@ -134,20 +136,21 @@ class StandaloneFileManager:
                     )
 
                     continue
-                elif event.type == pygame.KEYDOWN:
+                if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         self._on_cancel()
                         break
 
                 self.file_manager.handle_event(event)
 
+            self.screen.fill(COLORS.bg)
             self.file_manager.draw(self.screen)
             pygame.display.flip()
 
         pygame.quit()
 
 
-def main(argv: List[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Standalone File Manager for selecting/saving files"
     )

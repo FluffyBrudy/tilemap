@@ -20,10 +20,9 @@ from pathlib import Path
 
 import pygame
 import pytest
-from pygame import Rect
 
-from widgets.ui.toolbar import Toolbar
 from widgets.ui.tool_manager import ToolKind, ToolManager
+from widgets.ui.toolbar import Toolbar
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 

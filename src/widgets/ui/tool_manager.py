@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional
 
 
 class ToolKind(Enum):
@@ -17,11 +16,11 @@ class ToolManager:
     """
 
     def __init__(self):
-        self._active: Optional[ToolKind] = None
-        self._prev: Optional[ToolKind] = None
+        self._active: ToolKind | None = None
+        self._prev: ToolKind | None = None
 
     @property
-    def active(self) -> Optional[ToolKind]:
+    def active(self) -> ToolKind | None:
         return self._active
 
     def activate(self, tool: ToolKind) -> None:
@@ -43,7 +42,7 @@ class ToolManager:
     def is_active(self, tool: ToolKind) -> bool:
         return self._active == tool
 
-    def restore_previous(self) -> Optional[ToolKind]:
+    def restore_previous(self) -> ToolKind | None:
         prev = self._prev
         self._active = prev
         self._prev = None

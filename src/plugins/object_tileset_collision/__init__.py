@@ -7,7 +7,7 @@ collision shapes.
 """
 
 from .editor import ObjectTilesetCollisionEditor
-from .models import RegionCollisionData, ObjectTilesetCollisionLibrary
+from .models import ObjectTilesetCollisionLibrary, RegionCollisionData
 
 __all__ = [
     "ObjectTilesetCollisionEditor",

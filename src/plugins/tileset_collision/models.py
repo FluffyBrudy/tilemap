@@ -2,9 +2,9 @@
 Data models for tileset collision system.
 """
 
-from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class CollisionShapeType(Enum):
@@ -18,10 +18,10 @@ class CollisionShapeType(Enum):
 class CollisionPolygon:
     """Polygon collision shape for a tile"""
 
-    vertices: List[Tuple[float, float]] = field(default_factory=list)
+    vertices: list[tuple[float, float]] = field(default_factory=list)
     one_way: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             "type": "polygon",
@@ -30,7 +30,7 @@ class CollisionPolygon:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CollisionPolygon":
+    def from_dict(cls, data: dict[str, Any]) -> "CollisionPolygon":
         """Create from dictionary"""
         return cls(
             vertices=[tuple(v) for v in data.get("vertices", [])],
@@ -47,10 +47,10 @@ class TileCollisionData:
     """Complete collision data for a single tile"""
 
     tile_id: int
-    shapes: List[CollisionPolygon] = field(default_factory=list)
-    properties: Dict[str, Any] = field(default_factory=dict)
+    shapes: list[CollisionPolygon] = field(default_factory=list)
+    properties: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             "tile_id": self.tile_id,
@@ -59,7 +59,7 @@ class TileCollisionData:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TileCollisionData":
+    def from_dict(cls, data: dict[str, Any]) -> "TileCollisionData":
         """Create from dictionary"""
         return cls(
             tile_id=data["tile_id"],
@@ -73,10 +73,10 @@ class TilesetCollisionLibrary:
     """Collection of collision data for all tiles in a tileset"""
 
     tileset_name: str
-    tile_size: Tuple[int, int]
-    tiles: Dict[int, TileCollisionData] = field(default_factory=dict)
+    tile_size: tuple[int, int]
+    tiles: dict[int, TileCollisionData] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             "tileset_name": self.tileset_name,
@@ -85,7 +85,7 @@ class TilesetCollisionLibrary:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TilesetCollisionLibrary":
+    def from_dict(cls, data: dict[str, Any]) -> "TilesetCollisionLibrary":
         """Create from dictionary"""
         return cls(
             tileset_name=data["tileset_name"],
@@ -112,6 +112,6 @@ class TilesetCollisionLibrary:
         from pathlib import Path
 
         p = Path(path)
-        with open(p, "r", encoding="utf-8") as f:
+        with open(p, encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)

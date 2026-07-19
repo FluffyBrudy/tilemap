@@ -3,10 +3,10 @@ Icon Manager - Native SVG Support via pygame-ce
 Uses pygame's built-in SVG loading (pygame-ce 2.2.0+)
 """
 
-import pygame
-from pathlib import Path
 import sys
-from typing import Dict, Optional, Tuple
+from pathlib import Path
+
+import pygame
 
 
 class IconManager:
@@ -23,8 +23,8 @@ class IconManager:
     def __init__(self):
         if not self._initialized:
             self._icons_path = self._resolve_icons_path()
-            self._surface_cache: Dict[
-                Tuple[str, int, Tuple[int, int, int]], pygame.Surface
+            self._surface_cache: dict[
+                tuple[str, int, tuple[int, int, int]], pygame.Surface
             ] = {}
             self._available_icons = self._scan_icons()
             IconManager._initialized = True
@@ -91,7 +91,7 @@ class IconManager:
         return name in self._available_icons
 
     def _draw_fallback_icon(
-        self, name: str, size: int, color: Tuple[int, int, int]
+        self, name: str, size: int, color: tuple[int, int, int]
     ) -> pygame.Surface:
         """Draw a simple fallback icon using pygame primitives."""
         surface = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -498,7 +498,7 @@ class IconManager:
         return surface
 
     def get_icon(
-        self, name: str, size: int = 16, color: Optional[Tuple[int, int, int]] = None
+        self, name: str, size: int = 16, color: tuple[int, int, int] | None = None
     ) -> pygame.Surface:
         """
         Get an icon as a pygame surface.
@@ -553,7 +553,7 @@ icon_manager = IconManager()
 
 
 def get_icon(
-    name: str, size: int = 16, color: Optional[Tuple[int, int, int]] = None
+    name: str, size: int = 16, color: tuple[int, int, int] | None = None
 ) -> pygame.Surface:
     """Convenience function to get an icon."""
     return icon_manager.get_icon(name, size, color)

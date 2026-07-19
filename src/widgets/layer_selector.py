@@ -3,13 +3,15 @@ Layer selector widget for the tilemap editor.
 Displays list of layers with ability to select, reorder, and manage them.
 """
 
+from typing import TYPE_CHECKING
+
 import pygame
 from pygame import Rect, Surface
-from typing import TYPE_CHECKING, Optional
+
 from layers import Layer
+from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
-from widgets.ui.button import Button
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -35,16 +37,16 @@ class LayerSelector:
         self.scroll_offset = 0
         self.scroll_speed = self.item_h
 
-        self.dragging_layer_idx: Optional[int] = None
+        self.dragging_layer_idx: int | None = None
         self.drag_start_y: int = 0
         self.drag_offset_y: int = 0
-        self.hover_idx: Optional[int] = None
+        self.hover_idx: int | None = None
 
-        self.renaming_layer_idx: Optional[int] = None
+        self.renaming_layer_idx: int | None = None
         self.rename_text: str = ""
         self.rename_original_name: str = ""
 
-        self._adjusting_opacity_idx: Optional[int] = None
+        self._adjusting_opacity_idx: int | None = None
 
         btn_h = 25
         btn_w = 25
@@ -214,10 +216,10 @@ class LayerSelector:
                 if event.key == pygame.K_RETURN:
                     self._confirm_rename()
                     return True
-                elif event.key == pygame.K_ESCAPE:
+                if event.key == pygame.K_ESCAPE:
                     self._cancel_rename()
                     return True
-                elif event.key == pygame.K_BACKSPACE:
+                if event.key == pygame.K_BACKSPACE:
                     pressed = pygame.key.get_pressed()
                     meta_down = pressed[pygame.K_LMETA] or pressed[pygame.K_RMETA]
                     ctrl_down = pressed[pygame.K_LCTRL] or pressed[pygame.K_RCTRL]
@@ -226,10 +228,9 @@ class LayerSelector:
                     else:
                         self.rename_text = self.rename_text[:-1]
                     return True
-                else:
-                    if event.unicode.isprintable():
-                        self.rename_text += event.unicode
-                    return True
+                if event.unicode.isprintable():
+                    self.rename_text += event.unicode
+                return True
 
             if event.key == pygame.K_UP:
                 if self.list_rect.collidepoint(pygame.mouse.get_pos()):
@@ -242,7 +243,7 @@ class LayerSelector:
 
         return False
 
-    def _get_layer_at_pos(self, pos) -> Optional[int]:
+    def _get_layer_at_pos(self, pos) -> int | None:
         """Get layer index at the given mouse position."""
         if not self.list_rect.collidepoint(pos):
             return None
@@ -255,7 +256,7 @@ class LayerSelector:
 
         return None
 
-    def _get_opacity_bar_rect(self, layer_idx: int) -> Optional[Rect]:
+    def _get_opacity_bar_rect(self, layer_idx: int) -> Rect | None:
         """Get the clickable rect for the opacity bar of a layer."""
         item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
 
@@ -268,7 +269,7 @@ class LayerSelector:
         bar_y = item_y + self.item_h - bar_h - 3
         return Rect(bar_x, bar_y, bar_w, bar_h)
 
-    def _get_eye_icon_rect(self, layer_idx: int, mouse_pos) -> Optional[Rect]:
+    def _get_eye_icon_rect(self, layer_idx: int, mouse_pos) -> Rect | None:
         """Get the clickable rect for the eye icon of a layer."""
         if layer_idx is None:
             return None
@@ -289,7 +290,7 @@ class LayerSelector:
         eye_y = item_rect.y + 7
         return Rect(eye_x - 5, eye_y - 5, 10, 10)
 
-    def _get_lock_icon_rect(self, layer_idx: int, mouse_pos) -> Optional[Rect]:
+    def _get_lock_icon_rect(self, layer_idx: int, mouse_pos) -> Rect | None:
         """Get the clickable rect for the lock icon of a layer."""
         if layer_idx is None:
             return None

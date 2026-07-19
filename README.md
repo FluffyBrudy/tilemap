@@ -5,12 +5,18 @@
 ## Installation
 
 [tilemap-editor on PyPI](https://pypi.org/project/tilemap-editor/)
+[tilemap-parser on deepwiki](https://deepwiki.com/FluffyBrudy/tilemap)
 
 ## Parser
 
 `tilemap-parser` is a utility to parse and display maps created by this editor. You can use it to load and visualize tilemaps in your game or application.
 
-[tilemap-parser on Vercel](https://tilemap-parser.vercel.app/)
+[tilemap-parser on deepwiki](https://deepwiki.com/FluffyBrudy/tilemap-parser)
+[tilemap-parser on PyPI](https://pypi.org/project/tilemap-parser/)
+
+## Kit
+
+`pygkit` is general-purpose Pygame CE runtime kit: UI widgets, audio management, timers, interpolation, signals and utilities.
 
 ### Quick Start
 
@@ -26,7 +32,6 @@ tilemap-editor init
 tilemap-editor run
 ```
 
-
 ```python
 from editor import Editor
 
@@ -34,4 +39,3 @@ if __name__ == "__main__":
     editor = Editor()
     editor.run()
 ```
-

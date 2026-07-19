@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import pygame
 from pygame import Rect, Surface
@@ -11,7 +11,6 @@ from widgets.particle_system import (
     EMISSION_SHAPES,
     FLOAT_FIELDS,
     PARTICLE_SHAPES,
-    get_default_config,
 )
 
 if TYPE_CHECKING:
@@ -30,7 +29,7 @@ CONTENT_W = 480
 
 class Dropdown:
     def __init__(
-        self, rect: Rect, options: List[str], initial: str, max_visible: int = 10
+        self, rect: Rect, options: list[str], initial: str, max_visible: int = 10
     ):
         if not options:
             raise ValueError("options must be a non-empty list")
@@ -38,7 +37,7 @@ class Dropdown:
         self.options = options
         self.selected = initial if initial in options else options[0]
         self.open = False
-        self.hover_idx: Optional[int] = None
+        self.hover_idx: int | None = None
         self.option_h = 22
         self.max_visible = max_visible
         self.scroll_offset = 0
@@ -55,11 +54,11 @@ class Dropdown:
     def _total_height(self) -> int:
         return len(self.options) * self.option_h
 
-    def _visible_range(self) -> Tuple[int, int]:
+    def _visible_range(self) -> tuple[int, int]:
         last = min(len(self.options), self.scroll_offset + self.max_visible)
         return self.scroll_offset, last
 
-    def handle_event(self, event: pygame.event.Event) -> Optional[str]:
+    def handle_event(self, event: pygame.event.Event) -> str | None:
         mouse = pygame.mouse.get_pos()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse):
@@ -101,7 +100,7 @@ class Dropdown:
         return None
 
     def draw(
-        self, screen: Surface, bg: Tuple[int, int, int], border: Tuple[int, int, int]
+        self, screen: Surface, bg: tuple[int, int, int], border: tuple[int, int, int]
     ):
         pygame.draw.rect(screen, bg, self.rect, border_radius=3)
         pygame.draw.rect(screen, border, self.rect, 1, border_radius=3)
@@ -191,7 +190,7 @@ class Slider:
         self.fmt = fmt
         self.dragging = False
 
-    def handle_event(self, event: pygame.event.Event) -> Optional[float]:
+    def handle_event(self, event: pygame.event.Event) -> float | None:
         mouse = pygame.mouse.get_pos()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse):
@@ -210,7 +209,7 @@ class Slider:
         t = max(0.0, min(1.0, (mx - self.rect.x - 2) / w))
         return self.min_val + t * (self.max_val - self.min_val)
 
-    def draw(self, screen: Surface, accent: Tuple[int, int, int]):
+    def draw(self, screen: Surface, accent: tuple[int, int, int]):
         pygame.draw.rect(screen, (35, 38, 42), self.rect, border_radius=3)
         fr = self.fill_rect
         if fr.width > 0:
@@ -242,17 +241,17 @@ class ColorField:
         self.hue = 0
         self.sat = 1.0
         self.bri = 1.0
-        self.dragging_part: Optional[str] = None
-        self._cache_key: Optional[Tuple[int, int, int]] = None
-        self._cache_surf: Optional[Surface] = None
+        self.dragging_part: str | None = None
+        self._cache_key: tuple[int, int, int] | None = None
+        self._cache_surf: Surface | None = None
 
     @property
-    def rgb(self) -> Tuple[int, int, int]:
+    def rgb(self) -> tuple[int, int, int]:
         return tuple(
             int(c * 255) for c in self._hsv_to_rgb(self.hue, self.sat, self.bri)
         )
 
-    def _hsv_to_rgb(self, h: float, s: float, v: float) -> Tuple[float, float, float]:
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[float, float, float]:
         h = h % 360
         c = v * s
         x = c * (1 - abs((h / 60) % 2 - 1))
@@ -271,7 +270,7 @@ class ColorField:
             r2, g2, b2 = c, 0, x
         return r2 + m, g2 + m, b2 + m
 
-    def _rgb_to_hsv(self, r: int, g: int, b: int) -> Tuple[float, float, float]:
+    def _rgb_to_hsv(self, r: int, g: int, b: int) -> tuple[float, float, float]:
         rf, gf, bf = r / 255.0, g / 255.0, b / 255.0
         mx, mn = max(rf, gf, bf), min(rf, gf, bf)
         v = mx
@@ -420,7 +419,7 @@ class ColorPicker:
             self.rect.x + 4 + idx * w, self.rect.y + self.TAB_H + 2, w, self.SWATCH_H
         )
 
-    def _slider_rects(self) -> List[Tuple[str, Rect, Tuple[int, int, int]]]:
+    def _slider_rects(self) -> list[tuple[str, Rect, tuple[int, int, int]]]:
         y0 = self.rect.y + self.TAB_H + self.SWATCH_H + 8 + self.FIELD_H + 8
         label_x = self.rect.x + 8
         slider_x = label_x + 54
@@ -438,13 +437,13 @@ class ColorPicker:
         return result
 
     def _init_sliders(self):
-        self._slider_values: List[float] = [255, 200, 100, 255]
-        self._slider_dragging: List[bool] = [False, False, False, False]
+        self._slider_values: list[float] = [255, 200, 100, 255]
+        self._slider_dragging: list[bool] = [False, False, False, False]
 
-    def _get_active_colors(self) -> Dict[str, int]:
+    def _get_active_colors(self) -> dict[str, int]:
         return self.start_colors if self.active_tab == 0 else self.end_colors
 
-    def _set_active_colors(self, d: Dict[str, int]):
+    def _set_active_colors(self, d: dict[str, int]):
         if self.active_tab == 0:
             self.start_colors.update(d)
         else:
@@ -496,7 +495,7 @@ class ColorPicker:
             pygame.MOUSEBUTTONUP,
         ):
             rects = self._slider_rects()
-            for i, (label, accent, r, _lx) in enumerate(rects):
+            for i, (_label, _accent, r, _lx) in enumerate(rects):
                 if (
                     event.type == pygame.MOUSEBUTTONDOWN
                     and event.button == 1
@@ -520,7 +519,7 @@ class ColorPicker:
                     self._slider_dragging[i] = False
         return False
 
-    def sync_from_config(self, config: Dict[str, object]):
+    def sync_from_config(self, config: dict[str, object]):
         self.start_colors = {
             "r": int(config.get("start_color_r", 255)),
             "g": int(config.get("start_color_g", 200)),
@@ -537,7 +536,7 @@ class ColorPicker:
         self.field.set_rgb(colors["r"], colors["g"], colors["b"])
         self._slider_values = [colors["r"], colors["g"], colors["b"], colors["a"]]
 
-    def sync_to_config(self, config: Dict[str, object]):
+    def sync_to_config(self, config: dict[str, object]):
         for prefix, colors in [
             ("start_color", self.start_colors),
             ("end_color", self.end_colors),
@@ -593,9 +592,9 @@ class ParticleConfigDialog:
     def __init__(
         self,
         editor: Editor,
-        config: Dict[str, object],
+        config: dict[str, object],
         node_id: str,
-        on_save: Callable[[Dict[str, object]], None],
+        on_save: Callable[[dict[str, object]], None],
     ):
         self.editor = editor
         self.config = dict(config)
@@ -616,14 +615,14 @@ class ParticleConfigDialog:
         self.font_section = pygame.font.SysFont("Arial", 13, bold=True)
         self.font_label = pygame.font.SysFont("Arial", 12)
 
-        self.sliders: List[Tuple[str, Slider]] = []
-        self.dropdowns: List[Tuple[str, Dropdown]] = []
+        self.sliders: list[tuple[str, Slider]] = []
+        self.dropdowns: list[tuple[str, Dropdown]] = []
         self.color_picker = ColorPicker(
             Rect(self.rect.x + 10, 0, self.rect.width - 20, 240)
         )
-        self._slider_base_y: Dict[str, int] = {}
-        self._dropdown_base_y: Dict[str, int] = {}
-        self._section_positions: List[Tuple[int, str]] = []
+        self._slider_base_y: dict[str, int] = {}
+        self._dropdown_base_y: dict[str, int] = {}
+        self._section_positions: list[tuple[int, str]] = []
 
         self._build_controls()
         self.color_picker.sync_from_config(self.config)
@@ -647,7 +646,7 @@ class ParticleConfigDialog:
             self.font_label.render(lbl, True, (180, 180, 180))
             y += ROW_H
 
-        def add_dropdown(key: str, opts: List[str]):
+        def add_dropdown(key: str, opts: list[str]):
             nonlocal y
             dr = Rect(x + CONTROL_L, y, slider_w, 22)
             dd = Dropdown(dr, opts, str(self.config.get(key, opts[0])))

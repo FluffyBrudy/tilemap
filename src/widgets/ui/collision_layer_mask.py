@@ -7,13 +7,13 @@ Supports 16 layers with single-select layer and multi-select mask.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import pygame
 from pygame import Rect, Surface
 
+from utils.font_manager import FontWeight, font_manager
 from widgets.ui.theme import COLORS, FONTS, SHAPE
-from utils.font_manager import font_manager, FontWeight
 
 
 class _BitButton:
@@ -104,7 +104,7 @@ class CollisionLayerMaskWidget:
         max_layers: int = 16,
         initial_layer: int = 1,
         initial_mask: int = 0xFFFF,
-        on_changed: Optional[Callable[[int, int], None]] = None,
+        on_changed: Callable[[int, int], None] | None = None,
     ):
         self.rect = rect
         self.max_layers = min(max_layers, 32)

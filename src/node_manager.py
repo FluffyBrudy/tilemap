@@ -1,7 +1,7 @@
 import json
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from nodes import Node, NodeRect
 
@@ -19,12 +19,12 @@ SIDECAR_VERSION = 1
 class NodeManager:
     def __init__(self, editor: "Editor") -> None:
         self.editor = editor
-        self.nodes: Dict[str, Node] = {}
-        self.active_node_id: Optional[str] = None
-        self.active_group_name: Optional[str] = None
-        self.groups: List[str] = []
+        self.nodes: dict[str, Node] = {}
+        self.active_node_id: str | None = None
+        self.active_group_name: str | None = None
+        self.groups: list[str] = []
         self.default_node_type: str = "area"
-        self._nodes_dir: Optional[Path] = None
+        self._nodes_dir: Path | None = None
 
     @property
     def nodes_dir(self) -> Path:
@@ -62,7 +62,7 @@ class NodeManager:
     def save(self, map_path: Path) -> None:
         sidecar = self._sidecar_path_for(map_path)
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "version": SIDECAR_VERSION,
             "groups": self.groups,
             "nodes": [node.to_dict() for node in self.nodes.values()],
@@ -78,30 +78,30 @@ class NodeManager:
         if self.active_node_id == node_id:
             self.active_node_id = None
 
-    def get_node(self, node_id: str) -> Optional[Node]:
+    def get_node(self, node_id: str) -> Node | None:
         return self.nodes.get(node_id)
 
-    def get_active_node(self) -> Optional[Node]:
+    def get_active_node(self) -> Node | None:
         if self.active_node_id is None:
             return None
         return self.nodes.get(self.active_node_id)
 
-    def set_active_node(self, node_id: Optional[str]) -> None:
+    def set_active_node(self, node_id: str | None) -> None:
         self.active_node_id = node_id
         if node_id is not None:
             self.active_group_name = None
 
-    def set_active_group(self, group_name: Optional[str]) -> None:
+    def set_active_group(self, group_name: str | None) -> None:
         self.active_group_name = group_name
         if group_name is not None:
             self.active_node_id = None
 
-    def get_nodes_for_layer(self, layer_name: str) -> List[Node]:
+    def get_nodes_for_layer(self, layer_name: str) -> list[Node]:
         return [n for n in self.nodes.values() if n.layer_name == layer_name]
 
     def create_default_node(self, layer_name: str, node_type: str = "area") -> Node:
         count = len(self.nodes) + 1
-        props: Dict[str, Any] = {}
+        props: dict[str, Any] = {}
         if node_type == "particle_emitter":
             from widgets.particle_system import get_default_config
 

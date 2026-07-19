@@ -10,17 +10,17 @@ Features:
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, List, Callable
-from enum import Enum, auto
-from dataclasses import dataclass
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum, auto
 
 import pygame
 from pygame import Rect, Surface
 
-from widgets.ui.theme import COLORS, SHAPE
-from utils.font_manager import font_manager, FontWeight
+from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
+from widgets.ui.theme import COLORS
 
 
 class StatusType(Enum):
@@ -68,7 +68,7 @@ class StatusBar:
         self.show_timestamp = show_timestamp
 
         self.current = StatusItem("Ready", StatusType.NEUTRAL)
-        self.history: List[StatusItem] = []
+        self.history: list[StatusItem] = []
         self.max_history = 50
 
         self.icon_size = 16
@@ -79,9 +79,9 @@ class StatusBar:
         self._font_sm = font_manager.get_font("Arial", 10, FontWeight.REGULAR)
         self._font_bold = font_manager.get_font("Arial", 12, FontWeight.BOLD)
 
-        self.on_status_changed: Optional[Callable[[StatusItem], None]] = None
+        self.on_status_changed: Callable[[StatusItem], None] | None = None
 
-    def _get_status_color(self, status_type: StatusType) -> Tuple[int, int, int]:
+    def _get_status_color(self, status_type: StatusType) -> tuple[int, int, int]:
         """Get color for status type"""
         colors = {
             StatusType.INFO: COLORS.accent,
@@ -107,7 +107,7 @@ class StatusBar:
         self,
         font: pygame.font.Font,
         text: str,
-        color: Tuple[int, int, int],
+        color: tuple[int, int, int],
         max_width: int,
     ) -> Surface:
         """Render text, truncating with ellipsis when it must fit a fixed width."""
@@ -253,7 +253,7 @@ class StatusBar:
         """Resize the status bar"""
         self.rect = rect
 
-    def get_history(self) -> List[StatusItem]:
+    def get_history(self) -> list[StatusItem]:
         """Get status history"""
         return list(self.history)
 

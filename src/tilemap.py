@@ -1,7 +1,7 @@
 from json import dump as JSONDump
 from json import load as JSONLoad
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 from pygame import Rect
 
@@ -44,7 +44,7 @@ class Tilemap:
         self.initialized = False
         self.render_scale = 1.0
 
-        self.active_project_path: Optional[Path] = None
+        self.active_project_path: Path | None = None
         self.history = HistoryManager()
 
     @property
@@ -140,7 +140,7 @@ class Tilemap:
 
         for layer in self.layer_manager.layers:
             if layer.tiles:
-                for pos in layer.tiles.keys():
+                for pos in layer.tiles:
                     max_w = max(max_w, pos[0] + 1)
                     max_h = max(max_h, pos[1] + 1)
 
@@ -156,9 +156,9 @@ class Tilemap:
 
     def incremental_update_map_size(
         self,
-        pos: Tuple[int, int],
+        pos: tuple[int, int],
         is_pixel: bool = False,
-        size: Optional[Tuple[int, int]] = None,
+        size: tuple[int, int] | None = None,
     ):
         """Update map size based on a single point or area without full scan."""
         if not self.initialized:
@@ -201,7 +201,7 @@ class Tilemap:
                 designer.selected_group_idx = 0
             designer.selected_rule_index = -1
 
-    def get_nearest_tiles(self, tile_location: "TCoor") -> Tuple["TCoor"]:
+    def get_nearest_tiles(self, tile_location: "TCoor") -> tuple["TCoor", ...]:
         """Get empty neighboring tile positions for the given location."""
         assert len(tile_location) == 2
         tiles_around = []
@@ -218,8 +218,8 @@ class Tilemap:
                 tiles_around.append(check_loc)
         return tuple(tiles_around)
 
-    def save_map(self, relative_path: Optional[Union[str, Path]] = None):
-        target_path: Optional[Path] = None
+    def save_map(self, relative_path: str | Path | None = None):
+        target_path: Path | None = None
 
         if relative_path:
             path_obj = Path(relative_path)
@@ -271,7 +271,7 @@ class Tilemap:
             },
         }
 
-        ttype_to_firstgid: List[int] = []
+        ttype_to_firstgid: list[int] = []
         if hasattr(self.editor, "tileset_widget") and self.editor.tileset_widget:
             firstgid = 0
             tile_w, tile_h = self.tile_size
@@ -283,7 +283,7 @@ class Tilemap:
 
                 ttype_to_firstgid.append(firstgid)
 
-                ts_data: Dict[str, Any] = {
+                ts_data: dict[str, Any] = {
                     "path": path_str, "type": ts.tileset_type,
                     "tile_count": tile_count, "firstgid": firstgid,
                 }
@@ -338,7 +338,7 @@ class Tilemap:
                 key = serialize_point(loc)
                 ttype = tile["ttype"]
                 variant = tile["variant"]
-                tile_data: Dict[str, Any] = {
+                tile_data: dict[str, Any] = {
                     "pos": serialize_point(tile["pos"]),
                     "ttype": ttype,
                     "variant": variant,
@@ -354,7 +354,7 @@ class Tilemap:
             if layer.layer_type == "object":
                 layer_data["objects"] = {}
                 for obj_id, obj in layer.objects.items():
-                    obj_data: Dict[str, Any] = {
+                    obj_data: dict[str, Any] = {
                         "area": obj["area"],
                         "ttype": obj["ttype"],
                         "tileset_type": obj["tileset_type"],
@@ -375,7 +375,7 @@ class Tilemap:
                 key = serialize_point(loc)
                 ttype = tile["ttype"]
                 variant = tile["variant"]
-                tile_data: Dict[str, Any] = {
+                tile_data: dict[str, Any] = {
                     "pos": serialize_point(tile["pos"]),
                     "ttype": ttype,
                     "variant": variant,
@@ -454,7 +454,7 @@ class Tilemap:
             return self._tmx_to_payload(path)
         if suffix != ".json":
             raise ValueError(f"{path.name} is not a JSON file")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             payload = JSONLoad(f)
         if not isinstance(payload, dict) or "meta" not in payload:
             raise ValueError("Invalid project format")

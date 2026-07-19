@@ -1,7 +1,4 @@
-from typing import Optional
 
-import pygame
-from pygame import Rect
 
 from ..widget_base import WidgetBase
 from .theme import COLORS, FONTS

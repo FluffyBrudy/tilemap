@@ -7,8 +7,8 @@ game engine or character system — no inheritance required, just implement the 
 
 from __future__ import annotations
 
-from typing import Protocol, Tuple, runtime_checkable, List, Optional
 from enum import Enum
+from typing import Protocol, runtime_checkable
 
 
 class CollisionShapeType(Enum):
@@ -26,10 +26,10 @@ class CollisionInfo:
     def __init__(
         self,
         collided: bool,
-        normal: Tuple[float, float] = (0.0, 0.0),
+        normal: tuple[float, float] = (0.0, 0.0),
         penetration: float = 0.0,
-        contact_point: Tuple[float, float] = (0.0, 0.0),
-        other_shape_id: Optional[str] = None,
+        contact_point: tuple[float, float] = (0.0, 0.0),
+        other_shape_id: str | None = None,
     ):
         self.collided = collided
         self.normal = normal
@@ -50,23 +50,23 @@ class CollisionShape(Protocol):
         """Return the type of collision shape."""
         ...
 
-    def get_bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def get_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Return bounding box as ((min_x, min_y), (max_x, max_y))."""
         ...
 
-    def get_position(self) -> Tuple[float, float]:
+    def get_position(self) -> tuple[float, float]:
         """Return current world position."""
         ...
 
-    def set_position(self, position: Tuple[float, float]) -> None:
+    def set_position(self, position: tuple[float, float]) -> None:
         """Set world position."""
         ...
 
-    def check_collision_with_shape(self, other: "CollisionShape") -> CollisionInfo:
+    def check_collision_with_shape(self, other: CollisionShape) -> CollisionInfo:
         """Check collision with another shape and return collision info."""
         ...
 
-    def move_and_collide(self, offset: Tuple[float, float]) -> CollisionInfo:
+    def move_and_collide(self, offset: tuple[float, float]) -> CollisionInfo:
         """Attempt to move by offset and return collision info."""
         ...
 
@@ -75,7 +75,7 @@ class CollisionShape(Protocol):
 class RectangleShape(CollisionShape, Protocol):
     """Rectangle collision shape with width and height."""
 
-    def get_size(self) -> Tuple[float, float]:
+    def get_size(self) -> tuple[float, float]:
         """Return (width, height)."""
         ...
 
@@ -106,7 +106,7 @@ class CapsuleShape(CollisionShape, Protocol):
 class PolygonShape(CollisionShape, Protocol):
     """Polygon collision shape with vertices."""
 
-    def get_vertices(self) -> List[Tuple[float, float]]:
+    def get_vertices(self) -> list[tuple[float, float]]:
         """Return list of vertices in local space."""
         ...
 
@@ -142,17 +142,17 @@ class TilemapCollisionProvider(Protocol):
     The character collision system queries this to check collisions with tilemap tiles.
     """
 
-    def get_tile_collision_shapes_at(self, x: int, y: int) -> List[CollisionShape]:
+    def get_tile_collision_shapes_at(self, x: int, y: int) -> list[CollisionShape]:
         """Return collision shapes for tiles at the given tile coordinates."""
         ...
 
     def get_tiles_in_bounds(
-        self, bounds: Tuple[Tuple[float, float], Tuple[float, float]]
-    ) -> List[Tuple[int, int]]:
+        self, bounds: tuple[tuple[float, float], tuple[float, float]]
+    ) -> list[tuple[int, int]]:
         """Return list of tile positions within the given bounds."""
         ...
 
-    def world_to_tile(self, world_pos: Tuple[float, float]) -> Tuple[int, int]:
+    def world_to_tile(self, world_pos: tuple[float, float]) -> tuple[int, int]:
         """Convert world coordinates to tile coordinates."""
         ...
 
@@ -171,7 +171,7 @@ class CollisionWorldConsumer(Protocol):
         ...
 
     def on_tile_collision_detected(
-        self, char_id: str, tile_pos: Tuple[int, int], collision_info: CollisionInfo
+        self, char_id: str, tile_pos: tuple[int, int], collision_info: CollisionInfo
     ) -> None:
         """Called when a character collides with a tile."""
         ...

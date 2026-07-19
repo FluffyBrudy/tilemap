@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import pygame
 from pygame import Rect
@@ -14,8 +14,8 @@ class Scrollbar:
     def __init__(
         self,
         orientation: str = "vertical",
-        rect: Optional[Rect] = None,
-        on_scroll: Optional[Callable[[float], None]] = None,
+        rect: Rect | None = None,
+        on_scroll: Callable[[float], None] | None = None,
     ):
         self.orientation = orientation
         self.rect = rect or Rect(0, 0, 10, 100)
@@ -94,20 +94,19 @@ class Scrollbar:
                     self.on_scroll(self.scroll_pos)
             return True
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self._hovered:
-                if event.button == 4:
-                    step = self.view_size * 0.1
-                    self.scroll_pos = max(0.0, self.scroll_pos - step)
-                    if self.on_scroll:
-                        self.on_scroll(self.scroll_pos)
-                    return True
-                elif event.button == 5:
-                    step = self.view_size * 0.1
-                    self.scroll_pos = min(self.max_scroll, self.scroll_pos + step)
-                    if self.on_scroll:
-                        self.on_scroll(self.scroll_pos)
-                    return True
+        if event.type == pygame.MOUSEBUTTONDOWN and self._hovered:
+            if event.button == 4:
+                step = self.view_size * 0.1
+                self.scroll_pos = max(0.0, self.scroll_pos - step)
+                if self.on_scroll:
+                    self.on_scroll(self.scroll_pos)
+                return True
+            if event.button == 5:
+                step = self.view_size * 0.1
+                self.scroll_pos = min(self.max_scroll, self.scroll_pos + step)
+                if self.on_scroll:
+                    self.on_scroll(self.scroll_pos)
+                return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._dragging:

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, List
+ParticlePreset = dict[str, object]
+PresetEntry = dict[str, object]
 
-ParticlePreset = Dict[str, object]
-PresetEntry = Dict[str, object]
-
-PRESETS: List[PresetEntry] = []
+PRESETS: list[PresetEntry] = []
 
 
 def _p(name: str, category: str, desc: str, config: dict) -> PresetEntry:
@@ -2399,15 +2397,15 @@ PRESETS.append(
 )
 
 
-def get_presets_by_category() -> Dict[str, List[PresetEntry]]:
-    cats: Dict[str, List[PresetEntry]] = {}
+def get_presets_by_category() -> dict[str, list[PresetEntry]]:
+    cats: dict[str, list[PresetEntry]] = {}
     for p in PRESETS:
         cat = p["category"]
         cats.setdefault(cat, []).append(p)
     return cats
 
 
-def get_preset_names() -> List[str]:
+def get_preset_names() -> list[str]:
     return [p["name"] for p in PRESETS]
 
 

@@ -8,7 +8,7 @@ existing 3x3 neighbor-based autotiling system.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from ttypes.tilemap import TypeTile
 
@@ -35,12 +35,12 @@ class PatternCell:
         match_mode: How this cell matches against layer tiles
     """
 
-    tile_id: Optional[int]
-    tileset_index: Optional[int]
+    tile_id: int | None
+    tileset_index: int | None
     match_mode: MatchMode
 
     def matches(
-        self, actual_tile_id: Optional[int], actual_tileset_index: Optional[int] = None
+        self, actual_tile_id: int | None, actual_tileset_index: int | None = None
     ) -> bool:
         """Check if actual tile matches this pattern cell.
 
@@ -53,15 +53,14 @@ class PatternCell:
         """
         if self.match_mode == MatchMode.WILDCARD:
             return True
-        elif self.match_mode == MatchMode.ANY_FILLED:
+        if self.match_mode == MatchMode.ANY_FILLED:
             return actual_tile_id is not None
-        elif self.match_mode == MatchMode.ANY_EMPTY:
+        if self.match_mode == MatchMode.ANY_EMPTY:
             return actual_tile_id is None
-        else:
-            return (
-                self.tile_id == actual_tile_id
-                and self.tileset_index == actual_tileset_index
-            )
+        return (
+            self.tile_id == actual_tile_id
+            and self.tileset_index == actual_tileset_index
+        )
 
 
 class PatternGrid:
@@ -85,7 +84,7 @@ class PatternGrid:
         """
         self.width = width
         self.height = height
-        self.cells: Dict[Tuple[int, int], PatternCell] = {}
+        self.cells: dict[tuple[int, int], PatternCell] = {}
 
     def set_cell(self, x: int, y: int, cell: PatternCell) -> None:
         """Set pattern cell at position.
@@ -117,7 +116,7 @@ class PatternGrid:
         """
         return self.cells.get((x, y), PatternCell(None, None, MatchMode.WILDCARD))
 
-    def matches(self, tiles: Dict[Tuple[int, int], Optional[int]]) -> bool:
+    def matches(self, tiles: dict[tuple[int, int], int | None]) -> bool:
         """Check if tile data matches this pattern.
 
         Args:
@@ -312,7 +311,7 @@ class AutomapEngine:
 
     def scan_layer_for_pattern(
         self, layer: "Layer", pattern: PatternGrid
-    ) -> List[Tuple[int, int]]:
+    ) -> list[tuple[int, int]]:
         """Find all positions where pattern matches in the layer.
 
         Scans the entire layer and returns all positions where the pattern matches.
@@ -404,7 +403,7 @@ class AutomapEngine:
                     else:
                         layer.remove_tile((layer_x, layer_y))
 
-    def apply_rules(self, layer: "Layer", rules: List[PatternRule]) -> int:
+    def apply_rules(self, layer: "Layer", rules: list[PatternRule]) -> int:
         """Apply all enabled pattern rules to layer in priority order.
 
         Rules are sorted by priority (descending) and applied sequentially.

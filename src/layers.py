@@ -4,7 +4,7 @@ Supports multiple layers with independent tile and object data.
 """
 
 import random
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any
 
 from ttypes.tilemap import TypeObject, TypeTile
 
@@ -34,11 +34,11 @@ class Layer:
         self.visible = visible
         self.locked = locked
         self.opacity = max(0.0, min(1.0, opacity))
-        self.properties: Dict[str, Any] = {}
+        self.properties: dict[str, Any] = {}
 
-        self.tiles: Dict[Tuple[int, int], TypeTile] = {}
+        self.tiles: dict[tuple[int, int], TypeTile] = {}
 
-        self.objects: Dict[int, TypeObject] = {}
+        self.objects: dict[int, TypeObject] = {}
         self.next_object_id: int = 1
 
         self._autotile_cache = {
@@ -48,20 +48,20 @@ class Layer:
             "significant_offsets": set(),
         }
 
-    def set_tile(self, pos: Tuple[int, int], tile: TypeTile) -> None:
+    def set_tile(self, pos: tuple[int, int], tile: TypeTile) -> None:
         """Set a tile at the given grid position."""
         if not self.locked:
             self.tiles[pos] = tile
 
-    def get_tile(self, pos: Tuple[int, int]) -> Optional[TypeTile]:
+    def get_tile(self, pos: tuple[int, int]) -> TypeTile | None:
         """Get a tile at the given grid position."""
         return self.tiles.get(pos)
 
-    def autotile_layer(self, rules: List["AutotileRule"]) -> int:
+    def autotile_layer(self, rules: list["AutotileRule"]) -> int:
         """Update all tiles in this layer according to autotile rules."""
         return self._autotile_tiles(rules, list(self.tiles.keys()))
 
-    def autotile_at_pos(self, pos: Tuple[int, int], rules: List["AutotileRule"]) -> int:
+    def autotile_at_pos(self, pos: tuple[int, int], rules: list["AutotileRule"]) -> int:
         """Update the tile at pos and its 8 neighbors according to autotile rules."""
         positions = [pos]
         for dx, dy in [
@@ -79,7 +79,7 @@ class Layer:
         existing_positions = [p for p in positions if p in self.tiles]
         return self._autotile_tiles(rules, existing_positions)
 
-    def _autotile_tiles(self, rules: List["AutotileRule"], positions: List[Tuple[int, int]]) -> int:
+    def _autotile_tiles(self, rules: list["AutotileRule"], positions: list[tuple[int, int]]) -> int:
         """
         Internal helper to update specific tiles according to autotile rules.
 
@@ -99,9 +99,9 @@ class Layer:
         rules_hash = hash(tuple((r.group_id, r.tileset_index, tuple(sorted(r.variant_ids))) for r in rules))
 
         if self._autotile_cache["rules_hash"] != rules_hash:
-            variant_to_group: Dict[Tuple[int, int], str] = {}
-            rules_by_group: Dict[str, List["AutotileRule"]] = {}
-            significant_offsets: Set[Tuple[int, int]] = set()
+            variant_to_group: dict[tuple[int, int], str] = {}
+            rules_by_group: dict[str, list[AutotileRule]] = {}
+            significant_offsets: set[tuple[int, int]] = set()
 
             for rule in rules:
                 gid = rule.group_id
@@ -133,7 +133,7 @@ class Layer:
 
         changes_count = 0
 
-        def _get_group(t: dict) -> Optional[str]:
+        def _get_group(t: dict) -> str | None:
             """Get group_id for a tile: autotile_group field > legacy variant lookup."""
             ag = t.get("autotile_group")
             if ag is not None:
@@ -176,8 +176,8 @@ class Layer:
 
             neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
 
-            matched_rule: Optional["AutotileRule"] = None
-            new_variant: Optional[int] = None
+            matched_rule: AutotileRule | None = None
+            new_variant: int | None = None
             for rule in group_rules:
                 if rule.neighbors == neighbor_offsets_set and rule.tileset_index == ttype:
                     matched_rule = rule
@@ -201,7 +201,7 @@ class Layer:
 
         return changes_count
 
-    def remove_tile(self, pos: Tuple[int, int]) -> bool:
+    def remove_tile(self, pos: tuple[int, int]) -> bool:
         """Remove a tile at the given grid position. Returns True if tile existed."""
         if not self.locked and pos in self.tiles:
             del self.tiles[pos]
@@ -210,9 +210,9 @@ class Layer:
 
     def flood_fill(
         self,
-        start_pos: Tuple[int, int],
+        start_pos: tuple[int, int],
         new_tile_data: TypeTile,
-        map_size: Tuple[int, int],
+        map_size: tuple[int, int],
     ) -> None:
         """Replace contiguous tiles of the same type starting from start_pos."""
         if self.locked or self.layer_type != "tile":
@@ -252,11 +252,11 @@ class Layer:
                         seen.add(next_pos)
                         queue.append(next_pos)
 
-    def get_all_tiles(self) -> Dict[Tuple[int, int], TypeTile]:
+    def get_all_tiles(self) -> dict[tuple[int, int], TypeTile]:
         """Return a copy of all tiles in this layer."""
         return dict(self.tiles)
 
-    def add_object(self, pos: Tuple[int, int], obj: TypeObject) -> int:
+    def add_object(self, pos: tuple[int, int], obj: TypeObject) -> int:
         """Add an object at the given pixel position. Returns the object ID."""
         if not self.locked:
             obj_id = self.next_object_id
@@ -265,7 +265,7 @@ class Layer:
             return obj_id
         return -1
 
-    def get_object(self, obj_id: int) -> Optional[TypeObject]:
+    def get_object(self, obj_id: int) -> TypeObject | None:
         """Get an object by ID."""
         return self.objects.get(obj_id)
 
@@ -276,11 +276,11 @@ class Layer:
             return True
         return False
 
-    def get_all_objects(self) -> Dict[int, TypeObject]:
+    def get_all_objects(self) -> dict[int, TypeObject]:
         """Return a copy of all objects in this layer."""
         return dict(self.objects)
 
-    def move_object(self, obj_id: int, new_pos: Tuple[int, int]) -> bool:
+    def move_object(self, obj_id: int, new_pos: tuple[int, int]) -> bool:
         """Move an object to a new position. Returns True if successful."""
         if not self.locked and obj_id in self.objects:
             self.objects[obj_id]["area"]["x"] = new_pos[0]
@@ -364,14 +364,14 @@ class LayerManager:
     """Manages multiple layers for a tilemap."""
 
     def __init__(self):
-        self.layers: List[Layer] = []
+        self.layers: list[Layer] = []
         self.active_layer_idx: int = -1
 
     def create_layer(
         self,
         name: str,
         layer_type: str = "tile",
-        insert_index: Optional[int] = None,
+        insert_index: int | None = None,
     ) -> Layer:
         """Create a new layer and add it to the manager."""
         z_index = len(self.layers)
@@ -402,13 +402,13 @@ class LayerManager:
 
         return True
 
-    def get_layer(self, index: int) -> Optional[Layer]:
+    def get_layer(self, index: int) -> Layer | None:
         """Get a layer by index."""
         if 0 <= index < len(self.layers):
             return self.layers[index]
         return None
 
-    def get_active_layer(self) -> Optional[Layer]:
+    def get_active_layer(self) -> Layer | None:
         """Get the currently active layer."""
         return self.get_layer(self.active_layer_idx)
 
@@ -432,7 +432,7 @@ class LayerManager:
             return True
         return False
 
-    def get_rendered_layers(self) -> List[Layer]:
+    def get_rendered_layers(self) -> list[Layer]:
         """Get all visible layers sorted by z_index for rendering."""
         visible = [layer for layer in self.layers if layer.visible]
         return sorted(visible, key=lambda l: l.z_index)

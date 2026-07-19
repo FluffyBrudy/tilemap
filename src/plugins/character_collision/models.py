@@ -2,9 +2,8 @@
 Data models for character collision system.
 """
 
-from typing import Dict, List, Tuple, Any, Optional, Union
 from dataclasses import dataclass, field
-from enum import Enum
+from typing import Any
 
 from .protocols import CollisionShapeType
 
@@ -17,9 +16,9 @@ class CollisionInfo:
     normal: tuple[float, float] = (0.0, 0.0)
     penetration: float = 0.0
     contact_point: tuple[float, float] = (0.0, 0.0)
-    other_shape_id: Optional[str] = None
+    other_shape_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
             "collided": self.collided,
@@ -30,7 +29,7 @@ class CollisionInfo:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CollisionInfo":
+    def from_dict(cls, data: dict[str, Any]) -> "CollisionInfo":
         """Create from dictionary"""
         return cls(
             collided=data.get("collided", False),
@@ -49,7 +48,7 @@ class RectangleCollisionData:
     height: float
     offset: tuple[float, float] = (0.0, 0.0)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": "rectangle",
             "width": self.width,
@@ -58,7 +57,7 @@ class RectangleCollisionData:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RectangleCollisionData":
+    def from_dict(cls, data: dict[str, Any]) -> "RectangleCollisionData":
         return cls(
             width=data["width"],
             height=data["height"],
@@ -71,13 +70,13 @@ class CircleCollisionData:
     """Circle collision shape data"""
 
     radius: float
-    offset: Tuple[float, float] = (0.0, 0.0)
+    offset: tuple[float, float] = (0.0, 0.0)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {"type": "circle", "radius": self.radius, "offset": self.offset}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CircleCollisionData":
+    def from_dict(cls, data: dict[str, Any]) -> "CircleCollisionData":
         return cls(radius=data["radius"], offset=tuple(data.get("offset", (0.0, 0.0))))
 
 
@@ -87,9 +86,9 @@ class CapsuleCollisionData:
 
     radius: float
     height: float
-    offset: Tuple[float, float] = (0.0, 0.0)
+    offset: tuple[float, float] = (0.0, 0.0)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": "capsule",
             "radius": self.radius,
@@ -98,7 +97,7 @@ class CapsuleCollisionData:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CapsuleCollisionData":
+    def from_dict(cls, data: dict[str, Any]) -> "CapsuleCollisionData":
         return cls(
             radius=data["radius"],
             height=data["height"],
@@ -110,14 +109,14 @@ class CapsuleCollisionData:
 class PolygonCollisionData:
     """Polygon collision shape data"""
 
-    vertices: List[tuple[float, float]]
+    vertices: list[tuple[float, float]]
     offset: tuple[float, float] = (0.0, 0.0)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {"type": "polygon", "vertices": self.vertices, "offset": self.offset}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PolygonCollisionData":
+    def from_dict(cls, data: dict[str, Any]) -> "PolygonCollisionData":
         return cls(
             vertices=[tuple(v) for v in data["vertices"]],
             offset=tuple(data.get("offset", (0.0, 0.0))),
@@ -129,24 +128,23 @@ class CharacterCollisionData:
     """Complete collision data for a character"""
 
     name: str
-    shape: Union[
-        RectangleCollisionData,
-        CircleCollisionData,
-        CapsuleCollisionData,
-        PolygonCollisionData,
-    ]
-    properties: Dict[str, Any] = field(default_factory=dict)
+    shape: RectangleCollisionData | CircleCollisionData | CapsuleCollisionData | PolygonCollisionData
+    image_path: str | None = None
+    properties: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
-        return {
+        d: dict[str, Any] = {
             "name": self.name,
             "shape": self.shape.to_dict(),
             "properties": self.properties,
         }
+        if self.image_path:
+            d["image_path"] = self.image_path
+        return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CharacterCollisionData":
+    def from_dict(cls, data: dict[str, Any]) -> "CharacterCollisionData":
         """Create from dictionary"""
         shape_data = data["shape"]
         shape_type = shape_data["type"]
@@ -163,7 +161,10 @@ class CharacterCollisionData:
             raise ValueError(f"Unknown shape type: {shape_type}")
 
         return cls(
-            name=data["name"], shape=shape, properties=data.get("properties", {})
+            name=data["name"],
+            shape=shape,
+            image_path=data.get("image_path"),
+            properties=data.get("properties", {}),
         )
 
 

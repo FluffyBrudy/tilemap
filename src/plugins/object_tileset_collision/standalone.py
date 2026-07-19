@@ -26,7 +26,8 @@ try:
     from .editor import ObjectTilesetCollisionEditor
 except ImportError:
     from plugins.object_tileset_collision.editor import ObjectTilesetCollisionEditor
-from utils import error_handler, error_context
+from utils import error_handler
+from utils.standalone import load_standalone_theme
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -62,6 +63,8 @@ def main(argv: list[str] | None = None) -> None:
         pygame.init()
         pygame.display.set_mode(window_size, pygame.RESIZABLE)
         pygame.display.set_caption(f"Object Tileset Collision — {args.image.name}")
+
+        load_standalone_theme()
 
         collision_dir = args.collision_dir
 

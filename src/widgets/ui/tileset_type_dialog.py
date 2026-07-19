@@ -2,9 +2,10 @@
 Simple dialog for selecting tileset type (tile vs object) and configuring animation.
 """
 
+from collections.abc import Callable
+
 import pygame
 from pygame import Rect, Surface
-from typing import Callable, Optional
 
 from .dialog_base import DialogBase
 from .theme import COLORS, FONTS
@@ -15,9 +16,9 @@ class TilesetTypeDialog(DialogBase):
 
     def __init__(self, editor_rect: Rect):
         super().__init__(editor_rect, (400, 420), title="Tileset Type")
-        self.selected_type: Optional[str] = None
-        self.on_confirm: Optional[Callable[[str], None]] = None
-        self.on_cancel: Optional[Callable[[], None]] = None
+        self.selected_type: str | None = None
+        self.on_confirm: Callable[[str], None] | None = None
+        self.on_cancel: Callable[[], None] | None = None
 
         self.radio_tile_rect = Rect(0, 0, 20, 20)
         self.radio_object_rect = Rect(0, 0, 20, 20)
@@ -40,7 +41,7 @@ class TilesetTypeDialog(DialogBase):
         self.anim_modes = ["default", "random_start_times"]
         self.anim_mode_labels = ["Sync", "Random"]
 
-        self._editing_field: Optional[str] = None
+        self._editing_field: str | None = None
         self._edit_buffer = ""
 
         self.anim_check_rect = Rect(0, 0, 16, 16)
@@ -128,7 +129,7 @@ class TilesetTypeDialog(DialogBase):
         self.btn_ok = Rect(self.rect.centerx - 94, btn_y, 80, 30)
         self.btn_cancel = Rect(self.rect.centerx + 14, btn_y, 80, 30)
 
-    def get_animation_config(self) -> Optional[dict]:
+    def get_animation_config(self) -> dict | None:
         if not self.animated:
             return None
         return {
@@ -219,29 +220,27 @@ class TilesetTypeDialog(DialogBase):
                 if event.key == pygame.K_RETURN:
                     self._commit_edit()
                     return True
-                elif event.key == pygame.K_ESCAPE:
+                if event.key == pygame.K_ESCAPE:
                     self._editing_field = None
                     self._edit_buffer = ""
                     return True
-                elif event.key == pygame.K_BACKSPACE:
+                if event.key == pygame.K_BACKSPACE:
                     self._edit_buffer = self._edit_buffer[:-1]
                     return True
-                else:
-                    ch = event.unicode
-                    if ch.isdigit() or ch == "-":
-                        self._edit_buffer += ch
-                    return True
-            else:
-                if event.key == pygame.K_ESCAPE:
-                    if self.on_cancel:
-                        self.on_cancel()
-                    self.hide()
-                    return True
-                elif event.key == pygame.K_RETURN:
-                    if self.on_confirm and self.selected_type:
-                        self.on_confirm(self.selected_type)
-                    self.hide()
-                    return True
+                ch = event.unicode
+                if ch.isdigit() or ch == "-":
+                    self._edit_buffer += ch
+                return True
+            if event.key == pygame.K_ESCAPE:
+                if self.on_cancel:
+                    self.on_cancel()
+                self.hide()
+                return True
+            if event.key == pygame.K_RETURN:
+                if self.on_confirm and self.selected_type:
+                    self.on_confirm(self.selected_type)
+                self.hide()
+                return True
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.radio_tile_row_rect.collidepoint(mouse_pos):

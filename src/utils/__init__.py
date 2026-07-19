@@ -1,5 +1,5 @@
-from .error_handler import error_handler, error_context
 from .editor_preference import load_settings
+from .error_handler import error_context, error_handler
 from .project_paths import resolve_project_path, to_project_path
 
 __all__ = [

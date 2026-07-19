@@ -22,7 +22,6 @@ def copy_plain_text(text: str) -> bool:
             error_handler.capture(e, context="clipboard_pyperclip", severity="warning")
         except ImportError:
             pass
-        pass
     try:
         import subprocess
 
@@ -56,7 +55,6 @@ def copy_plain_text(text: str) -> bool:
             )
         except ImportError:
             pass
-        pass
     try:
         import tkinter as tk
 

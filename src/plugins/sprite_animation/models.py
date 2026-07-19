@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from utils.project_paths import to_project_path
 
@@ -56,13 +56,13 @@ class Animation:
     """A named animation sequence composed of frames."""
 
     name: str
-    frames: List[AnimationFrame] = field(default_factory=list)
+    frames: list[AnimationFrame] = field(default_factory=list)
     loop: bool = True
 
     fps: float = 60.0
 
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    markers: List[AnimationMarker] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    markers: list[AnimationMarker] = field(default_factory=list)
 
     def total_duration_ms(self) -> float:
         return sum(f.duration_ms for f in self.frames)
@@ -135,13 +135,13 @@ class Animation:
     def from_dict(data: dict) -> Animation:
         raw_meta = data.get("metadata")
         if raw_meta is None:
-            meta: Dict[str, Any] = {}
+            meta: dict[str, Any] = {}
         elif isinstance(raw_meta, dict):
             meta = dict(raw_meta)
         else:
             meta = {}
         raw_markers = data.get("markers")
-        markers: List[AnimationMarker] = []
+        markers: list[AnimationMarker] = []
         if isinstance(raw_markers, list):
             for item in raw_markers:
                 if isinstance(item, dict) and "name" in item and "frame_index" in item:
@@ -162,10 +162,10 @@ class Animation:
 class AnimationLibrary:
     """Collection of named animations tied to a single spritesheet."""
 
-    animations: Dict[str, Animation] = field(default_factory=dict)
-    spritesheet_path: Optional[str] = None
-    tile_size: Tuple[int, int] = (32, 32)
-    grid_offset: Tuple[int, int] = (0, 0)
+    animations: dict[str, Animation] = field(default_factory=dict)
+    spritesheet_path: str | None = None
+    tile_size: tuple[int, int] = (32, 32)
+    grid_offset: tuple[int, int] = (0, 0)
 
     def add_animation(self, anim: Animation) -> None:
         self.animations[anim.name] = anim
@@ -184,13 +184,13 @@ class AnimationLibrary:
             return True
         return False
 
-    def get_animation(self, name: str) -> Optional[Animation]:
+    def get_animation(self, name: str) -> Animation | None:
         return self.animations.get(name)
 
-    def animation_names(self) -> List[str]:
+    def animation_names(self) -> list[str]:
         return list(self.animations.keys())
 
-    def to_dict(self, *, base_path: Optional[Path] = None) -> dict:
+    def to_dict(self, *, base_path: Path | None = None) -> dict:
         spritesheet_path = self.spritesheet_path
         if spritesheet_path and base_path is not None:
             spritesheet_path = to_project_path(spritesheet_path, base_path)
@@ -215,12 +215,12 @@ class AnimationLibrary:
             lib.animations[name] = Animation.from_dict(anim_data)
         return lib
 
-    def save(self, path: Path, *, base_path: Optional[Path] = None) -> None:
+    def save(self, path: Path, *, base_path: Path | None = None) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(base_path=base_path), f, indent=2)
 
     @staticmethod
     def load(path: Path) -> AnimationLibrary:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return AnimationLibrary.from_dict(json.load(f))

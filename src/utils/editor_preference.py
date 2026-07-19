@@ -7,10 +7,10 @@ No defaults, no auto-creation - settings.json is the single source of truth.
 
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
-def load_settings() -> Dict[str, Any]:
+def load_settings() -> dict[str, Any]:
     """
     Load settings.json from current working directory.
 
@@ -25,7 +25,7 @@ def load_settings() -> Dict[str, Any]:
     if not settings_file.exists():
         raise RuntimeError("settings.json not found. Run 'tilemap-editor init' first.")
 
-    with open(settings_file, "r", encoding="utf-8") as f:
+    with open(settings_file, encoding="utf-8") as f:
         return json.load(f)
 
 

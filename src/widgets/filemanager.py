@@ -1,15 +1,18 @@
 import json
 import os
-import pygame
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
-from constants import INTELLISENSE_DEPTH, IGNORE_DIRS, BASE_PATH
+
+import pygame
+
+from constants import BASE_PATH, IGNORE_DIRS, INTELLISENSE_DEPTH
 from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
-from utils.icons_cache import get_icon, prewarm_common_icons
+from utils.icons_cache import prewarm_common_icons
 from utils.standalone import launch_standalone
-from .input import InputBox, InlineTextInput
-from .ui.theme import COLORS, FONTS
+
+from .input import InputBox
+from .ui.theme import COLORS, FONTS, SHAPE
 
 
 class FileItem:
@@ -45,10 +48,10 @@ class DimensionPersistence:
 
             with open(self.pref_file, "w") as f:
                 json.dump(data, f, indent=2)
-        except (OSError, IOError) as e:
+        except OSError as e:
             print(f"Warning: Could not save FileManager dimensions: {e}")
 
-    def load_dimensions(self) -> Optional[Tuple[int, int]]:
+    def load_dimensions(self) -> tuple[int, int] | None:
         """Load dimensions from JSON file.
 
         Returns:
@@ -58,7 +61,7 @@ class DimensionPersistence:
             if not self.pref_file.exists():
                 return None
 
-            with open(self.pref_file, "r") as f:
+            with open(self.pref_file) as f:
                 data = json.load(f)
 
             width = data.get("filemanager_width")
@@ -71,7 +74,7 @@ class DimensionPersistence:
 
             return None
 
-        except (OSError, IOError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             print(f"Warning: Could not load FileManager dimensions: {e}")
             return None
 
@@ -79,9 +82,7 @@ class DimensionPersistence:
 class ResizeHandler:
     """Handles resize operations for the FileManager widget."""
 
-    def __init__(
-        self, widget_rect: pygame.Rect, min_width: int = 400, min_height: int = 300
-    ):
+    def __init__(self, widget_rect: pygame.Rect, min_width: int = 400, min_height: int = 300):
         """Initialize resize handler with widget rect and constraints.
 
         Args:
@@ -97,7 +98,7 @@ class ResizeHandler:
         self.drag_start_pos = None
         self.drag_start_rect = None
 
-    def get_handle_at_pos(self, pos: Tuple[int, int]) -> Optional[str]:
+    def get_handle_at_pos(self, pos: tuple[int, int]) -> str | None:
         """Returns handle type if pos is over a resize handle, else None.
 
         Args:
@@ -125,7 +126,7 @@ class ResizeHandler:
 
         return None
 
-    def start_drag(self, handle: str, pos: Tuple[int, int]):
+    def start_drag(self, handle: str, pos: tuple[int, int]):
         """Initiates resize drag operation.
 
         Args:
@@ -138,7 +139,7 @@ class ResizeHandler:
 
         self.drag_start_rect = pygame.Rect(self.widget_rect)
 
-    def update_drag(self, pos: Tuple[int, int]) -> pygame.Rect:
+    def update_drag(self, pos: tuple[int, int]) -> pygame.Rect:
         """Updates widget rect during drag, returns new rect.
 
         Args:
@@ -187,9 +188,7 @@ class ResizeHandler:
         mouse_pos = pygame.mouse.get_pos()
         hovered_handle = self.get_handle_at_pos(mouse_pos)
 
-        right_handle_rect = pygame.Rect(
-            self.widget_rect.right - 5, self.widget_rect.top, 5, self.widget_rect.height
-        )
+        right_handle_rect = pygame.Rect(self.widget_rect.right - 5, self.widget_rect.top, 5, self.widget_rect.height)
         color = handle_hover_color if hovered_handle == "right" else handle_color
         pygame.draw.rect(surface, color, right_handle_rect)
 
@@ -202,9 +201,7 @@ class ResizeHandler:
         color = handle_hover_color if hovered_handle == "bottom" else handle_color
         pygame.draw.rect(surface, color, bottom_handle_rect)
 
-        corner_handle_rect = pygame.Rect(
-            self.widget_rect.right - 10, self.widget_rect.bottom - 10, 10, 10
-        )
+        corner_handle_rect = pygame.Rect(self.widget_rect.right - 10, self.widget_rect.bottom - 10, 10, 10)
         color = handle_hover_color if hovered_handle == "corner" else handle_color
         pygame.draw.rect(surface, color, corner_handle_rect)
 
@@ -251,9 +248,7 @@ class ImagePreview:
         try:
             file_size_mb = path.stat().st_size / (1024 * 1024)
             if file_size_mb > self.max_file_size_mb:
-                self.error_message = (
-                    f"File too large ({file_size_mb:.1f}MB > {self.max_file_size_mb}MB)"
-                )
+                self.error_message = f"File too large ({file_size_mb:.1f}MB > {self.max_file_size_mb}MB)"
                 return False
         except OSError as e:
             self.error_message = f"Cannot read file: {e}"
@@ -279,9 +274,7 @@ class ImagePreview:
         self.scaled_cache = None
         self.cached_target_size = None
 
-    def scale_to_fit(
-        self, target_width: int, target_height: int
-    ) -> Optional[pygame.Surface]:
+    def scale_to_fit(self, target_width: int, target_height: int) -> pygame.Surface | None:
         """Returns scaled image surface maintaining aspect ratio.
 
         Args:
@@ -301,9 +294,7 @@ class ImagePreview:
             return self.scaled_cache
 
         if self.image_dimensions is None:
-            error_handler.capture(
-                Exception("Image dimensions are None"), "scale_to_fit", "info"
-            )
+            error_handler.capture(Exception("Image dimensions are None"), "scale_to_fit", "info")
             return None
 
         image_width, image_height = self.image_dimensions
@@ -323,9 +314,7 @@ class ImagePreview:
             image = self.current_image
 
         try:
-            scaled_surface = pygame.transform.smoothscale(
-                image, (new_width, new_height)
-            )
+            scaled_surface = pygame.transform.smoothscale(image, (new_width, new_height))
         except ValueError:
             scaled_surface = pygame.transform.scale(image, (new_width, new_height))
 
@@ -343,7 +332,7 @@ class ImagePreview:
         """
 
         pygame.draw.rect(surface, COLORS.panel, rect)
-        pygame.draw.rect(surface, COLORS.border, rect, 1)
+        pygame.draw.rect(surface, COLORS.border, rect, SHAPE.border)
 
         close_button_size = 24
         close_button_margin = 8
@@ -358,7 +347,7 @@ class ImagePreview:
         is_hovering = close_button_rect.collidepoint(mouse_pos)
         close_bg_color = COLORS.hover if is_hovering else COLORS.panel_alt
 
-        pygame.draw.rect(surface, close_bg_color, close_button_rect, border_radius=4)
+        pygame.draw.rect(surface, close_bg_color, close_button_rect, border_radius=SHAPE.radius_sm)
 
         x_color = COLORS.text
         margin = 6
@@ -391,22 +380,14 @@ class ImagePreview:
             return
 
         if not self.current_image:
-            text_surf = FONTS.get_medium_font().render(
-                "No preview available", True, COLORS.text_dim
-            )
+            text_surf = FONTS.get_medium_font().render("No preview available", True, COLORS.text_dim)
             text_rect = text_surf.get_rect(center=rect.center)
             surface.blit(text_surf, text_rect)
             return
 
         button_height = 35
         text_height = 25
-        image_area_height = (
-            rect.height
-            - close_button_size
-            - close_button_margin * 2
-            - text_height
-            - button_height
-        )
+        image_area_height = rect.height - close_button_size - close_button_margin * 2 - text_height - button_height
         image_area_width = rect.width - 20
 
         scaled_image = self.scale_to_fit(image_area_width, image_area_height)
@@ -419,12 +400,8 @@ class ImagePreview:
 
             if self.image_dimensions:
                 dim_text = f"{self.image_dimensions[0]} × {self.image_dimensions[1]} px"
-                text_surf = FONTS.get_small_font().render(
-                    dim_text, True, COLORS.text_dim
-                )
-                text_rect = text_surf.get_rect(
-                    centerx=rect.centerx, top=image_rect.bottom + 5
-                )
+                text_surf = FONTS.get_small_font().render(dim_text, True, COLORS.text_dim)
+                text_rect = text_surf.get_rect(centerx=rect.centerx, top=image_rect.bottom + 5)
                 surface.blit(text_surf, text_rect)
 
             button_width = 140
@@ -438,13 +415,9 @@ class ImagePreview:
 
             button_hover = self.open_viewer_button_rect.collidepoint(mouse_pos)
             button_color = COLORS.accent if button_hover else COLORS.selected
-            pygame.draw.rect(
-                surface, button_color, self.open_viewer_button_rect, border_radius=4
-            )
+            pygame.draw.rect(surface, button_color, self.open_viewer_button_rect, border_radius=SHAPE.radius_sm)
 
-            button_text = FONTS.get_bold_font().render(
-                "Open in Viewer", True, COLORS.text
-            )
+            button_text = FONTS.get_bold_font().render("Open in Viewer", True, COLORS.text)
             text_rect = button_text.get_rect(center=self.open_viewer_button_rect.center)
             surface.blit(button_text, text_rect)
 
@@ -453,10 +426,10 @@ class FileManager:
     def __init__(
         self,
         rect: pygame.Rect,
-        initial_dir: Optional[Path] = None,
-        allowed_exts: List[str] = [".png", ".jpg"],
-        on_select: Callable[[Union[Path, List[Path]]], None] = lambda p: None,
-        on_save: Optional[Callable[[Path], None]] = None,
+        initial_dir: Path | None = None,
+        allowed_exts: list[str] = None,
+        on_select: Callable[[Path | list[Path]], None] = lambda p: None,
+        on_save: Callable[[Path], None] | None = None,
         mode: str = "open",
         default_name: str = "",
         on_cancel: Callable[[], None] = lambda: None,
@@ -466,6 +439,8 @@ class FileManager:
         enable_resize_handles: bool = True,
         data_root: Path = None,
     ):
+        if allowed_exts is None:
+            allowed_exts = [".png", ".jpg"]
         self.data_root = data_root
         self.rect = rect
         self.allowed_exts = allowed_exts
@@ -479,11 +454,11 @@ class FileManager:
         self.enable_resize_handles = enable_resize_handles
 
         self.current_path = initial_dir if initial_dir else Path.home()
-        self.history: List[Path] = []
-        self.items: List[FileItem] = []
+        self.history: list[Path] = []
+        self.items: list[FileItem] = []
 
         self.selected_index: int = -1
-        self.selected_indices: List[int] = []
+        self.selected_indices: list[int] = []
         self.scroll_y = 0
         self.scroll_speed = 30
         self.hover_index = -1
@@ -505,9 +480,7 @@ class FileManager:
         self.font_small = FONTS.get_small_font()
         self.font_icon = FONTS.get_mono_font(20)
 
-        self.search_input = InputBox(
-            pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font()
-        )
+        self.search_input = InputBox(pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font())
         self.search_rect = pygame.Rect(
             self.rect.x + self.sidebar_width + 10,
             self.rect.y + self.header_height + 5,
@@ -517,25 +490,17 @@ class FileManager:
         self.search_header_height = 35
         self.is_searching = False
 
-        self.save_input = InputBox(
-            pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font()
-        )
+        self.save_input = InputBox(pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font())
         self.save_input.text = default_name
         self.save_input.cursor_pos = len(default_name)
         self.save_name_rect = pygame.Rect(0, 0, 0, 0)
         self.new_folder_button_rect = pygame.Rect(0, 0, 0, 0)
 
-        self.rename_input = InputBox(
-            pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font()
-        )
-        self.renaming_item_idx: Optional[int] = None
+        self.rename_input = InputBox(pygame.Rect(0, 0, 0, 0), font=FONTS.get_medium_font())
+        self.renaming_item_idx: int | None = None
 
-        self.recents_path = (
-            self.data_root / "recents.json"
-            if self.data_root
-            else BASE_PATH / "data" / "recents.json"
-        )
-        self.recents: List[Path] = self._load_recents()
+        self.recents_path = self.data_root / "recents.json" if self.data_root else BASE_PATH / "data" / "recents.json"
+        self.recents: list[Path] = self._load_recents()
         self.view_mode = "files"
 
         self.resize_handler = ResizeHandler(self.rect, min_width=400, min_height=300)
@@ -550,13 +515,13 @@ class FileManager:
         self.drag_offset_x = 0
         self.drag_offset_y = 0
 
-        saved_dims = self.dimension_persistence.load_dimensions()
-        if saved_dims:
-            width, height = saved_dims
-            self.rect.width = width
-            self.rect.height = height
-
-            self.resize_handler.widget_rect = self.rect
+        if self.enable_resize_handles:
+            saved_dims = self.dimension_persistence.load_dimensions()
+            if saved_dims:
+                width, height = saved_dims
+                self.rect.width = width
+                self.rect.height = height
+                self.resize_handler.widget_rect = self.rect
 
         prewarm_common_icons(sizes=[(16, 16), (32, 32)])
 
@@ -579,29 +544,19 @@ class FileManager:
 
             self._search_local_files(self.current_path, self.search_input.text)
 
-            self._recursive_search(
-                self.current_path, self.search_input.text, INTELLISENSE_DEPTH
-            )
+            self._recursive_search(self.current_path, self.search_input.text, INTELLISENSE_DEPTH)
 
             unique_items = {str(item.path): item for item in self.items}
-            self.items = sorted(
-                unique_items.values(), key=lambda x: (not x.is_dir, x.name.lower())
-            )
+            self.items = sorted(unique_items.values(), key=lambda x: (not x.is_dir, x.name.lower()))
             return
 
         self.is_searching = False
         try:
             all_entries = list(self.current_path.iterdir())
 
-            folders = sorted(
-                [p for p in all_entries if p.is_dir()], key=lambda p: p.name.lower()
-            )
+            folders = sorted([p for p in all_entries if p.is_dir()], key=lambda p: p.name.lower())
 
-            files = [
-                p
-                for p in all_entries
-                if p.is_file() and p.suffix.lower() in self.allowed_exts
-            ]
+            files = [p for p in all_entries if p.is_file() and p.suffix.lower() in self.allowed_exts]
             files = sorted(files, key=lambda p: p.name.lower())
 
             for p in folders:
@@ -647,11 +602,11 @@ class FileManager:
         except (PermissionError, OSError, Exception):
             pass
 
-    def _load_recents(self) -> List[Path]:
+    def _load_recents(self) -> list[Path]:
         if not self.recents_path.exists():
             return []
         try:
-            with open(self.recents_path, "r") as f:
+            with open(self.recents_path) as f:
                 data = json.load(f)
                 return [Path(p) for p in data if Path(p).exists()]
         except Exception as e:
@@ -692,9 +647,7 @@ class FileManager:
 
             resolved_path.relative_to(resolved_root)
         except ValueError:
-            raise ValueError(
-                f"Operation denied: path '{path}' is outside data_root '{self.data_root}'"
-            )
+            raise ValueError(f"Operation denied: path '{path}' is outside data_root '{self.data_root}'")
 
     def go_up(self):
         self.view_mode = "files"
@@ -823,13 +776,13 @@ class FileManager:
         self.rename_input.is_focused = False
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        mouse_pos = pygame.mouse.get_pos()
+        mouse_pos = getattr(event, 'pos', pygame.mouse.get_pos())
 
         lx = mouse_pos[0] - self.rect.x
         ly = mouse_pos[1] - self.rect.y
 
         self.search_rect.x = self.rect.x + self.sidebar_width + 10
-        self.search_rect.y = self.rect.y + self.header_height + 5
+        self.new_folder_button_rect = pygame.Rect(self.rect.right - 110, self.rect.y + 6, 100, 28)
 
         file_list_rect = self._get_file_list_rect()
 
@@ -897,9 +850,7 @@ class FileManager:
                 self.header_height,
             )
 
-            up_button_rect = pygame.Rect(
-                self.rect.x + self.sidebar_width, self.rect.y, 40, self.header_height
-            )
+            up_button_rect = pygame.Rect(self.rect.x + self.sidebar_width, self.rect.y, 40, self.header_height)
             if (
                 self.enable_window_drag
                 and header_rect.collidepoint(mouse_pos)
@@ -914,27 +865,19 @@ class FileManager:
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self.enable_resize_handles and self.resize_handler.is_dragging:
                 self.resize_handler.end_drag()
-                self.dimension_persistence.save_dimensions(
-                    self.rect.width, self.rect.height
-                )
+                self.dimension_persistence.save_dimensions(self.rect.width, self.rect.height)
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
                 return True
 
         if event.type == pygame.MOUSEWHEEL:
             if file_list_rect.collidepoint(mouse_pos):
-                max_scroll = max(
-                    0, len(self.items) * self.item_height - file_list_rect.height
-                )
-                self.scroll_y = max(
-                    0, min(self.scroll_y - (event.y * self.scroll_speed), max_scroll)
-                )
+                max_scroll = max(0, len(self.items) * self.item_height - file_list_rect.height)
+                self.scroll_y = max(0, min(self.scroll_y - (event.y * self.scroll_speed), max_scroll))
                 return True
 
         if event.type == pygame.MOUSEMOTION:
             if file_list_rect.collidepoint(mouse_pos):
-                rel_y = (
-                    ly - self.header_height - self.search_header_height + self.scroll_y
-                )
+                rel_y = ly - self.header_height - self.search_header_height + self.scroll_y
                 idx = int(rel_y // self.item_height)
                 if 0 <= idx < len(self.items):
                     self.hover_index = idx
@@ -949,7 +892,7 @@ class FileManager:
             if event.key == pygame.K_ESCAPE:
                 self.save_input.is_focused = False
                 return True
-            elif event.key == pygame.K_RETURN:
+            if event.key == pygame.K_RETURN:
                 self._attempt_save()
                 return True
 
@@ -960,12 +903,11 @@ class FileManager:
             if event.key == pygame.K_RETURN:
                 self._confirm_rename()
                 return True
-            elif event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_ESCAPE:
                 self._cancel_rename()
                 return True
-            else:
-                if self.rename_input.handle_event(event):
-                    return True
+            if self.rename_input.handle_event(event):
+                return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
             if self.selected_index >= 0 and self.renaming_item_idx is None:
@@ -984,24 +926,17 @@ class FileManager:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                if self.image_preview.is_visible and hasattr(
-                    self.image_preview, "close_button_rect"
-                ):
-                    if (
-                        self.image_preview.close_button_rect
-                        and self.image_preview.close_button_rect.collidepoint(mouse_pos)
+                if self.image_preview.is_visible and hasattr(self.image_preview, "close_button_rect"):
+                    if self.image_preview.close_button_rect and self.image_preview.close_button_rect.collidepoint(
+                        mouse_pos
                     ):
                         self._hide_preview()
                         return True
 
-                if self.image_preview.is_visible and hasattr(
-                    self.image_preview, "open_viewer_button_rect"
-                ):
+                if self.image_preview.is_visible and hasattr(self.image_preview, "open_viewer_button_rect"):
                     if (
                         self.image_preview.open_viewer_button_rect
-                        and self.image_preview.open_viewer_button_rect.collidepoint(
-                            mouse_pos
-                        )
+                        and self.image_preview.open_viewer_button_rect.collidepoint(mouse_pos)
                     ):
                         self._open_image_viewer()
                         return True
@@ -1014,14 +949,12 @@ class FileManager:
                     self.save_input.is_focused = False
                     self.search_input.is_focused = True
                     return True
-                else:
-                    self.search_input.is_focused = False
+                self.search_input.is_focused = False
                 if self.mode == "save" and self.save_name_rect.collidepoint(mouse_pos):
                     self.search_input.is_focused = False
                     self.save_input.is_focused = True
                     return True
-                else:
-                    self.save_input.is_focused = False
+                self.save_input.is_focused = False
 
                 if ly < self.header_height:
                     if lx < self.sidebar_width + 40:
@@ -1038,20 +971,14 @@ class FileManager:
                     idx = self.hover_index
                     item = self.items[idx]
 
-                    if (
-                        self.renaming_item_idx is not None
-                        and idx != self.renaming_item_idx
-                    ):
+                    if self.renaming_item_idx is not None and idx != self.renaming_item_idx:
                         self._confirm_rename()
 
                         return True
 
                     current_time = pygame.time.get_ticks()
 
-                    if (
-                        self.clicked_item_index == idx
-                        and (current_time - self.double_click_timer) < 500
-                    ):
+                    if self.clicked_item_index == idx and (current_time - self.double_click_timer) < 500:
                         if item.is_dir:
                             self.navigate_to(item.path, record_recent=True)
                         else:
@@ -1080,11 +1007,7 @@ class FileManager:
                         shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
                         if self.multi_select:
                             if shift_held and self.selected_indices:
-                                start = (
-                                    self.selected_index
-                                    if self.selected_index != -1
-                                    else idx
-                                )
+                                start = self.selected_index if self.selected_index != -1 else idx
                                 lo = min(start, idx)
                                 hi = max(start, idx)
                                 self.selected_indices = list(range(lo, hi + 1))
@@ -1159,7 +1082,7 @@ class FileManager:
                 self._attempt_save()
             else:
                 if self.multi_select and self.selected_indices:
-                    paths: List[Path] = []
+                    paths: list[Path] = []
                     for idx in self.selected_indices:
                         if 0 <= idx < len(self.items):
                             item = self.items[idx]
@@ -1187,7 +1110,7 @@ class FileManager:
         input_h = 30
         self.save_name_rect = pygame.Rect(input_x, input_y, max(60, input_w), input_h)
 
-    def _resolve_save_path(self) -> Optional[Path]:
+    def _resolve_save_path(self) -> Path | None:
         name = self.save_input.text.strip()
         if not name and self.selected_index != -1:
             item = self.items[self.selected_index]
@@ -1202,11 +1125,7 @@ class FileManager:
             name = f"{name}{self.allowed_exts[0]}"
             candidate = Path(name)
 
-        if (
-            candidate.suffix
-            and self.allowed_exts
-            and candidate.suffix.lower() not in self.allowed_exts
-        ):
+        if candidate.suffix and self.allowed_exts and candidate.suffix.lower() not in self.allowed_exts:
             print(f"Invalid extension: {candidate.suffix}")
             return None
 
@@ -1238,12 +1157,7 @@ class FileManager:
         content_width = self.rect.width - self.sidebar_width
         content_x = self.rect.x + self.sidebar_width
         content_y = self.rect.y + self.header_height + self.search_header_height
-        content_height = (
-            self.rect.height
-            - self.header_height
-            - self.footer_height
-            - self.search_header_height
-        )
+        content_height = self.rect.height - self.header_height - self.footer_height - self.search_header_height
 
         if self.image_preview.is_visible:
             file_list_width = int(content_width * 0.6)
@@ -1265,12 +1179,7 @@ class FileManager:
         """
         content_width = self.rect.width - self.sidebar_width
         content_y = self.rect.y + self.header_height + self.search_header_height
-        content_height = (
-            self.rect.height
-            - self.header_height
-            - self.footer_height
-            - self.search_header_height
-        )
+        content_height = self.rect.height - self.header_height - self.footer_height - self.search_header_height
 
         file_list_width = int(content_width * 0.6)
         preview_x = self.rect.x + self.sidebar_width + file_list_width
@@ -1315,21 +1224,24 @@ class FileManager:
 
         if self.draw_overlay:
             overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 180))
+            overlay.fill((*COLORS.bg, 200))
             screen.blit(overlay, (0, 0))
 
-        pygame.draw.rect(screen, COLORS.panel, self.rect)
-        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
+        shadow_rect = self.rect.inflate(6, 6)
+        shadow_surf = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(shadow_surf, (0, 0, 0, 60), shadow_surf.get_rect(), border_radius=SHAPE.radius)
+        screen.blit(shadow_surf, shadow_rect)
 
-        sidebar_rect = pygame.Rect(
-            self.rect.x, self.rect.y, self.sidebar_width, self.rect.height
-        )
+        pygame.draw.rect(screen, COLORS.panel, self.rect, border_radius=SHAPE.radius)
+
+        sidebar_rect = pygame.Rect(self.rect.x, self.rect.y, self.sidebar_width, self.rect.height)
         pygame.draw.rect(screen, COLORS.panel_alt, sidebar_rect)
         pygame.draw.line(
             screen,
             COLORS.border,
             (sidebar_rect.right, sidebar_rect.top),
             (sidebar_rect.right, sidebar_rect.bottom),
+            SHAPE.border,
         )
 
         self._draw_sidebar_items(screen, sidebar_rect)
@@ -1346,6 +1258,7 @@ class FileManager:
             COLORS.border,
             (header_rect.left, header_rect.bottom),
             (header_rect.right, header_rect.bottom),
+            SHAPE.border,
         )
 
         self._draw_header(screen, header_rect)
@@ -1371,9 +1284,7 @@ class FileManager:
         self.search_input.draw(screen)
 
         if not self.search_input.text and not self.search_input.is_focused:
-            placeholder = FONTS.get_medium_font().render(
-                "Search files...", True, COLORS.text_dim
-            )
+            placeholder = FONTS.get_medium_font().render("Search files...", True, COLORS.text_dim)
             screen.blit(
                 placeholder,
                 (self.search_input.content_rect.x, self.search_input.content_rect.y),
@@ -1395,6 +1306,7 @@ class FileManager:
             COLORS.border,
             (footer_rect.left, footer_rect.top),
             (footer_rect.right, footer_rect.top),
+            SHAPE.border,
         )
 
         self._draw_footer(screen, footer_rect)
@@ -1402,6 +1314,8 @@ class FileManager:
         if self.image_preview.is_visible:
             preview_rect = self._get_preview_rect()
             self.image_preview.draw(screen, preview_rect)
+
+        pygame.draw.rect(screen, COLORS.border, self.rect, 2, border_radius=SHAPE.radius)
 
         if self.enable_resize_handles:
             self.resize_handler.draw_handles(screen)
@@ -1422,13 +1336,9 @@ class FileManager:
                 is_active = True
 
             col = (
-                COLORS.selected
-                if is_active
-                else (
-                    COLORS.hover if btn_rect.collidepoint(mx, my) else COLORS.panel_alt
-                )
+                COLORS.selected if is_active else (COLORS.hover if btn_rect.collidepoint(mx, my) else COLORS.panel_alt)
             )
-            pygame.draw.rect(screen, col, btn_rect, border_radius=4)
+            pygame.draw.rect(screen, col, btn_rect, border_radius=SHAPE.radius_sm)
 
             txt = self.font_bold.render(name, True, COLORS.text)
             screen.blit(txt, (rect.x + 15, y + 7))
@@ -1441,21 +1351,12 @@ class FileManager:
         up_icon = pygame.transform.rotate(up_icon, 180)
         screen.blit(up_icon, up_icon.get_rect(center=up_btn.center))
         parts = self.current_path.parts
-        if len(parts) > 4:
-            display_parts = ["..."] + list(parts[-3:])
-        else:
-            display_parts = list(parts)
+        display_parts = ["..."] + list(parts[-3:]) if len(parts) > 4 else list(parts)
         path_str = " / ".join(display_parts)
         self.new_folder_button_rect = pygame.Rect(rect.right - 110, rect.y + 6, 100, 28)
         mx, my = pygame.mouse.get_pos()
-        folder_bg = (
-            COLORS.selected
-            if self.new_folder_button_rect.collidepoint(mx, my)
-            else COLORS.hover
-        )
-        pygame.draw.rect(
-            screen, folder_bg, self.new_folder_button_rect, border_radius=4
-        )
+        folder_bg = COLORS.selected if self.new_folder_button_rect.collidepoint(mx, my) else COLORS.hover
+        pygame.draw.rect(screen, folder_bg, self.new_folder_button_rect, border_radius=SHAPE.radius_sm)
         folder_icon = icon_manager.get_icon("folder", 16, COLORS.warning)
         screen.blit(
             folder_icon,
@@ -1499,15 +1400,13 @@ class FileManager:
 
             row_rect = pygame.Rect(rect.x, y, rect.width, self.item_height)
 
-            if i == self.selected_index or (
-                self.multi_select and i in self.selected_indices
-            ):
+            if i == self.selected_index or (self.multi_select and i in self.selected_indices):
                 pygame.draw.rect(screen, COLORS.selected, row_rect)
             elif i == self.hover_index:
                 pygame.draw.rect(screen, COLORS.hover, row_rect)
 
             if i == self.renaming_item_idx:
-                pygame.draw.rect(screen, (70, 90, 110), row_rect)
+                pygame.draw.rect(screen, COLORS.selected, row_rect)
 
             icon_size = (20, 20)
             icon_x = rect.x + 10
@@ -1543,7 +1442,7 @@ class FileManager:
             bar_y = rect.y + scroll_pct * (rect.height - bar_h)
 
             bar_rect = pygame.Rect(rect.right - 6, bar_y, 4, bar_h)
-            pygame.draw.rect(screen, COLORS.border, bar_rect, border_radius=2)
+            pygame.draw.rect(screen, COLORS.border, bar_rect, border_radius=SHAPE.radius_sm)
 
     def _draw_footer(self, screen, rect):
         sel_txt: str
@@ -1571,9 +1470,9 @@ class FileManager:
 
             mx, my = pygame.mouse.get_pos()
             if r.collidepoint(mx, my):
-                bg = (min(bg[0] + 20, 255), min(bg[1] + 20, 255), min(bg[2] + 20, 255))
+                bg = COLORS.accent_hover if accent else COLORS.selected
 
-            pygame.draw.rect(screen, bg, r, border_radius=4)
+            pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm)
             lbl = self.font_bold.render(label, True, COLORS.text)
             lbl_r = lbl.get_rect(center=r.center)
             screen.blit(lbl, lbl_r)

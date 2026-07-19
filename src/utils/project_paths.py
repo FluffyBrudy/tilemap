@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
 
 
 def _as_base_path(base_path: Path) -> Path:
@@ -31,7 +31,7 @@ def resolve_project_path(
     path: str | Path,
     base_path: Path,
     *,
-    fallback_roots: Optional[Iterable[Path]] = None,
+    fallback_roots: Iterable[Path] | None = None,
     must_exist: bool = False,
 ) -> Path:
     """Resolve a project JSON path against base_path, with legacy fallbacks."""

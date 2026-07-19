@@ -5,13 +5,13 @@ Provides rich, vector-style icons with disk caching to improve performance.
 Icons are rendered once and cached as PNGs in .cache/icons/ directory.
 """
 
-import pygame
-import json
 import hashlib
+import json
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Dict, Tuple, Optional, Callable
 
+import pygame
 
 SOURCE_VERSION = "1.0.0"
 
@@ -41,7 +41,7 @@ def _ensure_cache_dir():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _compute_key(renderer_name: str, params: dict, size: Tuple[int, int]) -> str:
+def _compute_key(renderer_name: str, params: dict, size: tuple[int, int]) -> str:
     """Generate stable cache key from parameters."""
     data = {
         "version": SOURCE_VERSION,
@@ -60,15 +60,20 @@ def _load_index() -> dict:
         return {"version": SOURCE_VERSION, "entries": {}}
 
     try:
-        with open(INDEX_FILE, "r") as f:
+        with open(INDEX_FILE) as f:
             index = json.load(f)
-
-        if index.get("version") != SOURCE_VERSION:
-            return {"version": SOURCE_VERSION, "entries": {}}
-
-        return index
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
         return {"version": SOURCE_VERSION, "entries": {}}
+
+    if not isinstance(index, dict):
+        return {"version": SOURCE_VERSION, "entries": {}}
+
+    version = index.get("version")
+    entries = index.get("entries")
+    if version != SOURCE_VERSION or not isinstance(entries, dict):
+        return {"version": SOURCE_VERSION, "entries": {}}
+
+    return {"version": SOURCE_VERSION, "entries": entries}
 
 
 def _save_index(index: dict):
@@ -80,18 +85,18 @@ def _save_index(index: dict):
         with open(temp_file, "w") as f:
             json.dump(index, f, indent=2)
         temp_file.replace(INDEX_FILE)
-    except IOError as e:
+    except OSError as e:
         print(f"Warning: Could not save icon cache index: {e}")
         if temp_file.exists():
             temp_file.unlink()
 
 
-def _read_png_to_surface(path: Path) -> Optional[pygame.Surface]:
+def _read_png_to_surface(path: Path) -> pygame.Surface | None:
     """Load PNG from disk and convert to Surface."""
     try:
         surface = pygame.image.load(str(path))
         return surface.convert_alpha()
-    except (pygame.error, IOError):
+    except (OSError, pygame.error):
         return None
 
 
@@ -104,7 +109,7 @@ def _write_surface_to_png(surface: pygame.Surface, path: Path) -> bool:
             surface = surface.convert_alpha()
         pygame.image.save(surface, str(path))
         return True
-    except (pygame.error, IOError) as e:
+    except (OSError, pygame.error) as e:
         print(f"Warning: Could not write icon cache: {e}")
         return False
 
@@ -112,7 +117,7 @@ def _write_surface_to_png(surface: pygame.Surface, path: Path) -> bool:
 def _draw_rounded_rect(
     surface: pygame.Surface,
     rect: pygame.Rect,
-    color: Tuple[int, int, int, int],
+    color: tuple[int, int, int, int],
     radius: int,
 ):
     """Draw a rounded rectangle with anti-aliasing."""
@@ -122,8 +127,8 @@ def _draw_rounded_rect(
 def _draw_gradient_rect(
     surface: pygame.Surface,
     rect: pygame.Rect,
-    color_top: Tuple[int, int, int],
-    color_bottom: Tuple[int, int, int],
+    color_top: tuple[int, int, int],
+    color_bottom: tuple[int, int, int],
 ):
     """Draw a vertical gradient rectangle."""
     for y in range(rect.height):
@@ -137,7 +142,7 @@ def _draw_gradient_rect(
 
 
 def render_folder_icon(
-    size: Tuple[int, int] = (64, 64), color: Tuple[int, int, int] = (220, 180, 80)
+    size: tuple[int, int] = (64, 64), color: tuple[int, int, int] = (220, 180, 80)
 ) -> pygame.Surface:
     """Render a rich folder icon."""
     _ensure_pygame()
@@ -165,7 +170,7 @@ def render_folder_icon(
 
 
 def render_file_icon(
-    size: Tuple[int, int] = (64, 64), color: Tuple[int, int, int] = (180, 180, 180)
+    size: tuple[int, int] = (64, 64), color: tuple[int, int, int] = (180, 180, 180)
 ) -> pygame.Surface:
     """Render a rich file icon."""
     _ensure_pygame()
@@ -206,7 +211,7 @@ def render_file_icon(
 
 
 def render_image_icon(
-    size: Tuple[int, int] = (64, 64), color: Tuple[int, int, int] = (100, 180, 120)
+    size: tuple[int, int] = (64, 64), color: tuple[int, int, int] = (100, 180, 120)
 ) -> pygame.Surface:
     """Render a rich image file icon."""
     _ensure_pygame()
@@ -248,7 +253,7 @@ def render_image_icon(
     return surface
 
 
-_RENDERERS: Dict[str, Callable] = {
+_RENDERERS: dict[str, Callable] = {
     "folder": render_folder_icon,
     "file": render_file_icon,
     "image": render_image_icon,
@@ -256,7 +261,7 @@ _RENDERERS: Dict[str, Callable] = {
 
 
 def get_icon(
-    renderer_name: str, params: Optional[dict] = None, size: Tuple[int, int] = (64, 64)
+    renderer_name: str, params: dict | None = None, size: tuple[int, int] = (64, 64)
 ) -> pygame.Surface:
     """
     Get icon Surface, using cache if available.
@@ -311,7 +316,7 @@ def get_icon(
     return surface
 
 
-def invalidate_cache(key: Optional[str] = None):
+def invalidate_cache(key: str | None = None):
     """
     Invalidate cached icons.
 
@@ -340,13 +345,15 @@ def purge_cache():
     invalidate_cache(None)
 
 
-def prewarm_common_icons(sizes: list = [(32, 32), (64, 64)]):
+def prewarm_common_icons(sizes: list = None):
     """
     Pre-render commonly used icons to warm up the cache.
 
     Args:
         sizes: List of icon sizes to pre-render
     """
+    if sizes is None:
+        sizes = [(32, 32), (64, 64)]
     common_icons = [
         ("folder", {}),
         ("file", {}),
@@ -388,7 +395,7 @@ if __name__ == "__main__":
         screen.fill((40, 40, 45))
 
         x, y = 50, 50
-        for i, (name, params, size) in enumerate(test_icons):
+        for _i, (name, params, size) in enumerate(test_icons):
             icon = get_icon(name, params, size)
             screen.blit(icon, (x, y))
 

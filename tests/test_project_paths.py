@@ -1,17 +1,16 @@
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
-import sys
-
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from utils.project_paths import to_project_path, resolve_project_path
 from tilemap_editor.settings import init_settings, update_settings
+from utils.project_paths import resolve_project_path, to_project_path
 
 
 @pytest.fixture

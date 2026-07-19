@@ -1,16 +1,17 @@
+from typing import TYPE_CHECKING
+
 import pygame
 from pygame import Rect
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from editor import Editor
-from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils.font_manager import FontWeight, font_manager
 from widgets.ui.draw_utils import draw_panel
-from utils.font_manager import font_manager, FontWeight
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class NodeSelector:
-    NODE_TYPE_COLORS: Dict[str, Tuple[int, int, int]] = {
+    NODE_TYPE_COLORS: dict[str, tuple[int, int, int]] = {
         "area": (80, 220, 120),
         "spawn": (80, 140, 240),
         "portal": (180, 80, 220),
@@ -38,18 +39,18 @@ class NodeSelector:
         self.header_h = 32
         self.input_h = 26
 
-        self.hover_idx: Optional[int] = None
+        self.hover_idx: int | None = None
         self.delete_hover: bool = False
         self.arrow_hover: bool = False
         self.add_btn_hover: bool = False
-        self._add_dropdown_hover_idx: Optional[int] = None
+        self._add_dropdown_hover_idx: int | None = None
 
-        self.dragged_item_idx: Optional[int] = None
+        self.dragged_item_idx: int | None = None
         self.dragged_item_y_offset: int = 0
         self.drag_start_y: int = 0
         self.is_dragging: bool = False
 
-        self._node_types: List[Tuple[str, str, Tuple[int, int, int]]] = [
+        self._node_types: list[tuple[str, str, tuple[int, int, int]]] = [
             ("area", "Area Zone", (80, 220, 120)),
             ("group", "Group / Folder", (220, 180, 80)),
             ("particle_emitter", "Particle Emitter", (240, 140, 200)),
@@ -57,13 +58,13 @@ class NodeSelector:
         self._add_dropdown_open: bool = False
 
         self.collapsed_groups = set()
-        self._filtered_rows: List[Dict] = []
+        self._filtered_rows: list[dict] = []
         self._rebuild_filter()
 
     def resize(self, x: int, y: int, w: int):
         self.rect = Rect(x, y, w, self.rect.height)
 
-    def _rebuild_filter(self) -> List[Dict]:
+    def _rebuild_filter(self) -> list[dict]:
         mgr = self.editor.node_manager
         query = self.search_text.lower()
 
@@ -109,7 +110,7 @@ class NodeSelector:
             self.rect.x + 6, self.rect.y + self.header_h, self.rect.width - 12, add_h
         )
 
-    def _add_dropdown_items(self) -> List[Tuple[str, str, Tuple[int, int, int], Rect]]:
+    def _add_dropdown_items(self) -> list[tuple[str, str, tuple[int, int, int], Rect]]:
         btn = self._add_button_rect()
         items = []
         y = btn.bottom + 2
@@ -266,7 +267,7 @@ class NodeSelector:
             if self._add_dropdown_open:
                 dropdown_items = self._add_dropdown_items()
                 self._add_dropdown_hover_idx = None
-                for idx, (t_name, t_label, t_color, r) in enumerate(dropdown_items):
+                for idx, (t_name, _t_label, _t_color, r) in enumerate(dropdown_items):
                     if r.collidepoint(mouse_pos):
                         self._add_dropdown_hover_idx = idx
                         break
@@ -311,7 +312,7 @@ class NodeSelector:
             if event.button == 1:
                 if self._add_dropdown_open:
                     dropdown_items = self._add_dropdown_items()
-                    for idx, (t_name, t_label, t_color, r) in enumerate(dropdown_items):
+                    for idx, (t_name, _t_label, _t_color, r) in enumerate(dropdown_items):
                         if r.collidepoint(mouse_pos):
                             self._create_item(t_name)
                             self._add_dropdown_open = False
@@ -385,21 +386,20 @@ class NodeSelector:
                     return True
             return True
 
-        if event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1:
-                if self.dragged_item_idx is not None:
-                    if self.is_dragging:
-                        list_rect = self._list_rect()
-                        rel_y = mouse_pos[1] - list_rect.y + self.scroll_offset
-                        drop_idx = rel_y // self.item_h
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.dragged_item_idx is not None:
+                if self.is_dragging:
+                    list_rect = self._list_rect()
+                    rel_y = mouse_pos[1] - list_rect.y + self.scroll_offset
+                    drop_idx = rel_y // self.item_h
 
-                        if not self.rect.collidepoint(mouse_pos):
-                            drop_idx = -1
-                        self._handle_drag_drop(self.dragged_item_idx, drop_idx)
+                    if not self.rect.collidepoint(mouse_pos):
+                        drop_idx = -1
+                    self._handle_drag_drop(self.dragged_item_idx, drop_idx)
 
-                    self.dragged_item_idx = None
-                    self.is_dragging = False
-                    return True
+                self.dragged_item_idx = None
+                self.is_dragging = False
+                return True
 
         if event.type == pygame.KEYDOWN:
             if (

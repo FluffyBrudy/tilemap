@@ -1,12 +1,14 @@
-import pygame
-from pygame import Surface, Rect, Color
-from typing import TYPE_CHECKING, List, Tuple, Set, Optional
-from pathlib import Path
 import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pygame
+from pygame import Color, Rect, Surface
 
 from constants import BASE_PATH
 from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
+
 from .autotile_template import AutotileTemplateApplier
 from .input import InlineTextInput
 
@@ -28,12 +30,12 @@ class AutotileRule:
     def __init__(
         self,
         name: str,
-        neighbors: Set[Tuple[int, int]],
+        neighbors: set[tuple[int, int]],
         tileset_path: str = "",
-        variant_ids: Optional[List[int]] = None,
-        surface_subsurface: Optional[Surface] = None,
-        tileset_index: Optional[int] = None,
-        group_id: Optional[str] = None,
+        variant_ids: list[int] | None = None,
+        surface_subsurface: Surface | None = None,
+        tileset_index: int | None = None,
+        group_id: str | None = None,
     ):
         self.name = name
         self.neighbors = neighbors
@@ -42,7 +44,7 @@ class AutotileRule:
 
         self.tileset_index = tileset_index
         self.variant_ids = variant_ids or []
-        self.preview_surf: Optional[Surface] = surface_subsurface
+        self.preview_surf: Surface | None = surface_subsurface
         self.group_id = group_id or name
 
     @staticmethod
@@ -54,7 +56,7 @@ class AutotileRule:
             tileset_path=data.get("tileset_path", ""),
             variant_ids=data.get("variant_ids", [data.get("variant_id", 0)]),
             surface_subsurface=None,
-            tileset_index=data.get("tileset_index", None),
+            tileset_index=data.get("tileset_index"),
             group_id=data.get("group_id"),
         )
 
@@ -70,7 +72,7 @@ class AutotileRule:
 
 
 class AutotileGroup:
-    def __init__(self, name: str, rules: Optional[List[AutotileRule]] = None):
+    def __init__(self, name: str, rules: list[AutotileRule] | None = None):
         self.name = name
         self.rules = rules or []
 
@@ -98,28 +100,28 @@ class AutotileRuleDesigner:
         self.is_dragging = False
         self.drag_offset = (0, 0)
 
-        self.groups: List[AutotileGroup] = [AutotileGroup("Default")]
+        self.groups: list[AutotileGroup] = [AutotileGroup("Default")]
         self.selected_group_idx: int = 0
         self.selected_rule_index: int = -1
 
-        self.renaming_group_idx: Optional[int] = None
+        self.renaming_group_idx: int | None = None
         self.rename_input = InlineTextInput("group_rename", "")
 
         self.scroll_offset: int = 0
         self.max_visible_rules: int = 6
-        self.scroll_bar_rect: Optional[Rect] = None
+        self.scroll_bar_rect: Rect | None = None
         self.is_scrollbar_dragging: bool = False
 
-        self.current_neighbors: Set[Tuple[int, int]] = set()
+        self.current_neighbors: set[tuple[int, int]] = set()
 
-        self.current_variant_ids: List[int] = []
+        self.current_variant_ids: list[int] = []
 
         self.current_tileset_path: str = ""
-        self.current_tileset_index: Optional[int] = None
+        self.current_tileset_index: int | None = None
 
-        self.current_preview_surfs: List[Surface] = []
+        self.current_preview_surfs: list[Surface] = []
 
-        self._last_editor_selection: Tuple[Optional[str], Tuple[int, int, int, int]] = (
+        self._last_editor_selection: tuple[str | None, tuple[int, int, int, int]] = (
             None,
             (0, 0, 0, 0),
         )
@@ -272,17 +274,13 @@ class AutotileRuleDesigner:
         if self._handle_group_rename(event):
             return True
 
-        if hasattr(event, "pos"):
-            mouse_pos = event.pos
-        else:
-            mouse_pos = pygame.mouse.get_pos()
+        mouse_pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
 
         self._update_preview_from_selector()
 
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                self.hide()
-                return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.hide()
+            return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -292,7 +290,7 @@ class AutotileRuleDesigner:
                 if self.close_btn_rect.collidepoint(mouse_pos):
                     self.hide()
                     return True
-                elif header_rect.collidepoint(mouse_pos):
+                if header_rect.collidepoint(mouse_pos):
                     self.is_dragging = True
                     self.drag_offset = (
                         mouse_pos[0] - self.rect.x,
@@ -332,12 +330,11 @@ class AutotileRuleDesigner:
         elif event.type == pygame.MOUSEBUTTONUP:
             self.is_dragging = False
 
-        elif event.type == pygame.MOUSEMOTION:
-            if self.is_dragging:
-                self.rect.x = mouse_pos[0] - self.drag_offset[0]
-                self.rect.y = mouse_pos[1] - self.drag_offset[1]
-                self._update_layout()
-                return True
+        elif event.type == pygame.MOUSEMOTION and self.is_dragging:
+            self.rect.x = mouse_pos[0] - self.drag_offset[0]
+            self.rect.y = mouse_pos[1] - self.drag_offset[1]
+            self._update_layout()
+            return True
 
         return self.rect.collidepoint(mouse_pos) or self.is_dragging
 
@@ -429,7 +426,7 @@ class AutotileRuleDesigner:
     def _handle_group_list_click(self, mouse_pos):
         start_y = self.group_list_area.y + 25
         item_h = 25
-        for i, group in enumerate(self.groups):
+        for i, _group in enumerate(self.groups):
             item_rect = Rect(
                 self.group_list_area.x + 5,
                 start_y + i * item_h,
@@ -528,8 +525,7 @@ class AutotileRuleDesigner:
             prefix = match.group(1)
             number = int(match.group(2))
             return f"{prefix}{number + 1}"
-        else:
-            return f"{base_name} 2"
+        return f"{base_name} 2"
 
     def _save_current_rule(self):
         self._update_preview_from_selector()
@@ -607,8 +603,9 @@ class AutotileRuleDesigner:
                 self.scroll_offset = 0
 
     def _launch_external_viewer(self):
-        from utils.standalone import launch_standalone
         import tempfile
+
+        from utils.standalone import launch_standalone
 
         project_path = self.editor.tilemap.active_project_path
 
@@ -838,17 +835,16 @@ class AutotileRuleDesigner:
                 self.is_scrollbar_dragging = False
                 return True
 
-        elif event.type == pygame.MOUSEMOTION:
-            if self.is_scrollbar_dragging:
-                relative_y = event.pos[1] - self.rule_list_area.y - 25
-                track_height = self.rule_list_area.height - 50
+        elif event.type == pygame.MOUSEMOTION and self.is_scrollbar_dragging:
+            relative_y = event.pos[1] - self.rule_list_area.y - 25
+            track_height = self.rule_list_area.height - 50
 
-                if track_height > 0:
-                    scroll_ratio = max(0, min(1, relative_y / track_height))
-                    self.scroll_offset = int(scroll_ratio * max_scroll)
-                    self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+            if track_height > 0:
+                scroll_ratio = max(0, min(1, relative_y / track_height))
+                self.scroll_offset = int(scroll_ratio * max_scroll)
+                self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
-                return True
+            return True
 
         return False
 
@@ -890,14 +886,13 @@ class AutotileRuleDesigner:
                     self.rename_input.is_focused = False
                     return True
 
-                elif event.key == pygame.K_ESCAPE:
+                if event.key == pygame.K_ESCAPE:
                     self.renaming_group_idx = None
                     self.rename_input.is_focused = False
                     return True
 
-                else:
-                    if self.rename_input.handle_event(event, self.font):
-                        return True
+                if self.rename_input.handle_event(event, self.font):
+                    return True
 
         return False
 

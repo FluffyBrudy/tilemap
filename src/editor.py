@@ -5,13 +5,14 @@ import queue
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import pygame
 from pygame import Rect
 
-from utils.font_manager import FontStyle, FontWeight, font_manager
+from utils.font_manager import FontWeight, font_manager
 
 if sys.platform == "darwin":
     os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
@@ -20,7 +21,6 @@ from constants import BASE_PATH
 from node_manager import NodeManager
 from tilemap import Tilemap
 from utils import error_context, error_handler
-from utils.log_capture import setup_console_log
 from utils.standalone import launch_standalone
 from widgets.autotiler import AutotileRuleDesigner
 from widgets.layer_selector import LayerSelector
@@ -40,14 +40,13 @@ from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
 from widgets.ui.theme import COLORS, THEMES, get_theme_manager, set_theme
-from widgets.ui.tool_manager import ToolKind, ToolManager
 from widgets.ui.tileset_type_dialog import TilesetTypeDialog
+from widgets.ui.tool_manager import ToolKind, ToolManager
 from widgets.ui.toolbar import Toolbar
 from widgets.ui.tooltip import TooltipManager
 
 if TYPE_CHECKING:
     from plugins.sprite_animation import SpriteAnimationEditor
-    from plugins.sprite_editor import SpriteEditor
 
 
 def setup_error_logging():
@@ -92,7 +91,7 @@ def _load_project_config() -> tuple[Path, Path, dict]:
         raise RuntimeError("settings.json not found. Run 'tilemap-editor init' first.")
 
     try:
-        with open(settings_file, "r", encoding="utf-8") as f:
+        with open(settings_file, encoding="utf-8") as f:
             config = json.load(f)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Invalid settings.json: {e}")
@@ -101,6 +100,24 @@ def _load_project_config() -> tuple[Path, Path, dict]:
     for field in required_fields:
         if field not in config:
             raise RuntimeError(f"Invalid settings.json: missing '{field}'")
+
+    defaults = {
+        "theme": "dark",
+        "themes_list": ["dark", "molokai", "light", "semi_light"],
+        "nodes_path": "nodes",
+        "collision_paths": {"tileset": "collision", "character": "character_collision"},
+    }
+    changed = False
+    for key, val in defaults.items():
+        if key not in config:
+            config[key] = val
+            changed = True
+    if changed:
+        try:
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+        except Exception:
+            pass
 
     base_path = Path(config["base_path"]).expanduser()
 
@@ -141,9 +158,9 @@ _launch_standalone_module = launch_standalone
 class Editor:
     def __init__(
         self,
-        size: Optional[Tuple[int, int]] = None,
+        size: tuple[int, int] | None = None,
         fps=60,
-        theme: Optional[str] = None,
+        theme: str | None = None,
     ):
         self.base_path, self.data_root, self.config = _load_project_config()
         logger.info(f"Project base_path: {self.base_path}")
@@ -181,27 +198,27 @@ class Editor:
         self.selector_w = 300
         self._tileset_dragging = False
         self.left_panel_w = 380
-        self.map_setup_widget: Optional[MapSetup] = None
-        self.map_properties_dialog: Optional[MapPropertiesDialog] = None
-        self.tileset_widget: Optional[TileSelector] = None
-        self.layer_widget: Optional[LayerSelector] = None
-        self.tile_grid_widget: Optional[TileGrid] = None
+        self.map_setup_widget: MapSetup | None = None
+        self.map_properties_dialog: MapPropertiesDialog | None = None
+        self.tileset_widget: TileSelector | None = None
+        self.layer_widget: LayerSelector | None = None
+        self.tile_grid_widget: TileGrid | None = None
 
         self.left_panel_visible = False
-        self.animation_panel: Optional["SpriteAnimationEditor"] = None
-        self._animation_panel_surface: Optional[pygame.Surface] = None
+        self.animation_panel: SpriteAnimationEditor | None = None
+        self._animation_panel_surface: pygame.Surface | None = None
 
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.regex_automap_designer = RegexAutomapDesigner(self, 150, 100)
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
-        self.error_console_process: Optional[subprocess.Popen] = None
-        self.property_editor: Optional[PropertyEditor] = None
-        self.particle_config_dialog: Optional[ParticleConfigDialog] = None
+        self.error_console_process: subprocess.Popen | None = None
+        self.property_editor: PropertyEditor | None = None
+        self.particle_config_dialog: ParticleConfigDialog | None = None
 
-        self.child_processes: List[subprocess.Popen] = []
-        self.file_manager_process: Optional[subprocess.Popen] = None
-        self._file_manager_callbacks: Dict[str, Any] = {}
+        self.child_processes: list[subprocess.Popen] = []
+        self.file_manager_process: subprocess.Popen | None = None
+        self._file_manager_callbacks: dict[str, Any] = {}
 
         self.loading_state = {
             "active": False,
@@ -209,7 +226,7 @@ class Editor:
             "error": None,
             "path": None,
         }
-        self._load_queue: "queue.Queue" = queue.Queue()
+        self._load_queue: queue.Queue = queue.Queue()
 
         editor_rect = self.screen.get_rect()
         editor_rect.center = ((width - 300) // 2, height // 2)
@@ -265,14 +282,16 @@ class Editor:
     def open_file_manager(
         self,
         on_select: Callable[[Path], None] = lambda p: None,
-        initial_dir: Optional[Path] = None,
-        allowed_exts: List[str] = [".png", ".jpg", ".json"],
+        initial_dir: Path | None = None,
+        allowed_exts: list[str] = None,
         mode: str = "open",
-        on_save: Optional[Callable[[Path], None]] = None,
+        on_save: Callable[[Path], None] | None = None,
         default_name: str = "",
         multi_select: bool = False,
     ):
         """Launch file manager as a subprocess."""
+        if allowed_exts is None:
+            allowed_exts = [".png", ".jpg", ".json"]
         if self.file_manager_process and self.file_manager_process.poll() is None:
             return
 
@@ -718,13 +737,14 @@ class Editor:
         new_theme = theme_names[next_idx]
         set_theme(new_theme)
         from utils.icon_manager import icon_manager
+
         icon_manager.clear_cache()
         self.notifications.notify(f"Theme: {new_theme}")
 
         settings_file = Path.cwd() / "settings.json"
         if settings_file.exists():
             try:
-                with open(settings_file, "r", encoding="utf-8") as f:
+                with open(settings_file, encoding="utf-8") as f:
                     config = json.load(f)
                 config["theme"] = new_theme
                 with open(settings_file, "w", encoding="utf-8") as f:
@@ -736,13 +756,13 @@ class Editor:
         if hasattr(self.autotiler, "_launch_external_viewer"):
             self.autotiler._launch_external_viewer()
 
-    def _active_tileset_image_path(self) -> Optional[Path]:
+    def _active_tileset_image_path(self) -> Path | None:
         """Filesystem path of the tileset image to use for the animation editor."""
         tw = self.tileset_widget
         if not tw or not tw.tilesets:
             return None
 
-        candidates: List[Path] = []
+        candidates: list[Path] = []
         if 0 <= tw.active_idx < len(tw.tilesets):
             candidates.append(tw.tilesets[tw.active_idx].path)
         candidates.append(tw.tilesets[0].path)
@@ -925,7 +945,7 @@ class Editor:
         if logger:
             logger.info(msg)
 
-    def _write_propagation_groups(self, tileset_path: Path) -> Optional[Path]:
+    def _write_propagation_groups(self, tileset_path: Path) -> Path | None:
         """Collect auto-tile variant groups for a tileset and write to temp JSON.
 
         Returns the path to the temp file, or None if no autotiler data is available.
@@ -950,7 +970,7 @@ class Editor:
         if tileset_index is None:
             return None
 
-        groups: Dict[str, List[int]] = {}
+        groups: dict[str, list[int]] = {}
         for group in self.autotiler.groups:
             for rule in group.rules:
                 if rule.tileset_index == tileset_index and rule.variant_ids:
@@ -1003,36 +1023,14 @@ class Editor:
             logger.info(msg)
 
     def launch_character_collision_editor(self):
-        """Launch the character collision editor in a new window.
-
-        Opens a file picker to select a character sprite image.
-        """
-        self.open_file_manager(
-            on_select=self._launch_character_collision_editor_with_image,
-            initial_dir=self.data_root,
-            allowed_exts=[".png", ".jpg", ".jpeg"],
-            mode="open",
-        )
-
-    def _launch_character_collision_editor_with_image(self, path: Path):
-        """Launch character collision editor subprocess with selected image."""
+        """Launch the character collision editor in a new window."""
         try:
-            character_name = path.stem
-
             args = [
-                str(path),
                 "--name",
-                character_name,
+                "Character",
                 "--data-root",
                 str(self.data_root),
             ]
-
-            collision_dir = self.data_root / self.config.get("collision_paths", {}).get(
-                "character", "character_collision"
-            )
-            collision_path = collision_dir / f"{character_name}.collision.json"
-            if collision_path.exists():
-                args.extend(["--load", str(collision_path)])
 
             process = launch_standalone(
                 "plugins.character_collision.standalone",
@@ -1042,7 +1040,7 @@ class Editor:
             )
             self.child_processes.append(process)
 
-            print(f"Launched character collision editor with: {path.name} (character: {character_name})")
+            print("Launched character collision editor")
         except Exception as e:
             error_handler.capture(e, context="launch_character_collision_editor")
 
@@ -1181,40 +1179,40 @@ class Editor:
                 if event.key == pygame.K_r and (ctrl_held or meta_held):
                     self.toggle_autotiler()
                     continue
-                elif event.key == pygame.K_m and (ctrl_held or meta_held):
+                if event.key == pygame.K_m and (ctrl_held or meta_held):
                     self.toggle_regex_automap()
                     continue
-                elif event.key == pygame.K_s and (ctrl_held or meta_held):
+                if event.key == pygame.K_s and (ctrl_held or meta_held):
                     if shift_held:
                         self.open_save_as_dialog()
                     else:
                         self.perform_quick_save()
                     continue
-                elif event.key == pygame.K_BACKQUOTE and (ctrl_held or meta_held):
+                if event.key == pygame.K_BACKQUOTE and (ctrl_held or meta_held):
                     self.launch_error_console()
                     continue
-                elif event.key == pygame.K_z and (ctrl_held or meta_held):
+                if event.key == pygame.K_z and (ctrl_held or meta_held):
                     if shift_held:
                         self.tilemap.redo()
                     else:
                         self.tilemap.undo()
                     continue
-                elif event.key == pygame.K_y and (ctrl_held or meta_held):
+                if event.key == pygame.K_y and (ctrl_held or meta_held):
                     self.tilemap.redo()
                     continue
-                elif event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
+                if event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
                     self.node_editing_mode = not self.node_editing_mode
                     if self.node_editing_mode:
                         self.show_nodes = False
                         self.tool_manager.deactivate()
                     continue
-                elif event.key == pygame.K_n and (ctrl_held or meta_held):
+                if event.key == pygame.K_n and (ctrl_held or meta_held):
                     self.open_map_setup()
                     continue
-                elif event.key == pygame.K_o and (ctrl_held or meta_held):
+                if event.key == pygame.K_o and (ctrl_held or meta_held):
                     self.perform_load()
                     continue
-                elif event.key == pygame.K_SPACE and (ctrl_held or meta_held):
+                if event.key == pygame.K_SPACE and (ctrl_held or meta_held):
                     if self.tool_manager.is_active(ToolKind.PAN):
                         restored = self.tool_manager.restore_previous()
                         if restored is None and self._prev_tool == "nodes":
@@ -1232,19 +1230,19 @@ class Editor:
                         self.node_editing_mode = False
                         self.tool_manager.activate(ToolKind.PAN)
                     continue
-                elif event.key == pygame.K_g and (ctrl_held or meta_held):
+                if event.key == pygame.K_g and (ctrl_held or meta_held):
                     self.toggle_grid()
                     continue
-                elif event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held:
+                if event.key == pygame.K_e and (ctrl_held or meta_held) and shift_held:
                     self.export_selection_as_png()
                     continue
-                elif event.key == pygame.K_t and (ctrl_held or meta_held):
+                if event.key == pygame.K_t and (ctrl_held or meta_held):
                     self.cycle_theme()
                     continue
-                elif event.key == pygame.K_b and (ctrl_held or meta_held):
+                if event.key == pygame.K_b and (ctrl_held or meta_held):
                     self.toggle_animation_panel()
                     continue
-                elif pygame.K_1 <= event.key <= pygame.K_9:
+                if pygame.K_1 <= event.key <= pygame.K_9:
                     if not (self.node_editor and self.node_editor.visible and self.node_editor.editing_field):
                         idx = event.key - pygame.K_1
                         if idx < self.tilemap.layer_manager.get_layer_count():
@@ -1314,7 +1312,7 @@ class Editor:
                 if hasattr(self.animation_panel, "update"):
                     self.animation_panel.update()
 
-            self.screen.fill((30, 30, 30))
+            self.screen.fill(COLORS.bg)
             self.tooltip.hide()
 
             if self.tile_grid_widget:
@@ -1343,12 +1341,12 @@ class Editor:
 
             if self.left_panel_visible and self.animation_panel:
                 panel_surf = pygame.Surface((self.left_panel_w, self.height), pygame.SRCALPHA)
-                panel_surf.fill((28, 30, 34, 255))
+                panel_surf.fill((*COLORS.panel_alt, 255))
                 self.screen.blit(panel_surf, (0, 65))
 
                 pygame.draw.rect(
                     self.screen,
-                    (60, 62, 65),
+                    COLORS.border,
                     Rect(0, 65, self.left_panel_w, self.height - 65),
                     1,
                 )
@@ -1391,13 +1389,13 @@ class Editor:
 
                 msg = self.loading_state.get("message", "Loading...")
                 font = font_manager.get_font("noto", 18, FontWeight.BOLD)
-                text = font.render(msg, True, (230, 230, 230))
+                text = font.render(msg, True, COLORS.text)
                 text_rect = text.get_rect(center=(self.width // 2, self.height // 2))
                 self.screen.blit(text, text_rect)
 
                 dot_font = font_manager.get_font("noto", 16, FontWeight.REGULAR)
                 dots = "." * ((pygame.time.get_ticks() // 400) % 4)
-                dot_surf = dot_font.render(dots, True, (180, 180, 180))
+                dot_surf = dot_font.render(dots, True, COLORS.text_muted)
                 dot_rect = dot_surf.get_rect(center=(self.width // 2, self.height // 2 + 30))
                 self.screen.blit(dot_surf, dot_rect)
 

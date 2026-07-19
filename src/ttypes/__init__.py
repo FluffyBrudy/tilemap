@@ -1,6 +1,8 @@
-from typing import Sequence
+from collections.abc import Sequence
+
 from pygame import Vector2
+
 from .tilemap import *
 
-TCoor = Tuple[int, int]
-TOffset = Tuple[int, int] | Sequence[int] | Vector2
+TCoor = tuple[int, int]
+TOffset = tuple[int, int] | Sequence[int] | Vector2
