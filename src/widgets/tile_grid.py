@@ -1424,7 +1424,7 @@ class TileGrid:
             parts.append(f"Clip {ct}")
         parts.append(f"Undo {'Y' if can_undo else 'N'} / Redo {'Y' if can_redo else 'N'}")
         status_text = " | ".join(parts)
-        txt = self.font_status.render(status_text, True, (200, 200, 200))
+        txt = self.font_status.render(status_text, True, COLORS.text)
         screen.blit(txt, (10, bar_rect.y + 5))
 
     def render_map(self, surface: Surface):

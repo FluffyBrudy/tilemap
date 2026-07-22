@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pygame
-from pygame import Color, Rect, Surface
+from pygame import Rect, Surface
 
 from constants import BASE_PATH
 from utils.error_handler import error_handler
@@ -11,19 +11,21 @@ from utils.icon_manager import icon_manager
 
 from .autotile_template import AutotileTemplateApplier
 from .input import InlineTextInput
+from .ui.theme import COLORS, SHAPE
+from .ui.toast import ToastManager
 
 if TYPE_CHECKING:
     from editor import Editor
 
-WINDOW_BG = (40, 44, 52)
-PANEL_BG = (33, 37, 43)
-BORDER_COLOR = (24, 26, 31)
-HEADER_COLOR = (44, 132, 250)
-TEXT_COLOR = (220, 220, 220)
-HIGHLIGHT_COLOR = (65, 70, 80)
-GRID_ACTIVE = (152, 195, 121)
-GRID_INACTIVE = (60, 64, 72)
-GRID_CENTER = (97, 175, 239)
+WINDOW_BG = COLORS.panel
+PANEL_BG = COLORS.panel_alt
+BORDER_COLOR = COLORS.border
+HEADER_COLOR = COLORS.accent
+TEXT_COLOR = COLORS.text
+HIGHLIGHT_COLOR = COLORS.hover
+GRID_ACTIVE = COLORS.success
+GRID_INACTIVE = COLORS.border
+GRID_CENTER = COLORS.accent
 
 
 class AutotileRule:
@@ -134,6 +136,8 @@ class AutotileRuleDesigner:
         self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
 
         self.template_manager = AutotileTemplateApplier(self)
+        self._toast_manager = ToastManager()
+        self._last_frame_time = 0.0
 
         self._update_layout()
 
@@ -560,7 +564,7 @@ class AutotileRuleDesigner:
             rule.tileset_path = self.current_tileset_path
             rule.tileset_index = getattr(self, "current_tileset_index", None)
             rule.group_id = current_group.name
-            print(f"Rule updated: {rule.name} in Group {current_group.name}")
+            self._toast_manager.success(f"Rule '{rule.name}' updated")
         else:
             base_name = f"Rule {len(current_group.rules) + 1}"
             while any(r.name == base_name for r in current_group.rules):
@@ -577,7 +581,7 @@ class AutotileRuleDesigner:
             )
             current_group.rules.append(new_rule)
             self.selected_rule_index = len(current_group.rules) - 1
-            print(f"New rule created: {new_rule.name} in Group {current_group.name}")
+            self._toast_manager.success(f"Rule '{new_rule.name}' created")
 
         self._reset_selection()
 
@@ -589,6 +593,9 @@ class AutotileRuleDesigner:
         if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(
             self.groups[self.selected_group_idx].rules
         ):
+            self._toast_manager.info(
+                f"Rule '{self.groups[self.selected_group_idx].rules[self.selected_rule_index].name}' deleted"
+            )
             self.groups[self.selected_group_idx].rules.pop(self.selected_rule_index)
             self._reset_selection()
 
@@ -645,11 +652,11 @@ class AutotileRuleDesigner:
             HEADER_COLOR,
             Rect(self.rect.x, self.rect.y, self.rect.width, self.header_height),
         )
-        title = self.title_font.render("Autotile Designer", True, Color("white"))
+        title = self.title_font.render("Autotile Designer", True, COLORS.text)
         screen.blit(title, (self.rect.x + 10, self.rect.y + 5))
 
-        pygame.draw.rect(screen, (200, 60, 60), self.close_btn_rect)
-        x_lbl = self.title_font.render("X", True, Color("white"))
+        pygame.draw.rect(screen, COLORS.danger, self.close_btn_rect)
+        x_lbl = self.title_font.render("X", True, COLORS.text)
         screen.blit(x_lbl, (self.close_btn_rect.x + 10, self.close_btn_rect.y + 5))
 
         pygame.draw.rect(screen, PANEL_BG, self.list_area)
@@ -659,13 +666,19 @@ class AutotileRuleDesigner:
 
         self.template_manager.draw(screen)
 
+        now = pygame.time.get_ticks() / 1000.0
+        dt = now - self._last_frame_time if self._last_frame_time else 0.016
+        self._last_frame_time = now
+        self._toast_manager.update(screen, dt)
+        self._toast_manager.draw(screen)
+
     def _draw_rule_list(self, screen):
 
-        pygame.draw.rect(screen, (70, 70, 75), self.group_list_area)
-        pygame.draw.rect(screen, (100, 100, 105), self.group_list_area, 1)
+        pygame.draw.rect(screen, COLORS.bg, self.group_list_area)
+        pygame.draw.rect(screen, COLORS.border, self.group_list_area, 1)
 
         lbl_groups = self.title_font.render(
-            "Groups (F2: Rename)", True, (150, 150, 255)
+            "Groups (F2: Rename)", True, COLORS.accent
         )
         screen.blit(
             lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5)
@@ -682,10 +695,10 @@ class AutotileRuleDesigner:
             )
 
             if i == self.selected_group_idx:
-                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
+                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=SHAPE.radius_sm)
 
             if i == self.renaming_group_idx:
-                pygame.draw.rect(screen, (100, 120, 140), r, border_radius=3)
+                pygame.draw.rect(screen, COLORS.selected, r, border_radius=SHAPE.radius_sm)
 
             name = group.name
             if i == self.renaming_group_idx:
@@ -700,25 +713,21 @@ class AutotileRuleDesigner:
             d_name = name if len(name) < 22 else name[:19] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
 
-        pygame.draw.rect(
-            screen, (80, 120, 80), self.new_group_btn_rect, border_radius=4
-        )
+        pygame.draw.rect(screen, COLORS.success, self.new_group_btn_rect, border_radius=SHAPE.radius)
         gntxt = self.font.render("+ New Group", True, TEXT_COLOR)
         screen.blit(
             gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5)
         )
 
         pygame.draw.rect(screen, PANEL_BG, self.rule_list_area)
-        pygame.draw.rect(screen, (80, 80, 85), self.rule_list_area, 1)
+        pygame.draw.rect(screen, COLORS.border, self.rule_list_area, 1)
 
-        lbl_rules = self.title_font.render("Rules", True, (150, 150, 255))
+        lbl_rules = self.title_font.render("Rules", True, COLORS.accent)
         screen.blit(lbl_rules, (self.rule_list_area.x + 5, self.rule_list_area.y + 5))
 
         self._draw_scrollable_rule_list(screen)
 
-        pygame.draw.rect(
-            screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4
-        )
+        pygame.draw.rect(screen, COLORS.accent, self.new_rule_btn_rect, border_radius=SHAPE.radius)
         rntxt = self.font.render("+ New Rule", True, TEXT_COLOR)
         screen.blit(
             rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5)
@@ -761,7 +770,7 @@ class AutotileRuleDesigner:
             )
 
             if i == self.selected_rule_index:
-                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
+                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=SHAPE.radius_sm)
 
             d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
             screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
@@ -770,7 +779,7 @@ class AutotileRuleDesigner:
 
         if total_rules > self.max_visible_rules:
             if self.scroll_offset > 0:
-                arrow_surf = icon_manager.get_icon("arrow-down", 14, (150, 200, 255))
+                arrow_surf = icon_manager.get_icon("arrow-down", 14, COLORS.accent)
                 arrow_surf = pygame.transform.rotate(arrow_surf, 180)
                 screen.blit(
                     arrow_surf,
@@ -778,7 +787,7 @@ class AutotileRuleDesigner:
                 )
 
             if self.scroll_offset < max_scroll:
-                arrow_surf = icon_manager.get_icon("arrow-down", 14, (150, 200, 255))
+                arrow_surf = icon_manager.get_icon("arrow-down", 14, COLORS.accent)
                 screen.blit(
                     arrow_surf,
                     (self.rule_list_area.right - 20, self.rule_list_area.bottom - 20),
@@ -799,7 +808,7 @@ class AutotileRuleDesigner:
             )
 
             pygame.draw.rect(
-                screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5
+                screen, COLORS.border, self.scroll_bar_rect, border_radius=SHAPE.radius
             )
         else:
             self.scroll_bar_rect = None
@@ -926,7 +935,7 @@ class AutotileRuleDesigner:
 
             if len(self.current_preview_surfs) > 1:
                 count_txt = self.font.render(
-                    f"x{len(self.current_preview_surfs)}", True, (255, 255, 0)
+                    f"x{len(self.current_preview_surfs)}", True, COLORS.warning
                 )
                 screen.blit(count_txt, (center_x + 35, self.edit_area.y + 85))
 
@@ -950,34 +959,28 @@ class AutotileRuleDesigner:
                     color = GRID_ACTIVE
 
                 pygame.draw.rect(screen, color, cell)
-                pygame.draw.rect(screen, (30, 30, 30), cell, 1)
+                pygame.draw.rect(screen, COLORS.border, cell, 1)
 
-        pygame.draw.rect(screen, (70, 180, 70), self.save_btn_rect, border_radius=4)
-        s_lbl = self.font.render("Save", True, Color("white"))
+        pygame.draw.rect(screen, COLORS.success, self.save_btn_rect, border_radius=SHAPE.radius)
+        s_lbl = self.font.render("Save", True, COLORS.text)
         screen.blit(s_lbl, (self.save_btn_rect.x + 25, self.save_btn_rect.y + 8))
 
         if self.selected_rule_index != -1:
-            pygame.draw.rect(
-                screen, (180, 70, 70), self.delete_btn_rect, border_radius=4
-            )
-            d_lbl = self.font.render("Del", True, Color("white"))
+            pygame.draw.rect(screen, COLORS.danger, self.delete_btn_rect, border_radius=SHAPE.radius)
+            d_lbl = self.font.render("Del", True, COLORS.text)
             screen.blit(
                 d_lbl, (self.delete_btn_rect.x + 25, self.delete_btn_rect.y + 8)
             )
 
-        pygame.draw.rect(
-            screen, (100, 100, 150), self.external_btn_rect, border_radius=4
-        )
-        ext_lbl = self.font.render("External View", True, Color("white"))
+        pygame.draw.rect(screen, COLORS.accent, self.external_btn_rect, border_radius=SHAPE.radius)
+        ext_lbl = self.font.render("External View", True, COLORS.text)
         screen.blit(
             ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5)
         )
 
         if self.current_variant_ids:
-            pygame.draw.rect(
-                screen, (60, 120, 120), self.template_btn_rect, border_radius=4
-            )
-            tmpl_lbl = self.font.render("Templates", True, Color("white"))
+            pygame.draw.rect(screen, COLORS.success, self.template_btn_rect, border_radius=SHAPE.radius)
+            tmpl_lbl = self.font.render("Templates", True, COLORS.text)
             screen.blit(
                 tmpl_lbl, (self.template_btn_rect.x + 18, self.template_btn_rect.y + 5)
             )

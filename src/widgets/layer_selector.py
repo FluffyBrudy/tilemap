@@ -9,6 +9,7 @@ import pygame
 from pygame import Rect, Surface
 
 from layers import Layer
+from widgets.input import InlineTextInput
 from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 class LayerSelector:
     """Widget for selecting and managing tile layers."""
+
+    allowed_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-"
 
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int):
         self.editor = editor
@@ -43,8 +46,9 @@ class LayerSelector:
         self.hover_idx: int | None = None
 
         self.renaming_layer_idx: int | None = None
-        self.rename_text: str = ""
-        self.rename_original_name: str = ""
+        self.rename_input = InlineTextInput(
+            "layer_rename", "", allowed_chars=self.allowed_chars
+        )
 
         self._adjusting_opacity_idx: int | None = None
 
@@ -213,23 +217,13 @@ class LayerSelector:
                     return True
 
             if self.renaming_layer_idx is not None:
-                if event.key == pygame.K_RETURN:
-                    self._confirm_rename()
-                    return True
-                if event.key == pygame.K_ESCAPE:
-                    self._cancel_rename()
-                    return True
-                if event.key == pygame.K_BACKSPACE:
-                    pressed = pygame.key.get_pressed()
-                    meta_down = pressed[pygame.K_LMETA] or pressed[pygame.K_RMETA]
-                    ctrl_down = pressed[pygame.K_LCTRL] or pressed[pygame.K_RCTRL]
-                    if meta_down or ctrl_down:
-                        self.rename_text = ""
-                    else:
-                        self.rename_text = self.rename_text[:-1]
-                    return True
-                if event.unicode.isprintable():
-                    self.rename_text += event.unicode
+                if not self.rename_input.handle_event(event, self.font_layer):
+                    if event.key == pygame.K_RETURN:
+                        self._confirm_rename()
+                        return True
+                    if event.key == pygame.K_ESCAPE:
+                        self._cancel_rename()
+                        return True
                 return True
 
             if event.key == pygame.K_UP:
@@ -342,39 +336,38 @@ class LayerSelector:
         layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
         if layer:
             self.renaming_layer_idx = layer_idx
-            self.rename_text = layer.name
-            self.rename_original_name = layer.name
+            self.rename_input.text = layer.name
+            self.rename_input.cursor_pos = len(layer.name)
+            self.rename_input.is_focused = True
 
     def _confirm_rename(self) -> None:
         """Confirm and apply the rename."""
         if self.renaming_layer_idx is None:
             return
 
-        import string
+        new_name = self.rename_input.text.strip()
 
-        valid_chars = set(string.ascii_letters + string.digits + " ")
-
-        if not self.rename_text:
+        if not new_name:
             self._cancel_rename()
             return
 
-        if all(c in valid_chars for c in self.rename_text):
+        if all(c in self.allowed_chars for c in new_name):
             layer = self.editor.tilemap.layer_manager.get_layer(self.renaming_layer_idx)
             if layer:
-                layer.name = self.rename_text
+                layer.name = new_name
         else:
             self._cancel_rename()
             return
 
         self.renaming_layer_idx = None
-        self.rename_text = ""
-        self.rename_original_name = ""
+        self.rename_input.clear()
+        self.rename_input.is_focused = False
 
     def _cancel_rename(self) -> None:
-        """Cancel rename and revert to original name."""
+        """Cancel rename."""
         self.renaming_layer_idx = None
-        self.rename_text = ""
-        self.rename_original_name = ""
+        self.rename_input.clear()
+        self.rename_input.is_focused = False
 
     def _save_layer_properties(self, layer: Layer, props: dict):
         layer.properties = props
@@ -422,12 +415,16 @@ class LayerSelector:
 
             if i == self.dragging_layer_idx:
                 color = COLORS.accent_active
+                text_color = COLORS.text_selected
             elif i == active_idx:
                 color = COLORS.selected
+                text_color = COLORS.text
             elif i == self.hover_idx:
                 color = COLORS.hover
+                text_color = COLORS.text
             else:
                 color = COLORS.panel_alt
+                text_color = COLORS.text
 
             pygame.draw.rect(screen, color, item_rect)
             pygame.draw.rect(screen, COLORS.border_soft, item_rect, 1)
@@ -441,33 +438,57 @@ class LayerSelector:
                 self.editor.tooltip.show("Toggle Lock", (mx + 10, my + 10))
 
             if i == self.renaming_layer_idx:
+                rename_bg = Rect(item_rect.x + 4, item_rect.y + 4, 120, 20)
                 pygame.draw.rect(
                     screen,
                     COLORS.selected,
-                    Rect(item_rect.x + 4, item_rect.y + 4, 120, 20),
+                    rename_bg,
                     border_radius=SHAPE.radius_sm,
                 )
-                name_txt = self.font_layer.render(
-                    self.rename_text + "|", True, COLORS.text
-                )
+                inp = self.rename_input
+                text = inp.text
+                if inp.selection_start is not None:
+                    sel_start = min(inp.selection_start, inp.cursor_pos)
+                    sel_end = max(inp.selection_start, inp.cursor_pos)
+                    prefix = text[:sel_start]
+                    selected = text[sel_start:sel_end]
+                    prefix_w = self.font_layer.size(prefix)[0]
+                    select_w = self.font_layer.size(selected)[0]
+                    sel_rect = Rect(
+                        rename_bg.x + 4 + prefix_w,
+                        rename_bg.y + 2,
+                        select_w,
+                        rename_bg.height - 4,
+                    )
+                    pygame.draw.rect(screen, COLORS.accent, sel_rect)
+                name_txt = self.font_layer.render(text, True, COLORS.text)
+                screen.blit(name_txt, (rename_bg.x + 4, rename_bg.y + 3))
+                cursor_x = rename_bg.x + 4 + self.font_layer.size(
+                    text[: inp.cursor_pos]
+                )[0]
+                if cursor_x < rename_bg.right - 2:
+                    pygame.draw.rect(
+                        screen,
+                        COLORS.text,
+                        Rect(cursor_x, rename_bg.y + 3, 1, name_txt.get_height()),
+                    )
             else:
-                name_txt = self.font_layer.render(layer.name, True, COLORS.text)
-            screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
+                name_txt = self.font_layer.render(layer.name, True, text_color)
+                screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
 
             opacity_bar = self._get_opacity_bar_rect(i)
             if opacity_bar:
                 bg_rect = Rect(
                     opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height
                 )
-                pygame.draw.rect(screen, (60, 60, 60), bg_rect, border_radius=2)
+                pygame.draw.rect(screen, COLORS.border, bg_rect, border_radius=SHAPE.radius_sm)
                 fill_w = int(opacity_bar.width * layer.opacity)
                 if fill_w > 0:
                     fill_rect = Rect(
                         opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height
                     )
-                    green = int(180 * layer.opacity) + 40
                     pygame.draw.rect(
-                        screen, (40, green, 40), fill_rect, border_radius=2
+                        screen, COLORS.success, fill_rect, border_radius=SHAPE.radius_sm
                     )
                 pct_txt = self.font_layer.render(
                     f"{int(layer.opacity * 100)}%", True, COLORS.text_dim
@@ -477,20 +498,18 @@ class LayerSelector:
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
             if layer.visible:
-                pygame.draw.circle(screen, (100, 200, 100), (eye_x, eye_y), 4)
-                pygame.draw.circle(screen, (60, 150, 60), (eye_x, eye_y), 4, 1)
-                pygame.draw.circle(screen, (200, 255, 100), (eye_x - 1, eye_y - 1), 1)
+                pygame.draw.circle(screen, COLORS.success, (eye_x, eye_y), 4)
             else:
                 pygame.draw.line(
                     screen,
-                    (100, 100, 100),
+                    COLORS.text_muted,
                     (eye_x - 4, eye_y - 4),
                     (eye_x + 4, eye_y + 4),
                     2,
                 )
                 pygame.draw.line(
                     screen,
-                    (100, 100, 100),
+                    COLORS.text_muted,
                     (eye_x + 4, eye_y - 4),
                     (eye_x - 4, eye_y + 4),
                     2,
@@ -500,9 +519,9 @@ class LayerSelector:
             lock_y = item_rect.y + 7
             if layer.locked:
                 pygame.draw.rect(
-                    screen, (200, 100, 100), Rect(lock_x - 4, lock_y - 4, 8, 8)
+                    screen, COLORS.danger, Rect(lock_x - 4, lock_y - 4, 8, 8)
                 )
-                pygame.draw.circle(screen, (150, 50, 50), (lock_x, lock_y - 2), 1)
+                pygame.draw.circle(screen, COLORS.danger, (lock_x, lock_y - 2), 1)
             else:
                 pygame.draw.rect(
                     screen, COLORS.text_muted, Rect(lock_x - 4, lock_y - 4, 8, 8), 1
@@ -527,7 +546,7 @@ class LayerSelector:
             name_txt = self.font_layer.render(dragging_layer.name, True, COLORS.text)
             screen.blit(name_txt, (preview_rect.x + 5, preview_rect.y + 5))
 
-            pygame.draw.rect(screen, (150, 150, 255), preview_rect, 2)
+            pygame.draw.rect(screen, COLORS.accent, preview_rect, 2)
 
         screen.set_clip(clip)
         total_h = len(layer_manager.layers) * self.item_h
@@ -538,7 +557,7 @@ class LayerSelector:
             )
             bar_y = self.list_rect.y + scroll_pct * (self.list_rect.height - bar_h)
             bar_rect = Rect(self.list_rect.right - 5, bar_y, 3, bar_h)
-            pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
+            pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=SHAPE.radius_sm)
 
     def _draw_footer(self, screen: Surface) -> None:
         """Draw the footer with buttons."""

@@ -217,6 +217,9 @@ class ToastManager:
     def success(self, message: str, duration: float = 2.5) -> None:
         self.show(message, "success", duration)
 
+    def info(self, message: str, duration: float = 2.0) -> None:
+        self.show(message, "default", duration)
+
     def warning(self, message: str, duration: float = 3.5) -> None:
         self.show(message, "warning", duration)
 

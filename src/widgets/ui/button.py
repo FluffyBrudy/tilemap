@@ -90,15 +90,15 @@ class Button(WidgetBase):
         if self._active:
             bg = COLORS.accent_active
             border = COLORS.border
-            text_color = self._text_color or COLORS.text
+            text_color = self._text_color or (COLORS.text if not self.accent else COLORS.text_selected)
         elif self._pressed:
             bg = COLORS.accent_active if self.accent else COLORS.header
             border = COLORS.border
-            text_color = self._text_color or COLORS.text
+            text_color = self._text_color or (COLORS.text if not self.accent else COLORS.text_selected)
         elif self._hovered:
             bg = COLORS.accent_hover if self.accent else COLORS.hover
             border = COLORS.border
-            text_color = self._text_color or COLORS.text
+            text_color = self._text_color or (COLORS.text if not self.accent else COLORS.text_selected)
         else:
             bg = (
                 self._bg
@@ -106,7 +106,7 @@ class Button(WidgetBase):
                 else (COLORS.accent if self.accent else COLORS.panel_alt)
             )
             border = self._border if self._border is not None else COLORS.border_soft
-            text_color = self._text_color or COLORS.text
+            text_color = self._text_color or (COLORS.text if not self.accent else COLORS.text_selected)
 
         if not self._enabled:
             bg = COLORS.panel_alt

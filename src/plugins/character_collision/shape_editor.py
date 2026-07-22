@@ -18,26 +18,14 @@ from pygame import Rect
 
 from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
-from widgets.ui.theme import COLORS
+from widgets.ui.theme import COLORS, SHAPE
 
 ShapeType = Literal["rectangle", "circle", "capsule", "polygon"]
 
-
-_COLORS = {
-    "bg": (25, 27, 30),
-    "shape_fill": (80, 180, 255),
-    "shape_stroke": (100, 200, 255),
-    "shape_selected": (255, 180, 80),
-    "handle": (255, 255, 255),
-    "handle_hover": (255, 220, 80),
-    "text": (230, 230, 230),
-    "text_dim": (140, 140, 140),
-    "grid": (255, 255, 255),
-}
-
-
 class ShapeEditor:
     """Visual editor for collision shapes on a character sprite."""
+
+    SCROLL_SPEED = 20
 
     def __init__(
         self,
@@ -118,6 +106,25 @@ class ShapeEditor:
         self.capsule_x = sw / 2
         self.capsule_y = (sh - self.capsule_height) / 2
 
+    def _center_view_on_shape(self) -> None:
+        """Center the viewport on the current shape's center"""
+        if self.shape_type == "rectangle":
+            cx = self.rect_x + self.rect_w / 2
+            cy = self.rect_y + self.rect_h / 2
+        elif self.shape_type == "circle":
+            cx = self.circle_x
+            cy = self.circle_y
+        elif self.shape_type == "capsule":
+            cx = self.capsule_x
+            cy = self.capsule_y + self.capsule_height / 2
+        elif self.shape_type == "polygon" and self.polygon_vertices:
+            cx = sum(v[0] for v in self.polygon_vertices) / len(self.polygon_vertices)
+            cy = sum(v[1] for v in self.polygon_vertices) / len(self.polygon_vertices)
+        else:
+            return
+        self.offset_x = self.rect.w / 2 - cx * self.zoom
+        self.offset_y = self.rect.h / 2 - cy * self.zoom
+
     def _ensure_fonts(self) -> None:
         """Initialize fonts"""
         if self._font is None:
@@ -138,10 +145,70 @@ class ShapeEditor:
         return (x, y)
 
     def set_shape_type(self, shape_type: ShapeType) -> None:
-        """Change the shape type"""
+        """Change the shape type, migrating dimensions from current shape"""
+        if shape_type == self.shape_type:
+            return
+
+        # Snapshot current shape center and bounding box
+        if self.shape_type == "rectangle":
+            cx = self.rect_x + self.rect_w / 2
+            cy = self.rect_y + self.rect_h / 2
+            bw, bh = self.rect_w, self.rect_h
+        elif self.shape_type == "circle":
+            cx, cy = self.circle_x, self.circle_y
+            d = self.circle_radius * 2
+            bw = bh = d
+        elif self.shape_type == "capsule":
+            cx = self.capsule_x
+            cy = self.capsule_y + self.capsule_height / 2
+            bw = self.capsule_radius * 2
+            bh = self.capsule_height
+        elif self.shape_type == "polygon" and self.polygon_vertices:
+            xs = [v[0] for v in self.polygon_vertices]
+            ys = [v[1] for v in self.polygon_vertices]
+            cx = (min(xs) + max(xs)) / 2
+            cy = (min(ys) + max(ys)) / 2
+            bw = max(xs) - min(xs)
+            bh = max(ys) - min(ys)
+        else:
+            cx = cy = 0.0
+            bw = bh = 32.0
+
         self.shape_type = shape_type
+
         if shape_type == "polygon":
+            hw, hh = bw / 2, bh / 2
+            self.polygon_vertices = [
+                (cx - hw, cy - hh),
+                (cx + hw, cy - hh),
+                (cx + hw, cy + hh),
+                (cx - hw, cy + hh),
+            ]
             self.current_polygon = []
+            return
+
+        if shape_type == "rectangle":
+            self.rect_w = bw if bw > 0 else 32
+            self.rect_h = bh if bh > 0 else 32
+            self.rect_x = cx - self.rect_w / 2
+            self.rect_y = cy - self.rect_h / 2
+            return
+
+        if shape_type == "circle":
+            r = max(min(bw, bh) / 2, 4)
+            self.circle_radius = r
+            self.circle_x = cx
+            self.circle_y = cy
+            return
+
+        if shape_type == "capsule":
+            r = max(min(bw, bh) / 4, 2)
+            h = max(bh, r * 2)
+            self.capsule_radius = r
+            self.capsule_height = h
+            self.capsule_x = cx
+            self.capsule_y = cy - h / 2
+            return
 
     def get_shape_data(self) -> dict:
         """Get the current shape data"""
@@ -194,6 +261,8 @@ class ShapeEditor:
             self.capsule_x, self.capsule_y = offset
         elif shape_type == "polygon":
             self.polygon_vertices = [tuple(v) for v in data.get("vertices", [])]
+
+        self._center_view_on_shape()
 
     def resize(self, rect: Rect) -> None:
         """Update rect"""
@@ -254,12 +323,20 @@ class ShapeEditor:
                     self.hover_handle = None
 
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
-            self.zoom *= 1.15 if event.y > 0 else 0.87
-            self.zoom = max(0.5, min(self.zoom, 8.0))
-
-            sprite_pos = self._screen_to_sprite(mouse)
-            self.offset_x = mouse[0] - self.rect.x - sprite_pos[0] * self.zoom
-            self.offset_y = mouse[1] - self.rect.y - sprite_pos[1] * self.zoom
+            mods = pygame.key.get_mods()
+            ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            meta = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+            shift = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
+            if ctrl or meta:
+                self.zoom *= 1.15 if event.y > 0 else 0.87
+                self.zoom = max(0.5, min(self.zoom, 8.0))
+                sprite_pos = self._screen_to_sprite(mouse)
+                self.offset_x = mouse[0] - self.rect.x - sprite_pos[0] * self.zoom
+                self.offset_y = mouse[1] - self.rect.y - sprite_pos[1] * self.zoom
+            elif shift:
+                self.offset_x -= event.y * self.SCROLL_SPEED
+            else:
+                self.offset_y -= event.y * self.SCROLL_SPEED
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -606,7 +683,7 @@ class ShapeEditor:
             screen.blit(scaled, (sprite_x, sprite_y))
 
             sprite_rect = Rect(sprite_x, sprite_y, scaled_w, scaled_h)
-            pygame.draw.rect(screen, (100, 100, 100), sprite_rect, 1)
+            pygame.draw.rect(screen, COLORS.border, sprite_rect, SHAPE.border)
 
         if self.show_grid:
             self._draw_grid(screen, sw, sh)
@@ -617,7 +694,7 @@ class ShapeEditor:
             mouse = pygame.mouse.get_pos()
             if self.rect.collidepoint(mouse) and self._is_inside_shape(mouse):
                 icon_pos = self._get_move_icon_pos()
-                icon = icon_manager.get_icon("ToolMove", 16, _COLORS["shape_stroke"])
+                icon = icon_manager.get_icon("ToolMove", 16, COLORS.accent_hover)
                 screen.blit(icon, (icon_pos[0] - 8, icon_pos[1] - 8))
 
         self._draw_status(screen)
@@ -635,11 +712,11 @@ class ShapeEditor:
 
         for x in range(0, sw + 1, self.grid_size):
             sx = int(x * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (sx, 0), (sx, scaled_h))
+            pygame.draw.line(grid_surf, (*COLORS.border, 30), (sx, 0), (sx, scaled_h))
 
         for y in range(0, sh + 1, self.grid_size):
             sy = int(y * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (0, sy), (scaled_w, sy))
+            pygame.draw.line(grid_surf, (*COLORS.border, 30), (0, sy), (scaled_w, sy))
 
         screen.blit(grid_surf, (sprite_x, sprite_y))
 
@@ -664,10 +741,10 @@ class ShapeEditor:
         rect = Rect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1])
 
         surf = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
-        surf.fill((*_COLORS["shape_fill"], 80))
+        surf.fill((*COLORS.accent, 80))
         screen.blit(surf, rect.topleft)
 
-        pygame.draw.rect(screen, _COLORS["shape_stroke"], rect, 2)
+        pygame.draw.rect(screen, COLORS.accent_hover, rect, 2)
 
         corners = [
             self._sprite_to_screen((self.rect_x, self.rect_y)),
@@ -678,7 +755,7 @@ class ShapeEditor:
             ),
         ]
         for corner in corners:
-            pygame.draw.circle(screen, _COLORS["handle"], corner, 6)
+            pygame.draw.circle(screen, COLORS.text, corner, 6)
             pygame.draw.circle(screen, (0, 0, 0), corner, 6, 1)
 
     def _draw_circle(self, screen: pygame.Surface) -> None:
@@ -687,18 +764,18 @@ class ShapeEditor:
         radius = int(self.circle_radius * self.zoom)
 
         surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-        pygame.draw.circle(surf, (*_COLORS["shape_fill"], 80), (radius, radius), radius)
+        pygame.draw.circle(surf, (*COLORS.accent, 80), (radius, radius), radius)
         screen.blit(surf, (center[0] - radius, center[1] - radius))
 
-        pygame.draw.circle(screen, _COLORS["shape_stroke"], center, radius, 2)
+        pygame.draw.circle(screen, COLORS.accent_hover, center, radius, 2)
 
-        pygame.draw.circle(screen, _COLORS["handle"], center, 6)
+        pygame.draw.circle(screen, COLORS.text, center, 6)
         pygame.draw.circle(screen, (0, 0, 0), center, 6, 1)
 
         radius_point = self._sprite_to_screen(
             (self.circle_x + self.circle_radius, self.circle_y)
         )
-        pygame.draw.circle(screen, _COLORS["handle"], radius_point, 6)
+        pygame.draw.circle(screen, COLORS.text, radius_point, 6)
         pygame.draw.circle(screen, (0, 0, 0), radius_point, 6, 1)
 
     def _draw_capsule(self, screen: pygame.Surface) -> None:
@@ -714,37 +791,37 @@ class ShapeEditor:
         surf = pygame.Surface((cap_w, capsule_h + radius * 2), pygame.SRCALPHA)
         cy = radius
         cx = radius
-        pygame.draw.circle(surf, (*_COLORS["shape_fill"], 80), (cx, cy), radius)
-        pygame.draw.circle(surf, (*_COLORS["shape_fill"], 80), (cx, cy + capsule_h), radius)
+        pygame.draw.circle(surf, (*COLORS.accent, 80), (cx, cy), radius)
+        pygame.draw.circle(surf, (*COLORS.accent, 80), (cx, cy + capsule_h), radius)
         rect = Rect(0, cy, cap_w, capsule_h)
-        surf.fill((*_COLORS["shape_fill"], 80), rect)
+        surf.fill((*COLORS.accent, 80), rect)
         screen.blit(surf, (top[0] - radius, top[1] - radius))
 
-        pygame.draw.circle(screen, _COLORS["shape_stroke"], top, radius, 2)
-        pygame.draw.circle(screen, _COLORS["shape_stroke"], bottom, radius, 2)
+        pygame.draw.circle(screen, COLORS.accent_hover, top, radius, 2)
+        pygame.draw.circle(screen, COLORS.accent_hover, bottom, radius, 2)
         pygame.draw.line(
             screen,
-            _COLORS["shape_stroke"],
+            COLORS.accent_hover,
             (top[0] - radius, top[1]),
             (bottom[0] - radius, bottom[1]),
             2,
         )
         pygame.draw.line(
             screen,
-            _COLORS["shape_stroke"],
+            COLORS.accent_hover,
             (top[0] + radius, top[1]),
             (bottom[0] + radius, bottom[1]),
             2,
         )
 
-        pygame.draw.circle(screen, _COLORS["handle"], top, 6)
+        pygame.draw.circle(screen, COLORS.text, top, 6)
         pygame.draw.circle(screen, (0, 0, 0), top, 6, 1)
-        pygame.draw.circle(screen, _COLORS["handle"], bottom, 6)
+        pygame.draw.circle(screen, COLORS.text, bottom, 6)
         pygame.draw.circle(screen, (0, 0, 0), bottom, 6, 1)
 
         mid_y = (top[1] + bottom[1]) // 2
         radius_point = (top[0] + radius, mid_y)
-        pygame.draw.circle(screen, _COLORS["handle"], radius_point, 6)
+        pygame.draw.circle(screen, COLORS.text, radius_point, 6)
         pygame.draw.circle(screen, (0, 0, 0), radius_point, 6, 1)
 
     def _draw_polygon(self, screen: pygame.Surface) -> None:
@@ -752,20 +829,20 @@ class ShapeEditor:
 
         if len(self.polygon_vertices) >= 3:
             screen_points = [self._sprite_to_screen(p) for p in self.polygon_vertices]
-            pygame.draw.polygon(screen, (*_COLORS["shape_fill"], 80), screen_points)
-            pygame.draw.polygon(screen, _COLORS["shape_stroke"], screen_points, 2)
+            pygame.draw.polygon(screen, (*COLORS.accent, 80), screen_points)
+            pygame.draw.polygon(screen, COLORS.accent_hover, screen_points, 2)
 
             for point in screen_points:
-                pygame.draw.circle(screen, _COLORS["handle"], point, 5)
+                pygame.draw.circle(screen, COLORS.text, point, 5)
                 pygame.draw.circle(screen, (0, 0, 0), point, 5, 1)
 
         if self.current_polygon:
             screen_points = [self._sprite_to_screen(p) for p in self.current_polygon]
             if len(screen_points) > 1:
-                pygame.draw.lines(screen, (200, 200, 200), False, screen_points, 2)
+                pygame.draw.lines(screen, COLORS.border, False, screen_points, 2)
 
             for i, point in enumerate(screen_points):
-                color = (80, 255, 120) if i == 0 else _COLORS["handle"]
+                color = COLORS.success if i == 0 else COLORS.text
                 pygame.draw.circle(screen, color, point, 5)
                 pygame.draw.circle(screen, (0, 0, 0), point, 5, 1)
 
@@ -788,16 +865,16 @@ class ShapeEditor:
             else:
                 lines.append("Click to add vertices")
 
-        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: zoom")
+        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: scroll | Shift+wheel: h-scroll | Ctrl+wheel: zoom")
 
         y = self.rect.y + 5
         for line in lines:
-            surf = self._font_sm.render(line, True, _COLORS["text"])
+            surf = self._font_sm.render(line, True, COLORS.text)
             bg_rect = Rect(
                 self.rect.x + 5, y, surf.get_width() + 4, surf.get_height() + 2
             )
             bg = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
-            bg.fill((0, 0, 0, 180))
+            bg.fill((*COLORS.panel, 200))
             screen.blit(bg, bg_rect.topleft)
             screen.blit(surf, (self.rect.x + 7, y + 1))
             y += surf.get_height() + 3

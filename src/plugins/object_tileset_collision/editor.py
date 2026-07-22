@@ -44,6 +44,7 @@ from widgets.ui.region_selector import Region, RegionSelector
 from widgets.ui.splitter import Splitter
 from widgets.ui.status_bar import StatusBar
 from widgets.ui.theme import COLORS, FONTS, SHAPE
+from widgets.ui.toast import ToastManager
 
 from .models import ObjectTilesetCollisionLibrary, RegionCollisionData
 
@@ -134,7 +135,11 @@ class ObjectTilesetCollisionEditor:
 
         self._update_layout()
 
+        self._toast_manager = ToastManager()
+        self._last_frame_time = 0.0
+
         self._init_components()
+        self._update_layout()
 
         self._renaming_region_id: str | None = None
         self._rename_input = InlineTextInput("region_rename", "")
@@ -207,6 +212,7 @@ class ObjectTilesetCollisionEditor:
             self.painter_rect,
             None,
             (64, 64),
+            self._toast_manager,
         )
         self.painter.on_polygon_added = self._on_polygon_added
         self.painter.on_polygon_removed = self._on_polygon_removed
@@ -234,12 +240,14 @@ class ObjectTilesetCollisionEditor:
     def _layout_toolbar_buttons(self) -> None:
         x = self.toolbar_rect.x + 10
         y = self.toolbar_rect.y + 8
-        for i, btn in enumerate(self._toolbar_buttons):
+        gap = 8
+        for btn in self._toolbar_buttons:
             if btn.text == "?":
                 w, h = 28, 28
             else:
                 w, h = 60, 28
-            btn.resize(x + i * (w + 8), y, w, h)
+            btn.resize(x, y, w, h)
+            x += w + gap
 
     def _on_splitter_drag(self, pos: int) -> None:
         self.tileset_selector_height = max(
@@ -1014,6 +1022,12 @@ class ObjectTilesetCollisionEditor:
         self.mode_indicator.draw(screen)
 
         self._draw_help_panel(screen)
+
+        now = pygame.time.get_ticks() / 1000.0
+        dt = now - self._last_frame_time if self._last_frame_time else 0.016
+        self._last_frame_time = now
+        self._toast_manager.update(screen, dt)
+        self._toast_manager.draw(screen)
 
     def _draw_toolbar(self, screen: Surface) -> None:
         """Draw the toolbar"""

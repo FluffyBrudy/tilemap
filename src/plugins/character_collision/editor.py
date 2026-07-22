@@ -281,21 +281,17 @@ class CharacterCollisionEditor:
         self.character_name = data.name
         self._name_input.text = data.name
         self._name_input.cursor_pos = len(data.name)
-        self.shape_editor.load_shape_data(data.shape.to_dict())
-        layer = data.properties.get("collision_layer", 1)
-        mask = data.properties.get("collision_mask", 0xFFFF)
-        self.layer_sidebar.set_layer(layer)
-        self.layer_sidebar.set_mask(mask)
 
+        # Load sprite first so _center_shape() sets sensible defaults,
+        # THEN apply saved shape data (overrides centered defaults)
         self._image_path = data.image_path
         if self._image_path:
             resolved = self._resolve_image_path(self._image_path)
             if resolved:
                 self._load_sprite_from_path(resolved)
                 self._toast_manager.success(f"Sprite loaded: {resolved.name}")
-                return
 
-        if data.name:
+        if data.name and self.sprite_surface is None:
             for d in [self._data_root]:
                 if d is None:
                     continue
@@ -305,9 +301,13 @@ class CharacterCollisionEditor:
                         if self._load_sprite_from_path(candidate):
                             self._image_path = self._rel_path(candidate)
                             self._toast_manager.success(f"Sprite loaded: {candidate.name}")
-                            return
+                            break
 
-        self._toast_manager.warning(f"No sprite image found for '{data.name}'")
+        self.shape_editor.load_shape_data(data.shape.to_dict())
+        layer = data.properties.get("collision_layer", 1)
+        mask = data.properties.get("collision_mask", 0xFFFF)
+        self.layer_sidebar.set_layer(layer)
+        self.layer_sidebar.set_mask(mask)
 
     def _get_save_path(self) -> Path:
         """Full path for saving/loading collision data."""

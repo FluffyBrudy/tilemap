@@ -30,6 +30,9 @@ class NotificationManager:
     def error(self, text: str):
         self.notify(text, color=(255, 100, 100), duration=4.0)
 
+    def warning(self, text: str):
+        self.notify(text, color=(255, 200, 50), duration=3.0)
+
     def success(self, text: str):
         self.notify(text, color=(100, 255, 100), duration=2.5)
 

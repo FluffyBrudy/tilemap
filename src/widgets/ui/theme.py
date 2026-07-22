@@ -21,6 +21,7 @@ class UIColorSet:
     text: Color = (230, 230, 230)
     text_dim: Color = (150, 150, 150)
     text_muted: Color = (120, 120, 120)
+    text_selected: Color = (255, 255, 255)
     accent: Color = (80, 120, 200)
     accent_hover: Color = (100, 140, 220)
     accent_active: Color = (70, 110, 190)
@@ -117,7 +118,7 @@ LIGHT_COLORS = UIColorSet(
     danger_hover=(220, 80, 80),
     warning=(200, 160, 60),
     hover=(230, 230, 230),
-    selected=(80, 130, 200),
+    selected=(190, 215, 240),
 )
 
 SEMI_LIGHT_COLORS = UIColorSet(
@@ -200,6 +201,10 @@ class ThemeManager:
     @property
     def text_muted(self) -> Color:
         return self._colors.text_muted
+
+    @property
+    def text_selected(self) -> Color:
+        return self._colors.text_selected
 
     @property
     def accent(self) -> Color:

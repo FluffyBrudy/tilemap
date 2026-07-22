@@ -22,37 +22,11 @@ from pygame import Rect
 
 from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
-from widgets.ui.theme import COLORS
+from widgets.ui.theme import COLORS, SHAPE
 
 
 class PaintMode(Enum):
-    """Collision painter modes"""
-
     DRAW = "draw"
-    ERASE = "erase"
-    SELECT = "select"
-
-
-_COLORS = {
-    "bg": (25, 27, 30),
-    "grid": (255, 255, 255),
-    "polygon_fill": (80, 180, 255),
-    "polygon_stroke": (100, 200, 255),
-    "polygon_selected": (255, 180, 80),
-    "vertex": (255, 255, 255),
-    "vertex_hover": (255, 220, 80),
-    "vertex_first": (80, 255, 120),
-    "preview_line": (200, 200, 200),
-    "text": (230, 230, 230),
-    "text_dim": (140, 140, 140),
-    "header": (40, 42, 46),
-    "border": (60, 62, 65),
-    "border_soft": (80, 82, 85),
-    "accent": (80, 180, 255),
-    "one_way": (255, 120, 120),
-    "edge_mode": (120, 255, 120),
-    "help_bg": (15, 17, 20),
-}
 
 
 VERTEX_RADIUS = 5
@@ -85,10 +59,12 @@ class CollisionPainter:
         rect: Rect,
         tile_surface: pygame.Surface,
         tile_size: tuple[int, int],
+        toast_manager,
     ):
         self.rect = rect
         self.tile_surface = tile_surface
         self.tile_size = tile_size
+        self.toast_manager = toast_manager
 
         self.polygons: list[list[tuple[float, float]]] = []
         self.polygon_one_way: list[bool] = []
@@ -319,15 +295,15 @@ class CollisionPainter:
             )
         if len(pts) >= 3:
             wedge = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-            pygame.draw.polygon(wedge, (*_COLORS["polygon_fill"], 60), pts)
+            pygame.draw.polygon(wedge, (*COLORS.accent, 60), pts)
             screen.blit(wedge, self.rect.topleft)
-        label = self._font_sm.render(f"{angle_deg:.0f}°", True, _COLORS["text"])
+        label = self._font_sm.render(f"{angle_deg:.0f}°", True, COLORS.text)
         label_x = screen_pos[0] + 10
         label_y = screen_pos[1] - label.get_height() - 4
         bg = pygame.Surface(
             (label.get_width() + 4, label.get_height() + 2), pygame.SRCALPHA
         )
-        bg.fill((0, 0, 0, 180))
+        bg.fill((*COLORS.panel, 200))
         screen.blit(bg, (label_x - 2, label_y - 1))
         screen.blit(label, (label_x, label_y))
 
@@ -337,6 +313,7 @@ class CollisionPainter:
         self.polygon_one_way = []
         self.current_polygon = []
         self.selected_polygon_idx = None
+        self.toast_manager.info("All polygons cleared")
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle input events"""
@@ -595,16 +572,21 @@ class CollisionPainter:
 
             elif ctrl and event.key == pygame.K_g:
                 self.show_grid = not self.show_grid
+                self.toast_manager.info(f"Grid: {'ON' if self.show_grid else 'OFF'}")
                 return True
 
             elif ctrl and event.key == pygame.K_s and (mods & pygame.KMOD_SHIFT):
                 self.snap_to_grid = not self.snap_to_grid
+                self.toast_manager.info(f"Snap: {'ON' if self.snap_to_grid else 'OFF'}")
                 return True
 
             elif ctrl and event.key == pygame.K_o:
                 if self.selected_polygon_idx is not None:
                     idx = self.selected_polygon_idx
                     self.polygon_one_way[idx] = not self.polygon_one_way[idx]
+                    self.toast_manager.info(
+                        f"Polygon {idx}: {'ONE-WAY' if self.polygon_one_way[idx] else 'TWO-WAY'}"
+                    )
                     if self.on_polygon_modified:
                         self.on_polygon_modified(idx)
                     return True
@@ -612,10 +594,14 @@ class CollisionPainter:
             elif ctrl and event.key == pygame.K_r:
                 self._center_view()
                 self.zoom = 2.0
+                self.toast_manager.info("View reset")
                 return True
 
             elif ctrl and event.key == pygame.K_a:
                 self.show_angle_hints = not self.show_angle_hints
+                self.toast_manager.info(
+                    f"Angle hints: {'ON' if self.show_angle_hints else 'OFF'}"
+                )
                 return True
 
         if event.type == pygame.KEYUP:
@@ -629,6 +615,9 @@ class CollisionPainter:
         if len(self.current_polygon) >= 3:
             self.polygons.append(list(self.current_polygon))
             self.polygon_one_way.append(False)
+            self.toast_manager.success(
+                f"Polygon {len(self.polygons) - 1} added ({len(self.current_polygon)} vertices)"
+            )
             if self.on_polygon_added:
                 self.on_polygon_added(self.current_polygon)
             self.current_polygon = []
@@ -638,6 +627,7 @@ class CollisionPainter:
         if 0 <= idx < len(self.polygons):
             self.polygons.pop(idx)
             self.polygon_one_way.pop(idx)
+            self.toast_manager.info(f"Polygon {idx} deleted")
             if self.on_polygon_removed:
                 self.on_polygon_removed(idx)
             self.selected_polygon_idx = None
@@ -662,7 +652,7 @@ class CollisionPainter:
             screen.blit(scaled, (tile_x, tile_y))
 
             tile_rect = Rect(tile_x, tile_y, scaled_w, scaled_h)
-            pygame.draw.rect(screen, _COLORS["border"], tile_rect, 1)
+            pygame.draw.rect(screen, COLORS.border, tile_rect, SHAPE.border)
 
         if self.show_grid:
             self._draw_grid(screen)
@@ -693,15 +683,15 @@ class CollisionPainter:
         """Draw edge draw mode indicator in top-right corner"""
         self._ensure_fonts()
         indicator = "EDGE DRAW (E) + SHIFT"
-        surf = self._font_sm.render(indicator, True, _COLORS["edge_mode"])
+        surf = self._font_sm.render(indicator, True, COLORS.success)
         bg_w = surf.get_width() + 16
         bg_h = surf.get_height() + 8
         x = self.rect.right - bg_w - 5
         y = self.rect.y + 5
         bg = pygame.Surface((bg_w, bg_h), pygame.SRCALPHA)
-        bg.fill((*_COLORS["edge_mode"], 40))
+        bg.fill((*COLORS.success, 40))
         screen.blit(bg, (x, y))
-        pygame.draw.rect(screen, _COLORS["edge_mode"], (x, y, bg_w, bg_h), 1)
+        pygame.draw.rect(screen, COLORS.success, (x, y, bg_w, bg_h), 1)
         screen.blit(surf, (x + 8, y + 4))
 
     def _draw_info_button(self, screen: pygame.Surface) -> None:
@@ -712,27 +702,27 @@ class CollisionPainter:
         mouse = pygame.mouse.get_pos()
         is_hover = btn.collidepoint(mouse)
 
-        bg_color = _COLORS["polygon_fill"] if is_hover else _COLORS["header"]
-        border_color = _COLORS["accent"] if is_hover else _COLORS["border_soft"]
+        bg_color = COLORS.accent if is_hover else COLORS.header
+        border_color = COLORS.accent if is_hover else COLORS.border_soft
 
         pygame.draw.circle(screen, bg_color, btn.center, btn.width // 2)
 
         pygame.draw.circle(screen, border_color, btn.center, btn.width // 2, 2)
 
-        info_text = self._font.render("i", True, _COLORS["text"])
+        info_text = self._font.render("i", True, COLORS.text)
         text_rect = info_text.get_rect(center=btn.center)
 
-        shadow_text = self._font.render("i", True, _COLORS["text_dim"])
+        shadow_text = self._font.render("i", True, COLORS.text_dim)
         shadow_rect = shadow_text.get_rect(center=(btn.centerx + 1, btn.centery + 1))
         screen.blit(shadow_text, shadow_rect)
         screen.blit(info_text, text_rect)
 
         if is_hover:
-            hint = self._font_sm.render("Help", True, _COLORS["text"])
+            hint = self._font_sm.render("Help", True, COLORS.text)
             hint_bg = pygame.Surface(
                 (hint.get_width() + 12, hint.get_height() + 6), pygame.SRCALPHA
             )
-            hint_bg.fill((*_COLORS["header"], 220))
+            hint_bg.fill((*COLORS.header, 220))
             hint_x = btn.centerx - hint.get_width() // 2
             hint_y = btn.bottom + 4
             screen.blit(hint_bg, (hint_x - 6, hint_y - 3))
@@ -748,28 +738,28 @@ class CollisionPainter:
 
         panel_rect = self._help_rect
         panel_surf = pygame.Surface((panel_rect.w, panel_rect.h), pygame.SRCALPHA)
-        panel_surf.fill((*_COLORS["help_bg"], 245))
+        panel_surf.fill((*COLORS.bg, 245))
 
         pygame.draw.rect(
-            panel_surf, _COLORS["border"], (0, 0, panel_rect.w, panel_rect.h), 2
+            panel_surf, COLORS.border, (0, 0, panel_rect.w, panel_rect.h), 2
         )
         screen.blit(panel_surf, panel_rect.topleft)
 
-        title = self._font.render("Collision Painter Help", True, _COLORS["text"])
+        title = self._font.render("Collision Painter Help", True, COLORS.text)
         screen.blit(title, (panel_rect.x + 15, panel_rect.y + 12))
 
         close_btn = Rect(panel_rect.right - 30, panel_rect.y + 10, 20, 20)
         mouse = pygame.mouse.get_pos()
         close_hover = close_btn.collidepoint(mouse)
-        close_bg = _COLORS["polygon_stroke"] if close_hover else COLORS.bg
+        close_bg = COLORS.accent_hover if close_hover else COLORS.bg
         pygame.draw.rect(screen, close_bg, close_btn)
-        pygame.draw.rect(screen, _COLORS["border"], close_btn, 1)
-        close_icon = icon_manager.get_icon("close", 14, _COLORS["text"])
+        pygame.draw.rect(screen, COLORS.border, close_btn, 1)
+        close_icon = icon_manager.get_icon("close", 14, COLORS.text)
         screen.blit(close_icon, close_icon.get_rect(center=close_btn.center))
 
         pygame.draw.line(
             screen,
-            _COLORS["border"],
+            COLORS.border,
             (panel_rect.x + 10, panel_rect.y + 40),
             (panel_rect.right - 10, panel_rect.y + 40),
         )
@@ -833,21 +823,21 @@ class CollisionPainter:
 
         y = content_rect.y - self._help_scroll
         for section_title, items in help_sections:
-            header = self._font_sm.render(section_title, True, _COLORS["polygon_fill"])
+            header = self._font_sm.render(section_title, True, COLORS.accent)
             screen.blit(header, (content_rect.x + 10, y))
             y += 22
 
             for key, desc in items:
-                key_surf = self._font_sm.render(key, True, _COLORS["vertex_first"])
+                key_surf = self._font_sm.render(key, True, COLORS.success)
                 key_x = content_rect.x + 10
                 key_bg = Rect(
                     key_x, y - 2, key_surf.get_width() + 10, key_surf.get_height() + 4
                 )
-                pygame.draw.rect(screen, (*COLORS.bg, 180), key_bg, border_radius=3)
+                pygame.draw.rect(screen, (*COLORS.bg, 180), key_bg, border_radius=SHAPE.radius_sm)
                 screen.blit(key_surf, (key_x + 5, y))
 
                 desc_x = key_x + key_bg.width + 8
-                desc_surf = self._font_sm.render(desc, True, _COLORS["text"])
+                desc_surf = self._font_sm.render(desc, True, COLORS.text)
                 screen.blit(desc_surf, (desc_x, y))
                 y += 20
 
@@ -857,7 +847,7 @@ class CollisionPainter:
 
         scrollbar_rect = Rect(panel_rect.right - 20, content_rect.y, 12, content_rect.h)
 
-        pygame.draw.rect(screen, (*COLORS.bg, 100), scrollbar_rect, border_radius=6)
+        pygame.draw.rect(screen, (*COLORS.bg, 100), scrollbar_rect, border_radius=SHAPE.radius)
 
         if self._help_content_height > content_rect.h:
             thumb_height = max(
@@ -871,15 +861,15 @@ class CollisionPainter:
             thumb_rect = Rect(scrollbar_rect.x, thumb_y, 12, thumb_height)
 
             thumb_color = (
-                _COLORS["polygon_fill"]
+                COLORS.accent
                 if scrollbar_rect.collidepoint(mouse)
-                else _COLORS["border_soft"]
+                else COLORS.border_soft
             )
-            pygame.draw.rect(screen, thumb_color, thumb_rect, border_radius=6)
+            pygame.draw.rect(screen, thumb_color, thumb_rect, border_radius=SHAPE.radius)
 
         footer_y = panel_rect.bottom - 30
         footer_hint = self._font_sm.render(
-            "Scroll to view all shortcuts", True, _COLORS["text_dim"]
+            "Scroll to view all shortcuts", True, COLORS.text_dim
         )
         screen.blit(footer_hint, (panel_rect.x + 15, footer_y))
 
@@ -895,11 +885,11 @@ class CollisionPainter:
 
         for x in range(0, tw + 1, self.grid_size):
             sx = int(x * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (sx, 0), (sx, scaled_h))
+            pygame.draw.line(grid_surf, (*COLORS.border, 30), (sx, 0), (sx, scaled_h))
 
         for y in range(0, th + 1, self.grid_size):
             sy = int(y * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (0, sy), (scaled_w, sy))
+            pygame.draw.line(grid_surf, (*COLORS.border, 30), (0, sy), (scaled_w, sy))
 
         screen.blit(grid_surf, (tile_x, tile_y))
 
@@ -918,10 +908,10 @@ class CollisionPainter:
         screen_points = [self._tile_to_screen(p) for p in polygon]
 
         fill_color = (
-            _COLORS["polygon_selected"] if selected else _COLORS["polygon_fill"]
+            COLORS.warning if selected else COLORS.accent
         )
         if one_way:
-            fill_color = _COLORS["one_way"]
+            fill_color = COLORS.danger
 
         alpha = 100 if selected else (70 if hovered else 50)
         poly_surf = pygame.Surface(self.rect.size, pygame.SRCALPHA)
@@ -929,10 +919,10 @@ class CollisionPainter:
         screen.blit(poly_surf, self.rect.topleft)
 
         stroke_color = (
-            _COLORS["polygon_selected"] if selected else _COLORS["polygon_stroke"]
+            COLORS.warning if selected else COLORS.accent_hover
         )
         if one_way:
-            stroke_color = _COLORS["one_way"]
+            stroke_color = COLORS.danger
         pygame.draw.polygon(screen, stroke_color, screen_points, 2)
 
         for i, (px, py) in enumerate(screen_points):
@@ -943,9 +933,9 @@ class CollisionPainter:
                 and self.polygons[self.hover_vertex[0]] == polygon
             )
 
-            color = _COLORS["vertex_first"] if is_first else _COLORS["vertex"]
+            color = COLORS.success if is_first else COLORS.text
             if is_hovered_vertex:
-                color = _COLORS["vertex_hover"]
+                color = COLORS.warning
 
             radius = VERTEX_HOVER_RADIUS if is_hovered_vertex else VERTEX_RADIUS
             pygame.draw.circle(screen, color, (px, py), radius)
@@ -954,20 +944,13 @@ class CollisionPainter:
         if selected and one_way and len(polygon) >= 3:
             cx = int(sum(p[0] for p in screen_points) / len(screen_points))
             cy = int(sum(p[1] for p in screen_points) / len(screen_points))
-            badge = self._font_sm.render("ONE-WAY", True, (255, 255, 255))
+            badge = self._font_sm.render("ONE-WAY", True, COLORS.text)
             bx = cx - badge.get_width() // 2
             by = cy - badge.get_height() // 2
             bg = pygame.Surface(
                 (badge.get_width() + 8, badge.get_height() + 4), pygame.SRCALPHA
             )
-            bg.fill(
-                (
-                    _COLORS["one_way"][0],
-                    _COLORS["one_way"][1],
-                    _COLORS["one_way"][2],
-                    200,
-                )
-            )
+            bg.fill((*COLORS.danger, 200))
             screen.blit(bg, (bx - 4, by - 2))
             screen.blit(badge, (bx, by))
 
@@ -984,16 +967,16 @@ class CollisionPainter:
         screen_points = [self._tile_to_screen(p) for p in self.current_polygon]
 
         if len(screen_points) > 1:
-            pygame.draw.lines(screen, _COLORS["preview_line"], False, screen_points, 2)
+            pygame.draw.lines(screen, COLORS.border, False, screen_points, 2)
 
         if self.rect.collidepoint(self.mouse_pos):
             pygame.draw.line(
-                screen, _COLORS["preview_line"], screen_points[-1], self.mouse_pos, 1
+                screen, COLORS.border, screen_points[-1], self.mouse_pos, 1
             )
 
         for i, (px, py) in enumerate(screen_points):
             is_first = i == 0
-            color = _COLORS["vertex_first"] if is_first else _COLORS["vertex"]
+            color = COLORS.success if is_first else COLORS.text
             radius = VERTEX_HOVER_RADIUS if is_first else VERTEX_RADIUS
             pygame.draw.circle(screen, color, (px, py), radius)
             pygame.draw.circle(screen, (0, 0, 0), (px, py), radius, 1)
@@ -1044,12 +1027,12 @@ class CollisionPainter:
 
         y = self.rect.y + 5
         for line in lines:
-            surf = self._font_sm.render(line, True, _COLORS["text"])
+            surf = self._font_sm.render(line, True, COLORS.text)
             bg_rect = Rect(
                 self.rect.x + 5, y, surf.get_width() + 4, surf.get_height() + 2
             )
             bg = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
-            bg.fill((0, 0, 0, 180))
+            bg.fill((*COLORS.panel, 200))
             screen.blit(bg, bg_rect.topleft)
             screen.blit(surf, (self.rect.x + 7, y + 1))
             y += surf.get_height() + 3

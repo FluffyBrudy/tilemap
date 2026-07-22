@@ -564,7 +564,7 @@ class TileSelector(WidgetBase):
 
     def open_collision_editor(self):
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):
-            self.editor.notifications.notify("No tileset selected")
+            self.editor.notifications.warning("No tileset selected")
             return
 
         ts = self.tilesets[self.active_idx]
