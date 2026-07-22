@@ -1018,3 +1018,48 @@ class TestPropagation:
         changes = layer._autotile_tiles([solo, top], [(5, 5)])
         assert changes == 1
         assert layer.tiles[(5, 5)]["variant"] == 1
+
+
+class TestLayerYSort:
+    def test_default_is_false(self):
+        layer = Layer("test")
+        assert layer.y_sort is False
+
+    def test_to_dict_includes_y_sort(self):
+        layer = Layer("test", layer_type="tile")
+        layer.y_sort = True
+        data = layer.to_dict()
+        assert data["y_sort"] is True
+
+    def test_from_dict_reads_y_sort(self):
+        layer = Layer.from_dict({"name": "test", "type": "tile", "y_sort": True})
+        assert layer.y_sort is True
+
+    def test_from_dict_defaults_false(self):
+        layer = Layer.from_dict({"name": "test", "type": "tile"})
+        assert layer.y_sort is False
+
+    def test_roundtrip(self):
+        layer = Layer("bushes", layer_type="tile", y_sort=True)
+        data = layer.to_dict()
+        restored = Layer.from_dict(data)
+        assert restored.y_sort is True
+        assert restored.name == "bushes"
+
+    def test_y_sort_origin_defaults_to_zero(self):
+        layer = Layer("test")
+        assert layer.y_sort_origin == 0
+
+    def test_to_dict_includes_y_sort_origin(self):
+        layer = Layer("test", y_sort_origin=16)
+        data = layer.to_dict()
+        assert data["y_sort_origin"] == 16
+
+    def test_from_dict_reads_y_sort_origin(self):
+        layer = Layer.from_dict({"name": "test", "type": "tile", "y_sort_origin": 32})
+        assert layer.y_sort_origin == 32
+
+    def test_y_sort_origin_roundtrip(self):
+        layer = Layer("test", y_sort=True, y_sort_origin=24)
+        restored = Layer.from_dict(layer.to_dict())
+        assert restored.y_sort_origin == 24

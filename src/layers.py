@@ -27,6 +27,8 @@ class Layer:
         visible: bool = True,
         locked: bool = False,
         opacity: float = 1.0,
+        y_sort: bool = False,
+        y_sort_origin: int = 0,
     ):
         self.name = name
         self.layer_type = layer_type
@@ -34,6 +36,8 @@ class Layer:
         self.visible = visible
         self.locked = locked
         self.opacity = max(0.0, min(1.0, opacity))
+        self.y_sort = y_sort
+        self.y_sort_origin = y_sort_origin
         self.properties: dict[str, Any] = {}
 
         self.tiles: dict[tuple[int, int], TypeTile] = {}
@@ -303,6 +307,8 @@ class Layer:
             "visible": self.visible,
             "locked": self.locked,
             "opacity": self.opacity,
+            "y_sort": self.y_sort,
+            "y_sort_origin": self.y_sort_origin,
         }
 
         if self.tiles:
@@ -331,6 +337,8 @@ class Layer:
             visible=data.get("visible", True),
             locked=data.get("locked", False),
             opacity=data.get("opacity", 1.0),
+            y_sort=data.get("y_sort", False),
+            y_sort_origin=data.get("y_sort_origin", 0),
         )
 
         if "tiles" in data:

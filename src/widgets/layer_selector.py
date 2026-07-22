@@ -109,6 +109,15 @@ class LayerSelector:
                                 layer.locked = not layer.locked
                                 return True
 
+                        ysort_rect = self._get_ysort_icon_rect(layer_idx)
+                        if ysort_rect and ysort_rect.collidepoint(mouse_pos):
+                            layer = self.editor.tilemap.layer_manager.get_layer(
+                                layer_idx
+                            )
+                            if layer:
+                                layer.y_sort = not layer.y_sort
+                                return True
+
                         opacity_rect = self._get_opacity_bar_rect(layer_idx)
                         if opacity_rect and opacity_rect.collidepoint(mouse_pos):
                             layer = self.editor.tilemap.layer_manager.get_layer(
@@ -268,6 +277,27 @@ class LayerSelector:
         bar_x = self.list_rect.x + self.list_rect.width - 80
         bar_y = item_y + self.item_h - bar_h - 3
         return Rect(bar_x, bar_y, bar_w, bar_h)
+
+    def _get_ysort_icon_rect(self, layer_idx: int) -> Rect | None:
+        """Get the clickable rect for the y-sort toggle of a layer."""
+        if layer_idx is None:
+            return None
+
+        item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
+
+        if item_y + self.item_h < self.list_rect.y or item_y > self.list_rect.bottom:
+            return None
+
+        item_rect = Rect(
+            self.list_rect.x,
+            item_y,
+            self.list_rect.width,
+            self.item_h,
+        )
+
+        ysort_x = item_rect.x + 5
+        ysort_y = item_rect.y + 4
+        return Rect(ysort_x, ysort_y, 12, 20)
 
     def _get_eye_icon_rect(self, layer_idx: int, mouse_pos) -> Rect | None:
         """Get the clickable rect for the eye icon of a layer."""
@@ -435,16 +465,20 @@ class LayerSelector:
             mx, my = pygame.mouse.get_pos()
             eye_rect = self._get_eye_icon_rect(i, (mx, my))
             lock_rect = self._get_lock_icon_rect(i, (mx, my))
+            ysort_rect = self._get_ysort_icon_rect(i)
             if eye_rect and eye_rect.collidepoint(mx, my):
                 self.editor.tooltip.show("Toggle Visibility", (mx + 10, my + 10))
             elif lock_rect and lock_rect.collidepoint(mx, my):
                 self.editor.tooltip.show("Toggle Lock", (mx + 10, my + 10))
+            elif ysort_rect and ysort_rect.collidepoint(mx, my):
+                label = "On" if layer.y_sort else "Off"
+                self.editor.tooltip.show(f"Y-Sort: {label}", (mx + 10, my + 10))
 
             if i == self.renaming_layer_idx:
                 pygame.draw.rect(
                     screen,
                     COLORS.selected,
-                    Rect(item_rect.x + 4, item_rect.y + 4, 120, 20),
+                    Rect(item_rect.x + 22, item_rect.y + 4, 120, 20),
                     border_radius=SHAPE.radius_sm,
                 )
                 name_txt = self.font_layer.render(
@@ -452,7 +486,7 @@ class LayerSelector:
                 )
             else:
                 name_txt = self.font_layer.render(layer.name, True, COLORS.text)
-            screen.blit(name_txt, (item_rect.x + 5, item_rect.y + 5))
+            screen.blit(name_txt, (item_rect.x + 22, item_rect.y + 5))
 
             opacity_bar = self._get_opacity_bar_rect(i)
             if opacity_bar:
@@ -508,6 +542,16 @@ class LayerSelector:
                     screen, COLORS.text_muted, Rect(lock_x - 4, lock_y - 4, 8, 8), 1
                 )
 
+            ysort_rect = self._get_ysort_icon_rect(i)
+            if ysort_rect:
+                ysort_color = COLORS.accent if layer.y_sort else COLORS.text_dim
+                pygame.draw.rect(
+                    screen, ysort_color, ysort_rect, 
+                    border_radius=SHAPE.radius_sm,
+                )
+                ysort_txt = self.font_layer.render("Y", True, COLORS.text)
+                screen.blit(ysort_txt, (ysort_rect.x + 3, ysort_rect.y + 3))
+
         if self.dragging_layer_idx is not None:
             mouse_y = pygame.mouse.get_pos()[1]
             dragging_layer = layer_manager.layers[self.dragging_layer_idx]
@@ -525,7 +569,7 @@ class LayerSelector:
             screen.blit(drag_surf, preview_rect)
 
             name_txt = self.font_layer.render(dragging_layer.name, True, COLORS.text)
-            screen.blit(name_txt, (preview_rect.x + 5, preview_rect.y + 5))
+            screen.blit(name_txt, (preview_rect.x + 22, preview_rect.y + 5))
 
             pygame.draw.rect(screen, (150, 150, 255), preview_rect, 2)
 

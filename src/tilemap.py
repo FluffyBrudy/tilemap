@@ -331,6 +331,8 @@ class Tilemap:
                 "locked": layer.locked,
                 "opacity": layer.opacity,
                 "z_index": layer.z_index,
+                "y_sort": layer.y_sort,
+                "y_sort_origin": layer.y_sort_origin,
                 "tiles": {},
             }
 
@@ -674,6 +676,8 @@ class Tilemap:
             visible=layer_data.get("visible", True),
             locked=layer_data.get("locked", False),
             opacity=layer_data.get("opacity", 1.0),
+            y_sort=layer_data.get("y_sort", False),
+            y_sort_origin=layer_data.get("y_sort_origin", 0),
         )
         layer.properties = layer_data.get("properties", {})
 
