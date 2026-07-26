@@ -52,6 +52,8 @@ class PropertyEditor:
         self.is_entering_new_key = False
 
         self._hovered_truncated: str | None = None
+        self._ghost_text: str = ""
+        self.editor.suggestion_registry.refresh(self.editor)
 
         btn_h = 30
         btn_w = 100
@@ -78,6 +80,7 @@ class PropertyEditor:
     def _on_save_click(self):
         self.on_save(self.properties)
         self.active = False
+        self._ghost_text = ""
         self.on_close()
 
     def _on_cancel_click(self):
@@ -89,6 +92,7 @@ class PropertyEditor:
         self.new_key_input = ""
         self.selected_key = None
         self.editing_value = False
+        self._ghost_text = self.editor.suggestion_registry.key_ghost("")
 
     def _update_hovered_tooltip(self, mouse_pos):
         self._hovered_truncated = None
@@ -132,10 +136,14 @@ class PropertyEditor:
                         self.selected_key = keys[idx]
                         self.editing_value = True
                         self.input_text = str(self.properties[self.selected_key])
+                        self._ghost_text = self.editor.suggestion_registry.ghost_text(
+                            self.selected_key, self.input_text
+                        )
                         self.is_entering_new_key = False
                         return True
                     self.selected_key = None
                     self.editing_value = False
+                    self._ghost_text = ""
                     self.is_entering_new_key = False
 
             elif event.button == 4:
@@ -184,12 +192,36 @@ class PropertyEditor:
                         self.selected_key = self.new_key_input
                         self.editing_value = True
                         self.input_text = ""
+                        self._ghost_text = self.editor.suggestion_registry.ghost_text(
+                            self.selected_key, self.input_text
+                        )
                         self.is_entering_new_key = False
+                    return True
+                if event.key == pygame.K_TAB:
+                    if self._ghost_text:
+                        self.new_key_input = self.new_key_input + self._ghost_text
+                        self._ghost_text = self.editor.suggestion_registry.key_ghost(
+                            self.new_key_input
+                        )
                     return True
                 if event.key == pygame.K_BACKSPACE:
                     self.new_key_input = self.new_key_input[:-1]
+                    self._ghost_text = self.editor.suggestion_registry.key_ghost(
+                        self.new_key_input
+                    )
                 else:
                     self.new_key_input += event.unicode
+                    if self._ghost_text and event.unicode:
+                        if self._ghost_text[0].lower() == event.unicode.lower():
+                            self._ghost_text = self._ghost_text[1:]
+                        else:
+                            self._ghost_text = self.editor.suggestion_registry.key_ghost(
+                                self.new_key_input
+                            )
+                    else:
+                        self._ghost_text = self.editor.suggestion_registry.key_ghost(
+                            self.new_key_input
+                        )
                 return True
 
             if self.editing_value and self.selected_key:
@@ -206,15 +238,35 @@ class PropertyEditor:
                             pass
                     self.properties[self.selected_key] = val
                     self.editing_value = False
+                    self._ghost_text = ""
+                elif event.key == pygame.K_TAB:
+                    if self._ghost_text:
+                        self.input_text = self.input_text + self._ghost_text
+                        self._ghost_text = ""
                 elif event.key == pygame.K_BACKSPACE:
                     self.input_text = self.input_text[:-1]
+                    self._ghost_text = self.editor.suggestion_registry.ghost_text(
+                        self.selected_key, self.input_text
+                    )
                 elif event.key == pygame.K_DELETE:
                     if self.selected_key in self.properties:
                         del self.properties[self.selected_key]
                         self.selected_key = None
                         self.editing_value = False
+                        self._ghost_text = ""
                 else:
                     self.input_text += event.unicode
+                    if self._ghost_text and event.unicode:
+                        if self._ghost_text[0].lower() == event.unicode.lower():
+                            self._ghost_text = self._ghost_text[1:]
+                        else:
+                            self._ghost_text = self.editor.suggestion_registry.ghost_text(
+                                self.selected_key, self.input_text
+                            )
+                    else:
+                        self._ghost_text = self.editor.suggestion_registry.ghost_text(
+                            self.selected_key, self.input_text
+                        )
                 return True
 
         return True
@@ -262,23 +314,47 @@ class PropertyEditor:
             key_surf = self.font_label.render(f"{key}:", True, COLORS.text)
             screen.blit(key_surf, (row_rect.x + 10, row_rect.y + 10))
 
-            if is_selected and self.editing_value:
-                val_text = self.input_text + "|"
-                val_col = COLORS.text
-            else:
-                val_text = str(self.properties[key])
-                if isinstance(self.properties[key], bool):
-                    val_col = COLORS.warning
-                elif isinstance(self.properties[key], (int, float)):
-                    val_col = COLORS.success
-                else:
-                    val_col = COLORS.text
-
             value_x = row_rect.x + 120
             max_width = row_rect.right - value_x - 10
-            display_val, _ = truncate_text(val_text, self.font_label, max_width)
-            val_surf = self.font_label.render(display_val, True, val_col)
-            screen.blit(val_surf, (value_x, row_rect.y + 10))
+
+            if is_selected and self.editing_value:
+                if self._ghost_text:
+                    display_input, was_truncated = truncate_text(self.input_text, self.font_label, max_width)
+                    user_surf = self.font_label.render(display_input, True, COLORS.text)
+                    screen.blit(user_surf, (value_x, row_rect.y + 10))
+                    cursor_x = value_x + user_surf.get_width()
+                    if not was_truncated:
+                        ghost_surf = self.font_label.render(self._ghost_text, True, COLORS.text_dim)
+                        ghost_w = ghost_surf.get_width()
+                        if cursor_x + ghost_w <= row_rect.right - 10:
+                            screen.blit(ghost_surf, (cursor_x, row_rect.y + 10))
+                    if pygame.time.get_ticks() // 500 % 2 == 0:
+                        pygame.draw.line(
+                            screen, COLORS.text,
+                            (cursor_x, row_rect.y + 8),
+                            (cursor_x, row_rect.y + 28), 2,
+                        )
+                else:
+                    val_text = self.input_text + ("|" if pygame.time.get_ticks() // 500 % 2 == 0 else " ")
+                    display_val, _ = truncate_text(val_text, self.font_label, max_width)
+                    val_surf = self.font_label.render(display_val, True, COLORS.text)
+                    screen.blit(val_surf, (value_x, row_rect.y + 10))
+            else:
+                raw_val = str(self.properties[key])
+                if raw_val == "":
+                    val_text = "(empty)"
+                    val_col = COLORS.text_dim
+                else:
+                    val_text = raw_val
+                    if isinstance(self.properties[key], bool):
+                        val_col = COLORS.warning
+                    elif isinstance(self.properties[key], (int, float)):
+                        val_col = COLORS.success
+                    else:
+                        val_col = COLORS.text
+                display_val, _ = truncate_text(val_text, self.font_label, max_width)
+                val_surf = self.font_label.render(display_val, True, val_col)
+                screen.blit(val_surf, (value_x, row_rect.y + 10))
 
         if self.is_entering_new_key:
             y = self.rect.y + 40 + len(keys) * self.item_height - self.scroll_y
@@ -286,10 +362,34 @@ class PropertyEditor:
                 self.rect.x + 5, y + 2, self.width - 10, self.item_height - 4
             )
             pygame.draw.rect(screen, COLORS.selected, row_rect, border_radius=4)
-            key_surf = self.font_label.render(
-                "New Key: " + self.new_key_input + "|", True, COLORS.text
-            )
-            screen.blit(key_surf, (row_rect.x + 10, row_rect.y + 10))
+            label_w = self.font_label.size("New Key: ")[0]
+            lbl_surf = self.font_label.render("New Key: ", True, COLORS.text)
+            screen.blit(lbl_surf, (row_rect.x + 10, row_rect.y + 10))
+            input_x = row_rect.x + 10 + label_w
+            key_input = self.new_key_input
+            max_kw = row_rect.right - input_x - 10
+            display_key, _ = truncate_text(key_input, self.font_label, max_kw)
+            input_surf = self.font_label.render(display_key, True, COLORS.text)
+            screen.blit(input_surf, (input_x, row_rect.y + 10))
+            cursor_x = input_x + input_surf.get_width()
+            if self._ghost_text:
+                ghost_surf = self.font_label.render(self._ghost_text, True, COLORS.text_dim)
+                max_gw = row_rect.right - cursor_x - 10
+                if ghost_surf.get_width() <= max_gw:
+                    screen.blit(ghost_surf, (cursor_x, row_rect.y + 10))
+                if pygame.time.get_ticks() // 500 % 2 == 0:
+                    pygame.draw.line(
+                        screen, COLORS.text,
+                        (cursor_x, row_rect.y + 8),
+                        (cursor_x, row_rect.y + 28), 2,
+                    )
+            else:
+                if pygame.time.get_ticks() // 500 % 2 == 0:
+                    cursor_char = "|"
+                else:
+                    cursor_char = " "
+                cur_surf = self.font_label.render(cursor_char, True, COLORS.text)
+                screen.blit(cur_surf, (cursor_x, row_rect.y + 10))
 
         screen.set_clip(clip)
 

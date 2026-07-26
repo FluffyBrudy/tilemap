@@ -408,6 +408,7 @@ class LayerSelector:
 
     def _save_layer_properties(self, layer: Layer, props: dict):
         layer.properties = props
+        self.editor.suggestion_registry.refresh(self.editor)
         print(f"Saved properties for layer: {layer.name}")
 
     def draw(self, screen: Surface) -> None:

@@ -623,6 +623,8 @@ class Tilemap:
             if hasattr(self.editor, "node_selector"):
                 self.editor.node_selector._rebuild_filter()
 
+        if hasattr(self.editor, "suggestion_registry"):
+            self.editor.suggestion_registry.refresh(self.editor)
         self.initialized = True
 
         if self.editor.tile_grid_widget:
