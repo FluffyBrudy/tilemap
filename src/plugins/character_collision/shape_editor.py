@@ -100,6 +100,30 @@ class ShapeEditor:
         self.offset_x = (self.rect.w - sw * self.zoom) / 2
         self.offset_y = (self.rect.h - sh * self.zoom) / 2
 
+    def _focus_on_shape(self) -> None:
+        """Center the viewport on the shape's bounding box"""
+        left, top, right, bottom = self._shape_bounds()
+        cx = (left + right) / 2
+        cy = (top + bottom) / 2
+        self.offset_x = self.rect.w / 2 - cx * self.zoom
+        self.offset_y = self.rect.h / 2 - cy * self.zoom
+
+    def _shape_bounds(self) -> tuple[float, float, float, float]:
+        """Get shape bounding box in sprite-local coords (left, top, right, bottom)"""
+        if self.shape_type == "rectangle":
+            return (self.rect_x, self.rect_y, self.rect_x + self.rect_w, self.rect_y + self.rect_h)
+        if self.shape_type == "circle":
+            return (self.circle_x - self.circle_radius, self.circle_y - self.circle_radius,
+                    self.circle_x + self.circle_radius, self.circle_y + self.circle_radius)
+        if self.shape_type == "capsule":
+            return (self.capsule_x - self.capsule_radius, self.capsule_y,
+                    self.capsule_x + self.capsule_radius, self.capsule_y + self.capsule_height)
+        if self.shape_type == "polygon" and self.polygon_vertices:
+            xs = [v[0] for v in self.polygon_vertices]
+            ys = [v[1] for v in self.polygon_vertices]
+            return (min(xs), min(ys), max(xs), max(ys))
+        return (0, 0, 0, 0)
+
     def _center_shape(self) -> None:
         """Center all shape types on the sprite"""
         sw, sh = self.sprite_surface.get_size()
@@ -195,6 +219,8 @@ class ShapeEditor:
         elif shape_type == "polygon":
             self.polygon_vertices = [tuple(v) for v in data.get("vertices", [])]
 
+        self._focus_on_shape()
+
     def resize(self, rect: Rect) -> None:
         """Update rect"""
         self.rect = rect
@@ -254,12 +280,19 @@ class ShapeEditor:
                     self.hover_handle = None
 
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
-            self.zoom *= 1.15 if event.y > 0 else 0.87
-            self.zoom = max(0.5, min(self.zoom, 8.0))
-
-            sprite_pos = self._screen_to_sprite(mouse)
-            self.offset_x = mouse[0] - self.rect.x - sprite_pos[0] * self.zoom
-            self.offset_y = mouse[1] - self.rect.y - sprite_pos[1] * self.zoom
+            mods = pygame.key.get_mods()
+            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                self.zoom *= 1.15 if event.y > 0 else 0.87
+                self.zoom = max(0.5, min(self.zoom, 8.0))
+                sprite_pos = self._screen_to_sprite(mouse)
+                self.offset_x = mouse[0] - self.rect.x - sprite_pos[0] * self.zoom
+                self.offset_y = mouse[1] - self.rect.y - sprite_pos[1] * self.zoom
+            elif mods & pygame.KMOD_SHIFT:
+                scroll_val = event.y if event.y != 0 else event.x
+                self.offset_x -= scroll_val * 30
+            else:
+                scroll_val = event.y if event.y != 0 else event.x
+                self.offset_y -= scroll_val * 30
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

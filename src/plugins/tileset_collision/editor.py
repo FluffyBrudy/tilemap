@@ -716,8 +716,18 @@ class TilesetCollisionEditor:
                     return True
 
             if event.type == pygame.MOUSEWHEEL:
-                self.tileset_zoom *= 1.15 if event.y > 0 else 0.87
-                self.tileset_zoom = max(0.5, min(self.tileset_zoom, 8.0))
+                mods = pygame.key.get_mods()
+                if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                    self.tileset_zoom *= 1.15 if event.y > 0 else 0.87
+                    self.tileset_zoom = max(0.5, min(self.tileset_zoom, 8.0))
+                elif mods & pygame.KMOD_SHIFT:
+                    scroll_val = event.y if event.y != 0 else event.x
+                    self.tileset_scroll_x -= scroll_val * 30
+                else:
+                    scroll_val = event.y if event.y != 0 else event.x
+                    self.tileset_scroll_y -= scroll_val * 30
+                self.tileset_scroll_x = max(0, self.tileset_scroll_x)
+                self.tileset_scroll_y = max(0, self.tileset_scroll_y)
                 return True
 
         if event.type == pygame.MOUSEBUTTONUP:
@@ -947,12 +957,17 @@ class TilesetCollisionEditor:
         tw = int(self._tile_size[0] * self.tileset_zoom)
         th = int(self._tile_size[1] * self.tileset_zoom)
 
+        tileset_scr_w = self.tile_cols * tw
+        tileset_scr_h = self.tile_rows * th
+        center_off_x = max(0, (self.tileset_selector_rect.w - tileset_scr_w) // 2)
+        center_off_y = max(0, (self.tileset_selector_rect.h - tileset_scr_h) // 2)
+
         for row in range(self.tile_rows):
             for col in range(self.tile_cols):
                 tile_id = row * self.tile_cols + col
 
-                x = self.tileset_selector_rect.x + col * tw - self.tileset_scroll_x
-                y = self.tileset_selector_rect.y + row * th - self.tileset_scroll_y
+                x = self.tileset_selector_rect.x + col * tw - self.tileset_scroll_x + center_off_x
+                y = self.tileset_selector_rect.y + row * th - self.tileset_scroll_y + center_off_y
 
                 if (
                     x + tw < self.tileset_selector_rect.x

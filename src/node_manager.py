@@ -13,7 +13,7 @@ def create_node_id() -> str:
     return str(uuid.uuid4())
 
 
-SIDECAR_VERSION = 1
+SIDECAR_VERSION = 2
 
 
 class NodeManager:
@@ -49,10 +49,15 @@ class NodeManager:
             raw = json.loads(sidecar.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 return
+            version = raw.get("version", 1)
             self.groups = list(raw.get("groups", []))
+            rs = self.editor.tilemap.render_scale
             for item in raw.get("nodes", []):
                 if isinstance(item, dict):
                     node = Node.from_dict(item)
+                    if version >= 2:
+                        node.area.x = int(node.area.x * rs)
+                        node.area.y = int(node.area.y * rs)
                     self.nodes[node.node_id] = node
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             import logging
@@ -62,12 +67,23 @@ class NodeManager:
     def save(self, map_path: Path) -> None:
         sidecar = self._sidecar_path_for(map_path)
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
-        data: dict[str, Any] = {
-            "version": SIDECAR_VERSION,
-            "groups": self.groups,
-            "nodes": [node.to_dict() for node in self.nodes.values()],
-        }
-        sidecar.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        rs = self.editor.tilemap.render_scale
+        orig_areas: dict[str, tuple[int, int]] = {}
+        for nid, node in self.nodes.items():
+            orig_areas[nid] = (node.area.x, node.area.y)
+            node.area.x = int(node.area.x / rs)
+            node.area.y = int(node.area.y / rs)
+        try:
+            data: dict[str, Any] = {
+                "version": SIDECAR_VERSION,
+                "groups": self.groups,
+                "nodes": [node.to_dict() for node in self.nodes.values()],
+            }
+            sidecar.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        finally:
+            for nid, (ox, oy) in orig_areas.items():
+                self.nodes[nid].area.x = ox
+                self.nodes[nid].area.y = oy
 
     def add_node(self, node: Node) -> str:
         self.nodes[node.node_id] = node

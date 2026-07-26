@@ -476,12 +476,19 @@ class CollisionPainter:
                     return True
 
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
-            self.zoom *= 1.15 if event.y > 0 else 0.87
-            self.zoom = max(0.5, min(self.zoom, 8.0))
-
-            tile_pos = self._screen_to_tile(mouse)
-            self.offset_x = mouse[0] - self.rect.x - tile_pos[0] * self.zoom
-            self.offset_y = mouse[1] - self.rect.y - tile_pos[1] * self.zoom
+            mods = pygame.key.get_mods()
+            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                self.zoom *= 1.15 if event.y > 0 else 0.87
+                self.zoom = max(0.5, min(self.zoom, 8.0))
+                tile_pos = self._screen_to_tile(mouse)
+                self.offset_x = mouse[0] - self.rect.x - tile_pos[0] * self.zoom
+                self.offset_y = mouse[1] - self.rect.y - tile_pos[1] * self.zoom
+            elif mods & pygame.KMOD_SHIFT:
+                scroll_val = event.y if event.y != 0 else event.x
+                self.offset_x -= scroll_val * 30
+            else:
+                scroll_val = event.y if event.y != 0 else event.x
+                self.offset_y -= scroll_val * 30
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
