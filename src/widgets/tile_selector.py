@@ -416,6 +416,7 @@ class TileSelector(WidgetBase):
                 self._tree.selected_ids = {tileset_data.uid}
                 if tileset_type == "object":
                     self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
+                self.editor.suggestion_registry.refresh(self.editor)
             except Exception as e:
                 error_handler.capture(e, context="load_tileset_surface")
 
@@ -479,6 +480,7 @@ class TileSelector(WidgetBase):
         self._sync_tree()
         self._tree.selected_ids = {tileset_data.uid}
 
+        self.editor.suggestion_registry.refresh(self.editor)
         delattr(self, "_pending_tileset_path")
         delattr(self, "_pending_tileset_surf")
         if self._pending_tileset_queue:
@@ -561,6 +563,7 @@ class TileSelector(WidgetBase):
             if not self.tilesets:
                 self.active_idx = -1
                 self._sync_tree()
+            self.editor.suggestion_registry.refresh(self.editor)
 
     def open_collision_editor(self):
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):
@@ -573,6 +576,7 @@ class TileSelector(WidgetBase):
 
     def _save_tileset_properties(self, ts: TilesetData, props: dict):
         ts.properties = props
+        self.editor.suggestion_registry.refresh(self.editor)
         print(f"Saved properties for tileset: {ts.name}")
 
     def _save_tile_properties(self, ts: TilesetData, variant_id: int, props: dict):
@@ -582,6 +586,7 @@ class TileSelector(WidgetBase):
     def _save_tile_properties_multi(self, ts: TilesetData, variant_ids: list[int], props: dict):
         for vid in variant_ids:
             ts.tile_properties[vid] = props.copy()
+        self.editor.suggestion_registry.refresh(self.editor)
         if len(variant_ids) == 1:
             print(f"Saved properties for tile {variant_ids[0]} in tileset: {ts.name}")
         else:

@@ -356,12 +356,14 @@ class NodeEditor:
         node = self.editor.node_manager.get_active_node()
         if node:
             node.properties = props
+            self.editor.suggestion_registry.refresh(self.editor)
 
     def _save_particle_config(self, cfg: dict):
         node = self.editor.node_manager.get_active_node()
         if node:
             node.properties.clear()
             node.properties.update(cfg)
+            self.editor.suggestion_registry.refresh(self.editor)
             self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
 
     def draw(self, screen: pygame.Surface):
