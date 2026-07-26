@@ -329,17 +329,26 @@ class RegionSelector:
                 self._update_hover(mouse)
 
         if event.type == pygame.MOUSEWHEEL and in_bounds:
-            old_zoom = self.zoom
-            if event.y > 0:
-                self.zoom = min(self.zoom * 1.15, 8.0)
+            mods = pygame.key.get_mods()
+            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                old_zoom = self.zoom
+                if event.y > 0:
+                    self.zoom = min(self.zoom * 1.15, 8.0)
+                else:
+                    self.zoom = max(self.zoom * 0.87, 0.25)
+                if self.image:
+                    img_x = (mouse[0] - self.rect.x + self.scroll_x) / old_zoom
+                    img_y = (mouse[1] - self.rect.y + self.scroll_y) / old_zoom
+                    self.scroll_x = int(img_x * self.zoom - (mouse[0] - self.rect.x))
+                    self.scroll_y = int(img_y * self.zoom - (mouse[1] - self.rect.y))
+                    self._clamp_scroll()
+            elif mods & pygame.KMOD_SHIFT:
+                scroll_val = event.y if event.y != 0 else event.x
+                self.scroll_x -= scroll_val * 30
+                self._clamp_scroll()
             else:
-                self.zoom = max(self.zoom * 0.87, 0.25)
-
-            if self.image:
-                img_x = (mouse[0] - self.rect.x + self.scroll_x) / old_zoom
-                img_y = (mouse[1] - self.rect.y + self.scroll_y) / old_zoom
-                self.scroll_x = int(img_x * self.zoom - (mouse[0] - self.rect.x))
-                self.scroll_y = int(img_y * self.zoom - (mouse[1] - self.rect.y))
+                scroll_val = event.y if event.y != 0 else event.x
+                self.scroll_y -= scroll_val * 30
                 self._clamp_scroll()
             return True
 
@@ -501,8 +510,10 @@ class RegionSelector:
         if self.image:
             img_w = int(self.image.get_width() * self.zoom)
             img_h = int(self.image.get_height() * self.zoom)
-            img_x = self.rect.x - self.scroll_x
-            img_y = self.rect.y - self.scroll_y
+            center_off_x = max(0, (self.rect.w - img_w) // 2)
+            center_off_y = max(0, (self.rect.h - img_h) // 2)
+            img_x = self.rect.x - self.scroll_x + center_off_x
+            img_y = self.rect.y - self.scroll_y + center_off_y
 
             clip = screen.get_clip()
             screen.set_clip(self.rect)

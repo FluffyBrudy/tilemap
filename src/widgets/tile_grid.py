@@ -799,10 +799,12 @@ class TileGrid:
         elif active_layer.layer_type == "object":
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
+            rs = self.editor.tilemap.render_scale
+            pick_pos = (int(world_pos[0] / rs), int(world_pos[1] / rs)) if rs else world_pos
             for _obj_id, obj in active_layer.get_all_objects().items():
                 area = obj["area"]
                 obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
-                if obj_rect.collidepoint(world_pos):
+                if obj_rect.collidepoint(pick_pos):
                     ttype = int(obj["ttype"])
                     variant = obj["variant"]
                     ts_widget.select_tile_by_variant(ttype, variant)

@@ -182,10 +182,31 @@ class CharacterCollisionEditor:
             self._image_path = self._rel_path(path)
             pygame.display.set_caption(f"Character Collision Editor — {path.stem}")
             self._toast_manager.success(f"Loaded sprite: {path.name}")
+            self._auto_load_collision()
         except Exception as e:
             self._toast_manager.error(f"Failed to load image: {e}")
         finally:
             self._image_dialog = None
+
+    def _auto_load_collision(self) -> bool:
+        name = self._name_input.text.strip()
+        if not name:
+            return False
+        safe = re.sub(r"[^\w\-]+", "-", name).strip("-").lower()
+        coll_filename = f"{safe}.collision.json"
+        try:
+            coll_dir = self._get_collision_dir()
+        except RuntimeError:
+            return False
+        coll_path = coll_dir / coll_filename
+        if coll_path.exists():
+            try:
+                self.load_from_file(coll_path)
+                self._toast_manager.success(f"Loaded collision: {coll_path.name}")
+                return True
+            except Exception:
+                pass
+        return False
 
     def _open_image_dialog(self) -> None:
         try:
@@ -281,7 +302,6 @@ class CharacterCollisionEditor:
         self.character_name = data.name
         self._name_input.text = data.name
         self._name_input.cursor_pos = len(data.name)
-        self.shape_editor.load_shape_data(data.shape.to_dict())
         layer = data.properties.get("collision_layer", 1)
         mask = data.properties.get("collision_mask", 0xFFFF)
         self.layer_sidebar.set_layer(layer)
@@ -293,7 +313,9 @@ class CharacterCollisionEditor:
             if resolved:
                 self._load_sprite_from_path(resolved)
                 self._toast_manager.success(f"Sprite loaded: {resolved.name}")
-                return
+
+        self.shape_editor.load_shape_data(data.shape.to_dict())
+        return
 
         if data.name:
             for d in [self._data_root]:
@@ -545,6 +567,7 @@ class CharacterCollisionEditor:
         editor = cls(rect, surface, character_name)
         editor._data_root = data_root
         editor._image_path = image_path
+        editor._auto_load_collision()
         return editor
 
     def run(self) -> None:

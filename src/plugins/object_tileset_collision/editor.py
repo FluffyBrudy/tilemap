@@ -234,12 +234,13 @@ class ObjectTilesetCollisionEditor:
     def _layout_toolbar_buttons(self) -> None:
         x = self.toolbar_rect.x + 10
         y = self.toolbar_rect.y + 8
-        for i, btn in enumerate(self._toolbar_buttons):
+        for btn in self._toolbar_buttons:
             if btn.text == "?":
                 w, h = 28, 28
             else:
                 w, h = 60, 28
-            btn.resize(x + i * (w + 8), y, w, h)
+            btn.resize(x, y, w, h)
+            x += w + 8
 
     def _on_splitter_drag(self, pos: int) -> None:
         self.tileset_selector_height = max(
