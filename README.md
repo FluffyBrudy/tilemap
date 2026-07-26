@@ -2,6 +2,15 @@
 
 `tilemap-editor` is a pygame-based map editor focused on fast iteration for 2D games.
 
+# tilemap-editor
+
+`tilemap-editor` is a Pygame-based map editor focused on fast iteration for 2D games.
+
+> **Credits:** The initial version of this project was based on DaFluffyPotato's platformer tutorial which is about 6-hours. If you want to understand the foundation this project started from, I highly recommend watching his video: https://www.youtube.com/watch?v=2gABYM5M0ww. While the editor has since evolved with many additional features and improvements, the original map format has been preserved for compatibility.
+
+Several features and design ideas were also inspired by the Godot Engine, including the animation workflow, polygon collision editing, and character collision (Sprite2D-style) editing.
+
+
 ## Installation
 
 [tilemap-editor on PyPI](https://pypi.org/project/tilemap-editor/)
@@ -39,3 +48,6 @@ if __name__ == "__main__":
     editor = Editor()
     editor.run()
 ```
+
+> [!WARNING]
+> The current release requires **Python 3.11+**. The documentation incorrectly lists Python 3.10 support due to an accidental dependency on `typing.NotRequired`. This will be fixed in a future update.
