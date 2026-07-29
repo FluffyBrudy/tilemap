@@ -40,7 +40,7 @@ class Tilemap:
 
         self.tile_size = (32, 32)
         self.map_size = (50, 50)
-        self.initial_map_size = (50, 50)
+        self.offset = (0, 0)
         self.initialized = False
         self.render_scale = 1.0
 
@@ -62,10 +62,10 @@ class Tilemap:
         if active_layer:
             active_layer.tiles = value
 
-    def init_size(self, tile_size: "TCoor", map_size: "TCoor", render_scale: float = 1.0):
+    def init_size(self, tile_size: "TCoor", map_size: "TCoor", offset: "TCoor" = (0, 0), render_scale: float = 1.0):
         self.tile_size = tile_size
         self.map_size = map_size
-        self.initial_map_size = map_size
+        self.offset = offset
         self.initialized = True
         self.render_scale = render_scale
         self.active_project_path = None
@@ -88,6 +88,7 @@ class Tilemap:
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size,
+            "offset": self.offset,
             "render_scale": self.render_scale,
         }
         self.history.save_state(state, description)
@@ -105,6 +106,7 @@ class Tilemap:
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size,
+            "offset": self.offset,
             "render_scale": self.render_scale,
         }
         prev_state = self.history.undo(current_state)
@@ -124,6 +126,7 @@ class Tilemap:
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
             "map_size": self.map_size,
+            "offset": self.offset,
             "render_scale": self.render_scale,
         }
         next_state = self.history.redo(current_state)
@@ -131,28 +134,7 @@ class Tilemap:
             self._apply_history_state(next_state)
 
     def update_map_size(self):
-        """Full scan to recalculate map size based on all layers."""
-        if not self.initialized:
-            return
-
-        max_w = self.initial_map_size[0]
-        max_h = self.initial_map_size[1]
-
-        for layer in self.layer_manager.layers:
-            if layer.tiles:
-                for pos in layer.tiles:
-                    max_w = max(max_w, pos[0] + 1)
-                    max_h = max(max_h, pos[1] + 1)
-
-            if layer.objects:
-                for obj in layer.objects.values():
-                    area = obj["area"]
-                    grid_r = (area["x"] + area["w"]) / self.tile_size[0]
-                    grid_b = (area["y"] + area["h"]) / self.tile_size[1]
-                    max_w = max(max_w, int(grid_r) + 1)
-                    max_h = max(max_h, int(grid_b) + 1)
-
-        self.map_size = (max_w, max_h)
+        """Deprecated compatibility hook retained as no-op."""
 
     def incremental_update_map_size(
         self,
@@ -160,22 +142,15 @@ class Tilemap:
         is_pixel: bool = False,
         size: tuple[int, int] | None = None,
     ):
-        """Update map size based on a single point or area without full scan."""
-        if not self.initialized:
-            return
+        """Deprecated compatibility hook retained as no-op."""
 
-        if is_pixel:
-            w, h = size if size else self.tile_size
-            grid_r = int((pos[0] + w) / self.tile_size[0]) + 1
-            grid_b = int((pos[1] + h) / self.tile_size[1]) + 1
-            new_w = max(self.map_size[0], grid_r)
-            new_h = max(self.map_size[1], grid_b)
-        else:
-            new_w = max(self.map_size[0], pos[0] + 1)
-            new_h = max(self.map_size[1], pos[1] + 1)
-
-        if (new_w, new_h) != self.map_size:
-            self.map_size = (new_w, new_h)
+    def resize(self, offset: "TCoor", size: "TCoor"):
+        """Manually set the map offset and size."""
+        self.offset = offset
+        self.map_size = (max(1, size[0]), max(1, size[1]))
+        tile_grid_widget = getattr(self.editor, "tile_grid_widget", None)
+        if tile_grid_widget is not None and hasattr(tile_grid_widget, "invalidate_bounds_cache"):
+            tile_grid_widget.invalidate_bounds_cache()
 
     def _apply_history_state(self, state):
         from layers import Layer
@@ -185,6 +160,7 @@ class Tilemap:
         self.layer_manager.active_layer_idx = state["active_layer_idx"]
         self.tile_size = state["tile_size"]
         self.map_size = state["map_size"]
+        self.offset = state.get("offset", (0, 0))
         self.render_scale = state.get("render_scale", 1.0)
 
         if hasattr(self.editor, "autotiler"):
@@ -259,7 +235,7 @@ class Tilemap:
                         (getattr(self.editor.tile_grid_widget, "scroll_y", 0) if self.editor.tile_grid_widget else 0),
                     )
                 ),
-                "initial_map_size": serialize_point(self.initial_map_size),
+                "offset": serialize_point(self.offset),
                 "render_scale": self.render_scale,
                 "version": "1.1",
             },
@@ -470,11 +446,7 @@ class Tilemap:
             self.tile_size = deserialize_point(payload["meta"]["tile_size"])
             self.map_size = deserialize_point(payload["meta"].get("map_size", "50;50"))
 
-            self.initial_map_size = payload["meta"].get("initial_map_size")
-            if self.initial_map_size:
-                self.initial_map_size = deserialize_point(self.initial_map_size)
-            else:
-                self.initial_map_size = self.map_size
+            self.offset = deserialize_point(payload["meta"].get("offset", "0;0"))
             self.render_scale = float(payload["meta"].get("render_scale", 1.0))
         except (KeyError, ValueError) as e:
             raise ValueError(f"Error loading map metadata: {e}") from e
@@ -576,8 +548,8 @@ class Tilemap:
                 designer.groups.append(AutotileGroup("Default"))
             designer.selected_group_idx = 0
 
-        if hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer:
-            if "project_state" in payload and "automap_rules" in payload["project_state"]:
+        if (hasattr(self.editor, "regex_automap_designer") and self.editor.regex_automap_designer
+                and "project_state" in payload and "automap_rules" in payload["project_state"]):
                 try:
                     automap_rules_data = payload["project_state"]["automap_rules"]
                     if isinstance(automap_rules_data, list):
@@ -756,7 +728,7 @@ class Tilemap:
         meta = {
             "tile_size": f"{tile_w},{tile_h}",
             "map_size": f"{map_w},{map_h}",
-            "initial_map_size": f"{map_w},{map_h}",
+            "offset": "0,0",
             "render_scale": 1.0,
             "version": "1.1",
             "zoom_level": 1.0,

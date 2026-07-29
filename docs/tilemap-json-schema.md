@@ -15,7 +15,7 @@ Tags:
 ## meta
 - `tile_size`: `"w;h"` string **[public]** — tile pixel size
 - `map_size`: `"w;h"` string **[public]** — current map bounds in tiles
-- `initial_map_size`: `"w;h"` string **[mixed]** — size from map setup
+- `offset`: `"x;y"` string **[public]** — top-left map boundary in tile coordinates
 - `zoom_level`: number **[internal]** — editor view zoom
 - `scroll`: `"x;y"` string **[internal]** — editor view scroll
 - `version`: string (e.g., `"1.1"`) **[public]** — format version

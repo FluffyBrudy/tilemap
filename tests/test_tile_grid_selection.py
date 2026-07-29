@@ -125,7 +125,7 @@ class FakeTilemap:
         self.tile_size = (32, 32)
         self.render_scale = 1.0
         self.map_size = (20, 20)
-        self.initial_map_size = (20, 20)
+        self.offset = (0, 0)
         self.initialized = False
         self.layer_manager = FakeLayerManager(layer)
         self._history = []
