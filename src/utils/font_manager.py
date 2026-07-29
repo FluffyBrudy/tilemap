@@ -109,6 +109,10 @@ class FontManager:
         bold: bool | None = None,
         italic: bool | None = None,
     ) -> pygame.font.Font:
+        if not pygame.get_init():
+            pygame.init()
+        if not pygame.font.get_init():
+            pygame.font.init()
         """
         Get a font with specified properties.
 

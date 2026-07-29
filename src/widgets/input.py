@@ -148,9 +148,8 @@ class InputBox(WidgetBase):
                 self.insert_text(event.unicode)
                 return True
 
-        if self.is_focused and event.type == pygame.KEYUP:
-            if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
-                self.selection_start = None
+        if self.is_focused and event.type == pygame.KEYUP and event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+            self.selection_start = None
 
         return False
 
@@ -442,9 +441,8 @@ class InlineTextInput:
                 self.insert_text(event.unicode)
                 return True
 
-        if event.type == pygame.KEYUP:
-            if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
-                self.selection_start = None
+        if event.type == pygame.KEYUP and event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+            self.selection_start = None
 
         return False
 
@@ -466,6 +464,33 @@ class DigitInput(BaseTextInput):
         )
 
     def is_char_allowed(self, char: str) -> bool:
+        return char.isdigit()
+
+    def get_value(self) -> int:
+        return self.get_int_value()
+
+
+class SignedIntInput(BaseTextInput):
+    def __init__(
+        self,
+        rect: Rect,
+        label: str,
+        key: str,
+        default_val: str = "",
+        tab_index: int | None = None,
+    ):
+        super().__init__(
+            rect,
+            label,
+            key,
+            default_val,
+            tab_index,
+            allowed_chars="-0123456789",
+        )
+
+    def is_char_allowed(self, char: str) -> bool:
+        if char in "-":
+            return self.text == ""
         return char.isdigit()
 
     def get_value(self) -> int:

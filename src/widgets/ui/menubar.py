@@ -7,10 +7,17 @@ from widgets.ui.theme import COLORS, FONTS
 
 
 class MenuAction:
-    def __init__(self, label: str, callback: Callable, shortcut: str = ""):
+    def __init__(
+        self,
+        label: str,
+        callback: Callable,
+        shortcut: str = "",
+        is_checked: Callable[[], bool] | None = None,
+    ):
         self.label = label
         self.callback = callback
         self.shortcut = shortcut
+        self.is_checked = is_checked
 
 
 class Menu:
@@ -40,6 +47,7 @@ class MenuBar:
                         "Save As...", self.editor.open_save_as_dialog, "Ctrl+Shift+S"
                     ),
                     MenuAction("Map Properties", self.editor.open_map_properties),
+                    MenuAction("Resize Map", self.editor.open_resize_map_dialog),
                     MenuAction("Exit", self.editor.exit_editor),
                 ],
             ),
@@ -87,7 +95,22 @@ class MenuBar:
             Menu(
                 "View",
                 [
-                    MenuAction("Toggle Grid", self.editor.toggle_grid, "G"),
+                    MenuAction(
+                        "Toggle Grid",
+                        self.editor.toggle_grid,
+                        "G",
+                        is_checked=lambda: self.editor.tile_grid_widget.show_grid
+                        if self.editor.tile_grid_widget
+                        else False,
+                    ),
+                    MenuAction(
+                        "Toggle Map Boundary",
+                        self.editor.toggle_map_boundary,
+                        "Ctrl+B",
+                        is_checked=lambda: self.editor.tile_grid_widget.show_map_boundary
+                        if self.editor.tile_grid_widget
+                        else True,
+                    ),
                 ],
             ),
         ]
@@ -224,8 +247,18 @@ class MenuBar:
                         color = COLORS.text
                         shortcut_color = COLORS.text_dim
 
+                    # Draw checkmark if action is checked
+                    label_x = item_rect.x + 10
+                    if action.is_checked and action.is_checked():
+                        from utils.icon_manager import icon_manager
+
+                        check_icon = icon_manager.get_icon("check", 14, COLORS.success)
+                        if check_icon:
+                            screen.blit(check_icon, (item_rect.x + 5, item_rect.y + 6))
+                        label_x = item_rect.x + 24
+
                     label_surf = self.font.render(action.label, True, color)
-                    screen.blit(label_surf, (item_rect.x + 10, item_rect.y + 5))
+                    screen.blit(label_surf, (label_x, item_rect.y + 5))
 
                     if action.shortcut:
                         sh_surf = self.font_shortcut.render(

@@ -217,6 +217,7 @@ class Layer:
         start_pos: tuple[int, int],
         new_tile_data: TypeTile,
         map_size: tuple[int, int],
+        offset: tuple[int, int] = (0, 0),
     ) -> None:
         """Replace contiguous tiles of the same type starting from start_pos."""
         if self.locked or self.layer_type != "tile":
@@ -238,7 +239,13 @@ class Layer:
         while queue:
             curr = queue.pop(0)
 
-            if curr[0] < 0 or curr[0] >= map_size[0] or curr[1] < 0 or curr[1] >= map_size[1]:
+            ox, oy = offset
+            if (
+                curr[0] < ox
+                or curr[0] >= ox + map_size[0]
+                or curr[1] < oy
+                or curr[1] >= oy + map_size[1]
+            ):
                 continue
 
             curr_tile = self.tiles.get(curr)

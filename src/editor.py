@@ -39,6 +39,7 @@ from widgets.ui.node_selector import NodeSelector
 from widgets.ui.notification import NotificationManager
 from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from widgets.ui.property_editor import PropertyEditor
+from widgets.ui.resize_map_dialog import ResizeMapDialog
 from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
 from widgets.ui.theme import COLORS, THEMES, get_theme_manager, set_theme
 from widgets.ui.tileset_type_dialog import TilesetTypeDialog
@@ -206,8 +207,7 @@ class Editor:
         self.tile_grid_widget: TileGrid | None = None
 
         self.left_panel_visible = False
-        self.animation_panel: SpriteAnimationEditor | None = None
-        self._animation_panel_surface: pygame.Surface | None = None
+        self.left_panel_w = 300
 
         self.autotiler = AutotileRuleDesigner(self, 100, 100)
         self.regex_automap_designer = RegexAutomapDesigner(self, 150, 100)
@@ -240,6 +240,8 @@ class Editor:
         self.tileset_type_dialog = TilesetTypeDialog(editor_rect)
         self.confirm_dialog = ConfirmDialog(editor_rect)
         self.layer_type_dialog = LayerTypeDialog(editor_rect)
+        self.resize_map_dialog = ResizeMapDialog(editor_rect)
+        self.resize_map_dialog.editor = self
 
         self.menubar = MenuBar(self, self.width, 30)
         self.toolbar = Toolbar(self, 0, 30, self.width, 35)
@@ -622,13 +624,6 @@ class Editor:
 
         self._update_side_panel_layout()
 
-        if self.left_panel_visible and self.animation_panel:
-            panel_rect = Rect(0, menu_h + toolbar_h, self.left_panel_w, height - (menu_h + toolbar_h))
-            if hasattr(self.animation_panel, "rect"):
-                self.animation_panel.rect = panel_rect
-                if hasattr(self.animation_panel, "_relayout"):
-                    self.animation_panel._relayout()
-
         rect_full = Rect(0, 0, width, height)
 
         if hasattr(self, "tileset_type_dialog") and self.tileset_type_dialog:
@@ -663,6 +658,12 @@ class Editor:
             return
         self.map_properties_dialog.open()
 
+    def open_resize_map_dialog(self):
+        if self.resize_map_dialog is None:
+            logger.warning({"msg": "resize_map_dialog is not initialized"})
+            return
+        self.resize_map_dialog.open()
+
     def toggle_autotiler(self):
         if self.autotiler.visible:
             self.autotiler.hide()
@@ -674,47 +675,6 @@ class Editor:
             self.regex_automap_designer.hide()
         else:
             self.regex_automap_designer.show()
-
-    def toggle_animation_panel(self):
-        """Toggle the dockable animation panel visibility (Cmd/Ctrl+B)."""
-        if not self.left_panel_visible:
-            if self.animation_panel is None:
-                self._init_animation_panel()
-            if self.animation_panel is not None:
-                self.left_panel_visible = True
-        else:
-            self.left_panel_visible = False
-        self.handle_resize(self.width, self.height)
-
-    def _init_animation_panel(self):
-        """Initialize the animation panel without loading any tileset."""
-        from plugins.sprite_animation.editor import SpriteAnimationEditor
-
-        try:
-
-            class _PanelConsumer:
-                editor_instance = self
-
-                def on_animation_saved(self, name: str, data: dict) -> None:
-                    self.editor_instance.notifications.notify(f"Animation saved: {name}")
-
-                def on_animation_deleted(self, name: str) -> None:
-                    self.editor_instance.notifications.notify(f"Animation deleted: {name}")
-
-            consumer = _PanelConsumer()
-
-            panel_rect = Rect(0, 65, self.left_panel_w, self.height - 65)
-
-            self.animation_panel = SpriteAnimationEditor(
-                panel_rect,
-                surface=None,
-                tile_size=(32, 32),
-                consumer=consumer,
-            )
-            self.animation_panel._data_root = self.data_root
-        except Exception as e:
-            error_handler.capture(e, context="init_animation_panel")
-            self.notifications.notify(f"Failed to init animation panel: {e}")
 
     def undo(self):
         self.tilemap.undo()
@@ -729,6 +689,12 @@ class Editor:
     def toggle_grid(self):
         if self.tile_grid_widget:
             self.tile_grid_widget.show_grid = not self.tile_grid_widget.show_grid
+
+    def toggle_map_boundary(self):
+        if self.tile_grid_widget:
+            self.tile_grid_widget.show_map_boundary = (
+                not self.tile_grid_widget.show_map_boundary
+            )
 
     def cycle_theme(self):
         """Cycle through available themes."""
@@ -1145,6 +1111,10 @@ class Editor:
                 self.layer_type_dialog.handle_event(event)
                 continue
 
+            if self.resize_map_dialog and self.resize_map_dialog.active:
+                self.resize_map_dialog.handle_event(event)
+                continue
+
             if self.map_setup_widget and self.map_setup_widget.visible:
                 if self.map_setup_widget.handle_event(event):
                     continue
@@ -1242,7 +1212,7 @@ class Editor:
                     self.cycle_theme()
                     continue
                 if event.key == pygame.K_b and (ctrl_held or meta_held):
-                    self.toggle_animation_panel()
+                    self.toggle_map_boundary()
                     continue
                 if pygame.K_1 <= event.key <= pygame.K_9:
                     if not (self.node_editor and self.node_editor.visible and self.node_editor.editing_field):
@@ -1258,11 +1228,6 @@ class Editor:
 
             if self.toolbar and self.toolbar.handle_event(event):
                 continue
-
-            if self.left_panel_visible and self.animation_panel:
-                if hasattr(self.animation_panel, "handle_event"):
-                    if self.animation_panel.handle_event(event):
-                        continue
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
@@ -1310,10 +1275,6 @@ class Editor:
             if self.tile_grid_widget:
                 self.tile_grid_widget.update()
 
-            if self.left_panel_visible and self.animation_panel:
-                if hasattr(self.animation_panel, "update"):
-                    self.animation_panel.update()
-
             self.screen.fill(COLORS.bg)
             self.tooltip.hide()
 
@@ -1341,20 +1302,6 @@ class Editor:
                     self.screen.blit(overlay, (0, 0))
                 self.regex_automap_designer.draw(self.screen)
 
-            if self.left_panel_visible and self.animation_panel:
-                panel_surf = pygame.Surface((self.left_panel_w, self.height), pygame.SRCALPHA)
-                panel_surf.fill((*COLORS.panel_alt, 255))
-                self.screen.blit(panel_surf, (0, 65))
-
-                pygame.draw.rect(
-                    self.screen,
-                    COLORS.border,
-                    Rect(0, 65, self.left_panel_w, self.height - 65),
-                    1,
-                )
-                if hasattr(self.animation_panel, "draw"):
-                    self.animation_panel.draw(self.screen)
-
             self.notifications.draw(self.screen)
 
             if self.map_setup_widget and self.map_setup_widget.visible:
@@ -1373,16 +1320,18 @@ class Editor:
                 overlay.fill((0, 0, 0, 150))
                 self.screen.blit(overlay, (0, 0))
                 self.tileset_type_dialog.draw(self.screen)
-            if self.confirm_dialog.active:
-                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
-                self.screen.blit(overlay, (0, 0))
-                self.confirm_dialog.draw(self.screen)
+            if self.resize_map_dialog and self.resize_map_dialog.active:
+                self.resize_map_dialog.draw(self.screen)
             if self.layer_type_dialog.active:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 150))
                 self.screen.blit(overlay, (0, 0))
                 self.layer_type_dialog.draw(self.screen)
+            if self.confirm_dialog.active:
+                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 150))
+                self.screen.blit(overlay, (0, 0))
+                self.confirm_dialog.draw(self.screen)
 
             if self.loading_state["active"]:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
