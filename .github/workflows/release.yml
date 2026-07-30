@@ -6,27 +6,11 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
-  publish-pypi:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install build tools
-        run: pip install build twine
-      - name: Build wheel and sdist
-        run: python -m build
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_TOKEN }}
-
   build-binaries:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -39,17 +23,16 @@ jobs:
         run: pip install pyinstaller pygame-ce
       - name: Build with PyInstaller
         run: pyinstaller tilemap_editor.spec
-      - name: Package binary
-        shell: bash
-        run: |
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            # macOS produces a .app bundle
-            cd dist && zip -r "../TilemapEditor-macos.zip" "TilemapEditor.app"
-          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cd dist && powershell Compress-Archive -Path "TilemapEditor" -DestinationPath "../TilemapEditor-windows.zip"
-          else
-            cd dist && zip -r "../TilemapEditor-linux.zip" "TilemapEditor"
-          fi
+      - name: Package macOS .app
+        if: matrix.os == 'macos-latest'
+        run: cd dist && zip -r "../TilemapEditor-macos.zip" "TilemapEditor.app"
+      - name: Package Linux binary
+        if: matrix.os == 'ubuntu-latest'
+        run: cd dist && zip -r "../TilemapEditor-linux.zip" "TilemapEditor"
+      - name: Package Windows binary
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: Compress-Archive -Path "dist\TilemapEditor" -DestinationPath "TilemapEditor-windows.zip"
       - uses: softprops/action-gh-release@v2
         with:
           files: TilemapEditor-*.zip
