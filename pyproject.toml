@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tilemap-editor"
-version = "4.3.6"
+version = "4.3.7"
 description = "Pygame tilemap editor with collision, animation, sprite & particle tools"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,41 @@ classifiers = [
 [project.scripts]
 tilemap-editor = "tilemap_editor.cli:main"
 tilemap-anim-editor = "plugins.sprite_animation.standalone:main"
+
+[project.optional-dependencies]
+dev = ["towncrier"]
+
+[tool.towncrier]
+package = "tilemap_editor"
+directory = "changes"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->"
+underlines = ["-", "~", "^"]
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Deprecations and Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Misc"
+showcontent = true
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -62,9 +97,3 @@ namespaces = true
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.spec", "*.sh"]
-
-# Keep data-files for backward compatibility (one release cycle)
-[tool.setuptools.data-files]
-"share/tilemap_editor/assets/icons" = ["assets/icons/*.svg"]
-"share/tilemap_editor/assets/fonts/noto" = ["assets/fonts/noto/*.ttf"]
-"share/tilemap_editor/assets/fonts/jetbrain-fonts" = ["assets/fonts/jetbrain-fonts/*.ttf"]

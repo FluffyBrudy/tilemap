@@ -30,6 +30,12 @@ ensure_tools() {
   command -v "$PYTHON_BIN" >/dev/null
   "$PYTHON_BIN" -m build --version >/dev/null
   "$PYTHON_BIN" -m twine --version >/dev/null
+  "$PYTHON_BIN" -m towncrier --version >/dev/null
+}
+
+run_towncrier() {
+  local version="$1"
+  "$PYTHON_BIN" -m towncrier build --version "$version" --yes
 }
 
 read_version() {
@@ -155,9 +161,14 @@ case "$cmd" in
       *) nv="$(set_version "$v")" ;;
     esac
     echo "Releasing version: $nv"
+    run_towncrier "$nv"
     build_pkg
     check_pkg
     upload_pkg "$repo"
+    git add -A
+    git commit -m "Release v$nv"
+    git tag -a "v$nv" -m "Release v$nv"
+    echo "Tagged v$nv — use 'git push --follow-tags' to publish"
     ;;
   *)
     usage
