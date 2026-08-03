@@ -1,6 +1,19 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 4.3.8 (2026-08-04)
+
+## Features
+
+- Sprite editor: two-row grouped toolbar, natural filename sorting on multi-sheet loads, and a Stack V/H toggle for vertical or horizontal sheet stacking. 
+- Rewrote the sprite editor around a command stack with single-canvas undo memory: shared clipboard with relative-tile pasting that survives scale/grid changes, drag-move and rubber-band selection that can expand the canvas, object-selection undo restore, and a pure camera with cursor-anchored zoom. (sprite-editor-v2)
+
+## Bug Fixes
+
+- Fixed sprite editor undo history corruption from shared region references, viewport cache staleness after region edits, coordinate errors after loading new sheets, index lookup failures with negative-origin canvases, and canvas expansion failures for negative cell coordinates
+- Fixed sprite editor paste landing in wrong cells after a scale or grid-size change (clipboard now stores relative tile offsets), paste/cut double-clipboard split-brain, paste preview lacking pixel ghost, and moves/pastes past the canvas edge now expanding the canvas. (sprite-editor-paste-fixes)
+- Fixed sprite editor theming and camera gestures: the canvas, header bar, grid lines, and overlays now use theme colors/fonts instead of hardcoded dark values (canvas no longer stays black on light themes), the canvas header no longer covers the sheet's top rows, and mouse wheel zoom/pan work again with the same 30px/1.12x behavior as the old editor. (sprite-editor-theme-wheel)
+
 
 ## [4.3.7] - 2026-07-30
 
