@@ -9,6 +9,7 @@ from constants import BASE_PATH, IGNORE_DIRS, INTELLISENSE_DEPTH
 from utils.error_handler import error_handler
 from utils.icon_manager import icon_manager
 from utils.icons_cache import prewarm_common_icons
+from utils.natural_sort import natural_key
 from utils.standalone import launch_standalone
 
 from .input import InputBox
@@ -547,17 +548,17 @@ class FileManager:
             self._recursive_search(self.current_path, self.search_input.text, INTELLISENSE_DEPTH)
 
             unique_items = {str(item.path): item for item in self.items}
-            self.items = sorted(unique_items.values(), key=lambda x: (not x.is_dir, x.name.lower()))
+            self.items = sorted(unique_items.values(), key=lambda x: (not x.is_dir, natural_key(x.name)))
             return
 
         self.is_searching = False
         try:
             all_entries = list(self.current_path.iterdir())
 
-            folders = sorted([p for p in all_entries if p.is_dir()], key=lambda p: p.name.lower())
+            folders = sorted([p for p in all_entries if p.is_dir()], key=lambda p: natural_key(p.name))
 
             files = [p for p in all_entries if p.is_file() and p.suffix.lower() in self.allowed_exts]
-            files = sorted(files, key=lambda p: p.name.lower())
+            files = sorted(files, key=lambda p: natural_key(p.name))
 
             for p in folders:
                 self.items.append(FileItem(p))
