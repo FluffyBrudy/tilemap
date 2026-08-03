@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 import pygame
-from pygame import Surface
+from pygame import Rect, Surface
 
-from widgets.ui.region_selector import Region
+from .document import Region
 
 
 def regions_sidecar_path(image_path: Path) -> Path:
@@ -22,7 +22,7 @@ def export_all_regions(
     output_dir.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
     for i, region in enumerate(regions):
-        r = region.rect
+        r = Rect(region.x, region.y, region.w, region.h)
         if r.width <= 0 or r.height <= 0:
             continue
         sub = image.subsurface(r)
