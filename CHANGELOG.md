@@ -1,6 +1,13 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 4.3.9 (2026-08-04)
+
+## Bug Fixes
+
+- Fixed tileset collision editor tile picking when the tileset is centered in the selector: mouse clicks now map to the correct tile after the centering offset is applied.
+- Fixed region selector coordinate conversion (screen↔image) to account for the centered image when it is smaller than the viewport, so drawing, selection, and drag operations stay aligned.
+
 # tilemap_editor 4.3.8 (2026-08-04)
 
 ## Features
