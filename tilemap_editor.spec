@@ -11,6 +11,10 @@ data_src = Path("data")
 if data_src.exists():
     datas.append((str(data_src), "data"))
 
+app_data_src = Path("src/tilemap_editor/assets")
+if app_data_src.exists():
+    datas.append((str(app_data_src), "tilemap_editor/assets"))
+
 try:
     pygame_datas = collect_data_files("pygame")
     datas.extend(pygame_datas)

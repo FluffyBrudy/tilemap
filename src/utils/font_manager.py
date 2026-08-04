@@ -50,13 +50,27 @@ class FontManager:
             self._fonts: dict[str, pygame.font.Font] = {}
             self._font_families: dict[str, dict[str, str]] = {}
             self._default_family = "Arial"
-            self._assets_path = Path(__file__).parent.parent.parent / "assets" / "fonts"
+            self._assets_path = self._resolve_assets_path()
             logger.info(f"Font Manager initializing - Assets path: {self._assets_path}")
             self._load_font_families()
             logger.info(
                 f"Font Manager initialized with {len(self._font_families)} font families"
             )
             FontManager._initialized = True
+
+    @staticmethod
+    def _resolve_assets_path() -> Path:
+        """Find bundled fonts in package data, falling back to the dev layout."""
+        try:
+            from importlib.resources import files
+
+            pkg_path = files("tilemap_editor.assets") / "fonts"
+            path = Path(str(pkg_path))
+            if path.exists() and any(path.iterdir()):
+                return path
+        except (ImportError, TypeError, OSError):
+            pass
+        return Path(__file__).parent.parent.parent / "assets" / "fonts"
 
     def _load_font_families(self):
         """Load available font families from assets directory."""
