@@ -114,23 +114,37 @@ class RegionSelector:
         self.on_region_modified: Callable[[Region], None] | None = None
         self.on_selection_changed: Callable[[str | None], None] | None = None
 
+    def _get_center_offset(self) -> tuple[int, int]:
+        """Calculate centering offset for image within rect"""
+        if not self.image:
+            return (0, 0)
+        
+        img_w = int(self.image.get_width() * self.zoom)
+        img_h = int(self.image.get_height() * self.zoom)
+        center_off_x = max(0, (self.rect.w - img_w) // 2)
+        center_off_y = max(0, (self.rect.h - img_h) // 2)
+        return (center_off_x, center_off_y)
+
     def _image_to_screen(self, x: int, y: int) -> tuple[int, int]:
         """Convert image coordinates to screen coordinates"""
+        center_off_x, center_off_y = self._get_center_offset()
         return (
-            self.rect.x + int(x * self.zoom) - self.scroll_x,
-            self.rect.y + int(y * self.zoom) - self.scroll_y,
+            self.rect.x + int(x * self.zoom) - self.scroll_x + center_off_x,
+            self.rect.y + int(y * self.zoom) - self.scroll_y + center_off_y,
         )
 
     def _screen_to_image(self, x: int, y: int) -> tuple[int, int]:
+        center_off_x, center_off_y = self._get_center_offset()
         return (
-            int((x - self.rect.x + self.scroll_x) / self.zoom),
-            int((y - self.rect.y + self.scroll_y) / self.zoom),
+            int((x - self.rect.x + self.scroll_x - center_off_x) / self.zoom),
+            int((y - self.rect.y + self.scroll_y - center_off_y) / self.zoom),
         )
 
     def _screen_to_image_float(self, x: int, y: int) -> tuple[float, float]:
+        center_off_x, center_off_y = self._get_center_offset()
         return (
-            (x - self.rect.x + self.scroll_x) / self.zoom,
-            (y - self.rect.y + self.scroll_y) / self.zoom,
+            (x - self.rect.x + self.scroll_x - center_off_x) / self.zoom,
+            (y - self.rect.y + self.scroll_y - center_off_y) / self.zoom,
         )
 
     def _clamp_scroll(self) -> None:

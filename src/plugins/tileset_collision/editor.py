@@ -59,7 +59,6 @@ class TilesetCollisionEditor:
         self.rect = rect
         self.consumer = consumer
         self.visible = True
-
         if provider is not None:
             self._provider = provider
             self._tileset_surface = provider.get_surface()
@@ -791,17 +790,25 @@ class TilesetCollisionEditor:
         if not self.tileset_selector_rect.collidepoint(mouse):
             return None
 
-        rel_x = mouse[0] - self.tileset_selector_rect.x + self.tileset_scroll_x
-        rel_y = mouse[1] - self.tileset_selector_rect.y + self.tileset_scroll_y
-
         tw = int(self._tile_size[0] * self.tileset_zoom)
         th = int(self._tile_size[1] * self.tileset_zoom)
+
+        # Calculate centering offset (same as in _draw_tileset_selector)
+        tileset_scr_w = self.tile_cols * tw
+        tileset_scr_h = self.tile_rows * th
+        center_off_x = max(0, (self.tileset_selector_rect.w - tileset_scr_w) // 2)
+        center_off_y = max(0, (self.tileset_selector_rect.h - tileset_scr_h) // 2)
+
+        # Apply centering offset to mouse calculation
+        rel_x = mouse[0] - self.tileset_selector_rect.x + self.tileset_scroll_x - center_off_x
+        rel_y = mouse[1] - self.tileset_selector_rect.y + self.tileset_scroll_y - center_off_y
 
         col = rel_x // tw
         row = rel_y // th
 
         if 0 <= col < self.tile_cols and 0 <= row < self.tile_rows:
-            return row * self.tile_cols + col
+            tile_id = row * self.tile_cols + col
+            return tile_id
 
         return None
 
