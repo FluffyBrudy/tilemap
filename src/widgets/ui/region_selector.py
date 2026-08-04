@@ -118,7 +118,7 @@ class RegionSelector:
         """Calculate centering offset for image within rect"""
         if not self.image:
             return (0, 0)
-        
+
         img_w = int(self.image.get_width() * self.zoom)
         img_h = int(self.image.get_height() * self.zoom)
         center_off_x = max(0, (self.rect.w - img_w) // 2)
