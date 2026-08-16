@@ -20,6 +20,7 @@ class Button(WidgetBase):
         font=None,
         text_color=None,
         accent=False,
+        danger=False,
         bg=None,
         border_color=None,
         border_radius=None,
@@ -43,6 +44,7 @@ class Button(WidgetBase):
         self.font = font or FONTS.get_medium_font()
         self._text_color = text_color
         self.accent = accent
+        self.danger = danger
         self.on_click = on_click
         self._active = False
         self._hovered = False
@@ -92,18 +94,30 @@ class Button(WidgetBase):
             border = COLORS.border
             text_color = self._text_color or COLORS.text
         elif self._pressed:
-            bg = COLORS.accent_active if self.accent else COLORS.header
+            bg = (
+                COLORS.accent_active
+                if self.accent
+                else (COLORS.danger_hover if self.danger else COLORS.header)
+            )
             border = COLORS.border
             text_color = self._text_color or COLORS.text
         elif self._hovered:
-            bg = COLORS.accent_hover if self.accent else COLORS.hover
+            bg = (
+                COLORS.accent_hover
+                if self.accent
+                else (COLORS.danger_hover if self.danger else COLORS.hover)
+            )
             border = COLORS.border
             text_color = self._text_color or COLORS.text
         else:
             bg = (
                 self._bg
                 if self._bg is not None
-                else (COLORS.accent if self.accent else COLORS.panel_alt)
+                else (
+                    COLORS.accent
+                    if self.accent
+                    else COLORS.danger if self.danger else COLORS.panel_alt
+                )
             )
             border = self._border if self._border is not None else COLORS.border_soft
             text_color = self._text_color or COLORS.text

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pygame
 from pygame import Rect, Surface
 
-from layers import Layer
+from utils.context_dispatch import ContextKind, PropertyContext
 from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
@@ -64,6 +64,10 @@ class LayerSelector:
 
         self.font_header = FONTS.get_bold_font(FONTS.size_md)
         self.font_layer = FONTS.get_small_font()
+
+        d = self.editor.context_dispatch
+        d.register_opener(ContextKind.LAYER, self._open_layer_properties)
+        d.register_saver(ContextKind.LAYER, self._save_layer_properties)
 
     def resize(self, x: int, y: int, w: int, h: int):
         self.rect = Rect(x, y, w, h)
@@ -149,14 +153,8 @@ class LayerSelector:
                     if layer_idx is not None:
                         layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
                         if layer:
-                            self.editor.property_editor = PropertyEditor(
-                                self.editor,
-                                f"Layer Properties: {layer.name}",
-                                layer.properties,
-                                on_save=lambda props: self._save_layer_properties(
-                                    layer, props
-                                ),
-                                on_close=lambda: None,
+                            self.editor.context_dispatch.open(
+                                PropertyContext(ContextKind.LAYER, layer)
                             )
                         return True
 
@@ -406,7 +404,17 @@ class LayerSelector:
         self.rename_text = ""
         self.rename_original_name = ""
 
-    def _save_layer_properties(self, layer: Layer, props: dict):
+    def _open_layer_properties(self, ctx: PropertyContext) -> None:
+        layer = ctx.target
+        self.editor.property_editor = PropertyEditor(
+            self.editor,
+            f"Layer Properties: {layer.name}",
+            layer.properties,
+            context=ctx,
+        )
+
+    def _save_layer_properties(self, ctx: PropertyContext, props: dict):
+        layer = ctx.target
         layer.properties = props
         self.editor.suggestion_registry.refresh(self.editor)
         print(f"Saved properties for layer: {layer.name}")
@@ -547,7 +555,7 @@ class LayerSelector:
             if ysort_rect:
                 ysort_color = COLORS.accent if layer.y_sort else COLORS.text_dim
                 pygame.draw.rect(
-                    screen, ysort_color, ysort_rect, 
+                    screen, ysort_color, ysort_rect,
                     border_radius=SHAPE.radius_sm,
                 )
                 ysort_txt = self.font_layer.render("Y", True, COLORS.text)

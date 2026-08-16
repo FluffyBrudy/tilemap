@@ -23,6 +23,7 @@ from pathlib import Path
 import pygame
 import pytest
 
+from utils.context_dispatch import PropertyContextDispatcher
 from widgets.tile_selector import TileSelector
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -50,6 +51,7 @@ class FakeTilemap:
 class FakeEditor:
     def __init__(self, tile_size=(32, 32)):
         self.tilemap = FakeTilemap(tile_size)
+        self.context_dispatch = PropertyContextDispatcher()
 
 
 def _make_selector(tile_size=(32, 32)) -> "TileSelector":
@@ -192,3 +194,42 @@ class TestSelectTileByVariantObjectTileset:
         sel = _make_selector()
         idx = _add_object_tileset(sel, _make_surface(32, 32))
         assert sel.select_tile_by_variant(idx, 99) is True
+
+
+class TestObjectTilesetClickSelection:
+    """Clicking an object tileset's image selects the whole surface."""
+
+    def _set_cursor(self, monkeypatch, pos):
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: pos)
+
+    def test_motion_over_object_tileset_sets_hover(self, monkeypatch):
+        sel = _make_selector()
+        idx = _add_object_tileset(sel, _make_surface(80, 96))
+        sel.select_tile_by_variant(idx, 0)
+        self._set_cursor(monkeypatch, (150, 50))
+        event = pygame.event.Event(pygame.MOUSEMOTION, pos=(150, 50))
+        assert sel.handle_event(event) is True
+        assert sel.hover_pos == (0, 0)
+
+    def test_motion_outside_object_tileset_clears_hover(self, monkeypatch):
+        sel = _make_selector()
+        idx = _add_object_tileset(sel, _make_surface(80, 96))
+        sel.select_tile_by_variant(idx, 0)
+        sel.hover_pos = (0, 0)
+        self._set_cursor(monkeypatch, (380, 50))
+        event = pygame.event.Event(pygame.MOUSEMOTION, pos=(380, 50))
+        assert sel.handle_event(event) is True
+        assert sel.hover_pos is None
+
+    def test_click_on_object_tileset_selects_whole_surface(self, monkeypatch):
+        sel = _make_selector()
+        surf = _make_surface(80, 96)
+        idx = _add_object_tileset(sel, surf)
+        sel.select_tile_by_variant(idx, 0)
+        sel.hover_pos = None
+        self._set_cursor(monkeypatch, (150, 50))
+        move = pygame.event.Event(pygame.MOUSEMOTION, pos=(150, 50))
+        assert sel.handle_event(move) is True
+        click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(150, 50))
+        assert sel.handle_event(click) is True
+        assert sel.selected_tile == (0, 0, 80, 96)

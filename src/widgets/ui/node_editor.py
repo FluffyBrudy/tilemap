@@ -5,6 +5,7 @@ from pygame import Rect
 
 if TYPE_CHECKING:
     from editor import Editor
+from utils.context_dispatch import ContextKind, PropertyContext
 from utils.font_manager import FontWeight, font_manager
 from widgets.particle_presets import PRESETS, get_preset_config, get_preset_names
 from widgets.ui.draw_utils import draw_panel
@@ -36,6 +37,10 @@ class NodeEditor:
         self._preset_owner: str | None = None
         self._preset_names: list[str] = get_preset_names()
         self._is_particle = False
+
+        d = self.editor.context_dispatch
+        d.register_opener(ContextKind.NODE, self._open_node_properties)
+        d.register_saver(ContextKind.NODE, self._save_props)
 
     def resize(self, x: int, y: int, w: int):
         self.rect = Rect(x, y, w, self.rect.height)
@@ -215,12 +220,8 @@ class NodeEditor:
                         if action == "props":
                             node = mgr.get_active_node()
                             if node:
-                                self.editor.property_editor = PropertyEditor(
-                                    self.editor,
-                                    f"Node Properties: {node.name}",
-                                    dict(node.properties),
-                                    on_save=lambda props: self._save_props(props),
-                                    on_close=lambda: None,
+                                self.editor.context_dispatch.open(
+                                    PropertyContext(ContextKind.NODE, node)
                                 )
                         elif action == "particle":
                             node = mgr.get_active_node()
@@ -352,8 +353,19 @@ class NodeEditor:
         except (ValueError, TypeError):
             return default
 
-    def _save_props(self, props: dict):
-        node = self.editor.node_manager.get_active_node()
+    def _open_node_properties(self, ctx: PropertyContext) -> None:
+        node = ctx.target
+        if node is None:
+            return
+        self.editor.property_editor = PropertyEditor(
+            self.editor,
+            f"Node Properties: {node.name}",
+            dict(node.properties),
+            context=ctx,
+        )
+
+    def _save_props(self, ctx: PropertyContext, props: dict):
+        node = ctx.target
         if node:
             node.properties = props
             self.editor.suggestion_registry.refresh(self.editor)

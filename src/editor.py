@@ -21,6 +21,7 @@ from constants import BASE_PATH
 from node_manager import NodeManager
 from tilemap import Tilemap
 from utils import error_context, error_handler
+from utils.context_dispatch import PropertyContextDispatcher
 from utils.property_suggestions import PropertySuggestionRegistry
 from utils.standalone import launch_standalone
 from widgets.autotiler import AutotileRuleDesigner
@@ -214,6 +215,7 @@ class Editor:
         self.notifications = NotificationManager(self)
         self.tooltip = TooltipManager()
         self.suggestion_registry = PropertySuggestionRegistry()
+        self.context_dispatch = PropertyContextDispatcher()
         self.error_console_process: subprocess.Popen | None = None
         self.property_editor: PropertyEditor | None = None
         self.particle_config_dialog: ParticleConfigDialog | None = None

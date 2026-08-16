@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 import pygame
 from pygame import Rect
 
+from utils.context_dispatch import ContextKind, PropertyContext
 from utils.error_handler import error_handler
 from utils.validation import is_image_multipleof
 from widgets.ui.button import Button
@@ -77,6 +78,17 @@ class TileSelector(WidgetBase):
         self.zoom: float = 1.0
         self.font = FONTS.get_medium_font()
 
+        self._register_context_handlers()
+
+    def _register_context_handlers(self):
+        d = self.editor.context_dispatch
+        d.register_opener(ContextKind.TILESET, self._open_tileset_properties)
+        d.register_saver(ContextKind.TILESET, self._save_tileset_properties)
+        d.register_opener(ContextKind.TILE_VARIANT, self._open_tile_variant_properties)
+        d.register_saver(ContextKind.TILE_VARIANT, self._save_tile_properties_multi)
+        d.register_opener(ContextKind.MAP_OBJECT, self._open_object_properties)
+        d.register_saver(ContextKind.MAP_OBJECT, self._save_object_properties)
+
     def _add_folder(self) -> None:
         self._folder_id_counter += 1
         folder = TreeNode(
@@ -113,13 +125,51 @@ class TileSelector(WidgetBase):
         ts = self._ts_node(item_id)
         if ts is None:
             return
+        self.editor.context_dispatch.open(PropertyContext(ContextKind.TILESET, ts))
+
+    def _open_tileset_properties(self, ctx: PropertyContext) -> None:
+        ts = ctx.target
         self.editor.property_editor = PropertyEditor(
             self.editor,
             f"Tileset Properties: {ts.name}",
             ts.properties,
-            on_save=lambda props: self._save_tileset_properties(ts, props),
-            on_close=lambda: None,
+            context=ctx,
         )
+
+    def _open_tile_variant_properties(self, ctx: PropertyContext) -> None:
+        ts = ctx.target
+        variant_ids = ctx.extra.get("variant_ids", [])
+        if not variant_ids:
+            return
+        variant_id = variant_ids[0]
+        self.editor.property_editor = PropertyEditor(
+            self.editor,
+            f"Tile Properties: {ts.name} (ID: {variant_id})",
+            ts.tile_properties.get(variant_id, {}),
+            context=ctx,
+        )
+
+    def _open_object_properties(self, ctx: PropertyContext) -> None:
+        obj = ctx.target
+        if obj is None:
+            return
+        title = f"Object Properties: {ctx.extra.get('layer_name', '')} #{ctx.extra.get('obj_id', '?')}"
+        ts_name = ctx.extra.get("tileset_name")
+        if ts_name:
+            title = f"{title} ({ts_name})"
+        self.editor.property_editor = PropertyEditor(
+            self.editor,
+            title,
+            obj.get("properties", {}),
+            context=ctx,
+        )
+
+    def _save_object_properties(self, ctx: PropertyContext, props: dict) -> None:
+        obj = ctx.target
+        if obj is None:
+            return
+        obj["properties"] = props
+        self.editor.suggestion_registry.refresh(self.editor)
 
     def _on_tree_structure_changed(self) -> None:
         pass
@@ -221,11 +271,14 @@ class TileSelector(WidgetBase):
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
+                ts = self.tilesets[self.active_idx]
+                if ts.tileset_type == "object":
+                    self.editor.context_dispatch.open(
+                        PropertyContext(ContextKind.TILESET, ts)
+                    )
+                    return True
                 if self.selected_tile:
                     sx, sy, sw, sh = self.selected_tile
-                    ts = self.tilesets[self.active_idx]
-                    if ts.tileset_type == "object":
-                        return True
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
                     sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
@@ -235,20 +288,18 @@ class TileSelector(WidgetBase):
                         if not variant_ids:
                             return True
 
-                        variant_id = variant_ids[0]
-
-                        self.editor.property_editor = PropertyEditor(
-                            self.editor,
-                            f"Tile Properties: {ts.name} (ID: {variant_id})",
-                            ts.tile_properties.get(variant_id, {}),
-                            on_save=lambda props: self._save_tile_properties_multi(ts, variant_ids, props),
-                            on_close=lambda: None,
+                        self.editor.context_dispatch.open(
+                            PropertyContext(
+                                ContextKind.TILE_VARIANT,
+                                ts,
+                                {"variant_ids": variant_ids},
+                            )
                         )
                         return True
 
                 self.is_panning = True
                 self.pan_start = mouse_pos
-                self.pan_start_offset = tuple(self.tilesets[self.active_idx].offset)
+                self.pan_start_offset = tuple(ts.offset)
                 return True
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
@@ -289,9 +340,19 @@ class TileSelector(WidgetBase):
                 ts = self.tilesets[self.active_idx]
                 img_x = self.view_rect.x + ts.offset[0]
                 img_y = self.view_rect.y + ts.offset[1]
-
                 rel_x = (mouse_pos[0] - img_x) / self.zoom
                 rel_y = (mouse_pos[1] - img_y) / self.zoom
+                if ts.tileset_type == "object":
+                    if (
+                        0 <= rel_x < ts.surface.get_width()
+                        and 0 <= rel_y < ts.surface.get_height()
+                    ):
+                        self.hover_pos = (0, 0)
+                    else:
+                        self.hover_pos = None
+                    self.is_selecting = False
+                    self.selection_start_grid = None
+                    return True
 
                 if 0 <= rel_x < ts.surface.get_width() and 0 <= rel_y < ts.surface.get_height():
                     tw, th = self.editor.tilemap.tile_size
@@ -574,7 +635,8 @@ class TileSelector(WidgetBase):
 
         self.editor.launch_collision_editor(ts.tileset_type)
 
-    def _save_tileset_properties(self, ts: TilesetData, props: dict):
+    def _save_tileset_properties(self, ctx: PropertyContext, props: dict):
+        ts = ctx.target
         ts.properties = props
         self.editor.suggestion_registry.refresh(self.editor)
         print(f"Saved properties for tileset: {ts.name}")
@@ -583,7 +645,9 @@ class TileSelector(WidgetBase):
         ts.tile_properties[variant_id] = props
         print(f"Saved properties for tile {variant_id} in tileset: {ts.name}")
 
-    def _save_tile_properties_multi(self, ts: TilesetData, variant_ids: list[int], props: dict):
+    def _save_tile_properties_multi(self, ctx: PropertyContext, props: dict):
+        ts = ctx.target
+        variant_ids = ctx.extra.get("variant_ids", [])
         for vid in variant_ids:
             ts.tile_properties[vid] = props.copy()
         self.editor.suggestion_registry.refresh(self.editor)
@@ -612,6 +676,11 @@ class TileSelector(WidgetBase):
         if self.active_idx == -1:
             return None
         return self.tilesets[self.active_idx]
+
+    def get_tileset_by_index(self, index: int) -> TilesetData | None:
+        if index < 0 or index >= len(self.tilesets):
+            return None
+        return self.tilesets[index]
 
     def select_tile_by_variant(self, tileset_index: int, variant_id: int) -> bool:
         if tileset_index < 0 or tileset_index >= len(self.tilesets):
@@ -801,6 +870,8 @@ class TileSelector(WidgetBase):
 
     def draw_hover(self, screen, ts: TilesetData, img_x: int, img_y: int):
         if self.hover_pos is None:
+            return
+        if ts.tileset_type == "object":
             return
         tw, th = self.editor.tilemap.tile_size
         col, row = self.hover_pos
