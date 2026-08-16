@@ -5,6 +5,7 @@ from pygame import K_LEFT, K_RIGHT, K_UP, Rect, Surface
 
 from nodes import NodeRect
 from ttypes.tilemap import TypeObject, TypeTile
+from utils.context_dispatch import ContextKind, PropertyContext
 from widgets.particle_system import MAX_DT, ParticlePreview
 from widgets.ui.drag_tracker import DragTracker
 from widgets.ui.theme import COLORS
@@ -429,7 +430,7 @@ class TileGrid:
                     return True
 
             if event.button == 3:
-                if is_hovering and self.hover_cell:
+                if is_hovering and self.hover_cell and not self._open_object_properties_if_hit(mouse_pos):
                     self.pick_tile_at(self.hover_cell)
                 return True
 
@@ -777,7 +778,7 @@ class TileGrid:
             world_pos = self.screen_to_world(mouse_pos)
             rs = self.editor.tilemap.render_scale
             pick_pos = (int(world_pos[0] / rs), int(world_pos[1] / rs)) if rs else world_pos
-            for _obj_id, obj in active_layer.get_all_objects().items():
+            for _obj_id, obj in reversed(list(active_layer.get_all_objects().items())):
                 area = obj["area"]
                 obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
                 if obj_rect.collidepoint(pick_pos):
@@ -785,6 +786,43 @@ class TileGrid:
                     variant = obj["variant"]
                     ts_widget.select_tile_by_variant(ttype, variant)
                     return
+
+    def _open_object_properties_if_hit(self, mouse_pos: tuple[int, int]) -> bool:
+        """Open the placed object's own properties under the cursor.
+
+        Returns True when an object was hit (event consumed), False otherwise
+        so the caller can fall back to the eyedropper behavior.
+        """
+        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+        if not active_layer or active_layer.layer_type != "object":
+            return False
+
+        ts_widget = self.editor.tileset_widget
+        if not ts_widget:
+            return False
+
+        world_pos = self.screen_to_world(mouse_pos)
+        rs = self.editor.tilemap.render_scale
+        pick_pos = (int(world_pos[0] / rs), int(world_pos[1] / rs)) if rs else world_pos
+
+        for obj_id, obj in reversed(list(active_layer.get_all_objects().items())):
+            area = obj["area"]
+            obj_rect = Rect(area["x"], area["y"], area["w"], area["h"])
+            if obj_rect.collidepoint(pick_pos):
+                ts = ts_widget.get_tileset_by_index(int(obj["ttype"]))
+                self.editor.context_dispatch.open(
+                    PropertyContext(
+                        ContextKind.MAP_OBJECT,
+                        obj,
+                        {
+                            "obj_id": obj_id,
+                            "layer_name": active_layer.name,
+                            "tileset_name": ts.name if ts else None,
+                        },
+                    )
+                )
+                return True
+        return False
 
     def _point_in_selection(self, grid_pos: tuple[int, int]) -> bool:
         """Check if a grid position is inside the current selection."""

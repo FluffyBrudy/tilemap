@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any
 import pygame
 from pygame import Rect, Surface
 
+from utils.context_dispatch import PropertyContext
+
 from .button import Button
 from .draw_utils import truncate_text
 from .theme import COLORS, FONTS
@@ -18,13 +20,13 @@ class PropertyEditor:
         editor: "Editor",
         title: str,
         properties: dict[str, Any],
-        on_save: Callable[[dict[str, Any]], None],
-        on_close: Callable[[], None],
+        context: PropertyContext,
+        on_close: Callable[[], None] | None = None,
     ):
         self.editor = editor
         self.title = title
         self.properties = properties.copy()
-        self.on_save = on_save
+        self.context = context
         self.on_close = on_close
 
         self.active = True
@@ -58,34 +60,43 @@ class PropertyEditor:
         btn_h = 30
         btn_w = 100
         btn_y = self.rect.bottom - 40
-        self.btn_save = Button(
-            Rect(self.rect.right - btn_w - 10, btn_y, btn_w, btn_h),
-            "Save",
-            font=self.font_label,
-            on_click=self._on_save_click,
-        )
         self.btn_cancel = Button(
             Rect(self.rect.x + 10, btn_y, btn_w, btn_h),
             "Cancel",
             font=self.font_label,
             on_click=self._on_cancel_click,
         )
-        self.btn_add = Button(
+        self.btn_remove = Button(
             Rect(self.rect.centerx - btn_w // 2, btn_y, btn_w, btn_h),
+            "Remove",
+            font=self.font_label,
+            danger=True,
+            on_click=self._on_remove_click,
+        )
+        self.btn_add = Button(
+            Rect(self.rect.right - 10 - btn_w, btn_y, btn_w, btn_h),
             "Add Prop",
             font=self.font_label,
             on_click=self._on_add_click,
         )
+        self.btn_remove.enabled = False
 
-    def _on_save_click(self):
-        self.on_save(self.properties)
+    def _commit_save(self):
+        """Dispatch the staged properties to the context target, then close."""
+        if not self.editor.context_dispatch.save(self.context, self.properties):
+            self.editor.notifications.notify(
+                "Cannot save: no property handler for this target"
+            )
+            return
         self.active = False
         self._ghost_text = ""
-        self.on_close()
+        if self.on_close:
+            self.on_close()
 
     def _on_cancel_click(self):
         self.active = False
-        self.on_close()
+        if self.on_close:
+            self.on_close()
 
     def _on_add_click(self):
         self.is_entering_new_key = True
@@ -93,9 +104,42 @@ class PropertyEditor:
         self.selected_key = None
         self.editing_value = False
         self._ghost_text = self.editor.suggestion_registry.key_ghost("")
+        self._update_remove_enabled()
+
+    def _on_remove_click(self):
+        if self.is_entering_new_key or not self.selected_key:
+            return
+        if self.selected_key in self.properties:
+            del self.properties[self.selected_key]
+        self.selected_key = None
+        self.editing_value = False
+        self.input_text = ""
+        self.is_entering_new_key = False
+        self._ghost_text = ""
+        self._update_remove_enabled()
+
+    def _update_remove_enabled(self):
+        self.btn_remove.enabled = (
+            self.selected_key is not None and not self.is_entering_new_key
+        )
+
+    def _title_display(self) -> tuple[str, bool]:
+        max_w = self.rect.right - (self.rect.x + 20) - 20
+        return truncate_text(self.title, self.font_title, max_w)
 
     def _update_hovered_tooltip(self, mouse_pos):
         self._hovered_truncated = None
+        _, title_truncated = self._title_display()
+        if title_truncated:
+            title_rect = Rect(
+                self.rect.x + 20,
+                self.rect.y + 8,
+                self.rect.right - (self.rect.x + 20) - 20,
+                28,
+            )
+            if title_rect.collidepoint(mouse_pos):
+                self._hovered_truncated = self.title
+                return
         content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
         if content_rect.collidepoint(mouse_pos):
             rel_y = mouse_pos[1] - content_rect.y + self.scroll_y
@@ -116,9 +160,9 @@ class PropertyEditor:
 
         mouse_pos = pygame.mouse.get_pos()
 
-        if self.btn_save.handle_event(event):
-            return True
         if self.btn_cancel.handle_event(event):
+            return True
+        if self.btn_remove.handle_event(event):
             return True
         if self.btn_add.handle_event(event):
             return True
@@ -140,11 +184,13 @@ class PropertyEditor:
                             self.selected_key, self.input_text
                         )
                         self.is_entering_new_key = False
+                        self._update_remove_enabled()
                         return True
                     self.selected_key = None
                     self.editing_value = False
                     self._ghost_text = ""
                     self.is_entering_new_key = False
+                    self._update_remove_enabled()
 
             elif event.button == 4:
                 self.scroll_y = max(0, self.scroll_y - 20)
@@ -182,7 +228,8 @@ class PropertyEditor:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self.active = False
-                self.on_close()
+                if self.on_close:
+                    self.on_close()
                 return True
 
             if self.is_entering_new_key:
@@ -196,6 +243,7 @@ class PropertyEditor:
                             self.selected_key, self.input_text
                         )
                         self.is_entering_new_key = False
+                        self._update_remove_enabled()
                     return True
                 if event.key == pygame.K_TAB:
                     if self._ghost_text:
@@ -239,7 +287,9 @@ class PropertyEditor:
                     self.properties[self.selected_key] = val
                     self.editing_value = False
                     self._ghost_text = ""
-                elif event.key == pygame.K_TAB:
+                    self._commit_save()
+                    return True
+                if event.key == pygame.K_TAB:
                     if self._ghost_text:
                         self.input_text = self.input_text + self._ghost_text
                         self._ghost_text = ""
@@ -269,6 +319,10 @@ class PropertyEditor:
                         )
                 return True
 
+            if event.key == pygame.K_RETURN:
+                self._commit_save()
+                return True
+
         return True
 
     def draw(self, screen: Surface):
@@ -284,7 +338,8 @@ class PropertyEditor:
         pygame.draw.rect(screen, COLORS.panel, self.rect, border_radius=8)
         pygame.draw.rect(screen, COLORS.border, self.rect, 2, border_radius=8)
 
-        title_surf = self.font_title.render(self.title, True, COLORS.text)
+        title_text, _ = self._title_display()
+        title_surf = self.font_title.render(title_text, True, COLORS.text)
         screen.blit(title_surf, (self.rect.x + 20, self.rect.y + 10))
 
         content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
@@ -393,8 +448,9 @@ class PropertyEditor:
 
         screen.set_clip(clip)
 
-        self.btn_save.draw(screen)
+        self._update_remove_enabled()
         self.btn_cancel.draw(screen)
+        self.btn_remove.draw(screen)
         self.btn_add.draw(screen)
 
         if self._hovered_truncated:
