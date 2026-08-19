@@ -24,6 +24,18 @@ GRID_INACTIVE = (60, 64, 72)
 GRID_CENTER = (97, 175, 239)
 
 
+_NEIGHBOR_ORDER = (
+    (-1, -1),
+    (0, -1),
+    (1, -1),
+    (-1, 0),
+    (1, 0),
+    (-1, 1),
+    (0, 1),
+    (1, 1),
+)
+
+
 class AutotileRule:
     def __init__(
         self,
@@ -47,7 +59,13 @@ class AutotileRule:
 
     @staticmethod
     def from_dict(data: dict):
-        neighbors = {tuple(n) for n in data["neighbors"]}
+        raw = data["neighbors"]
+        if raw and all(isinstance(n, int) for n in raw):
+            if len(raw) != 8:
+                raise ValueError(f"neighbors bitmask must have 8 entries, got {len(raw)}")
+            neighbors = {d for on, d in zip(raw, _NEIGHBOR_ORDER, strict=True) if on}
+        else:
+            neighbors = {tuple(n) for n in raw}
         return AutotileRule(
             name=data["name"],
             neighbors=neighbors,

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -158,16 +159,41 @@ def _load_project_config() -> tuple[Path, Path, dict]:
 _launch_standalone_module = launch_standalone
 
 
+def _display_load_path(path: Path) -> Path:
+    """Path shown in the SANDBOX load toast: CWD-relative when possible."""
+    try:
+        return path.resolve().relative_to(Path.cwd())
+    except ValueError:
+        return path
+
+
 class Editor:
     def __init__(
         self,
         size: tuple[int, int] | None = None,
         fps=60,
         theme: str | None = None,
+        sandbox_dir: Path | None = None,
     ):
         self.base_path, self.data_root, self.config = _load_project_config()
         logger.info(f"Project base_path: {self.base_path}")
         logger.info(f"Data root: {self.data_root}")
+
+        self.is_sandbox = sandbox_dir is not None
+        self._project_data_root = self.data_root
+        self._sandbox_root: Path | None = None
+        self._sandbox_map_path: Path | None = None
+        if sandbox_dir is not None:
+            sandbox = Path(sandbox_dir)
+            self._sandbox_root = sandbox
+            self._sandbox_map_path = sandbox / "map.json"
+            self.data_root = sandbox
+            log_root = sandbox / "logs"
+            log_root.mkdir(parents=True, exist_ok=True)
+            from utils.error_handler import init_error_handler
+
+            init_error_handler(log_root=log_root, config=self.config["error_handler"])
+            logger.info(f"Sandbox mode: data_root redirected to {sandbox}")
 
         theme_name = theme or self.config.get("theme", "dark")
         tm = get_theme_manager()
@@ -176,7 +202,9 @@ class Editor:
             tm.set_theme("dark")
 
         pygame.init()
-        pygame.display.set_caption("Pure Pygame Editor")
+        pygame.display.set_caption(
+            "Tilemap Editor - SANDBOX" if self.is_sandbox else "Pure Pygame Editor"
+        )
 
         self.fps = fps
         self.running = False
@@ -450,15 +478,86 @@ class Editor:
 
     def do_save_as(self, filename: str):
         try:
+            if self.is_sandbox:
+                target = self.data_root / filename
+                self._sandbox_save_as(target)
+                return
             self.tilemap.save_map(filename)
         except Exception as e:
             error_handler.capture(e, context="save_map_as")
 
     def on_map_save_selected(self, path: Path):
         try:
+            if self.is_sandbox:
+                self._sandbox_save_as(path)
+                return
             self.tilemap.save_map(path)
         except Exception as e:
             error_handler.capture(e, context="save_map_selected")
+
+    def _sandbox_save_as(self, path: Path):
+        """Save As from sandbox: copy assets into the target map dir first.
+
+        Assets must land next to the saved map BEFORE save_map runs, and each
+        loaded tileset path must be re-pointed at the copied file, so the saved
+        JSON gets clean project-relative 'assets/...' paths instead of
+        '../sandbox/...' escapes.
+        """
+        assets_src = self._sandbox_root / "assets"
+        if not assets_src.is_dir():
+            self.notifications.error("Export failed", "No assets/ directory in sandbox")
+            return
+        assets_dst = Path(path).parent / "assets"
+        conflicts = []
+        if assets_dst.is_dir():
+            conflicts = [p.name for p in assets_src.iterdir() if p.is_file() and (assets_dst / p.name).exists()]
+        if conflicts:
+            names = ", ".join(sorted(conflicts)[:5])
+            more = f" (+{len(conflicts) - 5} more)" if len(conflicts) > 5 else ""
+            self.confirm_dialog.show(
+                title="Overwrite Assets?",
+                message=(
+                    f"{len(conflicts)} asset file(s) already exist in {assets_dst.name}/: "
+                    f"{names}{more}\nThey will be overwritten by the sandbox copies."
+                ),
+                on_confirm=lambda: self._sandbox_export_map(path, assets_src, assets_dst),
+                on_cancel=lambda: None,
+            )
+            return
+        self._sandbox_export_map(path, assets_src, assets_dst)
+
+    def _sandbox_export_map(self, path: Path, assets_src: Path, assets_dst: Path):
+        try:
+            assets_dst.mkdir(parents=True, exist_ok=True)
+            for src in assets_src.iterdir():
+                if src.is_file():
+                    shutil.copy2(src, assets_dst / src.name)
+
+            ts_widget = getattr(self, "tileset_widget", None)
+            if ts_widget is not None and self._sandbox_root is not None:
+                sandbox_root = self._sandbox_root.resolve()
+                for ts in ts_widget.tilesets:
+                    ts_path = getattr(ts, "path", None)
+                    if ts_path is None:
+                        continue
+                    try:
+                        inside_sandbox = ts_path.resolve().is_relative_to(sandbox_root)
+                    except OSError:
+                        inside_sandbox = False
+                    if inside_sandbox:
+                        ts.path = assets_dst / ts_path.name
+
+            self.tilemap.save_map(path)
+
+            self.data_root = self._project_data_root
+            self.is_sandbox = False
+            if hasattr(self, "node_manager"):
+                self.node_manager.reset_nodes_dir()
+            self.notifications.success(f"Exported to {path.name}")
+            logger.info(f"Sandbox session exported to {path}; data_root restored to {self.data_root}")
+        except Exception as e:
+            error_handler.capture(e, context="sandbox_export")
+            self.notifications.error("Export failed", str(e))
 
     def export_selection_as_png(self):
         if self.tile_grid_widget is None:
@@ -1262,6 +1361,18 @@ class Editor:
     def run(self):
         self.running = True
         frame_count = 0
+        if self._sandbox_map_path is not None:
+            map_path = self._sandbox_map_path
+            self._sandbox_map_path = None
+            try:
+                if map_path.is_file():
+                    self.start_async_load_map(map_path)
+                    self.notifications.notify(
+                        f"SANDBOX mode: loaded {_display_load_path(map_path)}",
+                        duration=4.0,
+                    )
+            except Exception as e:
+                logger.warning(f"Sandbox auto-load failed: {e}")
         while self.running:
             self._poll_async_load()
             self._poll_file_manager_result()

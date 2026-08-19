@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -120,15 +121,35 @@ class CharacterCollisionEditor:
 
     def _rel_path(self, path: Path) -> str:
         try:
-            return str(path.relative_to(self._data_root)) if self._data_root else str(path.resolve())
+            if self._data_root:
+                return os.path.relpath(path.resolve(), self._data_root.resolve())
+            return str(path.resolve())
         except ValueError:
             return str(path.resolve())
 
-    def _resolve_image_path(self, image_path: str) -> Path | None:
+    def _resolve_image_path(
+        self, image_path: str, base: Path | None = None
+    ) -> Path | None:
+        """Resolve an image reference, mirroring animation runtime_load.
+
+        Tries, in order: relative to *base* and each of its ancestors (the
+        collision file's directory, so ``../../`` refs resolve), relative to
+        the data root, then CWD-relative / absolute as-is.
+        """
         p = Path(image_path)
-        if not p.is_absolute() and self._data_root:
-            p = self._data_root / p
-        return p if p.exists() else None
+        if p.is_absolute():
+            return p if p.exists() else None
+        candidates: list[Path] = []
+        if base is not None:
+            candidates.append(base / p)
+            candidates.extend(parent / p for parent in base.parents)
+        if self._data_root is not None:
+            candidates.append(self._data_root / p)
+        candidates.append(p)
+        for cand in candidates:
+            if cand.exists():
+                return cand
+        return None
 
     def _load_sprite_from_path(self, path: Path) -> bool:
         try:
@@ -297,8 +318,14 @@ class CharacterCollisionEditor:
             },
         )
 
-    def load_collision_data(self, data: CharacterCollisionData) -> None:
-        """Load collision data + auto-resolve sprite from image_path"""
+    def load_collision_data(
+        self, data: CharacterCollisionData, resolve_base: Path | None = None
+    ) -> None:
+        """Load collision data + auto-resolve sprite from image_path.
+
+        resolve_base: directory the image_path is relative to (the loaded
+        collision file's parent); falls back to the data root.
+        """
         self.character_name = data.name
         self._name_input.text = data.name
         self._name_input.cursor_pos = len(data.name)
@@ -309,9 +336,10 @@ class CharacterCollisionEditor:
 
         self._image_path = data.image_path
         if self._image_path:
-            resolved = self._resolve_image_path(self._image_path)
+            resolved = self._resolve_image_path(self._image_path, base=resolve_base)
             if resolved:
                 self._load_sprite_from_path(resolved)
+                self._image_path = self._rel_path(resolved)
                 self._toast_manager.success(f"Sprite loaded: {resolved.name}")
 
         self.shape_editor.load_shape_data(data.shape.to_dict())
@@ -392,7 +420,7 @@ class CharacterCollisionEditor:
                 data_dict = json.load(f)
             self._validate_collision_data(data_dict)
             data = CharacterCollisionData.from_dict(data_dict)
-            self.load_collision_data(data)
+            self.load_collision_data(data, resolve_base=path.parent)
         except json.JSONDecodeError:
             raise ValueError("Invalid collision file: not valid JSON") from None
         except KeyError as e:
