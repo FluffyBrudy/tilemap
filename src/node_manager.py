@@ -44,7 +44,11 @@ class NodeManager:
         self.active_group_name = None
         sidecar = self._sidecar_path_for(map_path)
         if not sidecar.is_file():
-            return
+            fallback = map_path.parent / f"{map_path.stem}.nodes.json"
+            if fallback.is_file():
+                sidecar = fallback
+            else:
+                return
         try:
             raw = json.loads(sidecar.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):

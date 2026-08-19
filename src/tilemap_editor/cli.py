@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from editor import Editor
 from utils import error_context, error_handler
+from utils.project_paths import resolve_project_path
 
 from .settings import init_settings, update_settings
 
@@ -49,6 +52,15 @@ def main() -> None:
         default=None,
         help='Theme name or path to .json theme file (e.g. "molokai", "path/to/custom.json")',
     )
+    run_parser.add_argument(
+        "--sandbox",
+        nargs="?",
+        const="sandbox",
+        default=None,
+        metavar="PATH",
+        help="Run in sandbox mode: load map.json + assets/ from PATH (default: ./sandbox). "
+        "Directory-only; throws away project isolation for experiment maps.",
+    )
 
     args = parser.parse_args()
 
@@ -67,6 +79,56 @@ def main() -> None:
     parser.print_help()
 
 
+def validate_sandbox(sandbox: Path) -> Path:
+    """Pre-flight validation for --sandbox mode.
+
+    Returns the resolved map path. Exits (SystemExit 1) with a message when
+    the sandbox directory, map.json, or any referenced tileset is missing.
+    """
+    sandbox = Path(sandbox).expanduser()
+    if not sandbox.is_dir():
+        print(
+            f"Sandbox directory not found: {sandbox}\n"
+            "Expected layout:\n"
+            "  sandbox/\n"
+            "    map.json          # map exported by PixelForge VFX Studio\n"
+            "    map.nodes.json    # optional node sidecar (same stem)\n"
+            "    assets/*.png      # tileset images referenced by map.json\n"
+            "Create the folder + export, or pass a path: tilemap-editor run --sandbox PATH"
+        )
+        sys.exit(1)
+
+    map_path = sandbox / "map.json"
+    if not map_path.is_file():
+        print(f"Sandbox map not found: {map_path}\nExpected a map.json exported into the sandbox directory.")
+        sys.exit(1)
+
+    try:
+        with open(map_path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Failed to read sandbox map {map_path}: {e}")
+        sys.exit(1)
+
+    resources = payload.get("resources", {})
+    tilesets = resources if isinstance(resources, list) else resources.get("tilesets", []) if isinstance(resources, dict) else []
+
+    missing: list[str] = []
+    for entry in tilesets:
+        path_str = entry if isinstance(entry, str) else entry.get("path", "")
+        if not path_str:
+            continue
+        resolved = resolve_project_path(path_str, map_path.parent, must_exist=True)
+        if not resolved.is_file():
+            missing.append(f"  {path_str} (tried: {resolved})")
+
+    if missing:
+        print("Sandbox tileset files missing:\n" + "\n".join(missing))
+        sys.exit(1)
+
+    return map_path
+
+
 def _run_editor(args) -> None:
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
@@ -80,7 +142,11 @@ def _run_editor(args) -> None:
     try:
         with error_context("cli_main"):
             size = _parse_size(args.size)
-            editor = Editor(size=size, fps=max(1, args.fps), theme=args.theme)
+            sandbox_dir = None
+            if getattr(args, "sandbox", None):
+                sandbox_dir = validate_sandbox(Path(args.sandbox))
+                sandbox_dir = sandbox_dir.parent
+            editor = Editor(size=size, fps=max(1, args.fps), theme=args.theme, sandbox_dir=sandbox_dir)
             editor.run()
     except KeyboardInterrupt:
         print("\nEditor interrupted by user")
