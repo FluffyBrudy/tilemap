@@ -34,6 +34,10 @@ class NodeManager:
             self._nodes_dir = self.editor.data_root / rel
         return self._nodes_dir
 
+    def reset_nodes_dir(self) -> None:
+        """Drop the cached dir so the next access re-derives from data_root."""
+        self._nodes_dir = None
+
     def _sidecar_path_for(self, map_path: Path) -> Path:
         return self.nodes_dir / f"{map_path.stem}.nodes.json"
 
@@ -44,7 +48,11 @@ class NodeManager:
         self.active_group_name = None
         sidecar = self._sidecar_path_for(map_path)
         if not sidecar.is_file():
-            return
+            fallback = map_path.parent / f"{map_path.stem}.nodes.json"
+            if fallback.is_file():
+                sidecar = fallback
+            else:
+                return
         try:
             raw = json.loads(sidecar.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
