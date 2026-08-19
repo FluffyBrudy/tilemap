@@ -1,6 +1,16 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 4.4.0 (2026-08-19)
+
+## Features
+
+- Property editor: added a remove button for individual properties and object-level property support. Right-clicking a map object, tileset image, or tree row now opens the property editor through a context dispatch system, and object properties can be edited on the placed object directly. (context-property-editor)
+
+## Bug Fixes
+
+- Object picking on object layers now hits the visually topmost overlapping object: right-click property open and left-click variant select test objects in reverse draw order. (object-pick-order)
+
 # tilemap_editor 4.3.9 (2026-08-04)
 
 ## Bug Fixes
