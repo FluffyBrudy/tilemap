@@ -19,7 +19,12 @@ from pygame import Rect
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from plugins.sprite_editor.document import Region  # noqa: E402
-from plugins.sprite_editor.editor import SpriteEditor, STATUS_H, TOOLBAR_H  # noqa: E402
+from plugins.sprite_editor.editor import (  # noqa: E402
+    MENU_H,
+    STATUS_H,
+    TOOLBAR_H,
+    SpriteEditor,
+)
 from plugins.sprite_editor.tools import PasteTool, RegionTool, SelectTool  # noqa: E402
 from plugins.sprite_editor.viewport import HEADER_H  # noqa: E402
 
@@ -29,6 +34,9 @@ def init_pygame():
     pygame.init()
     pygame.display.set_mode((1, 1))
     pygame.key.set_mods(0)
+    from utils.font_manager import font_manager
+
+    font_manager.clear_cache()
     yield
     pygame.key.set_mods(0)
     pygame.quit()
@@ -55,7 +63,8 @@ def ev(t, **kw):
 
 def screen_for(cell):
     """Center of a cell on screen at zoom 1, scroll 0, content below header."""
-    return (cell[0] * 32 + 16, TOOLBAR_H + HEADER_H + cell[1] * 32 + 16)
+    top = MENU_H + TOOLBAR_H
+    return (cell[0] * 32 + 16, top + HEADER_H + cell[1] * 32 + 16)
 
 
 def click(ed, pos, button=1):
@@ -94,7 +103,7 @@ class TestSelectionFlow:
         click(editor, screen_for((0, 0)))
         assert editor.selection.cells == {(0, 0)}
         # click below the canvas
-        click(editor, (16, TOOLBAR_H + 200))
+        click(editor, (16, MENU_H + TOOLBAR_H + 200))
         assert not editor.selection
 
     def test_ctrl_click_toggles(self, editor):
@@ -108,7 +117,7 @@ class TestSelectionFlow:
 
     def test_ctrl_drag_marquee(self, editor):
         pygame.key.set_mods(pygame.KMOD_CTRL)
-        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(4, TOOLBAR_H + 4)))
+        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(4, MENU_H + TOOLBAR_H + 4)))
         editor.handle_event(ev(pygame.MOUSEMOTION, pos=screen_for((2, 2))))
         editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=screen_for((2, 2))))
         pygame.key.set_mods(0)
@@ -151,7 +160,7 @@ class TestCopyPaste:
         click(editor, screen_for((0, 0)))
         editor._on_copy()
         editor._on_paste()
-        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(16, TOOLBAR_H + 300)))
+        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(16, MENU_H + TOOLBAR_H + 300)))
         assert isinstance(editor._active_tool, SelectTool)
         assert any("canceled" in n.text.lower() for n in editor._notifications.notifications)
 
@@ -181,9 +190,9 @@ class TestCopyPaste:
         click(editor, screen_for((1, 1)))
         assert pixel_at(editor.doc, 1, 1)[:3] == (100, 60, 200)
 
-    def test_cut_button_exists(self, editor):
-        btn = editor._get_btn("cut")
-        assert btn is not None
+    def test_cut_lives_in_edit_menu(self, editor):
+        edit_menu = next(m for m in editor.menubar.menus if m.label == "Edit")
+        assert any(getattr(a, "label", "") == "Cut" for a in edit_menu.actions)
 
     def test_paste_after_scale_lands_in_current_grid_cells(self, editor):
         # P6: clipboard survives scale; pastes land in (dx,dy) cells of the new grid
@@ -281,18 +290,18 @@ class TestRegionTool:
 
     def test_create_region(self, editor):
         editor._on_mode_changed("grid", "regions")
-        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(16, TOOLBAR_H + HEADER_H + 16)))
-        editor.handle_event(ev(pygame.MOUSEMOTION, pos=(100, TOOLBAR_H + HEADER_H + 100)))
-        editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(100, TOOLBAR_H + HEADER_H + 100)))
+        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(16, MENU_H + TOOLBAR_H + HEADER_H + 16)))
+        editor.handle_event(ev(pygame.MOUSEMOTION, pos=(100, MENU_H + TOOLBAR_H + HEADER_H + 100)))
+        editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(100, MENU_H + TOOLBAR_H + HEADER_H + 100)))
         assert len(editor.doc.regions) == 1
         r = editor.doc.regions[0]
         assert r.x == 16 and r.y == 16 and r.w == 84 and r.h == 84
 
     def test_create_clamps_to_doc(self, editor):
         editor._on_mode_changed("grid", "regions")
-        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(16, TOOLBAR_H + HEADER_H + 16)))
-        editor.handle_event(ev(pygame.MOUSEMOTION, pos=(600, TOOLBAR_H + HEADER_H + 600)))
-        editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(600, TOOLBAR_H + HEADER_H + 600)))
+        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(16, MENU_H + TOOLBAR_H + HEADER_H + 16)))
+        editor.handle_event(ev(pygame.MOUSEMOTION, pos=(600, MENU_H + TOOLBAR_H + HEADER_H + 600)))
+        editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(600, MENU_H + TOOLBAR_H + HEADER_H + 600)))
         r = editor.doc.regions[0]
         assert r.w <= 128 and r.h <= 128
 
@@ -301,9 +310,9 @@ class TestRegionTool:
         for zoom, label in [(0.5, "out"), (4.0, "in")]:
             editor.camera.zoom = zoom
             # 4 screen px drag → 8/0.5=16 world px at 0.5x; 1 world px at 4x
-            editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(100, TOOLBAR_H + HEADER_H + 100)))
-            editor.handle_event(ev(pygame.MOUSEMOTION, pos=(104, TOOLBAR_H + HEADER_H + 104)))
-            editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(104, TOOLBAR_H + HEADER_H + 104)))
+            editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(100, MENU_H + TOOLBAR_H + HEADER_H + 100)))
+            editor.handle_event(ev(pygame.MOUSEMOTION, pos=(104, MENU_H + TOOLBAR_H + HEADER_H + 104)))
+            editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(104, MENU_H + TOOLBAR_H + HEADER_H + 104)))
             assert not editor.doc.regions, f"tiny drag at zoom {zoom} must be rejected"
             assert any("small" in n.text.lower() for n in editor._notifications.notifications)
 
@@ -427,18 +436,25 @@ class TestRegionTool:
 class TestChrome:
     def test_toolbar_groups_and_separators(self, editor):
         tags = [getattr(b, "_tag", "") for b in editor._buttons]
+        # file cluster
         assert "open" in tags and "save" in tags
-        assert "undo" in tags and "redo" in tags and "cut" in tags and "copy" in tags and "paste" in tags
-        assert "flip_x" in tags and "flip_y" in tags and "scale" in tags
-        assert "grid" in tags and "fit" in tags and "zoom_in" in tags and "zoom_out" in tags and "zoom_0" in tags
+        # edit cluster trimmed to undo/redo; cut/copy/paste live in Edit menu
+        assert "undo" in tags and "redo" in tags
+        assert "cut" not in tags and "copy" not in tags and "paste" not in tags
+        # transforms collapsed into a dropdown
+        assert "transform" in tags
+        assert "flip_x" not in tags and "flip_y" not in tags and "scale" not in tags
+        # view cluster + right-aligned export
+        assert "grid" in tags and "fit" in tags
+        assert "zoom_in" in tags and "zoom_out" in tags and "zoom_pct" in tags
         assert "export_all" in tags
-        assert len(editor._separators) >= 4
-        # two rows: row-2 buttons sit below row-1 buttons, all inside the window
-        row1_y = editor._get_btn("open").rect.y
-        row2_y = editor._get_btn("export_all").rect.y
-        assert row2_y > row1_y
+        assert len(editor._separators) >= 3
+        # single row: everything shares the same band, export hugs the edge
+        row_y = editor._get_btn("open").rect.y
+        assert editor._get_btn("export_all").rect.y == row_y
+        for tag in ("save", "undo", "redo", "transform", "grid", "fit"):
+            assert editor._get_btn(tag).rect.y == row_y, tag
         assert editor._get_btn("export_all").rect.right <= 1000
-        assert editor._get_btn("stack").rect.right <= 1000
 
     def test_zoom_buttons(self, editor):
         editor._on_zoom_in()
@@ -489,7 +505,7 @@ class TestChrome:
         # not just the sheet bounds
         screen = pygame.Surface((1000, 700))
         editor.draw(screen)
-        content_y = TOOLBAR_H + HEADER_H
+        content_y = MENU_H + TOOLBAR_H + HEADER_H
         line_color = (120, 120, 120)  # COLORS.text_muted default theme
         # vertical line at world x=96 (col 3 edge), inside the sheet
         vx = round(editor.camera.world_to_screen(96, 0)[0])
@@ -591,7 +607,7 @@ class TestStacking:
     def test_stack_horizontal(self, tmp_path, editor):
         green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
         editor._toggle_stack()
-        assert editor._get_btn("stack").text == "Stack H"
+        assert editor._stack_horizontal is True
         self._load(editor, tmp_path, [("frame_1.png", green), ("frame_2.png", red), ("frame_11.png", blue)])
         doc = editor.doc
         assert doc.surface.get_size() == (96, 16)  # horizontal stack: sum_w, max_h
@@ -599,12 +615,47 @@ class TestStacking:
         assert doc.surface.get_at((48, 8))[:3] == red
         assert doc.surface.get_at((80, 8))[:3] == blue
 
+    def test_click_order_preserved_when_sort_off(self, tmp_path, editor):
+        """Unchecked Natural Sort -> sheets stack in the order they were picked."""
+        green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
+        editor._toggle_sort_natural()
+        assert editor._sort_natural is False
+        # _load passes reversed(colors) to _on_add_sheets, so this simulates
+        # picking frame_11 -> frame_2 -> frame_1 in the dialog
+        self._load(
+            editor,
+            tmp_path,
+            [("frame_1.png", green), ("frame_2.png", red), ("frame_11.png", blue)],
+        )
+        doc = editor.doc
+        assert doc.sheets == ["frame_11.png", "frame_2.png", "frame_1.png"]
+        # vertical stack: pick order runs top -> bottom
+        assert doc.surface.get_size() == (32, 48)
+        assert doc.surface.get_at((16, 8))[:3] == blue
+        assert doc.surface.get_at((16, 24))[:3] == red
+        assert doc.surface.get_at((16, 40))[:3] == green
+
+    def test_natural_sort_still_default(self, tmp_path, editor):
+        green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
+        assert editor._sort_natural is True
+        self._load(
+            editor,
+            tmp_path,
+            [("frame_11.png", blue), ("frame_2.png", red), ("frame_1.png", green)],
+        )
+        assert editor.doc.sheets == ["frame_1.png", "frame_2.png", "frame_11.png"]
+        assert editor.doc.surface.get_at((16, 8))[:3] == green
+        assert editor.doc.surface.get_at((16, 40))[:3] == blue
+
     def test_stack_toggle_roundtrip(self, editor):
         assert editor._stack_horizontal is False
-        assert editor._get_btn("stack").text == "Stack V"
         editor._toggle_stack()
         assert editor._stack_horizontal is True
-        assert editor._get_btn("stack").text == "Stack H"
+        file_menu = next(m for m in editor.menubar.menus if m.label == "File")
+        stack_action = next(
+            a for a in file_menu.actions if getattr(a, "label", "") == "Stack Horizontally"
+        )
+        assert stack_action.is_checked() is True
         editor._toggle_stack()
         assert editor._stack_horizontal is False
-        assert editor._get_btn("stack").text == "Stack V"
+        assert stack_action.is_checked() is False

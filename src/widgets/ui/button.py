@@ -89,26 +89,31 @@ class Button(WidgetBase):
         return False
 
     def draw(self, surface):
+        on_accent = False
         if self._active:
             bg = COLORS.accent_active
             border = COLORS.border
-            text_color = self._text_color or COLORS.text
+            on_accent = True
         elif self._pressed:
-            bg = (
-                COLORS.accent_active
-                if self.accent
-                else (COLORS.danger_hover if self.danger else COLORS.header)
-            )
+            if self.accent:
+                bg = COLORS.accent_active
+                on_accent = True
+            elif self.danger:
+                bg = COLORS.danger_hover
+                on_accent = True
+            else:
+                bg = COLORS.header
             border = COLORS.border
-            text_color = self._text_color or COLORS.text
         elif self._hovered:
-            bg = (
-                COLORS.accent_hover
-                if self.accent
-                else (COLORS.danger_hover if self.danger else COLORS.hover)
-            )
+            if self.accent:
+                bg = COLORS.accent_hover
+                on_accent = True
+            elif self.danger:
+                bg = COLORS.danger_hover
+                on_accent = True
+            else:
+                bg = COLORS.hover
             border = COLORS.border
-            text_color = self._text_color or COLORS.text
         else:
             bg = (
                 self._bg
@@ -120,7 +125,12 @@ class Button(WidgetBase):
                 )
             )
             border = self._border if self._border is not None else COLORS.border_soft
-            text_color = self._text_color or COLORS.text
+            on_accent = (
+                self._bg is None and (self.accent or self.danger)
+            )
+
+        fallback_text = COLORS.text_on_accent if on_accent else COLORS.text
+        text_color = self._text_color or fallback_text
 
         if not self._enabled:
             bg = COLORS.panel_alt

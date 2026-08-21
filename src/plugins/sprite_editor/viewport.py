@@ -31,6 +31,8 @@ class Viewport:
         self.doc = doc
         self.camera = camera
         self.selection = selection
+        self.show_grid = True
+        self.show_regions = True
         self._sheet_cache: dict[tuple, Surface] = {}
         self._last_sheet_key: tuple | None = None
         self._last_sheet: Surface | None = None
@@ -100,10 +102,12 @@ class Viewport:
                 self._draw_empty(screen)
                 return
             self._draw_sheet(screen)
-            self._draw_grid(screen)
+            if self.show_grid:
+                self._draw_grid(screen)
             draw_selection_fill(screen, self.doc, self.camera, self.selection)
             if tool is not None:
-                tool.draw_overlay(screen)
+                if self.show_regions or getattr(tool, "overlay_kind", "") != "regions":
+                    tool.draw_overlay(screen)
         finally:
             screen.set_clip(prev_clip)
 

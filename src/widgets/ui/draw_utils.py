@@ -35,7 +35,7 @@ def draw_button(
         if hover:
             bg = COLORS.accent_hover
         border = COLORS.border_soft
-        text_col = COLORS.text
+        text_col = COLORS.text_on_accent
     else:
         bg = COLORS.header if hover else COLORS.panel_alt
         border = COLORS.border_soft

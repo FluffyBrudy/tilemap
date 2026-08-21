@@ -70,20 +70,20 @@ class Checkbox:
 
     def draw(self, screen: Surface) -> None:
         if self._disabled:
-            box_color = (50, 50, 55)
-            border_color = (55, 55, 60)
-            text_color = (90, 90, 100)
-            check_color = (100, 100, 100)
+            box_color = COLORS.panel
+            border_color = COLORS.border_soft
+            text_color = COLORS.text_muted
+            check_color = COLORS.text_muted
         elif self._checked:
             box_color = COLORS.success
-            border_color = (60, 140, 90)
+            border_color = COLORS.success
             text_color = COLORS.text_dim
-            check_color = (255, 255, 255)
+            check_color = COLORS.text
         else:
-            box_color = (55, 55, 60)
-            border_color = (65, 65, 70)
+            box_color = COLORS.panel
+            border_color = COLORS.border
             text_color = COLORS.text_dim
-            check_color = (200, 200, 200)
+            check_color = COLORS.text_dim
 
         cb_y = self.rect.y + (self.rect.h - CHECKBOX_SIZE) // 2
         check_rect = Rect(self.rect.x, cb_y, CHECKBOX_SIZE, CHECKBOX_SIZE)

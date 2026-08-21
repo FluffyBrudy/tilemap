@@ -12,6 +12,7 @@ from widgets.particle_system import (
     FLOAT_FIELDS,
     PARTICLE_SHAPES,
 )
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -102,14 +103,14 @@ class Dropdown:
     def draw(
         self, screen: Surface, bg: tuple[int, int, int], border: tuple[int, int, int]
     ):
-        pygame.draw.rect(screen, bg, self.rect, border_radius=3)
-        pygame.draw.rect(screen, border, self.rect, 1, border_radius=3)
-        font = pygame.font.SysFont("Arial", 13)
-        txt = font.render(self.selected, True, (220, 220, 220))
+        pygame.draw.rect(screen, bg, self.rect, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(screen, border, self.rect, 1, border_radius=SHAPE.radius_sm)
+        font = FONTS.get_font(13)
+        txt = font.render(self.selected, True, COLORS.text)
         screen.blit(txt, (self.rect.x + 4, self.rect.y + 3))
         pygame.draw.polygon(
             screen,
-            (160, 160, 160),
+            COLORS.text_dim,
             [
                 (self.rect.right - 10, self.rect.y + 6),
                 (self.rect.right - 4, self.rect.y + 6),
@@ -120,7 +121,7 @@ class Dropdown:
     def draw_options(self, screen: Surface):
         if not self.open:
             return
-        font = pygame.font.SysFont("Arial", 13)
+        font = FONTS.get_font(13)
         lo, hi = self._visible_range()
 
         full_h = self._total_height()
@@ -136,14 +137,16 @@ class Dropdown:
             opt = self.options[i]
             is_selected = opt == self.selected
             opt_bg = (
-                (60, 70, 90)
-                if self.hover_idx == i
-                else (50, 55, 65)
+                COLORS.selected
                 if is_selected
-                else (40, 44, 50)
+                else COLORS.hover
+                if self.hover_idx == i
+                else COLORS.header
             )
             pygame.draw.rect(screen, opt_bg, r, border_radius=2)
-            txt = font.render(opt, True, (220, 220, 220))
+            txt = font.render(
+                opt, True, COLORS.text_on_accent if is_selected else COLORS.text
+            )
             screen.blit(txt, (r.x + 4, r.y + 3))
 
         screen.set_clip(old_clip)
@@ -152,7 +155,7 @@ class Dropdown:
             arrow_y = clip.y
             pygame.draw.polygon(
                 screen,
-                (160, 160, 160),
+                COLORS.text_dim,
                 [
                     (clip.x + clip.width // 2, arrow_y + 4),
                     (clip.x + clip.width // 2 - 5, arrow_y + 10),
@@ -163,7 +166,7 @@ class Dropdown:
             arrow_y = clip.bottom - 10
             pygame.draw.polygon(
                 screen,
-                (160, 160, 160),
+                COLORS.text_dim,
                 [
                     (clip.x + clip.width // 2, arrow_y + 6),
                     (clip.x + clip.width // 2 - 5, arrow_y),
@@ -210,17 +213,17 @@ class Slider:
         return self.min_val + t * (self.max_val - self.min_val)
 
     def draw(self, screen: Surface, accent: tuple[int, int, int]):
-        pygame.draw.rect(screen, (35, 38, 42), self.rect, border_radius=3)
+        pygame.draw.rect(screen, COLORS.bg, self.rect, border_radius=SHAPE.radius_sm)
         fr = self.fill_rect
         if fr.width > 0:
-            pygame.draw.rect(screen, accent, fr, border_radius=3)
+            pygame.draw.rect(screen, accent, fr, border_radius=SHAPE.radius_sm)
         thumb_x = fr.right if fr.width > 0 else self.rect.x + 2
         thumb_y = self.rect.y + self.rect.height // 2
-        pygame.draw.circle(screen, (200, 200, 220), (thumb_x, thumb_y), THUMB_R)
-        pygame.draw.circle(screen, (255, 255, 255), (thumb_x, thumb_y), THUMB_R - 2)
-        font = pygame.font.SysFont("Arial", 11)
+        pygame.draw.circle(screen, COLORS.text_dim, (thumb_x, thumb_y), THUMB_R)
+        pygame.draw.circle(screen, COLORS.text, (thumb_x, thumb_y), THUMB_R - 2)
+        font = FONTS.get_small_font()
         val_str = self.fmt.format(self.value)
-        txt = font.render(val_str, True, (255, 255, 255))
+        txt = font.render(val_str, True, COLORS.text)
         screen.blit(txt, (self.fill_rect.right + 6, self.rect.y + 3))
 
     @property
@@ -345,10 +348,10 @@ class ColorField:
             self._cache_key = cache_key
 
         surf = self._cache_surf.copy()
-        bri_surf = Surface((field_w, field_h), pygame.SRCALPHA)
-        dark = int((1.0 - self.bri) * 255)
-        bri_surf.fill((0, 0, 0, dark))
-        surf.blit(bri_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        bri_surf = Surface((field_w, field_h))
+        level = max(0, min(255, int(self.bri * 255)))
+        bri_surf.fill((level, level, level))
+        surf.blit(bri_surf, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
         screen.blit(surf, self.rect.topleft)
 
         cx = int((self.hue / 360) * field_w)
@@ -372,7 +375,7 @@ class ColorField:
                 (strip_x + strip_w, self.rect.y + y),
             )
         pygame.draw.rect(
-            screen, (60, 64, 69), Rect(strip_x, self.rect.y, strip_w, field_h), 1
+            screen, COLORS.border, Rect(strip_x, self.rect.y, strip_w, field_h), 1
         )
 
         by = self.rect.y + int((1.0 - self.bri) * field_h)
@@ -551,41 +554,40 @@ class ColorPicker:
         for i, label in enumerate(["Start", "End"]):
             tr = self._tab_rect(i)
             is_active = i == self.active_tab
-            tab_bg = (50, 60, 80) if is_active else (35, 38, 42)
-            pygame.draw.rect(screen, tab_bg, tr, border_radius=3)
-            pygame.draw.rect(screen, (60, 64, 69), tr, 1, border_radius=3)
-            t = pygame.font.SysFont("Arial", 12, bold=is_active).render(
-                label, True, (220, 220, 220)
-            )
-            screen.blit(t, t.get_rect(center=tr.center))
+            tab_bg = COLORS.selected if is_active else COLORS.bg
+            pygame.draw.rect(screen, tab_bg, tr, border_radius=SHAPE.radius_sm)
+            pygame.draw.rect(screen, COLORS.border, tr, 1, border_radius=SHAPE.radius_sm)
+            t = FONTS.get_bold_font(12) if is_active else FONTS.get_font(12)
+            tab_lbl = t.render(label, True, COLORS.text)
+            screen.blit(tab_lbl, tab_lbl.get_rect(center=tr.center))
 
         self._get_active_colors()
         for i in range(2):
             sr = self._swatch_rect(i)
             c = self.start_colors if i == 0 else self.end_colors
-            pygame.draw.rect(screen, (c["r"], c["g"], c["b"]), sr, border_radius=3)
-            pygame.draw.rect(screen, (80, 84, 89), sr, 1, border_radius=3)
+            pygame.draw.rect(screen, (c["r"], c["g"], c["b"]), sr, border_radius=SHAPE.radius_sm)
+            pygame.draw.rect(screen, COLORS.border, sr, 1, border_radius=SHAPE.radius_sm)
             if i == self.active_tab:
-                pygame.draw.rect(screen, (255, 255, 255), sr, 2, border_radius=3)
+                pygame.draw.rect(screen, COLORS.text, sr, 2, border_radius=SHAPE.radius_sm)
 
         self.field.draw(screen)
 
         rects = self._slider_rects()
-        font = pygame.font.SysFont("Arial", 11)
+        font = FONTS.get_small_font()
         for i, (label, accent, r, lx) in enumerate(rects):
             val = self._slider_values[i]
             ltxt = font.render(label, True, accent)
             screen.blit(ltxt, (lx, r.y + 2))
-            vtxt = font.render(str(int(val)), True, (180, 180, 180))
+            vtxt = font.render(str(int(val)), True, COLORS.text_dim)
             screen.blit(vtxt, (lx + 16, r.y + 2))
-            pygame.draw.rect(screen, (35, 38, 42), r, border_radius=2)
+            pygame.draw.rect(screen, COLORS.bg, r, border_radius=2)
             fw = int((val / 255) * (r.width - 4))
             if fw > 0:
                 fr = Rect(r.x + 2, r.y + (r.height - TRACK_H) // 2, fw, TRACK_H)
                 pygame.draw.rect(screen, accent, fr, border_radius=2)
             tx = r.x + 2 + fw
             ty = r.y + r.height // 2
-            pygame.draw.circle(screen, (200, 200, 220), (tx, ty), 5)
+            pygame.draw.circle(screen, COLORS.text_dim, (tx, ty), 5)
 
 
 class ParticleConfigDialog:
@@ -611,9 +613,9 @@ class ParticleConfigDialog:
         )
 
         self.scroll_y = 0
-        self.font_title = pygame.font.SysFont("Arial", 16, bold=True)
-        self.font_section = pygame.font.SysFont("Arial", 13, bold=True)
-        self.font_label = pygame.font.SysFont("Arial", 12)
+        self.font_title = FONTS.get_bold_font(16)
+        self.font_section = FONTS.get_bold_font(13)
+        self.font_label = FONTS.get_font(12)
 
         self.sliders: list[tuple[str, Slider]] = []
         self.dropdowns: list[tuple[str, Dropdown]] = []
@@ -643,7 +645,7 @@ class ParticleConfigDialog:
             sl = Slider(sr, lbl, mn, mx, val, "{:.1f}" if mn < 1 else "{:.0f}")
             self.sliders.append((key, sl))
             self._slider_base_y[key] = y
-            self.font_label.render(lbl, True, (180, 180, 180))
+            self.font_label.render(lbl, True, COLORS.text_dim)
             y += ROW_H
 
         def add_dropdown(key: str, opts: list[str]):
@@ -755,10 +757,10 @@ class ParticleConfigDialog:
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
 
-        pygame.draw.rect(screen, (30, 34, 39), self.rect, border_radius=6)
-        pygame.draw.rect(screen, (50, 54, 59), self.rect, 2, border_radius=6)
+        pygame.draw.rect(screen, COLORS.panel, self.rect, border_radius=6)
+        pygame.draw.rect(screen, COLORS.border_soft, self.rect, 2, border_radius=6)
 
-        title = self.font_title.render("Particle Emitter Config", True, (255, 255, 255))
+        title = self.font_title.render("Particle Emitter Config", True, COLORS.text)
         screen.blit(title, (self.rect.x + 14, self.rect.y + 14))
 
         content_rect = Rect(
@@ -774,7 +776,7 @@ class ParticleConfigDialog:
 
         for base_y, text in self._section_positions:
             sy = cy + (base_y - self.rect.y - 44)
-            s = self.font_section.render(text, True, (160, 190, 240))
+            s = self.font_section.render(text, True, COLORS.accent_hover)
             screen.blit(s, (self.rect.x + CONTENT_X, sy))
 
         for key, dd in self.dropdowns:
@@ -782,18 +784,18 @@ class ParticleConfigDialog:
             draw_y = cy + (base_y - self.rect.y - 44)
             dd.rect.y = int(draw_y)
             lbl = key.replace("_", " ").title()
-            l = self.font_label.render(lbl, True, (180, 180, 180))
+            l = self.font_label.render(lbl, True, COLORS.text_dim)
             screen.blit(l, (self.rect.x + CONTENT_X, draw_y + 3))
-            dd.draw(screen, (40, 44, 50), (60, 64, 69))
+            dd.draw(screen, COLORS.header, COLORS.border)
 
         for key, sl in self.sliders:
             base_y = self._slider_base_y.get(key, sl.rect.y)
             draw_y = cy + (base_y - self.rect.y - 44)
             sl.rect.y = int(draw_y)
             lbl = FLOAT_FIELDS.get(key, (0, 0, ""))[2]
-            l = self.font_label.render(lbl, True, (180, 180, 180))
+            l = self.font_label.render(lbl, True, COLORS.text_dim)
             screen.blit(l, (self.rect.x + CONTENT_X, draw_y + 2))
-            sl.draw(screen, (70, 130, 220))
+            sl.draw(screen, COLORS.accent)
 
         colors_base_y = self._colors_y
         cp_y = cy + (colors_base_y - self.rect.y - 44)
@@ -806,9 +808,9 @@ class ParticleConfigDialog:
         screen.set_clip(clip)
 
         for btn, text, col in [
-            (self.btn_save, "Save", (40, 150, 80)),
-            (self.btn_cancel, "Cancel", (150, 60, 60)),
+            (self.btn_save, "Save", COLORS.success),
+            (self.btn_cancel, "Cancel", COLORS.danger_hover),
         ]:
             pygame.draw.rect(screen, col, btn, border_radius=4)
-            t = self.font_label.render(text, True, (255, 255, 255))
+            t = self.font_label.render(text, True, COLORS.text)
             screen.blit(t, t.get_rect(center=btn.center))

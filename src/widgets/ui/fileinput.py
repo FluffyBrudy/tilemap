@@ -150,8 +150,13 @@ class FilenameInput:
                     sugg_rect.x, sugg_rect.y + i * box_h, sugg_rect.width, box_h
                 )
 
-                if i == self.selected_suggestion_idx:
+                is_sel = i == self.selected_suggestion_idx
+                if is_sel:
                     pygame.draw.rect(screen, COLORS.selected, row_rect)
 
-                s_txt = self.font.render(suggestion, True, COLORS.text_dim)
+                s_txt = self.font.render(
+                    suggestion,
+                    True,
+                    COLORS.text_on_accent if is_sel else COLORS.text_dim,
+                )
                 screen.blit(s_txt, (row_rect.x + 10, row_rect.y + 4))

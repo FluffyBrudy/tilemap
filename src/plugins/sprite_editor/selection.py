@@ -94,6 +94,14 @@ class Selection:
         result.replace(cells)
         return result
 
+    def select_all(self, doc) -> None:
+        """Select every cell of the canvas."""
+        self._cells = {
+            (col, row)
+            for col in range(doc.origin_col, doc.origin_col + doc.cols)
+            for row in range(doc.origin_row, doc.origin_row + doc.rows)
+        }
+
     def sorted_cells(self) -> list[tuple[int, int]]:
         """Linearly-sorted cells (row-major) for snapshots/persistence."""
         return sorted(self._cells, key=lambda c: (c[1], c[0]))

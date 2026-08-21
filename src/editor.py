@@ -615,9 +615,6 @@ class Editor:
         self.width = width
         self.height = height
 
-        menu_h = 30
-        toolbar_h = 35
-
         if hasattr(self, "menubar") and self.menubar:
             self.menubar.resize(width)
 

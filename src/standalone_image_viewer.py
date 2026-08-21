@@ -3,10 +3,16 @@ Standalone Image Viewer with Grid/Spritesheet Support
 Opens images in a scrollable window with optional grid overlay for spritesheets.
 """
 
+import os
 import sys
 from pathlib import Path
 
 import pygame
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from utils.standalone import load_standalone_theme  # noqa: E402
+from widgets.ui.theme import FONTS  # noqa: E402
 
 
 class ImageViewer:
@@ -49,9 +55,9 @@ class ImageViewer:
         self.cols_input_focused = False
         self.show_controls = True
 
-        self.font_main = pygame.font.SysFont("Arial", 14)
-        self.font_bold = pygame.font.SysFont("Arial", 14, bold=True)
-        self.font_small = pygame.font.SysFont("Arial", 11)
+        self.font_main = FONTS.get_font(14)
+        self.font_bold = FONTS.get_bold_font(14)
+        self.font_small = FONTS.get_small_font()
 
         self.colors = {
             "bg": (30, 32, 36),
@@ -412,6 +418,7 @@ def main():
         print(f"Error: Image file not found: {image_path}")
         sys.exit(1)
 
+    load_standalone_theme()
     viewer = ImageViewer(image_path)
     viewer.run()
 

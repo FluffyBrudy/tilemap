@@ -21,6 +21,7 @@ class UIColorSet:
     text: Color = (230, 230, 230)
     text_dim: Color = (150, 150, 150)
     text_muted: Color = (120, 120, 120)
+    text_on_accent: Color = (255, 255, 255)
     accent: Color = (80, 120, 200)
     accent_hover: Color = (100, 140, 220)
     accent_active: Color = (70, 110, 190)
@@ -141,12 +142,35 @@ SEMI_LIGHT_COLORS = UIColorSet(
     selected=(60, 100, 160),
 )
 
+MONOKAI_COLORS = UIColorSet(
+    bg=(39, 40, 34),
+    panel=(45, 46, 39),
+    panel_alt=(34, 35, 30),
+    header=(50, 51, 43),
+    border=(94, 92, 78),
+    border_soft=(74, 75, 66),
+    text=(248, 248, 242),
+    text_dim=(166, 162, 145),
+    text_muted=(136, 132, 111),
+    text_on_accent=(28, 27, 22),
+    accent=(253, 151, 31),
+    accent_hover=(255, 173, 76),
+    accent_active=(204, 122, 20),
+    success=(166, 226, 46),
+    danger=(249, 38, 114),
+    danger_hover=(196, 30, 91),
+    warning=(230, 219, 116),
+    hover=(62, 63, 53),
+    selected=(117, 113, 94),
+)
+
 
 THEMES: dict[str, UIColorSet] = {
     "dark": DARK_COLORS,
     "molokai": MOLOKAI_COLORS,
     "light": LIGHT_COLORS,
     "semi_light": SEMI_LIGHT_COLORS,
+    "monokai": MONOKAI_COLORS,
 }
 
 
@@ -200,6 +224,10 @@ class ThemeManager:
     @property
     def text_muted(self) -> Color:
         return self._colors.text_muted
+
+    @property
+    def text_on_accent(self) -> Color:
+        return self._colors.text_on_accent
 
     @property
     def accent(self) -> Color:

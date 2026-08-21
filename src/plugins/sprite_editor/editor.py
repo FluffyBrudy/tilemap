@@ -13,7 +13,9 @@ from pygame import Rect, Surface
 
 from utils.natural_sort import natural_key
 from widgets.ui.button import Button
+from widgets.ui.context_menu import ContextMenu
 from widgets.ui.draw_utils import draw_panel
+from widgets.ui.menubar import Menu, MenuAction, MenuBar, MenuSeparator
 from widgets.ui.mode_indicator import Mode, ModeIndicator
 from widgets.ui.notification import NotificationManager
 from widgets.ui.status_bar import StatusBar
@@ -40,7 +42,8 @@ from .selection import Selection
 from .tools import PasteTool, RegionTool, SelectTool, Tool, ToolContext
 from .viewport import Viewport
 
-TOOLBAR_H = 76
+MENU_H = 30
+TOOLBAR_H = 44
 STATUS_H = 26
 BTN_W = 52
 BTN_H = 28
@@ -107,7 +110,13 @@ class SpriteEditor:
         self._separators: list[tuple[int, int]] = []
         self._mode_indicator: ModeIndicator | None = None
         self._stack_horizontal = False
+        self._sort_natural = True
         self._build_toolbar()
+
+        self._context_menu = ContextMenu()
+        self._show_shortcuts = False
+        self._rmb_press_pos: tuple[int, int] | None = None
+        self.menubar = MenuBar(None, rect.w, MENU_H, menus=self._build_menus())
 
         self._status_bar.info("Ready", "")
         self._update_button_states()
@@ -116,13 +125,14 @@ class SpriteEditor:
     def _content_rect(self) -> Rect:
         return Rect(
             self.rect.x,
-            self.rect.y + TOOLBAR_H,
+            self.rect.y + MENU_H + TOOLBAR_H,
             self.rect.w,
-            self.rect.h - TOOLBAR_H - STATUS_H,
+            self.rect.h - MENU_H - TOOLBAR_H - STATUS_H,
         )
 
     def resize(self, x: int, y: int, w: int, h: int) -> None:
         self.rect = Rect(x, y, w, h)
+        self.menubar.resize(w)
         self.viewport.resize(self._content_rect())
         self._status_bar.resize(Rect(self.rect.x, self.rect.bottom - STATUS_H, self.rect.w, STATUS_H))
         self._scale_dialog.editor_rect = self.rect
@@ -130,21 +140,194 @@ class SpriteEditor:
         self._build_toolbar()
 
     # -- toolbar -----------------------------------------------------------
+    def _build_menus(self) -> list[Menu]:
+        vp = self.viewport
+        return [
+            Menu(
+                "File",
+                [
+                    MenuAction("Open...", self._on_open, "Ctrl+O"),
+                    MenuAction(
+                        "Save",
+                        self._on_save,
+                        "Ctrl+S",
+                        is_enabled=lambda: self.doc.has_canvas,
+                    ),
+                    MenuAction("Save As...", self._on_save_as),
+                    MenuSeparator(),
+                    MenuAction(
+                        "Export Regions to PNG...",
+                        self._on_export_all,
+                        "Ctrl+E",
+                        is_enabled=lambda: bool(self.doc.regions)
+                        and self.doc.has_canvas,
+                    ),
+                    MenuSeparator(),
+                    MenuAction(
+                        "Stack Horizontally",
+                        self._toggle_stack,
+                        is_checked=lambda: self._stack_horizontal,
+                    ),
+                    MenuAction(
+                        "Natural Sort on Open",
+                        self._toggle_sort_natural,
+                        is_checked=lambda: self._sort_natural,
+                    ),
+                    MenuSeparator(),
+                    MenuAction("Close", self._on_close, "Ctrl+Q"),
+                ],
+            ),
+            Menu(
+                "Edit",
+                [
+                    MenuAction(
+                        "Undo",
+                        self._on_undo,
+                        "Ctrl+Z",
+                        is_enabled=lambda: self.commands.can_undo,
+                    ),
+                    MenuAction(
+                        "Redo",
+                        self._on_redo,
+                        "Ctrl+Shift+Z",
+                        is_enabled=lambda: self.commands.can_redo,
+                    ),
+                    MenuSeparator(),
+                    MenuAction("Cut", self._on_cut, "Ctrl+X"),
+                    MenuAction("Copy", self._on_copy, "Ctrl+C"),
+                    MenuAction("Paste", self._on_paste, "Ctrl+V"),
+                    MenuSeparator(),
+                    MenuAction(
+                        "Select All",
+                        self._on_select_all,
+                        "Ctrl+A",
+                        is_enabled=lambda: self.doc.has_canvas,
+                    ),
+                    MenuAction(
+                        "Deselect",
+                        self._on_deselect,
+                        "Esc",
+                        is_enabled=lambda: bool(self.selection),
+                    ),
+                ],
+            ),
+            Menu(
+                "View",
+                [
+                    MenuAction(
+                        "Show Grid",
+                        self._toggle_grid,
+                        "G",
+                        is_checked=lambda: vp.show_grid,
+                    ),
+                    MenuAction(
+                        "Show Regions",
+                        self._toggle_regions,
+                        is_checked=lambda: vp.show_regions,
+                    ),
+                    MenuSeparator(),
+                    MenuAction("Zoom 50%", lambda: self._set_zoom(0.5)),
+                    MenuAction("Zoom 100%", lambda: self._set_zoom(1.0)),
+                    MenuAction("Zoom 200%", lambda: self._set_zoom(2.0)),
+                    MenuSeparator(),
+                    MenuAction("Fit to Window", self._on_fit, "F"),
+                    MenuAction("Reset Zoom", self._on_reset_zoom, "0"),
+                ],
+            ),
+            Menu(
+                "Sprite",
+                [
+                    MenuAction(
+                        "Flip Horizontal",
+                        self._on_flip_x,
+                        is_enabled=lambda: self.doc.has_canvas,
+                    ),
+                    MenuAction(
+                        "Flip Vertical",
+                        self._on_flip_y,
+                        is_enabled=lambda: self.doc.has_canvas,
+                    ),
+                    MenuAction(
+                        "Scale...",
+                        self._on_scale,
+                        is_enabled=lambda: self.doc.has_canvas,
+                    ),
+                    MenuSeparator(),
+                    MenuAction("Tile Size...", self._on_grid),
+                ],
+            ),
+            Menu(
+                "Help",
+                [MenuAction("Keyboard Shortcuts", self._toggle_shortcuts)],
+            ),
+        ]
+
+    # -- menu actions -------------------------------------------------------
+    def _on_save_as(self) -> None:
+        if not self.doc.has_canvas:
+            self._status_bar.warning("No spritesheet loaded")
+            return
+        self._open_save_dialog()
+
+    def _on_close(self) -> None:
+        pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    def _on_select_all(self) -> None:
+        if not self.doc.has_canvas:
+            return
+        self.selection.select_all(self.doc)
+        self._status_bar.info(f"Selected {len(self.selection)} cells")
+
+    def _on_deselect(self) -> None:
+        if self.selection:
+            self.selection.replace([], anchor=None)
+
+    def _toggle_grid(self) -> None:
+        self.viewport.show_grid = not self.viewport.show_grid
+
+    def _toggle_regions(self) -> None:
+        self.viewport.show_regions = not self.viewport.show_regions
+
+    def _toggle_shortcuts(self) -> None:
+        self._show_shortcuts = not self._show_shortcuts
+
+    def _set_zoom(self, zoom: float) -> None:
+        content = self.viewport.content_rect
+        self.camera.zoom_at(content.center, zoom / max(self.camera.zoom, 0.0001))
+
+    def _popup_menu(self, items: list, pos: tuple[int, int]) -> None:
+        self._context_menu.popup(items, pos, (self.rect.right, self.rect.bottom))
+
+    def _transform_menu_items(self) -> list:
+        return [
+            MenuAction(
+                "Flip Horizontal",
+                self._on_flip_x,
+                is_enabled=lambda: self.doc.has_canvas,
+            ),
+            MenuAction(
+                "Flip Vertical",
+                self._on_flip_y,
+                is_enabled=lambda: self.doc.has_canvas,
+            ),
+            MenuAction(
+                "Scale...",
+                self._on_scale,
+                is_enabled=lambda: self.doc.has_canvas,
+            ),
+        ]
+
     def _build_toolbar(self) -> None:
         self._buttons.clear()
         self._separators.clear()
 
-        row_y = (self.rect.y + 7, self.rect.y + 41)
+        row_y = self.rect.y + MENU_H + 8
         x = self.rect.x + BTN_GAP + 2
 
-        def row(r: int) -> None:
-            nonlocal x
-            x = self.rect.x + BTN_GAP + 2
-
-        def add_btn(text: str, *, tooltip: str = "", on_click=None, tag: str = "", r: int = 0) -> Button:
+        def add_btn(text: str, *, tooltip: str = "", on_click=None, tag: str = "") -> Button:
             nonlocal x
             btn = Button(
-                Rect(x, row_y[r], BTN_W, BTN_H),
+                Rect(x, row_y, BTN_W, BTN_H),
                 text=text,
                 tooltip_text=tooltip or text,
                 border_radius=3,
@@ -155,45 +338,30 @@ class SpriteEditor:
             x += BTN_W + BTN_GAP
             return btn
 
-        def sep(r: int = 0) -> None:
+        def sep() -> None:
             nonlocal x
-            self._separators.append((x + SEP_W // 2, row_y[r] + BTN_H // 2))
+            self._separators.append((x + SEP_W // 2, row_y + BTN_H // 2))
             x += SEP_W
 
-        # ROW 1 — FILE | EDIT | TRANSFORM
-        add_btn("Open", tooltip="Open spritesheets", on_click=self._on_open, tag="open")
+        add_btn("Open", tooltip="Open spritesheets (Ctrl+O)", on_click=self._on_open, tag="open")
         add_btn("Save", tooltip="Save PNG (Ctrl+S)", on_click=self._on_save, tag="save")
-        add_btn(
-            "Stack V",
-            tooltip="Stack direction for multi-sheet loads (currently vertical)",
-            on_click=self._toggle_stack,
-            tag="stack",
-        )
         sep()
 
         add_btn("Undo", tooltip="Undo (Ctrl+Z)", on_click=self._on_undo, tag="undo")
-        add_btn("Redo", tooltip="Redo (Ctrl+Y)", on_click=self._on_redo, tag="redo")
-        add_btn("Cut", tooltip="Cut (Ctrl+X)", on_click=self._on_cut, tag="cut")
-        add_btn("Copy", tooltip="Copy (Ctrl+C)", on_click=self._on_copy, tag="copy")
-        add_btn("Paste", tooltip="Paste (Ctrl+V)", on_click=self._on_paste, tag="paste")
+        add_btn("Redo", tooltip="Redo (Ctrl+Shift+Z)", on_click=self._on_redo, tag="redo")
         sep()
 
-        add_btn("Flip X", tooltip="Flip horizontal", on_click=self._on_flip_x, tag="flip_x")
-        add_btn("Flip Y", tooltip="Flip vertical", on_click=self._on_flip_y, tag="flip_y")
-        add_btn("Scale", tooltip="Scale spritesheet", on_click=self._on_scale, tag="scale")
-
-        # ROW 2 — VIEW | MODE | EXPORT
-        row(1)
-        add_btn("Tile Size", tooltip="Change tile size", on_click=self._on_grid, tag="grid", r=1)
-        add_btn("Fit", tooltip="Fit sheet to canvas (F)", on_click=self._on_fit, tag="fit", r=1)
-        add_btn("−", tooltip="Zoom out", on_click=self._on_zoom_out, tag="zoom_out", r=1)
-        self._zoom_btn = add_btn("100%", tooltip="Zoom level (0 = reset)", tag="zoom_pct", r=1)
-        add_btn("+", tooltip="Zoom in", on_click=self._on_zoom_in, tag="zoom_in", r=1)
-        add_btn("Reset", tooltip="Reset to 100% (0)", on_click=self._on_reset_zoom, tag="zoom_0", r=1)
-        sep(1)
+        add_btn(
+            "Transform",
+            tooltip="Flip / Scale",
+            on_click=self._open_transform_menu,
+            tag="transform",
+        )
+        add_btn("Tile Size", tooltip="Change tile size", on_click=self._on_grid, tag="grid")
+        sep()
 
         self._mode_indicator = ModeIndicator(
-            Rect(x, row_y[1], 150, BTN_H),
+            Rect(x, row_y, 150, BTN_H),
             modes=[
                 Mode(id="grid", label="Grid"),
                 Mode(id="regions", label="Regions"),
@@ -202,15 +370,44 @@ class SpriteEditor:
         )
         self._mode_indicator.on_mode_changed = self._on_mode_changed
         x += 150 + SEP_W
-        sep(1)
+        sep()
 
-        # EXPORT
-        add_btn("Export", tooltip="Export all regions to PNG", on_click=self._on_export_all, tag="export_all", r=1)
+        add_btn("\u2212", tooltip="Zoom out", on_click=self._on_zoom_out, tag="zoom_out")
+        self._zoom_btn = add_btn(
+            "100%",
+            tooltip="Click to reset zoom",
+            on_click=self._on_reset_zoom,
+            tag="zoom_pct",
+        )
+        add_btn("+", tooltip="Zoom in", on_click=self._on_zoom_in, tag="zoom_in")
+        add_btn("Fit", tooltip="Fit sheet to window (F)", on_click=self._on_fit, tag="fit")
+
+        export_x = self.rect.right - BTN_W - BTN_GAP - 2
+        export = Button(
+            Rect(export_x, row_y, BTN_W, BTN_H),
+            text="Export",
+            tooltip_text="Export all regions to PNG (Ctrl+E)",
+            border_radius=3,
+            accent=True,
+            on_click=self._on_export_all,
+        )
+        export._tag = "export_all"
+        self._buttons.append(export)
+
+    def _open_transform_menu(self) -> None:
+        btn = self._get_btn("transform")
+        pos = (btn.rect.x, btn.rect.bottom + 2) if btn else (self.rect.x + 200, self.rect.y + MENU_H + TOOLBAR_H)
+        self._popup_menu(self._transform_menu_items(), pos)
 
     def _toggle_stack(self) -> None:
         self._stack_horizontal = not self._stack_horizontal
         self._toast(f"Stacking: {'horizontal' if self._stack_horizontal else 'vertical'}")
         self._update_button_states()
+
+    def _toggle_sort_natural(self) -> None:
+        self._sort_natural = not self._sort_natural
+        mode = "natural order" if self._sort_natural else "click order"
+        self._toast(f"Open sort: {mode}")
 
     def _get_btn(self, tag: str) -> Button | None:
         for btn in self._buttons:
@@ -376,14 +573,6 @@ class SpriteEditor:
         export_btn = self._get_btn("export_all")
         if export_btn:
             export_btn.enabled = bool(self.doc.regions) and self.doc.has_canvas
-        stack_btn = self._get_btn("stack")
-        if stack_btn:
-            stack_btn.text = "Stack H" if self._stack_horizontal else "Stack V"
-            stack_btn.tooltip_text = (
-                "Stack direction for multi-sheet loads (currently horizontal)"
-                if self._stack_horizontal
-                else "Stack direction for multi-sheet loads (currently vertical)"
-            )
         if self._mode_indicator is not None:
             self._mode_indicator.active_mode_id = self.mode
         if getattr(self, "_zoom_btn", None):
@@ -391,6 +580,28 @@ class SpriteEditor:
 
     # -- events ------------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:
+        if (
+            event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP)
+            and getattr(event, "button", 0) == 1
+        ):
+            consumed = self._handle_event_inner(event)
+            print(
+                f"### [sprite-editor] LMB {getattr(event, 'pos', None)} "
+                f"-> consumed={consumed} ctx={self._context_menu.is_open} "
+                f"dlg_file={self._file_manager is not None}"
+            )
+            return consumed
+        return self._handle_event_inner(event)
+
+    def _handle_event_inner(self, event: pygame.event.Event) -> bool:
+        if self._context_menu.is_open:
+            return self._context_menu.handle_event(event)
+
+        if self._show_shortcuts:
+            if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                self._show_shortcuts = False
+                return True
+
         if self._file_manager is not None:
             return self._file_manager.handle_event(event)
 
@@ -398,6 +609,27 @@ class SpriteEditor:
             return self._scale_dialog.handle_event(event)
         if self._grid_dialog.active:
             return self._grid_dialog.handle_event(event)
+
+        if self.menubar.handle_event(event):
+            self._update_button_states()
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            pos = getattr(event, "pos", pygame.mouse.get_pos())
+            if self.viewport.rect.collidepoint(pos):
+                self._rmb_press_pos = pos
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+            press = self._rmb_press_pos
+            self._rmb_press_pos = None
+            up_pos = getattr(event, "pos", pygame.mouse.get_pos())
+            if (
+                press is not None
+                and abs(up_pos[0] - press[0]) <= 4
+                and abs(up_pos[1] - press[1]) <= 4
+            ):
+                self._popup_canvas_menu(up_pos)
+                return True
 
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
@@ -421,6 +653,34 @@ class SpriteEditor:
                 if event.key == pygame.K_s:
                     self._on_save()
                     return True
+                if event.key == pygame.K_o:
+                    self._on_open()
+                    return True
+                if event.key == pygame.K_e:
+                    self._on_export_all()
+                    return True
+                if event.key == pygame.K_q:
+                    self._on_close()
+                    return True
+                if event.key == pygame.K_a:
+                    self._on_select_all()
+                    return True
+            else:
+                if event.key == pygame.K_f:
+                    self._on_fit()
+                    return True
+                if event.key == pygame.K_g:
+                    self._toggle_grid()
+                    return True
+                if event.key == pygame.K_0:
+                    self._on_reset_zoom()
+                    return True
+                if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    self._on_zoom_in()
+                    return True
+                if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    self._on_zoom_out()
+                    return True
 
         for btn in self._buttons:
             if btn.handle_event(event):
@@ -431,8 +691,51 @@ class SpriteEditor:
             self._update_button_states()
             return True
 
-        return bool(
-            self._event_in_viewport(event) and self._active_tool.handle_event(event)
+        if self._event_in_viewport(event) and self._active_tool.handle_event(event):
+            return True
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if self.selection:
+                self._on_deselect()
+                return True
+
+        return False
+
+    def _popup_canvas_menu(self, pos: tuple[int, int]) -> None:
+        self._popup_menu(
+            [
+                MenuAction(
+                    "Undo",
+                    self._on_undo,
+                    "Ctrl+Z",
+                    is_enabled=lambda: self.commands.can_undo,
+                ),
+                MenuAction(
+                    "Redo",
+                    self._on_redo,
+                    "Ctrl+Shift+Z",
+                    is_enabled=lambda: self.commands.can_redo,
+                ),
+                MenuSeparator(),
+                MenuAction("Copy", self._on_copy, "Ctrl+C"),
+                MenuAction("Paste", self._on_paste, "Ctrl+V"),
+                MenuSeparator(),
+                MenuAction(
+                    "Show Grid",
+                    self._toggle_grid,
+                    "G",
+                    is_checked=lambda: self.viewport.show_grid,
+                ),
+                MenuAction(
+                    "Show Regions",
+                    self._toggle_regions,
+                    is_checked=lambda: self.viewport.show_regions,
+                ),
+                MenuSeparator(),
+                MenuAction("Fit to Window", self._on_fit, "F"),
+                MenuAction("Zoom 100%", lambda: self._set_zoom(1.0)),
+            ],
+            pos,
         )
 
     @staticmethod
@@ -446,7 +749,7 @@ class SpriteEditor:
     def draw(self, screen: Surface) -> None:
         draw_panel(screen, self.rect, COLORS.bg, COLORS.border)
 
-        toolbar_rect = Rect(self.rect.x, self.rect.y, self.rect.w, TOOLBAR_H)
+        toolbar_rect = Rect(self.rect.x, self.rect.y + MENU_H, self.rect.w, TOOLBAR_H)
         draw_panel(screen, toolbar_rect, COLORS.header, COLORS.border)
 
         sep_h = 16
@@ -472,13 +775,58 @@ class SpriteEditor:
         if self._file_manager is not None:
             self._file_manager.draw(screen)
 
+        # menubar last among chrome so open dropdowns sit above the toolbar,
+        # viewport and status bar (they span past the 30px bar into canvas)
+        self.menubar.draw(screen)
+
         self._notifications.draw(screen)
+
+        if self._context_menu.is_open:
+            self._context_menu.draw(screen)
+
+        if self._show_shortcuts:
+            self._draw_shortcuts(screen)
 
         mouse_pos = pygame.mouse.get_pos()
         for btn in self._buttons:
             if btn.rect.collidepoint(mouse_pos) and btn.tooltip_text:
                 self._draw_tooltip(screen, btn.tooltip_text, mouse_pos)
                 break
+
+    SHORTCUTS = [
+        ("Open", "Ctrl+O"), ("Save", "Ctrl+S"), ("Export PNGs", "Ctrl+E"),
+        ("Undo", "Ctrl+Z"), ("Redo", "Ctrl+Shift+Z"),
+        ("Cut / Copy / Paste", "Ctrl+X/C/V"), ("Select All", "Ctrl+A"),
+        ("Deselect", "Esc"), ("Fit to window", "F"), ("Toggle grid", "G"),
+        ("Reset zoom", "0"), ("Zoom in / out", "+ / -"),
+    ]
+
+    def _draw_shortcuts(self, screen: Surface) -> None:
+        overlay = Surface((self.rect.w, self.rect.h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        screen.blit(overlay, self.rect.topleft)
+
+        row_h = 24
+        w, h = 360, len(self.SHORTCUTS) * row_h + 60
+        panel = Rect(0, 0, w, h)
+        panel.center = self.rect.center
+        pygame.draw.rect(screen, COLORS.panel, panel, border_radius=6)
+        pygame.draw.rect(screen, COLORS.border, panel, 1, border_radius=6)
+
+        title = FONTS.get_bold_font(15).render("Keyboard Shortcuts", True, COLORS.text)
+        screen.blit(title, (panel.x + 20, panel.y + 14))
+
+        lbl_font = FONTS.get_font(13)
+        key_font = FONTS.get_small_font()
+        y = panel.y + 46
+        for label, keys in self.SHORTCUTS:
+            screen.blit(lbl_font.render(label, True, COLORS.text), (panel.x + 20, y))
+            ksurf = key_font.render(keys, True, COLORS.text_dim)
+            screen.blit(ksurf, (panel.right - ksurf.get_width() - 20, y + 2))
+            y += row_h
+
+        hint = key_font.render("Click anywhere to close", True, COLORS.text_muted)
+        screen.blit(hint, hint.get_rect(midtop=(panel.centerx, panel.bottom - 22)))
 
     def _draw_tooltip(self, screen: Surface, text: str, pos: tuple[int, int]) -> None:
         font = FONTS.get_small_font()
@@ -553,7 +901,8 @@ class SpriteEditor:
     def _on_add_sheets(self, selection: Path | list[Path]) -> None:
         if isinstance(selection, Path):
             selection = [selection]
-        selection = sorted(selection, key=lambda p: natural_key(p.name))
+        if self._sort_natural:
+            selection = sorted(selection, key=lambda p: natural_key(p.name))
         loaded = 0
         surfaces: list[Surface] = []
         for path in selection:

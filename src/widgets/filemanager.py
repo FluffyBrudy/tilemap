@@ -1341,7 +1341,7 @@ class FileManager:
             )
             pygame.draw.rect(screen, col, btn_rect, border_radius=SHAPE.radius_sm)
 
-            txt = self.font_bold.render(name, True, COLORS.text)
+            txt = self.font_bold.render(name, True, COLORS.text_on_accent)
             screen.blit(txt, (rect.x + 15, y + 7))
 
     def _draw_header(self, screen, rect):
@@ -1368,7 +1368,7 @@ class FileManager:
                 )
             ),
         )
-        folder_text = self.font_bold.render("New", True, COLORS.text)
+        folder_text = self.font_bold.render("New", True, COLORS.text_on_accent)
         screen.blit(
             folder_text,
             folder_text.get_rect(
@@ -1430,7 +1430,11 @@ class FileManager:
                 self.rename_input.resize(text_x, text_y, text_w, text_h)
                 self.rename_input.draw(screen)
             else:
-                col = COLORS.accent if i == self.selected_index else COLORS.text
+                col = (
+                    COLORS.text_on_accent
+                    if i == self.selected_index or i == self.hover_index
+                    else COLORS.text
+                )
                 txt = self.font_main.render(item.name, True, col)
                 screen.blit(txt, (rect.x + self._item_text_left, y + self._text_offset_y))
 
@@ -1474,7 +1478,7 @@ class FileManager:
                 bg = COLORS.accent_hover if accent else COLORS.selected
 
             pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm)
-            lbl = self.font_bold.render(label, True, COLORS.text)
+            lbl = self.font_bold.render(label, True, COLORS.text_on_accent)
             lbl_r = lbl.get_rect(center=r.center)
             screen.blit(lbl, lbl_r)
 

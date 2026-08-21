@@ -423,8 +423,6 @@ class CharacterCollisionEditor:
                 return True
             return True
 
-        mouse = pygame.mouse.get_pos()
-
         if self.layer_sidebar.handle_event(event):
             return True
 

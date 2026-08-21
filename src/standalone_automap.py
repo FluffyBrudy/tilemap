@@ -7,6 +7,8 @@ import pygame
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from utils.standalone import load_standalone_theme  # noqa: E402
+from widgets.ui.theme import FONTS  # noqa: E402
 
 
 class StandaloneAutomap:
@@ -22,8 +24,8 @@ class StandaloneAutomap:
 
         self.bg_color = (30, 30, 35)
         self.text_color = (220, 220, 220)
-        self.font = pygame.font.SysFont("Arial", 14)
-        self.title_font = pygame.font.SysFont("Arial", 18, bold=True)
+        self.font = FONTS.get_font(14)
+        self.title_font = FONTS.get_bold_font(18)
 
         self.rules = []
         self.load_rules()
@@ -118,6 +120,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: standalone_automap.py <target_path>", file=sys.stderr)
         sys.exit(1)
+    load_standalone_theme()
     target = Path(sys.argv[1])
     app = StandaloneAutomap(target)
     app.run()
