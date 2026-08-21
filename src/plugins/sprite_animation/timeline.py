@@ -23,7 +23,7 @@ from .models import AnimationFrame, AnimationMarker
 
 THUMB_SIZE = 48
 CELL_W = 64
-CELL_H_TOTAL = 90  
+CELL_H_TOTAL = 90
 CELL_BODY_H = 68
 CELL_PAD = 6
 HEADER_H = 22
@@ -57,6 +57,11 @@ class Timeline:
         self._drag_from: int = -1
         self._drag_insert: int = -1
         self._drag_mouse_x: int = 0
+        self._drag_start_x: int = 0
+        self._drag_moved = False
+
+        # Click-click move state (-1 = nothing armed)
+        self._pending_move: int = -1
 
         # Duration text editing
         self._editing_dur = False
@@ -91,6 +96,7 @@ class Timeline:
     def set_frames(self, frames: list[AnimationFrame]) -> None:
         self.frames = frames
         self.selected_index = min(self.selected_index, len(frames) - 1)
+        self._pending_move = -1
         self._thumb_cache.clear()
 
     def set_markers(self, markers: list[AnimationMarker]) -> None:
@@ -124,6 +130,8 @@ class Timeline:
     # ------------------------------------------------------------------
     # Events
     # ------------------------------------------------------------------
+
+    DRAG_THRESHOLD = 6  # px of horizontal movement before reorder arms
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
@@ -187,6 +195,9 @@ class Timeline:
             if event.key == pygame.K_d:
                 self._duplicate_selected()
                 return True
+            if event.key == pygame.K_ESCAPE and self._pending_move >= 0:
+                self._pending_move = -1
+                return True
 
         # Delete marker (right-click on marker diamond)
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -212,26 +223,53 @@ class Timeline:
                     self._start_dur_edit(idx)
                     return True
                 if idx >= 0:
+                    if 0 <= self._pending_move < len(self.frames):
+                        if idx != self._pending_move:
+                            insert_at = self._insert_index_at(mouse)
+                            self._reorder(self._pending_move, insert_at)
+                            if self.on_frame_selected:
+                                self.on_frame_selected(self.selected_index)
+                        else:
+                            self.selected_index = idx
+                        self._pending_move = -1
+                        return True
                     self.selected_index = idx
-                    self._dragging = True
-                    self._drag_from = idx
-                    self._drag_mouse_x = mouse[0]
                     if self.on_frame_selected:
                         self.on_frame_selected(idx)
+                    self._pending_move = idx
+                    self._dragging = True
+                    self._drag_moved = False
+                    self._drag_start_x = mouse[0]
+                    self._drag_from = idx
+                    self._drag_insert = -1
+                    self._drag_mouse_x = mouse[0]
+                else:
+                    self._pending_move = -1
                 return True
 
         if event.type == pygame.MOUSEMOTION and self._dragging:
+            if not self._drag_moved and (
+                abs(mouse[0] - self._drag_start_x) <= self.DRAG_THRESHOLD
+            ):
+                return True
+            self._drag_moved = True
             self._drag_mouse_x = mouse[0]
             self._drag_insert = self._insert_index_at(mouse)
             return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._dragging:
-                if self._drag_insert >= 0 and self._drag_insert != self._drag_from:
-                    self._reorder(self._drag_from, self._drag_insert)
+                if self._drag_moved:
+                    if (
+                        self._drag_insert >= 0
+                        and self._drag_insert != self._drag_from
+                    ):
+                        self._reorder(self._drag_from, self._drag_insert)
+                    self._pending_move = -1
                 self._dragging = False
                 self._drag_from = -1
                 self._drag_insert = -1
+                self._drag_moved = False
                 return True
 
         # Scroll

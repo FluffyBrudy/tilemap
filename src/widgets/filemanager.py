@@ -1341,7 +1341,8 @@ class FileManager:
             )
             pygame.draw.rect(screen, col, btn_rect, border_radius=SHAPE.radius_sm)
 
-            txt = self.font_bold.render(name, True, COLORS.text_on_accent)
+            txt_col = COLORS.text_on_accent if is_active else COLORS.text
+            txt = self.font_bold.render(name, True, txt_col)
             screen.blit(txt, (rect.x + 15, y + 7))
 
     def _draw_header(self, screen, rect):
@@ -1368,7 +1369,11 @@ class FileManager:
                 )
             ),
         )
-        folder_text = self.font_bold.render("New", True, COLORS.text_on_accent)
+        on_blue = self.new_folder_button_rect.collidepoint((mx, my))
+        folder_text = self.font_bold.render(
+            "New", True,
+            COLORS.text_on_accent if on_blue else COLORS.text,
+        )
         screen.blit(
             folder_text,
             folder_text.get_rect(
@@ -1432,7 +1437,7 @@ class FileManager:
             else:
                 col = (
                     COLORS.text_on_accent
-                    if i == self.selected_index or i == self.hover_index
+                    if i == self.selected_index
                     else COLORS.text
                 )
                 txt = self.font_main.render(item.name, True, col)
@@ -1478,7 +1483,12 @@ class FileManager:
                 bg = COLORS.accent_hover if accent else COLORS.selected
 
             pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm)
-            lbl = self.font_bold.render(label, True, COLORS.text_on_accent)
+            on_accent_fill = accent or r.collidepoint(mx, my)
+            lbl = self.font_bold.render(
+                label,
+                True,
+                COLORS.text_on_accent if on_accent_fill else COLORS.text,
+            )
             lbl_r = lbl.get_rect(center=r.center)
             screen.blit(lbl, lbl_r)
 

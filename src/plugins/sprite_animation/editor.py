@@ -135,6 +135,8 @@ class SpriteAnimationEditor:
         self.timeline = Timeline(tl_rect, dummy_surface, self._tile_size)
 
         self.frame_picker.on_frame_clicked = self._on_tile_clicked
+        self.frame_picker.on_frame_paint = self._on_tile_paint
+        self.frame_picker.is_variant_in_clip = self._variant_in_clip
         self.timeline.on_frame_selected = self._on_timeline_frame_selected
         self.timeline.on_frames_changed = self._on_frames_changed
         self.timeline.on_markers_changed = self._on_markers_changed
@@ -184,9 +186,11 @@ class SpriteAnimationEditor:
 
         self._frame_width_input = str(self._tile_size[0])
         self._frame_height_input = str(self._tile_size[1])
+        self._frame_size_mode = "px"  # "px" | "cells"
         self._editing_frame_width = False
         self._editing_frame_height = False
         self._btn_frame_width = Rect(0, 0, 0, 0)
+        self._btn_frame_unit = Rect(0, 0, 0, 0)
         self._btn_frame_height = Rect(0, 0, 0, 0)
 
         self._offset_x_input = "0"
@@ -571,6 +575,10 @@ class SpriteAnimationEditor:
                 self._info_tooltip_pinned = not self._info_tooltip_pinned
                 return True
 
+            if getattr(self, "_btn_frame_unit", None) and self._btn_frame_unit.collidepoint(mouse):
+                self._toggle_frame_size_mode()
+                return True
+
             if self._btn_frame_width.collidepoint(mouse):
                 self._editing_frame_width = True
                 self._editing_frame_height = False
@@ -809,9 +817,22 @@ class SpriteAnimationEditor:
         screen.blit(height_surf, (self._btn_frame_height.x + 4, self._btn_frame_height.y + 6))
         x += input_w + 4
 
-        px_label = self._font_sm.render("px", True, COLORS.text_dim)
-        screen.blit(px_label, (x, cy + 7))
-        x += px_label.get_width() + 4
+        unit_text = "px" if self._frame_size_mode == "px" else "cells"
+        unit_w = max(34, self._font_sm.size(unit_text)[0] + 12)
+        self._btn_frame_unit = Rect(x, cy, unit_w, bh)
+        unit_hover = self._btn_frame_unit.collidepoint(mouse)
+        unit_bg = COLORS.hover if unit_hover else COLORS.panel_alt
+        pygame.draw.rect(screen, unit_bg, self._btn_frame_unit, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen,
+            COLORS.accent if self._frame_size_mode == "cells" else COLORS.border,
+            self._btn_frame_unit,
+            1,
+            border_radius=SHAPE.radius_sm,
+        )
+        unit_surf = self._font_sm.render(unit_text, True, COLORS.text_dim)
+        screen.blit(unit_surf, unit_surf.get_rect(center=self._btn_frame_unit.center))
+        x += unit_w + 4
 
         self._btn_info = Rect(x, cy + 2, 20, 20)
         info_hover = self._btn_info.collidepoint(mouse)
@@ -1096,13 +1117,34 @@ class SpriteAnimationEditor:
         self._rename_input.is_focused = False
 
     def _apply_frame_size(self) -> None:
-        """Apply the frame size from input fields and update the frame picker."""
-        try:
-            width = int(self._frame_width_input) if self._frame_width_input else self._tile_size[0]
-            height = int(self._frame_height_input) if self._frame_height_input else self._tile_size[1]
+        """Apply the frame size from input fields and update the frame picker.
 
-            width = max(1, min(width, self._surface.get_width()))
-            height = max(1, min(height, self._surface.get_height()))
+        Inputs are interpreted per ``_frame_size_mode``: absolute pixels
+        ("px") or a cell count that divides the sheet evenly ("cells").
+        """
+        try:
+            sw = max(1, self._surface.get_width())
+            sh = max(1, self._surface.get_height())
+
+            if self._frame_size_mode == "cells":
+                cols = int(self._frame_width_input) if self._frame_width_input else max(1, sw // self._tile_size[0])
+                rows = int(self._frame_height_input) if self._frame_height_input else max(1, sh // self._tile_size[1])
+
+                cols = max(1, min(cols, sw))
+                rows = max(1, min(rows, sh))
+
+                width = max(1, sw // cols)
+                height = max(1, sh // rows)
+
+                echo_w, echo_h = str(cols), str(rows)
+            else:
+                width = int(self._frame_width_input) if self._frame_width_input else self._tile_size[0]
+                height = int(self._frame_height_input) if self._frame_height_input else self._tile_size[1]
+
+                width = max(1, min(width, sw))
+                height = max(1, min(height, sh))
+
+                echo_w, echo_h = str(width), str(height)
 
             self._tile_size = (width, height)
             self.library.tile_size = (width, height)
@@ -1115,12 +1157,37 @@ class SpriteAnimationEditor:
             self.timeline.tile_size = self._tile_size
             self.timeline.invalidate_cache()
 
-            self._frame_width_input = str(width)
-            self._frame_height_input = str(height)
+            self._frame_width_input = echo_w
+            self._frame_height_input = echo_h
 
         except ValueError:
+            self._frame_width_input = (
+                str(sw // max(1, self._tile_size[0]))
+                if self._frame_size_mode == "cells"
+                else str(self._tile_size[0])
+            )
+            self._frame_height_input = (
+                str(sh // max(1, self._tile_size[1]))
+                if self._frame_size_mode == "cells"
+                else str(self._tile_size[1])
+            )
+
+    def _toggle_frame_size_mode(self) -> None:
+        """Flip px <-> cells and convert the shown values so the grid holds still."""
+        sw = max(1, self._surface.get_width())
+        sh = max(1, self._surface.get_height())
+
+        if self._frame_size_mode == "px":
+            self._frame_size_mode = "cells"
+            tw, th = self._tile_size
+            self._frame_width_input = str(max(1, round(sw / max(1, tw))))
+            self._frame_height_input = str(max(1, round(sh / max(1, th))))
+        else:
+            self._frame_size_mode = "px"
             self._frame_width_input = str(self._tile_size[0])
             self._frame_height_input = str(self._tile_size[1])
+
+        self._apply_frame_size()
 
     def _apply_grid_offset(self) -> None:
         """Apply the grid offset from input fields and update the frame picker."""
@@ -1547,7 +1614,7 @@ class SpriteAnimationEditor:
                     return
             return
 
-        in_clip = any(fr.variant_id == variant_id for fr in anim.frames)
+        in_clip = self._variant_in_clip(variant_id)
         if in_clip:
             si = self.timeline.selected_index
             if 0 <= si < len(anim.frames) and anim.frames[si].variant_id == variant_id:
@@ -1563,6 +1630,31 @@ class SpriteAnimationEditor:
             return
 
         anim.add_frame(variant_id)
+        self._sync_active_animation()
+        self._notify_animation_modified()
+
+    def _variant_in_clip(self, variant_id: int) -> bool:
+        """True when the active clip already contains this sheet variant."""
+        anim = self._get_active()
+        if anim is None:
+            return False
+        return any(fr.variant_id == variant_id for fr in anim.frames)
+
+    def _on_tile_paint(self, variant_id: int, add: bool) -> None:
+        """Paint-sweep: apply the stroke's locked add/remove intent to a tile."""
+        anim = self._get_active()
+        if anim is None:
+            return
+        if add and not self._variant_in_clip(variant_id):
+            anim.add_frame(variant_id)
+        elif not add and self._variant_in_clip(variant_id):
+            for ri in range(len(anim.frames) - 1, -1, -1):
+                if anim.frames[ri].variant_id == variant_id:
+                    anim.remove_frame(ri)
+                    break
+        else:
+            return
+        anim.clamp_markers()
         self._sync_active_animation()
         self._notify_animation_modified()
 
@@ -1775,6 +1867,10 @@ class SpriteAnimationEditor:
             self._surface = new_surface
             self.library.spritesheet_path = str(selected_path)
             self._sheet_name = selected_path.name
+
+            # cells mode divides whatever sheet is loaded; refresh derived size
+            if self._frame_size_mode == "cells":
+                self._apply_frame_size()
 
             self.frame_picker.set_surface(new_surface, self._tile_size)
             self.preview.set_surface(new_surface, self._tile_size)

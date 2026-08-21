@@ -60,6 +60,13 @@ class FramePicker:
         self._btn_unused_rect = Rect(0, 0, 0, 0)
 
         self.on_frame_clicked: Callable[[int], None] | None = None
+        self.on_frame_paint: Callable[[int, bool], None] | None = None
+        self.is_variant_in_clip: Callable[[int], bool] | None = None
+
+        # paint-sweep state (LMB drag across tiles bulk add/remove)
+        self._painting = False
+        self._paint_add = True
+        self._last_paint_idx = -1
 
         self._font: pygame.font.Font | None = None
         self._font_sm: pygame.font.Font | None = None
@@ -134,6 +141,12 @@ class FramePicker:
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._painting:
+                self._painting = False
+                self._last_paint_idx = -1
+                return True
         if not self.rect.collidepoint(mouse) and event.type not in (
             pygame.MOUSEBUTTONUP,
             pygame.MOUSEMOTION,
@@ -177,12 +190,22 @@ class FramePicker:
             and mouse[1] >= self.rect.y + TOP_BAR_TOTAL
         ):
             idx = self._index_at(mouse)
-            if (
-                idx >= 0
-                and self._tile_matches_filter(idx)
-                and self.on_frame_clicked
-            ):
-                self.on_frame_clicked(idx)
+            if idx >= 0 and self._tile_matches_filter(idx):
+                mods = pygame.key.get_mods()
+                ctrl_held = bool(
+                    mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                )
+                was_in_clip = None
+                if not ctrl_held and self.is_variant_in_clip:
+                    was_in_clip = self.is_variant_in_clip(idx)
+                if self.on_frame_clicked:
+                    self.on_frame_clicked(idx)
+                # arm a paint sweep only for plain clicks; intent is whatever
+                # the initial toggle did (added -> sweep adds, removed -> removes)
+                if was_in_clip is not None and self.on_frame_paint:
+                    self._painting = True
+                    self._paint_add = not was_in_clip
+                    self._last_paint_idx = idx
             return True
 
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
@@ -269,8 +292,23 @@ class FramePicker:
                     self.offset_y -= pan_amount
                     return True
 
+        if event.type == pygame.MOUSEMOTION and self._painting:
+            idx = self._index_at(mouse)
+            if (
+                idx >= 0
+                and idx != self._last_paint_idx
+                and self._tile_matches_filter(idx)
+                and self.on_frame_paint
+            ):
+                self.on_frame_paint(idx, self._paint_add)
+                self._last_paint_idx = idx
+            return True
+
         if event.type == pygame.MOUSEMOTION:
-            if self.rect.collidepoint(mouse):
+            if self._panning:
+                # dragging the view must not look like selecting tiles
+                self.hover_index = -1
+            elif self.rect.collidepoint(mouse):
                 hi = self._index_at(mouse)
                 if hi >= 0 and self._tile_matches_filter(hi):
                     self.hover_index = hi
