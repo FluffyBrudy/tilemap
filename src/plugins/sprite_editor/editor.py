@@ -7,6 +7,7 @@ mutations go through Commands; the viewport is draw-only.
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import pygame
 from pygame import Rect, Surface
@@ -24,6 +25,7 @@ from widgets.ui.theme import COLORS, FONTS
 from .camera import Camera
 from .clipboard import Clipboard
 from .commands import (
+    AppendSheetCommand,
     ClearCommand,
     CommandStack,
     FlipCommand,
@@ -49,6 +51,7 @@ BTN_W = 52
 BTN_H = 28
 BTN_GAP = 4
 SEP_W = 10
+IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".bmp", ".gif"]
 
 
 class SpriteEditor:
@@ -66,6 +69,8 @@ class SpriteEditor:
         self._save_path: Path | None = None
         self._file_manager: object | None = None
         self.mode = "grid"
+        self._pending_drops: list[Path] | None = None
+        self._drop_hover = False
 
         self.doc = Document(tile_size=tile_size)
         self.selection = Selection()
@@ -195,7 +200,7 @@ class SpriteEditor:
                     MenuSeparator(),
                     MenuAction("Cut", self._on_cut, "Ctrl+X"),
                     MenuAction("Copy", self._on_copy, "Ctrl+C"),
-                    MenuAction("Paste", self._on_paste, "Ctrl+V"),
+                    MenuAction("Paste", self._on_paste_smart, "Ctrl+V"),
                     MenuSeparator(),
                     MenuAction(
                         "Select All",
@@ -404,6 +409,12 @@ class SpriteEditor:
         self._toast(f"Stacking: {'horizontal' if self._stack_horizontal else 'vertical'}")
         self._update_button_states()
 
+    def _on_paste_smart(self) -> None:
+        """Clipboard holding image paths loads sheets; otherwise pixel-paste."""
+        if self._paste_paths_from_clipboard():
+            return
+        self._on_paste()
+
     def _toggle_sort_natural(self) -> None:
         self._sort_natural = not self._sort_natural
         mode = "natural order" if self._sort_natural else "click order"
@@ -594,6 +605,9 @@ class SpriteEditor:
         return self._handle_event_inner(event)
 
     def _handle_event_inner(self, event: pygame.event.Event) -> bool:
+        if self._handle_drop_event(event):
+            return True
+
         if self._context_menu.is_open:
             return self._context_menu.handle_event(event)
 
@@ -648,7 +662,7 @@ class SpriteEditor:
                     self._on_cut()
                     return True
                 if event.key == pygame.K_v:
-                    self._on_paste()
+                    self._on_paste_smart()
                     return True
                 if event.key == pygame.K_s:
                     self._on_save()
@@ -718,7 +732,7 @@ class SpriteEditor:
                 ),
                 MenuSeparator(),
                 MenuAction("Copy", self._on_copy, "Ctrl+C"),
-                MenuAction("Paste", self._on_paste, "Ctrl+V"),
+                MenuAction("Paste", self._on_paste_smart, "Ctrl+V"),
                 MenuSeparator(),
                 MenuAction(
                     "Show Grid",
@@ -744,6 +758,148 @@ class SpriteEditor:
             # wheel events carry x/y, not pos — still canvas gestures
             return True
         return event.type == pygame.KEYDOWN or getattr(event, "pos", None) is not None
+
+    # -- system file drop -----------------------------------------------------
+    def _handle_drop_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.DROPBEGIN:
+            print("### [sprite-editor] DROPBEGIN")
+            self._flush_pending_drops()
+            self._pending_drops = []
+            self._drop_hover = True
+            return True
+        if event.type == pygame.DROPFILE:
+            print(f"### [sprite-editor] DROPFILE: {event.file}")
+            if self._pending_drops is None:
+                self._pending_drops = []
+                self._drop_hover = True
+            self._pending_drops.append(Path(event.file))
+            return True
+        if event.type == pygame.DROPCOMPLETE:
+            print("### [sprite-editor] DROPCOMPLETE")
+            self._drop_hover = False
+            self._flush_pending_drops()
+            return True
+        if event.type == pygame.DROPTEXT:
+            paths = self._paths_from_drop_text(getattr(event, "text", ""))
+            print(f"### [sprite-editor] DROPTEXT -> {len(paths)} path(s)")
+            if paths:
+                standalone = self._pending_drops is None
+                if standalone:
+                    self._pending_drops = []
+                    self._drop_hover = True
+                self._pending_drops.extend(paths)
+                if standalone:
+                    self._flush_pending_drops()
+            return True
+        return False
+
+    @staticmethod
+    def _paths_from_drop_text(text: str) -> list[Path]:
+        paths: list[Path] = []
+        for line in (text or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("file://"):
+                paths.append(Path(unquote(urlparse(line).path)))
+            elif line.startswith("/") or (len(line) > 2 and line[1] == ":"):
+                paths.append(Path(unquote(line)))
+        return paths
+
+    @staticmethod
+    def _clipboard_text() -> str:
+        try:
+            import pygame.scrap
+
+            try:
+                text = pygame.scrap.get_text()
+            except Exception:
+                pygame.scrap.init()
+                text = pygame.scrap.get_text()
+            if text:
+                return text
+        except Exception:
+            pass
+        import shutil
+        import subprocess
+
+        for cmd in (
+            ["pbpaste"],
+            ["xclip", "-selection", "clipboard", "-o"],
+            ["wl-paste", "--no-newline"],
+            ["powershell", "-NoProfile", "-command", "Get-Clipboard"],
+        ):
+            try:
+                if not shutil.which(cmd[0]):
+                    continue
+                out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if out.returncode == 0 and out.stdout:
+                    return out.stdout
+            except Exception:
+                continue
+        return ""
+
+    def _paste_paths_from_clipboard(self) -> bool:
+        paths = self._paths_from_drop_text(self._clipboard_text())
+        if not paths:
+            return False
+        print(f"### [sprite-editor] clipboard paste -> {len(paths)} path(s)")
+        surfaces: list[Surface] = []
+        for p in paths:
+            try:
+                surfaces.append(pygame.image.load(str(p)).convert_alpha())
+            except Exception as e:
+                self._status_bar.error(f"Failed: {p.name}: {e}")
+        if not surfaces:
+            return True
+        names = [p.name for p in paths]
+        combined = self._build_combined_surface(
+            surfaces, horizontal=self._stack_horizontal
+        )
+        if self.doc.has_canvas:
+            self.commands.push(
+                AppendSheetCommand(combined, horizontal=self._stack_horizontal),
+                self.doc,
+                self.selection,
+            )
+            self.doc.sheets.extend(names)
+            n = len(surfaces)
+            msg = f"Appended {n} sheet{'s' if n != 1 else ''}"
+        else:
+            self._load_surface(combined, names)
+            self.doc.tile_size = self._detect_tile_size(surfaces[0])
+            msg = f"Loaded {len(surfaces)} sheet{'s' if len(surfaces) != 1 else ''}"
+        self._status_bar.success(msg)
+        self._toast(msg)
+        return True
+
+    def _flush_pending_drops(self) -> None:
+        paths, self._pending_drops = self._pending_drops, None
+        if not paths:
+            return
+        valid = [p for p in paths if p.suffix.lower() in IMAGE_EXTS and p.is_file()]
+        skipped = len(paths) - len(valid)
+        print(
+            f"### [sprite-editor] flush: {len(paths)} dropped, "
+            f"{len(valid)} valid, {skipped} filtered"
+        )
+        if not valid:
+            self._status_bar.warning("Drop ignored — no supported image files")
+            return
+        if skipped:
+            self._status_bar.info(
+                f"Skipped {skipped} unsupported file{'s' if skipped != 1 else ''}"
+            )
+        self._on_add_sheets(valid)
+
+    def _draw_drop_overlay(self, screen: Surface) -> None:
+        area = self._content_rect()
+        overlay = Surface(area.size, pygame.SRCALPHA)
+        overlay.fill((*COLORS.accent_active[:3], 28))
+        screen.blit(overlay, area.topleft)
+        pygame.draw.rect(screen, COLORS.accent_active, area, 2, border_radius=4)
+        surf = FONTS.get_small_font().render("Drop image sheets to load", True, COLORS.text)
+        screen.blit(surf, surf.get_rect(center=area.center))
 
     # -- draw ----------------------------------------------------------------
     def draw(self, screen: Surface) -> None:
@@ -780,6 +936,9 @@ class SpriteEditor:
         self.menubar.draw(screen)
 
         self._notifications.draw(screen)
+
+        if self._drop_hover:
+            self._draw_drop_overlay(screen)
 
         if self._context_menu.is_open:
             self._context_menu.draw(screen)
@@ -890,7 +1049,7 @@ class SpriteEditor:
         self._file_manager = FileManager(
             rect=self._file_manager_rect(),
             initial_dir=self._data_root,
-            allowed_exts=[".png", ".jpg", ".jpeg", ".bmp", ".gif"],
+            allowed_exts=list(IMAGE_EXTS),
             on_select=self._on_add_sheets,
             mode="open",
             on_cancel=self._close_file_manager,

@@ -7,6 +7,7 @@ Every mutation bumps `revision` so the viewport can invalidate caches.
 from __future__ import annotations
 
 import copy
+import math
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -262,6 +263,32 @@ class Document:
         self.surface = new_surface
         self._bump()
         return True
+
+    def append_sheet(self, sheet: Surface, horizontal: bool = False) -> None:
+        """Grow the canvas and stack `sheet` below (vertical) or right of
+        (horizontal) the existing content, snapped to tile-row boundaries.
+        Horizontal appends sit beside the lowest content ("latest row");
+        blank canvas adopts the sheet as-is."""
+        if self.surface is None:
+            self.surface = sheet
+            self._bump()
+            return
+        cur_w, cur_h = self.surface.get_size()
+        sw, sh = sheet.get_size()
+        if horizontal:
+            y = max(0, math.ceil((cur_h - sh) / self.th) * self.th)
+            pos = (cur_w, y)
+            new_size = (cur_w + sw, max(cur_h, y + sh))
+        else:
+            y = math.ceil(cur_h / self.th) * self.th
+            pos = (0, y)
+            new_size = (max(cur_w, sw), max(cur_h, y + sh))
+        new_surface = Surface(new_size, pygame.SRCALPHA)
+        new_surface.fill((0, 0, 0, 0))
+        new_surface.blit(self.surface, (0, 0))
+        new_surface.blit(sheet, pos)
+        self.surface = new_surface
+        self._bump()
 
     def set_tile_size(self, tile_size: tuple[int, int]) -> None:
         self.tile_size = (int(tile_size[0]), int(tile_size[1]))

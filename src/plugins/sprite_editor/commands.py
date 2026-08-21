@@ -136,6 +136,20 @@ class GridResizeCommand(Command):
         doc.set_tile_size(self.tile_size)
 
 
+class AppendSheetCommand(Command):
+    """Stack an imported sheet below (or right of) the existing canvas."""
+
+    name = "Import Sheets"
+
+    def __init__(self, sheet: pygame.Surface, horizontal: bool = False):
+        self.sheet = sheet
+        self.horizontal = bool(horizontal)
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        doc.append_sheet(self.sheet, horizontal=self.horizontal)
+        selection.replace([], anchor=None)
+
+
 class RegionAddCommand(Command):
     name = "Add Region"
 

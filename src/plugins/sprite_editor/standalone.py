@@ -111,6 +111,8 @@ def main(argv: list[str] | None = None) -> None:
     clock = pygame.time.Clock()
     running = True
 
+    print("### [sprite-editor] standalone started (drop build)")
+
     with error_context("sprite_editor"):
         while running:
             clock.tick(60)
