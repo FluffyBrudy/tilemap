@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING
 import pygame
 from pygame import Rect, Surface
 
+from .ui.theme import COLORS, FONTS
+
 if TYPE_CHECKING:
     from .autotiler import AutotileRule
 
@@ -57,7 +59,7 @@ class AutotileTemplateApplier:
         self.visible = False
         self.active_templates: list[TemplateDefinition] = []
         self.rect = Rect(0, 0, 200, 10)
-        self.font = pygame.font.SysFont("Arial", 12)
+        self.font = FONTS.get_font(12)
 
     def show_at(self, pos: tuple[int, int]):
         self.active_templates = self._get_active_templates()
@@ -227,8 +229,8 @@ class AutotileTemplateApplier:
         if not self.visible:
             return
 
-        pygame.draw.rect(screen, (45, 45, 50), self.rect)
-        pygame.draw.rect(screen, (80, 80, 90), self.rect, 1)
+        pygame.draw.rect(screen, COLORS.panel, self.rect)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
         mouse_pos = pygame.mouse.get_pos()
 
@@ -239,8 +241,8 @@ class AutotileTemplateApplier:
             is_hover = item_rect.collidepoint(mouse_pos)
 
             if is_hover:
-                pygame.draw.rect(screen, (66, 135, 245), item_rect)
+                pygame.draw.rect(screen, COLORS.accent, item_rect)
 
-            txt_color = (255, 255, 255) if is_hover else (220, 220, 220)
+            txt_color = COLORS.text if is_hover else COLORS.text_dim
             txt = self.font.render(template.name, True, txt_color)
             screen.blit(txt, (item_rect.x + 10, item_rect.y + 5))

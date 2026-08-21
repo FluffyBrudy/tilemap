@@ -9,6 +9,7 @@ import pygame
 from pygame import Rect, Surface
 
 from utils.context_dispatch import ContextKind, PropertyContext
+from widgets.input import InlineTextInput
 from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
@@ -43,8 +44,7 @@ class LayerSelector:
         self.hover_idx: int | None = None
 
         self.renaming_layer_idx: int | None = None
-        self.rename_text: str = ""
-        self.rename_original_name: str = ""
+        self.rename_input = InlineTextInput("layer_rename", "")
 
         self._adjusting_opacity_idx: int | None = None
 
@@ -220,23 +220,14 @@ class LayerSelector:
                     return True
 
             if self.renaming_layer_idx is not None:
-                if event.key == pygame.K_RETURN:
+                if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     self._confirm_rename()
                     return True
                 if event.key == pygame.K_ESCAPE:
                     self._cancel_rename()
                     return True
-                if event.key == pygame.K_BACKSPACE:
-                    pressed = pygame.key.get_pressed()
-                    meta_down = pressed[pygame.K_LMETA] or pressed[pygame.K_RMETA]
-                    ctrl_down = pressed[pygame.K_LCTRL] or pressed[pygame.K_RCTRL]
-                    if meta_down or ctrl_down:
-                        self.rename_text = ""
-                    else:
-                        self.rename_text = self.rename_text[:-1]
+                if self.rename_input.handle_event(event, self.font_layer):
                     return True
-                if event.unicode.isprintable():
-                    self.rename_text += event.unicode
                 return True
 
             if event.key == pygame.K_UP:
@@ -370,39 +361,29 @@ class LayerSelector:
         layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
         if layer:
             self.renaming_layer_idx = layer_idx
-            self.rename_text = layer.name
-            self.rename_original_name = layer.name
+            self.rename_input.text = layer.name
+            self.rename_input.cursor_pos = len(layer.name)
+            self.rename_input.is_focused = True
+            self.rename_input.select_all()
 
     def _confirm_rename(self) -> None:
         """Confirm and apply the rename."""
         if self.renaming_layer_idx is None:
             return
 
-        import string
-
-        valid_chars = set(string.ascii_letters + string.digits + " ")
-
-        if not self.rename_text:
-            self._cancel_rename()
-            return
-
-        if all(c in valid_chars for c in self.rename_text):
-            layer = self.editor.tilemap.layer_manager.get_layer(self.renaming_layer_idx)
-            if layer:
-                layer.name = self.rename_text
-        else:
-            self._cancel_rename()
-            return
-
-        self.renaming_layer_idx = None
-        self.rename_text = ""
-        self.rename_original_name = ""
+        new_name = self.rename_input.text.strip()
+        layer = self.editor.tilemap.layer_manager.get_layer(self.renaming_layer_idx)
+        if new_name and layer:
+            layer.name = new_name
+        self._cancel_rename()
 
     def _cancel_rename(self) -> None:
         """Cancel rename and revert to original name."""
         self.renaming_layer_idx = None
-        self.rename_text = ""
-        self.rename_original_name = ""
+        self.rename_input.text = ""
+        self.rename_input.cursor_pos = 0
+        self.rename_input.is_focused = False
+        self.rename_input.selection_start = None
 
     def _open_layer_properties(self, ctx: PropertyContext) -> None:
         layer = ctx.target
@@ -490,11 +471,22 @@ class LayerSelector:
                     Rect(item_rect.x + 22, item_rect.y + 4, 120, 20),
                     border_radius=SHAPE.radius_sm,
                 )
+                cursor = (
+                    "|"
+                    if pygame.time.get_ticks() // 500 % 2 == 0
+                    else ""
+                )
                 name_txt = self.font_layer.render(
-                    self.rename_text + "|", True, COLORS.text
+                    self.rename_input.text[: self.rename_input.cursor_pos]
+                    + cursor
+                    + self.rename_input.text[self.rename_input.cursor_pos :],
+                    True,
+                    COLORS.text_on_accent,
                 )
             else:
-                name_txt = self.font_layer.render(layer.name, True, COLORS.text)
+                on_highlight = i == active_idx or i == self.dragging_layer_idx
+                name_color = COLORS.text_on_accent if on_highlight else COLORS.text
+                name_txt = self.font_layer.render(layer.name, True, name_color)
             screen.blit(name_txt, (item_rect.x + 22, item_rect.y + 5))
 
             opacity_bar = self._get_opacity_bar_rect(i)
@@ -502,7 +494,7 @@ class LayerSelector:
                 bg_rect = Rect(
                     opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height
                 )
-                pygame.draw.rect(screen, (60, 60, 60), bg_rect, border_radius=2)
+                pygame.draw.rect(screen, COLORS.border, bg_rect, border_radius=2)
                 fill_w = int(opacity_bar.width * layer.opacity)
                 if fill_w > 0:
                     fill_rect = Rect(

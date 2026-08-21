@@ -6,6 +6,14 @@ from pygame import Rect
 
 from utils.context_dispatch import ContextKind, PropertyContext
 from utils.error_handler import error_handler
+from utils.tileset_hierarchy import (
+    FolderEntry,
+    ItemEntry,
+    TilesetHierarchy,
+    load_hierarchy,
+    relative_path,
+    save_hierarchy,
+)
 from utils.validation import is_image_multipleof
 from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
@@ -50,6 +58,8 @@ class TileSelector(WidgetBase):
         self._tree.on_item_activated = self._on_tree_activate
         self._tree.on_item_context = self._on_tree_context
         self._tree.on_structure_changed = self._on_tree_structure_changed
+        self._tree.on_rename_committed = self._on_node_renamed
+        self._tree.on_delete_requested = self._on_tree_delete_requested
 
         self._folder_btn = Button(
             Rect(x, h - 26, self.TREE_W, 24),
@@ -72,6 +82,15 @@ class TileSelector(WidgetBase):
         self.rule_hints: set[int] = set()
         self._folder_id_counter = 0
 
+        self._hierarchy: TilesetHierarchy | None = None
+        self._placement: dict[str, str] = {}
+        data_root = getattr(self.editor, "data_root", None)
+        if data_root is not None:
+            loaded = load_hierarchy(Path(data_root))
+            if loaded is not None:
+                self._hierarchy = loaded
+                self._placement = loaded.placement_map()
+
         self._pending_tileset_queue: list[tuple[Path, pygame.Surface]] = []
         self._queue_timer_active = False
 
@@ -92,12 +111,15 @@ class TileSelector(WidgetBase):
     def _add_folder(self) -> None:
         self._folder_id_counter += 1
         folder = TreeNode(
-            id=f"_folder_{self._folder_id_counter}",
+            id=self._next_folder_id(),
             label=f"Folder {self._folder_id_counter}",
             is_folder=True,
         )
         self._tree.roots.append(folder)
         self._tree.set_data(self._tree.roots)
+        self._tree.selected_ids = {folder.id}
+        self._save_hierarchy()
+        self._tree.begin_rename(folder.id)
 
     def _ts_node(self, node_id: str) -> TilesetData | None:
         node = self._tree.find_node(node_id)
@@ -172,7 +194,70 @@ class TileSelector(WidgetBase):
         self.editor.suggestion_registry.refresh(self.editor)
 
     def _on_tree_structure_changed(self) -> None:
-        pass
+        self._save_hierarchy()
+
+    def _on_node_renamed(self, node_id: str, new_label: str) -> None:
+        self._save_hierarchy()
+
+    def _data_root(self) -> Path | None:
+        root = getattr(self.editor, "data_root", None)
+        return Path(root) if root else None
+
+    def _next_folder_id(self) -> str:
+        nums = []
+        for n in self._walk_all(self._tree.roots):
+            if n.is_folder and n.id.startswith("f_"):
+                try:
+                    nums.append(int(n.id.split("_", 1)[1]))
+                except ValueError:
+                    continue
+        return f"f_{max(nums, default=0) + 1}"
+
+    def _ensure_folder_nodes(self) -> tuple[dict[str, TreeNode], list[TreeNode]]:
+        """Create TreeNodes for every folder defined in the hierarchy file.
+
+        Returns (nodes by id, newly created root-level nodes). Callers must
+        merge the new roots into the list they pass to ``set_data``.
+        """
+        if self._hierarchy is None:
+            return {}, []
+        existing = {
+            n.id: n for n in self._walk_all(self._tree.roots) if n.is_folder
+        }
+        nodes: dict[str, TreeNode] = {}
+        new_roots: list[TreeNode] = []
+
+        def attach(node: TreeNode, parent_id: str | None) -> None:
+            parent_node = nodes.get(parent_id) if parent_id else None
+            if parent_node is not None:
+                parent_node.add_child(node)
+            else:
+                new_roots.append(node)
+
+        pending = list(self._hierarchy.folders)
+        while pending:
+            progressed = False
+            for f in list(pending):
+                if f.parent is not None and f.parent not in nodes and any(
+                    p.id == f.parent for p in pending
+                ):
+                    continue
+                node = existing.get(f.id)
+                if node is None:
+                    node = TreeNode(id=f.id, label=f.name or "Folder", is_folder=True)
+                    attach(node, f.parent)
+                pending.remove(f)
+                nodes[f.id] = node
+                progressed = True
+            if not progressed:
+                for f in pending:
+                    node = existing.get(f.id)
+                    if node is None:
+                        node = TreeNode(id=f.id, label=f.name or "Folder", is_folder=True)
+                        attach(node, None)
+                    nodes[f.id] = node
+                break
+        return nodes, new_roots
 
     def _sync_tree(self) -> None:
         uid_to_idx = {ts.uid: i for i, ts in enumerate(self.tilesets)}
@@ -192,18 +277,83 @@ class TileSelector(WidgetBase):
         roots = walk(self._tree.roots)
         existing = {n.id for n in self._walk_all(roots) if not n.is_folder}
 
+        folder_nodes, new_folder_roots = self._ensure_folder_nodes()
+        roots.extend(new_folder_roots)
+        data_root = self._data_root()
+
         for ts in self.tilesets:
-            if ts.uid not in existing:
-                roots.append(
-                    TreeNode(
-                        id=ts.uid,
-                        label=ts.name,
-                        icon_key="miniobj" if ts.tileset_type == "object" else "tileset",
-                        data=uid_to_idx[ts.uid],
-                    )
-                )
+            if ts.uid in existing:
+                continue
+            node = TreeNode(
+                id=ts.uid,
+                label=ts.name,
+                icon_key="miniobj" if ts.tileset_type == "object" else "tileset",
+                data=uid_to_idx[ts.uid],
+            )
+            target_folder = None
+            if data_root is not None:
+                rel = relative_path(ts.path, data_root)
+                target_folder = self._placement.get(rel)
+            if target_folder and target_folder in folder_nodes:
+                folder_nodes[target_folder].add_child(node)
+            else:
+                roots.append(node)
 
         self._tree.set_data(roots)
+
+    def _single_selected_folder(self) -> TreeNode | None:
+        if len(self._tree.selected_ids) != 1:
+            return None
+        node = self._tree.find_node(next(iter(self._tree.selected_ids)))
+        return node if node and node.is_folder else None
+
+    def _save_hierarchy(self) -> None:
+        data_root = self._data_root()
+        if data_root is None:
+            return
+        hier = TilesetHierarchy()
+
+        def walk(nodes: list[TreeNode], parent_id: str | None) -> None:
+            for n in nodes:
+                if n.is_folder:
+                    hier.folders.append(
+                        FolderEntry(id=n.id, name=n.label, parent=parent_id)
+                    )
+                    walk(n.children, n.id)
+                else:
+                    ts = self._ts_node(n.id)
+                    if ts is None:
+                        continue
+                    hier.items.append(
+                        ItemEntry(path=relative_path(ts.path, data_root), folder=parent_id)
+                    )
+
+        walk(self._tree.roots, None)
+        save_hierarchy(data_root, hier)
+
+    def _on_tree_delete_requested(self, ids: list[str]) -> None:
+        changed = False
+        for nid in ids:
+            node = self._tree.find_node(nid)
+            if node is None or not node.is_folder:
+                continue
+            parent = node.parent
+            siblings = parent.children if parent else self._tree.roots
+            idx = siblings.index(node)
+            for child in list(node.children):
+                node.remove_child(child)
+                siblings.insert(idx, child)
+                child.parent = parent
+                idx += 1
+            if parent is not None:
+                parent.remove_child(node)
+            else:
+                while node in self._tree.roots:
+                    self._tree.roots.remove(node)
+            changed = True
+        if changed:
+            self._tree.set_data(self._tree.roots)
+            self._save_hierarchy()
 
     def _walk_all(self, nodes: list[TreeNode]) -> list[TreeNode]:
         result: list[TreeNode] = []
@@ -239,6 +389,11 @@ class TileSelector(WidgetBase):
             return True
 
         mouse_pos = pygame.mouse.get_pos()
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
+            folder = self._single_selected_folder()
+            if folder is not None and self._tree.begin_rename(folder.id):
+                return True
 
         if self._tree.handle_event(event):
             return True

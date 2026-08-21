@@ -13,11 +13,17 @@ class MenuAction:
         callback: Callable,
         shortcut: str = "",
         is_checked: Callable[[], bool] | None = None,
+        is_enabled: Callable[[], bool] | None = None,
     ):
         self.label = label
         self.callback = callback
         self.shortcut = shortcut
         self.is_checked = is_checked
+        self.is_enabled = is_enabled
+
+
+class MenuSeparator:
+    """Drop-in entry for menu action lists: renders a horizontal divider."""
 
 
 class Menu:
@@ -30,13 +36,20 @@ class Menu:
 
 
 class MenuBar:
-    def __init__(self, editor, width: int, height: int = 30):
+    def __init__(self, editor, width: int, height: int = 30, menus=None):
         self.editor = editor
         self.rect = Rect(0, 0, width, height)
         self.font = FONTS.get_medium_font()
         self.font_shortcut = FONTS.get_small_font()
+        self._custom_menus = menus
 
-        self.menus = [
+        self.menus = menus if menus is not None else self._build_default_menus()
+
+        self._layout_menus()
+
+    def _build_default_menus(self) -> list[Menu]:
+        editor = self.editor
+        return [
             Menu(
                 "File",
                 [
@@ -105,21 +118,22 @@ class MenuBar:
                     ),
                     MenuAction(
                         "Toggle Map Boundary",
-                        self.editor.toggle_map_boundary,
+                        editor.toggle_map_boundary,
                         "Ctrl+B",
-                        is_checked=lambda: self.editor.tile_grid_widget.show_map_boundary
-                        if self.editor.tile_grid_widget
+                        is_checked=lambda: editor.tile_grid_widget.show_map_boundary
+                        if editor.tile_grid_widget
                         else True,
                     ),
                 ],
             ),
         ]
 
-        self._layout_menus()
-
     def resize(self, width: int):
         self.rect.width = width
         self._layout_menus()
+
+    ITEM_H = 26
+    SEP_H = 12
 
     def _layout_menus(self):
         x = 5
@@ -128,9 +142,10 @@ class MenuBar:
             w = txt_surf.get_width() + 24
             menu.rect = Rect(x, 0, w, self.rect.height)
 
-            item_h = 26
             max_w = 180
             for action in menu.actions:
+                if isinstance(action, MenuSeparator):
+                    continue
                 label_w = self.font.render(
                     action.label, True, COLORS.text
                 ).get_width()
@@ -142,24 +157,58 @@ class MenuBar:
                 else:
                     max_w = max(max_w, label_w + 30)
 
-            menu.dropdown_rect = Rect(
-                x, self.rect.height, max_w, len(menu.actions) * item_h + 10
+            total_h = sum(
+                self.SEP_H if isinstance(a, MenuSeparator) else self.ITEM_H
+                for a in menu.actions
             )
+            menu.dropdown_rect = Rect(x, self.rect.height, max_w, total_h + 10)
+
+            item_rects = []
+            iy = menu.dropdown_rect.y + 5
+            for action in menu.actions:
+                h = self.SEP_H if isinstance(action, MenuSeparator) else self.ITEM_H
+                item_rects.append(
+                    (
+                        Rect(menu.dropdown_rect.x + 2, iy, menu.dropdown_rect.width - 4, h),
+                        action,
+                    )
+                )
+                iy += h
+            menu.item_rects = item_rects
             x += w
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        mouse_pos = pygame.mouse.get_pos()
+        mouse_pos = getattr(event, "pos", None) or pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
+                print(
+                    f"### [menubar] DOWN pos={mouse_pos} bar={self.rect} "
+                    f"open={[m.label for m in self.menus if m.is_open]}"
+                )
                 for menu in self.menus:
                     if menu.is_open and menu.dropdown_rect.collidepoint(mouse_pos):
-                        rel_y = mouse_pos[1] - menu.dropdown_rect.y - 5
-                        idx = rel_y // 26
-                        if 0 <= idx < len(menu.actions):
-                            menu.actions[idx].callback()
+                        print(f"### [menubar] hit dropdown of '{menu.label}'")
+                        for item_rect, action in menu.item_rects:
+                            if not item_rect.collidepoint(mouse_pos):
+                                continue
+                            if isinstance(action, MenuSeparator):
+                                print("### [menubar] item=separator")
+                                return True
+                            enabled = (
+                                action.is_enabled is None or action.is_enabled()
+                            )
+                            print(
+                                f"### [menubar] item='{action.label}' "
+                                f"enabled={enabled}"
+                            )
+                            if not enabled:
+                                return True
+                            action.callback()
                             menu.is_open = False
                             return True
+                        print("### [menubar] dropdown padding")
+                        return True
 
                 for menu in self.menus:
                     if menu.rect.collidepoint(mouse_pos):
@@ -167,10 +216,14 @@ class MenuBar:
                         for m in self.menus:
                             m.is_open = False
                         menu.is_open = not was_open
+                        print(
+                            f"### [menubar] toggle '{menu.label}' -> open={menu.is_open}"
+                        )
                         return True
 
                 for m in self.menus:
                     m.is_open = False
+                print("### [menubar] DOWN outside bar -> closed all")
 
         elif event.type == pygame.MOUSEMOTION:
             any_open = any(m.is_open for m in self.menus)
@@ -182,12 +235,18 @@ class MenuBar:
                         menu.is_open = True
                         break
 
+        if event.type == pygame.MOUSEWHEEL:
+            # wheel events carry no position: only block the canvas while a
+            # dropdown is actually open
+            return any(m.is_open for m in self.menus)
+
         if event.type in (
             pygame.MOUSEBUTTONDOWN,
             pygame.MOUSEBUTTONUP,
             pygame.MOUSEMOTION,
-            pygame.MOUSEWHEEL,
         ):
+            if mouse_pos is None:
+                return False
             return any(
                 m.is_open and m.dropdown_rect.collidepoint(mouse_pos)
                 for m in self.menus
@@ -232,22 +291,33 @@ class MenuBar:
                 pygame.draw.rect(screen, COLORS.panel, menu.dropdown_rect)
                 pygame.draw.rect(screen, COLORS.border, menu.dropdown_rect, 1)
 
-                for i, action in enumerate(menu.actions):
-                    item_rect = Rect(
-                        menu.dropdown_rect.x + 2,
-                        menu.dropdown_rect.y + 5 + i * 26,
-                        menu.dropdown_rect.width - 4,
-                        26,
+                for item_rect, action in menu.item_rects:
+                    if isinstance(action, MenuSeparator):
+                        mid_y = item_rect.centery
+                        pygame.draw.line(
+                            screen,
+                            COLORS.border_soft,
+                            (item_rect.x + 8, mid_y),
+                            (item_rect.right - 8, mid_y),
+                            1,
+                        )
+                        continue
+
+                    disabled = action.is_enabled is not None and not action.is_enabled()
+                    hovered = (
+                        item_rect.collidepoint(mouse_pos) and not disabled
                     )
-                    if item_rect.collidepoint(mouse_pos):
+                    if hovered:
                         pygame.draw.rect(screen, COLORS.accent, item_rect)
-                        color = COLORS.text
-                        shortcut_color = COLORS.text
+                        color = COLORS.text_on_accent
+                        shortcut_color = COLORS.text_on_accent
+                    elif disabled:
+                        color = COLORS.text_muted
+                        shortcut_color = COLORS.text_muted
                     else:
                         color = COLORS.text
                         shortcut_color = COLORS.text_dim
 
-                    # Draw checkmark if action is checked
                     label_x = item_rect.x + 10
                     if action.is_checked and action.is_checked():
                         from utils.icon_manager import icon_manager

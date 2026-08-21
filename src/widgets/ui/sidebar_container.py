@@ -142,7 +142,11 @@ class SidebarContainer(WidgetBase):
                     pygame.draw.line(
                         screen, COLORS.border, r.bottomleft, r.bottomright, 1
                     )
-                label = FONTS.get_medium_font().render(tab.name, True, COLORS.text)
+                label = FONTS.get_medium_font().render(
+                    tab.name,
+                    True,
+                    COLORS.text_on_accent if is_active else COLORS.text,
+                )
                 screen.blit(
                     label, (r.x + 8, r.y + (self.tab_bar_h - label.get_height()) // 2)
                 )

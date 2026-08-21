@@ -47,7 +47,7 @@ def main() -> None:
     run_parser.add_argument(
         "--theme",
         default=None,
-        help='Theme name or path to .json theme file (e.g. "molokai", "path/to/custom.json")',
+        help='Theme name or path to .json theme file (built-in: dark, molokai, monokai, light, semi_light; or "path/to/custom.json")',
     )
 
     args = parser.parse_args()

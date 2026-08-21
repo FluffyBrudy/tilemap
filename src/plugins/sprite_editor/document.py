@@ -238,14 +238,12 @@ class Document:
         min_row = min(r for _, r in cells)
         max_col = max(c for c, _ in cells)
         max_row = max(r for _, r in cells)
-        
+
         new_origin_col = min(self.origin_col, min_col)
         new_origin_row = min(self.origin_row, min_row)
         need_cols = max(self.cols, max_col - new_origin_col + 1)
         need_rows = max(self.rows, max_row - new_origin_row + 1)
-        shift_x = (self.origin_col - new_origin_col) * self.tw
-        shift_y = (self.origin_row - new_origin_row) * self.th
-        
+
         self.origin_col = new_origin_col
         self.origin_row = new_origin_row
         return self.expand_canvas_to(need_cols, need_rows)

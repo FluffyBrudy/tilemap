@@ -3,6 +3,8 @@ import time
 import pygame
 from pygame import Rect, Surface
 
+from .theme import FONTS
+
 
 class Notification:
     def __init__(self, text: str, color=(200, 200, 200), duration=3.0):
@@ -21,7 +23,7 @@ class NotificationManager:
     def __init__(self, editor):
         self.editor = editor
         self.notifications: list[Notification] = []
-        self.font = pygame.font.SysFont("Arial", 14, bold=True)
+        self.font = FONTS.get_bold_font(14)
 
     def notify(self, text: str, color=(200, 200, 200), duration=3.0):
         self.notifications.append(Notification(text, color, duration))

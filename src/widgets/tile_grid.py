@@ -8,7 +8,7 @@ from ttypes.tilemap import TypeObject, TypeTile
 from utils.context_dispatch import ContextKind, PropertyContext
 from widgets.particle_system import MAX_DT, ParticlePreview
 from widgets.ui.drag_tracker import DragTracker
-from widgets.ui.theme import COLORS
+from widgets.ui.theme import COLORS, FONTS
 from widgets.ui.tool_manager import ToolKind
 
 if TYPE_CHECKING:
@@ -43,8 +43,8 @@ class TileGrid:
         self.min_zoom = 0.1
         self.max_zoom = 5.0
 
-        self.font_status = pygame.font.SysFont("Arial", 12)
-        self.font_overlay = pygame.font.SysFont("Arial", 24, bold=True)
+        self.font_status = FONTS.get_font(12)
+        self.font_overlay = FONTS.get_bold_font(24)
         self._last_history_capture = 0
 
         self.last_eraser_adj_time = 0
@@ -1390,7 +1390,7 @@ class TileGrid:
         # Draw grid coordinates at corners if zoom is reasonable
         if self.zoom_level >= 0.5:
             font_size = max(10, int(12 * self.zoom_level))
-            coord_font = pygame.font.SysFont("Arial", font_size)
+            coord_font = FONTS.get_font(font_size)
             coord_color = (100, 200, 255)
             bg_color = (0, 0, 0, 180)
 
@@ -1432,8 +1432,6 @@ class TileGrid:
         bar_rect = Rect(0, self.editor.height - bar_h, self.editor.width, bar_h)
         pygame.draw.rect(screen, COLORS.header, bar_rect)
         pygame.draw.line(screen, COLORS.border_soft, (0, bar_rect.y), (self.editor.width, bar_rect.y))
-
-        pygame.font.SysFont("Arial", 12)
 
         mouse_pos = pygame.mouse.get_pos()
         world_pos = self.screen_to_world(mouse_pos)
@@ -1479,7 +1477,7 @@ class TileGrid:
             parts.append(f"Clip {ct}")
         parts.append(f"Undo {'Y' if can_undo else 'N'} / Redo {'Y' if can_redo else 'N'}")
         status_text = " | ".join(parts)
-        txt = self.font_status.render(status_text, True, (200, 200, 200))
+        txt = self.font_status.render(status_text, True, COLORS.text_dim)
         screen.blit(txt, (10, bar_rect.y + 5))
 
     def render_map(self, surface: Surface):

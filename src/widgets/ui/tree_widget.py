@@ -10,6 +10,7 @@ from pygame import Rect, Surface
 
 from utils.icon_manager import icon_manager
 
+from ..input import InlineTextInput
 from ..widget_base import WidgetBase
 from .theme import COLORS, FONTS
 
@@ -94,6 +95,11 @@ class TreeWidget(WidgetBase):
         self.on_item_activated: Callable[[str], None] | None = None
         self.on_item_context: Callable[[str], None] | None = None
         self.on_structure_changed: Callable[[], None] | None = None
+        self.on_rename_committed: Callable[[str, str], None] | None = None
+        self.on_delete_requested: Callable[[list[str]], None] | None = None
+
+        self._rename_id: str | None = None
+        self._rename_input: InlineTextInput | None = None
 
     def set_data(self, roots: list[TreeNode]):
         seen = set()
@@ -125,6 +131,33 @@ class TreeWidget(WidgetBase):
             return None
 
         return search(self.roots)
+
+    # -- inline rename -----------------------------------------------------
+    def begin_rename(self, node_id: str) -> bool:
+        """Start inline editing of a node's label. Returns False if unknown."""
+        node = self.find_node(node_id)
+        if node is None:
+            return False
+        self._rename_id = node_id
+        self._rename_input = InlineTextInput("tree_rename", node.label)
+        self._rename_input.cursor_pos = len(node.label)
+        self._rename_input.select_all()
+        self._rename_input.is_focused = True
+        return True
+
+    def cancel_rename(self) -> None:
+        self._rename_id = None
+        self._rename_input = None
+
+    def _commit_rename(self) -> None:
+        node = self.find_node(self._rename_id) if self._rename_id else None
+        new_label = (self._rename_input.text or "").strip() if self._rename_input else ""
+        if node is not None and new_label and new_label != node.label:
+            node.label = new_label
+            if self.on_rename_committed:
+                self.on_rename_committed(node.id, new_label)
+            self._invalidate_cache()
+        self.cancel_rename()
 
     def _get_depth(self, node: TreeNode) -> int:
         depth = 0
@@ -242,13 +275,33 @@ class TreeWidget(WidgetBase):
             return True
 
         if event.type == pygame.KEYDOWN:
+            if self._rename_id is not None:
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._commit_rename()
+                elif event.key == pygame.K_ESCAPE:
+                    self.cancel_rename()
+                else:
+                    self._rename_input.handle_event(event, self.font)
+                return True
+
             if self._state == self.State.DRAGGING and event.key == pygame.K_ESCAPE:
                 self._state = self.State.IDLE
                 self._dragging_nodes = []
                 return True
+
+            if (
+                event.key in (pygame.K_DELETE, pygame.K_BACKSPACE)
+                and self.selected_ids
+                and self.on_delete_requested
+            ):
+                self.on_delete_requested(sorted(self.selected_ids))
+                return True
             return False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._rename_id is not None:
+                self._commit_rename()
+                return True
             if not in_bounds:
                 return False
 
@@ -296,6 +349,9 @@ class TreeWidget(WidgetBase):
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            if self._rename_id is not None:
+                self._commit_rename()
+                return True
             if not in_bounds:
                 return False
             node, _ = self._hit_test(mouse)
@@ -405,9 +461,13 @@ class TreeWidget(WidgetBase):
                 icon_x -= 4
 
             label_x = icon_x + 20
-            label_surf = self.font.render(node.label, True, COLORS.text)
-            label_y = y + (self.item_height - label_surf.get_height()) // 2
-            screen.blit(label_surf, (label_x, label_y))
+            if node.id == self._rename_id and self._rename_input is not None:
+                self._draw_rename_editor(screen, row_rect, label_x)
+            else:
+                lbl_color = COLORS.text_on_accent if is_selected else COLORS.text
+                label_surf = self.font.render(node.label, True, lbl_color)
+                label_y = y + (self.item_height - label_surf.get_height()) // 2
+                screen.blit(label_surf, (label_x, label_y))
 
         if self._state == self.State.DRAGGING and self._drop_target_node:
             target_idx = next((i for i, it in enumerate(self._flat_cache) if it["node"] == self._drop_target_node), -1)
@@ -449,4 +509,24 @@ class TreeWidget(WidgetBase):
             ghost.blit(txt, (12, (h - txt.get_height()) // 2))
             screen.blit(ghost, (self._drag_current_pos[0] + 15, self._drag_current_pos[1] + 15))
 
+        screen.set_clip(clip)
+
+    def _draw_rename_editor(self, screen: Surface, row_rect: Rect, label_x: float) -> None:
+        inp = self._rename_input
+        box = Rect(
+            int(label_x),
+            row_rect.y + 3,
+            int(self.rect.right - label_x - 8),
+            self.item_height - 6,
+        )
+        pygame.draw.rect(screen, COLORS.panel, box)
+        pygame.draw.rect(screen, COLORS.accent if inp.is_focused else COLORS.border, box, 1)
+
+        clip = screen.get_clip()
+        screen.set_clip(box)
+        txt = self.font.render(inp.text, True, COLORS.text)
+        screen.blit(txt, (box.x + 4, box.y + (box.height - txt.get_height()) // 2))
+        cursor_x = box.x + 4 + self.font.size(inp.text[: inp.cursor_pos])[0]
+        if pygame.time.get_ticks() // 500 % 2 == 0 and cursor_x < box.right - 2:
+            pygame.draw.line(screen, COLORS.text, (cursor_x, box.y + 2), (cursor_x, box.bottom - 3), 1)
         screen.set_clip(clip)

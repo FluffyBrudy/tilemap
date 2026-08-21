@@ -9,6 +9,7 @@ from utils.context_dispatch import ContextKind, PropertyContext
 from utils.font_manager import FontWeight, font_manager
 from widgets.particle_presets import PRESETS, get_preset_config, get_preset_names
 from widgets.ui.draw_utils import draw_panel
+from widgets.ui.node_selector import NodeSelector
 from widgets.ui.particle_config_dialog import Dropdown, ParticleConfigDialog
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
@@ -466,12 +467,15 @@ class NodeEditor:
                     self._preset_dd = Dropdown(pr, opts, current, max_visible=12)
                     self._preset_owner = owner
 
-                self._preset_dd.draw(screen, (40, 44, 50), (60, 64, 69))
+                self._preset_dd.draw(screen, COLORS.header, COLORS.border)
 
         for rect, action in self._buttons():
             if action == "particle":
                 pygame.draw.rect(
-                    screen, (200, 100, 160), rect, border_radius=SHAPE.radius_sm
+                    screen,
+                    NodeSelector.NODE_TYPE_COLORS["particle_emitter"],
+                    rect,
+                    border_radius=SHAPE.radius_sm,
                 )
                 txt = self.font.render("Particle Config...", True, COLORS.text)
             else:

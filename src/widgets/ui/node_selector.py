@@ -537,7 +537,8 @@ class NodeSelector:
                 )
 
                 lbl_text = f"{row['name']} ({row['nodes_count']})"
-                lbl = self.font.render(lbl_text, True, COLORS.text)
+                lbl_color = COLORS.text_on_accent if is_active else COLORS.text
+                lbl = self.font.render(lbl_text, True, lbl_color)
                 screen.blit(lbl, (item_rect.x + 32, item_rect.y + 6))
 
             else:
@@ -562,7 +563,8 @@ class NodeSelector:
                     4,
                 )
 
-                lbl = self.font.render(node.name, True, COLORS.text)
+                lbl_color = COLORS.text_on_accent if is_active else COLORS.text
+                lbl = self.font.render(node.name, True, lbl_color)
                 screen.blit(lbl, (item_rect.x + indent_offset + 20, item_rect.y + 6))
 
             if is_hover:

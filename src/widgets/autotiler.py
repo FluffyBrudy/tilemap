@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pygame
-from pygame import Color, Rect, Surface
+from pygame import Rect, Surface
 
 from constants import BASE_PATH
 from utils.error_handler import error_handler
@@ -11,6 +11,7 @@ from utils.icon_manager import icon_manager
 
 from .autotile_template import AutotileTemplateApplier
 from .input import InlineTextInput
+from .ui.theme import COLORS, FONTS
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -18,9 +19,6 @@ if TYPE_CHECKING:
 WINDOW_BG = (40, 44, 52)
 PANEL_BG = (33, 37, 43)
 BORDER_COLOR = (24, 26, 31)
-HEADER_COLOR = (44, 132, 250)
-TEXT_COLOR = (220, 220, 220)
-HIGHLIGHT_COLOR = (65, 70, 80)
 GRID_ACTIVE = (152, 195, 121)
 GRID_INACTIVE = (60, 64, 72)
 GRID_CENTER = (97, 175, 239)
@@ -130,8 +128,8 @@ class AutotileRuleDesigner:
         self.grid_rows = 3
         self.cell_size = 32
 
-        self.font = pygame.font.SysFont("Arial", 12)
-        self.title_font = pygame.font.SysFont("Arial", 14, bold=True)
+        self.font = FONTS.get_font(12)
+        self.title_font = FONTS.get_bold_font(14)
 
         self.template_manager = AutotileTemplateApplier(self)
 
@@ -642,14 +640,14 @@ class AutotileRuleDesigner:
 
         pygame.draw.rect(
             screen,
-            HEADER_COLOR,
+            COLORS.accent,
             Rect(self.rect.x, self.rect.y, self.rect.width, self.header_height),
         )
-        title = self.title_font.render("Autotile Designer", True, Color("white"))
+        title = self.title_font.render("Autotile Designer", True, COLORS.text)
         screen.blit(title, (self.rect.x + 10, self.rect.y + 5))
 
-        pygame.draw.rect(screen, (200, 60, 60), self.close_btn_rect)
-        x_lbl = self.title_font.render("X", True, Color("white"))
+        pygame.draw.rect(screen, COLORS.danger, self.close_btn_rect)
+        x_lbl = self.title_font.render("X", True, COLORS.text)
         screen.blit(x_lbl, (self.close_btn_rect.x + 10, self.close_btn_rect.y + 5))
 
         pygame.draw.rect(screen, PANEL_BG, self.list_area)
@@ -661,11 +659,11 @@ class AutotileRuleDesigner:
 
     def _draw_rule_list(self, screen):
 
-        pygame.draw.rect(screen, (70, 70, 75), self.group_list_area)
-        pygame.draw.rect(screen, (100, 100, 105), self.group_list_area, 1)
+        pygame.draw.rect(screen, COLORS.header, self.group_list_area)
+        pygame.draw.rect(screen, COLORS.border, self.group_list_area, 1)
 
         lbl_groups = self.title_font.render(
-            "Groups (F2: Rename)", True, (150, 150, 255)
+            "Groups (F2: Rename)", True, COLORS.accent_hover
         )
         screen.blit(
             lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5)
@@ -682,10 +680,10 @@ class AutotileRuleDesigner:
             )
 
             if i == self.selected_group_idx:
-                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
+                pygame.draw.rect(screen, COLORS.hover, r, border_radius=3)
 
             if i == self.renaming_group_idx:
-                pygame.draw.rect(screen, (100, 120, 140), r, border_radius=3)
+                pygame.draw.rect(screen, COLORS.selected, r, border_radius=3)
 
             name = group.name
             if i == self.renaming_group_idx:
@@ -698,28 +696,30 @@ class AutotileRuleDesigner:
                     name = prefix + " " + display_name[cursor_offset:]
 
             d_name = name if len(name) < 22 else name[:19] + ".."
-            screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
+            on_blue = i == self.renaming_group_idx or i == self.selected_group_idx
+            g_color = COLORS.text_on_accent if on_blue else COLORS.text
+            screen.blit(self.font.render(d_name, True, g_color), (r.x + 5, r.y + 5))
 
         pygame.draw.rect(
-            screen, (80, 120, 80), self.new_group_btn_rect, border_radius=4
+            screen, COLORS.success, self.new_group_btn_rect, border_radius=4
         )
-        gntxt = self.font.render("+ New Group", True, TEXT_COLOR)
+        gntxt = self.font.render("+ New Group", True, COLORS.text)
         screen.blit(
             gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5)
         )
 
         pygame.draw.rect(screen, PANEL_BG, self.rule_list_area)
-        pygame.draw.rect(screen, (80, 80, 85), self.rule_list_area, 1)
+        pygame.draw.rect(screen, COLORS.border, self.rule_list_area, 1)
 
-        lbl_rules = self.title_font.render("Rules", True, (150, 150, 255))
+        lbl_rules = self.title_font.render("Rules", True, COLORS.accent_hover)
         screen.blit(lbl_rules, (self.rule_list_area.x + 5, self.rule_list_area.y + 5))
 
         self._draw_scrollable_rule_list(screen)
 
         pygame.draw.rect(
-            screen, (70, 130, 180), self.new_rule_btn_rect, border_radius=4
+            screen, COLORS.accent, self.new_rule_btn_rect, border_radius=4
         )
-        rntxt = self.font.render("+ New Rule", True, TEXT_COLOR)
+        rntxt = self.font.render("+ New Rule", True, COLORS.text)
         screen.blit(
             rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5)
         )
@@ -761,10 +761,10 @@ class AutotileRuleDesigner:
             )
 
             if i == self.selected_rule_index:
-                pygame.draw.rect(screen, HIGHLIGHT_COLOR, r, border_radius=3)
+                pygame.draw.rect(screen, COLORS.hover, r, border_radius=3)
 
             d_name = rule.name if len(rule.name) < 20 else rule.name[:17] + ".."
-            screen.blit(self.font.render(d_name, True, TEXT_COLOR), (r.x + 5, r.y + 5))
+            screen.blit(self.font.render(d_name, True, COLORS.text), (r.x + 5, r.y + 5))
 
         screen.set_clip(old_clip)
 
@@ -950,17 +950,17 @@ class AutotileRuleDesigner:
                     color = GRID_ACTIVE
 
                 pygame.draw.rect(screen, color, cell)
-                pygame.draw.rect(screen, (30, 30, 30), cell, 1)
+                pygame.draw.rect(screen, COLORS.panel_alt, cell, 1)
 
-        pygame.draw.rect(screen, (70, 180, 70), self.save_btn_rect, border_radius=4)
-        s_lbl = self.font.render("Save", True, Color("white"))
+        pygame.draw.rect(screen, COLORS.success, self.save_btn_rect, border_radius=4)
+        s_lbl = self.font.render("Save", True, COLORS.text)
         screen.blit(s_lbl, (self.save_btn_rect.x + 25, self.save_btn_rect.y + 8))
 
         if self.selected_rule_index != -1:
             pygame.draw.rect(
                 screen, (180, 70, 70), self.delete_btn_rect, border_radius=4
             )
-            d_lbl = self.font.render("Del", True, Color("white"))
+            d_lbl = self.font.render("Del", True, COLORS.text)
             screen.blit(
                 d_lbl, (self.delete_btn_rect.x + 25, self.delete_btn_rect.y + 8)
             )
@@ -968,7 +968,7 @@ class AutotileRuleDesigner:
         pygame.draw.rect(
             screen, (100, 100, 150), self.external_btn_rect, border_radius=4
         )
-        ext_lbl = self.font.render("External View", True, Color("white"))
+        ext_lbl = self.font.render("External View", True, COLORS.text)
         screen.blit(
             ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5)
         )
@@ -977,7 +977,7 @@ class AutotileRuleDesigner:
             pygame.draw.rect(
                 screen, (60, 120, 120), self.template_btn_rect, border_radius=4
             )
-            tmpl_lbl = self.font.render("Templates", True, Color("white"))
+            tmpl_lbl = self.font.render("Templates", True, COLORS.text)
             screen.blit(
                 tmpl_lbl, (self.template_btn_rect.x + 18, self.template_btn_rect.y + 5)
             )
