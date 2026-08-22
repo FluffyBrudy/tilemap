@@ -145,7 +145,7 @@ class Dropdown:
             )
             pygame.draw.rect(screen, opt_bg, r, border_radius=2)
             txt = font.render(
-                opt, True, COLORS.text_on_accent if is_selected else COLORS.text
+                opt, True, COLORS.text_on_selected if is_selected else COLORS.text
             )
             screen.blit(txt, (r.x + 4, r.y + 3))
 
@@ -558,7 +558,11 @@ class ColorPicker:
             pygame.draw.rect(screen, tab_bg, tr, border_radius=SHAPE.radius_sm)
             pygame.draw.rect(screen, COLORS.border, tr, 1, border_radius=SHAPE.radius_sm)
             t = FONTS.get_bold_font(12) if is_active else FONTS.get_font(12)
-            tab_lbl = t.render(label, True, COLORS.text)
+            tab_lbl = t.render(
+                label,
+                True,
+                COLORS.text_on_selected if is_active else COLORS.text,
+            )
             screen.blit(tab_lbl, tab_lbl.get_rect(center=tr.center))
 
         self._get_active_colors()

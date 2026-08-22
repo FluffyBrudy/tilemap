@@ -505,7 +505,7 @@ class TreeWidget(WidgetBase):
             else:
                 label = self._dragging_nodes[0].label
 
-            txt = self.font.render(label, True, COLORS.text)
+            txt = self.font.render(label, True, COLORS.text_on_accent)
             ghost.blit(txt, (12, (h - txt.get_height()) // 2))
             screen.blit(ghost, (self._drag_current_pos[0] + 15, self._drag_current_pos[1] + 15))
 

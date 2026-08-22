@@ -157,6 +157,6 @@ class FilenameInput:
                 s_txt = self.font.render(
                     suggestion,
                     True,
-                    COLORS.text_on_accent if is_sel else COLORS.text_dim,
+                    COLORS.text_on_selected if is_sel else COLORS.text_dim,
                 )
                 screen.blit(s_txt, (row_rect.x + 10, row_rect.y + 4))

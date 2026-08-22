@@ -145,7 +145,7 @@ class SidebarContainer(WidgetBase):
                 label = FONTS.get_medium_font().render(
                     tab.name,
                     True,
-                    COLORS.text_on_accent if is_active else COLORS.text,
+                    COLORS.text_on_selected if is_active else COLORS.text,
                 )
                 screen.blit(
                     label, (r.x + 8, r.y + (self.tab_bar_h - label.get_height()) // 2)

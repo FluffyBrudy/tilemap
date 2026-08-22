@@ -369,7 +369,7 @@ class PropertyEditor:
             key_surf = self.font_label.render(
                 f"{key}:",
                 True,
-                COLORS.text_on_accent if is_selected else COLORS.text,
+                COLORS.text_on_selected if is_selected else COLORS.text,
             )
             screen.blit(key_surf, (row_rect.x + 10, row_rect.y + 10))
 
@@ -422,7 +422,7 @@ class PropertyEditor:
             )
             pygame.draw.rect(screen, COLORS.selected, row_rect, border_radius=4)
             label_w = self.font_label.size("New Key: ")[0]
-            lbl_surf = self.font_label.render("New Key: ", True, COLORS.text_on_accent)
+            lbl_surf = self.font_label.render("New Key: ", True, COLORS.text_on_selected)
             screen.blit(lbl_surf, (row_rect.x + 10, row_rect.y + 10))
             input_x = row_rect.x + 10 + label_w
             key_input = self.new_key_input
