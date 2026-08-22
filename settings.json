@@ -16,7 +16,7 @@
             "info"
         ]
     },
-    "theme": "light",
+    "theme": "monokai",
     "themes_list": [
         "dark",
         "molokai",

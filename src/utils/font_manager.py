@@ -158,12 +158,12 @@ class FontManager:
             logger.debug(f"Font cache hit: {cache_key}")
             return self._fonts[cache_key]
 
-        logger.debug(f"Attempting to load system font first: {family}")
-        font = self._load_system_font(family, size, weight, style)
+        logger.debug(f"Attempting to load bundled font: {family}")
+        font = self._load_custom_font(family, size, weight, style)
 
         if font is None:
-            logger.debug(f"System font failed, trying custom font: {family}")
-            font = self._load_custom_font(family, size, weight, style)
+            logger.debug(f"Bundled variant missing, trying system font: {family}")
+            font = self._load_system_font(family, size, weight, style)
 
         if font:
             self._fonts[cache_key] = font

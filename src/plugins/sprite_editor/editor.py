@@ -331,8 +331,10 @@ class SpriteEditor:
 
         def add_btn(text: str, *, tooltip: str = "", on_click=None, tag: str = "") -> Button:
             nonlocal x
+            # width fits the label so longer captions never clip
+            w = max(BTN_W, FONTS.get_small_font().size(text)[0] + 14)
             btn = Button(
-                Rect(x, row_y, BTN_W, BTN_H),
+                Rect(x, row_y, w, BTN_H),
                 text=text,
                 tooltip_text=tooltip or text,
                 border_radius=3,
@@ -340,7 +342,7 @@ class SpriteEditor:
             )
             btn._tag = tag or text.lower().replace(" ", "_")
             self._buttons.append(btn)
-            x += BTN_W + BTN_GAP
+            x += w + BTN_GAP
             return btn
 
         def sep() -> None:
