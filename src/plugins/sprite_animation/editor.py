@@ -267,6 +267,12 @@ class SpriteAnimationEditor:
                             self._info_tooltip_pinned = False
                             continue
 
+                        # an armed click-click move is cancelled first —
+                        # Escape must not double as editor exit here
+                        if self.timeline.has_pending_move():
+                            self.timeline.cancel_pending_move()
+                            continue
+
                         if self._file_manager is None:
                             running = False
                         continue
@@ -391,7 +397,7 @@ class SpriteAnimationEditor:
                     self._editing_frame_height = True
                     return True
                 if event.key == pygame.K_ESCAPE:
-                    self._frame_width_input = str(self._tile_size[0])
+                    self._set_frame_inputs_px(*self._tile_size)
                     self._editing_frame_width = False
                     return True
                 if event.key == pygame.K_BACKSPACE:
@@ -1116,6 +1122,17 @@ class SpriteAnimationEditor:
         self._renaming = False
         self._rename_input.is_focused = False
 
+    def _set_frame_inputs_px(self, w_px: int, h_px: int) -> None:
+        """Echo frame-size inputs in the active unit (px or cells)."""
+        if self._frame_size_mode == "cells":
+            sw = max(1, self._surface.get_width())
+            sh = max(1, self._surface.get_height())
+            self._frame_width_input = str(max(1, round(sw / max(1, w_px))))
+            self._frame_height_input = str(max(1, round(sh / max(1, h_px))))
+        else:
+            self._frame_width_input = str(int(w_px))
+            self._frame_height_input = str(int(h_px))
+
     def _apply_frame_size(self) -> None:
         """Apply the frame size from input fields and update the frame picker.
 
@@ -1233,8 +1250,7 @@ class SpriteAnimationEditor:
         self.timeline.tile_size = self._tile_size
         self.timeline.invalidate_cache()
 
-        self._frame_width_input = str(tw)
-        self._frame_height_input = str(th)
+        self._set_frame_inputs_px(tw, th)
 
         gx, gy = self.library.grid_offset
         self._grid_offset_x = gx

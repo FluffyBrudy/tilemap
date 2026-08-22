@@ -25,6 +25,7 @@ class NodeManager:
         self.groups: list[str] = []
         self.default_node_type: str = "area"
         self._nodes_dir: Path | None = None
+        self._active_sidecar: Path | None = None
 
     @property
     def nodes_dir(self) -> Path:
@@ -37,6 +38,7 @@ class NodeManager:
     def reset_nodes_dir(self) -> None:
         """Drop the cached dir so the next access re-derives from data_root."""
         self._nodes_dir = None
+        self._active_sidecar = None
 
     def _sidecar_path_for(self, map_path: Path) -> Path:
         return self.nodes_dir / f"{map_path.stem}.nodes.json"
@@ -46,13 +48,16 @@ class NodeManager:
         self.groups.clear()
         self.active_node_id = None
         self.active_group_name = None
+        self._active_sidecar: Path | None = None
         sidecar = self._sidecar_path_for(map_path)
         if not sidecar.is_file():
             fallback = map_path.parent / f"{map_path.stem}.nodes.json"
             if fallback.is_file():
                 sidecar = fallback
             else:
+                self._active_sidecar = None
                 return
+        self._active_sidecar = sidecar
         try:
             raw = json.loads(sidecar.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
@@ -73,7 +78,9 @@ class NodeManager:
             logging.warning(f"Failed to load nodes from {sidecar}")
 
     def save(self, map_path: Path) -> None:
-        sidecar = self._sidecar_path_for(map_path)
+        # keep writing to the sidecar that was actually loaded (e.g. a
+        # map-adjacent sandbox file) instead of silently diverging paths
+        sidecar = self._active_sidecar or self._sidecar_path_for(map_path)
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
         rs = self.editor.tilemap.render_scale
         orig_areas: dict[str, tuple[int, int]] = {}

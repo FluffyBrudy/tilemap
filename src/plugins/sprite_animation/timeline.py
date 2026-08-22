@@ -93,6 +93,12 @@ class Timeline:
     # Public API
     # ------------------------------------------------------------------
 
+    def has_pending_move(self) -> bool:
+        return self._pending_move >= 0
+
+    def cancel_pending_move(self) -> None:
+        self._pending_move = -1
+
     def set_frames(self, frames: list[AnimationFrame]) -> None:
         self.frames = frames
         self.selected_index = min(self.selected_index, len(frames) - 1)
@@ -135,6 +141,16 @@ class Timeline:
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         mouse = pygame.mouse.get_pos()
+
+        # cancel an armed click-click move even when the pointer has left
+        # the timeline (containment gate below would otherwise swallow it)
+        if (
+            event.type == pygame.KEYDOWN
+            and event.key == pygame.K_ESCAPE
+            and self._pending_move >= 0
+        ):
+            self._pending_move = -1
+            return True
 
         if self._marker_drag_i >= 0:
             if event.type == pygame.MOUSEMOTION:
@@ -194,9 +210,6 @@ class Timeline:
                 return True
             if event.key == pygame.K_d:
                 self._duplicate_selected()
-                return True
-            if event.key == pygame.K_ESCAPE and self._pending_move >= 0:
-                self._pending_move = -1
                 return True
 
         # Delete marker (right-click on marker diamond)

@@ -146,8 +146,12 @@ class TestDropState:
         assert editor._drop_hover is False
         assert editor._pending_drops is None
 
-    def test_unrelated_events_not_consumed(self, editor):
-        assert editor.handle_event(ev(pygame.MOUSEMOTION, pos=(0, 0))) is not None
+    def test_unrelated_motion_consumed_by_tool(self, editor):
+        # SelectTool consumes every MOUSEMOTION (hover/marquee tracking)
+        # regardless of position — document that contract explicitly
+        assert (
+            editor.handle_event(ev(pygame.MOUSEMOTION, pos=(1500, 900))) is True
+        )
         before = editor._pending_drops
         editor.handle_event(ev(pygame.KEYDOWN, key=pygame.K_a))
         assert editor._pending_drops is before

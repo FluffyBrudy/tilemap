@@ -56,7 +56,11 @@ class TilesetHierarchy:
         }
 
     def next_folder_id(self) -> str:
-        nums = [int(f.id.split("_", 1)[1]) for f in self.folders if f.id.startswith("f_")]
+        nums = []
+        for f in self.folders:
+            suffix = f.id.split("_", 1)[1] if f.id.startswith("f_") else ""
+            if suffix.isdigit():
+                nums.append(int(suffix))
         return f"f_{max(nums, default=0) + 1}"
 
 

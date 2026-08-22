@@ -593,20 +593,6 @@ class SpriteEditor:
 
     # -- events ------------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:
-        if (
-            event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP)
-            and getattr(event, "button", 0) == 1
-        ):
-            consumed = self._handle_event_inner(event)
-            print(
-                f"### [sprite-editor] LMB {getattr(event, 'pos', None)} "
-                f"-> consumed={consumed} ctx={self._context_menu.is_open} "
-                f"dlg_file={self._file_manager is not None}"
-            )
-            return consumed
-        return self._handle_event_inner(event)
-
-    def _handle_event_inner(self, event: pygame.event.Event) -> bool:
         if self._handle_drop_event(event):
             return True
 
@@ -639,11 +625,16 @@ class SpriteEditor:
             press = self._rmb_press_pos
             self._rmb_press_pos = None
             up_pos = getattr(event, "pos", pygame.mouse.get_pos())
-            if (
+            stationary = (
                 press is not None
                 and abs(up_pos[0] - press[0]) <= 4
                 and abs(up_pos[1] - press[1]) <= 4
-            ):
+            )
+            # the tool owns panning state on button 3 — it must always see
+            # the release, even when a popup is about to open
+            if self._event_in_viewport(event):
+                self._active_tool.handle_event(event)
+            if stationary:
                 self._popup_canvas_menu(up_pos)
                 return True
 
@@ -764,26 +755,22 @@ class SpriteEditor:
     # -- system file drop -----------------------------------------------------
     def _handle_drop_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.DROPBEGIN:
-            print("### [sprite-editor] DROPBEGIN")
             self._flush_pending_drops()
             self._pending_drops = []
             self._drop_hover = True
             return True
         if event.type == pygame.DROPFILE:
-            print(f"### [sprite-editor] DROPFILE: {event.file}")
             if self._pending_drops is None:
                 self._pending_drops = []
                 self._drop_hover = True
             self._pending_drops.append(Path(event.file))
             return True
         if event.type == pygame.DROPCOMPLETE:
-            print("### [sprite-editor] DROPCOMPLETE")
             self._drop_hover = False
             self._flush_pending_drops()
             return True
         if event.type == pygame.DROPTEXT:
             paths = self._paths_from_drop_text(getattr(event, "text", ""))
-            print(f"### [sprite-editor] DROPTEXT -> {len(paths)} path(s)")
             if paths:
                 standalone = self._pending_drops is None
                 if standalone:
@@ -845,16 +832,17 @@ class SpriteEditor:
         paths = self._paths_from_drop_text(self._clipboard_text())
         if not paths:
             return False
-        print(f"### [sprite-editor] clipboard paste -> {len(paths)} path(s)")
+        loaded_names: list[str] = []
         surfaces: list[Surface] = []
         for p in paths:
             try:
                 surfaces.append(pygame.image.load(str(p)).convert_alpha())
+                loaded_names.append(p.name)
             except Exception as e:
                 self._status_bar.error(f"Failed: {p.name}: {e}")
         if not surfaces:
             return True
-        names = [p.name for p in paths]
+        names = loaded_names
         combined = self._build_combined_surface(
             surfaces, horizontal=self._stack_horizontal
         )
@@ -881,10 +869,6 @@ class SpriteEditor:
             return
         valid = [p for p in paths if p.suffix.lower() in IMAGE_EXTS and p.is_file()]
         skipped = len(paths) - len(valid)
-        print(
-            f"### [sprite-editor] flush: {len(paths)} dropped, "
-            f"{len(valid)} valid, {skipped} filtered"
-        )
         if not valid:
             self._status_bar.warning("Drop ignored — no supported image files")
             return
@@ -1064,25 +1048,27 @@ class SpriteEditor:
             selection = [selection]
         if self._sort_natural:
             selection = sorted(selection, key=lambda p: natural_key(p.name))
-        loaded = 0
+        loaded_names: list[str] = []
         surfaces: list[Surface] = []
         for path in selection:
             try:
                 surfaces.append(pygame.image.load(str(path)).convert_alpha())
-                loaded += 1
+                loaded_names.append(path.name)
             except Exception as e:
                 self._status_bar.error(f"Failed: {path.name}: {e}")
-        if loaded:
+        if surfaces:
             was_empty = not self.doc.has_canvas
             self._load_surface(
                 self._build_combined_surface(surfaces, horizontal=self._stack_horizontal),
-                [p.name for p in selection],
+                loaded_names,
             )
             if was_empty:
                 detected = self._detect_tile_size(surfaces[0])
                 self.doc.tile_size = detected
-            self._status_bar.success(f"Loaded {loaded} sheet{'s' if loaded != 1 else ''}")
-            self._toast(f"Loaded {loaded} sheet{'s' if loaded != 1 else ''}")
+            n = len(surfaces)
+            plural = "s" if n != 1 else ""
+            self._status_bar.success(f"Loaded {n} sheet{plural}")
+            self._toast(f"Loaded {n} sheet{plural}")
         self._close_file_manager()
 
     @staticmethod

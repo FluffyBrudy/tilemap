@@ -90,6 +90,18 @@ class LayerSelector:
         if self.btn_remove.handle_event(event):
             return True
 
+        if event.type == pygame.MOUSEBUTTONDOWN and self.renaming_layer_idx is not None:
+            # clicking the same row confirms the rename, clicking anywhere
+            # else cancels it, either way the click is consumed so the
+            # selection can not silently change mid-edit
+            if self.list_rect.collidepoint(mouse_pos):
+                idx = self._get_layer_at_pos(mouse_pos)
+                if idx == self.renaming_layer_idx:
+                    self._confirm_rename()
+                else:
+                    self._cancel_rename()
+            return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 if self.list_rect.collidepoint(mouse_pos):

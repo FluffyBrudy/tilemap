@@ -111,11 +111,21 @@ def validate_sandbox(sandbox: Path) -> Path:
         sys.exit(1)
 
     resources = payload.get("resources", {})
-    tilesets = resources if isinstance(resources, list) else resources.get("tilesets", []) if isinstance(resources, dict) else []
+    if isinstance(resources, list):
+        tilesets: list = resources
+    elif isinstance(resources, dict):
+        tilesets = resources.get("tilesets", [])
+    else:
+        tilesets = []
 
     missing: list[str] = []
     for entry in tilesets:
-        path_str = entry if isinstance(entry, str) else entry.get("path", "")
+        if isinstance(entry, str):
+            path_str = entry
+        elif isinstance(entry, dict):
+            path_str = entry.get("path", "")
+        else:
+            continue
         if not path_str:
             continue
         resolved = resolve_project_path(path_str, map_path.parent, must_exist=True)
