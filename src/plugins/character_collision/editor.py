@@ -120,12 +120,17 @@ class CharacterCollisionEditor:
             x += 100 + 8
 
     def _rel_path(self, path: Path) -> str:
+        resolved = path.resolve()
         try:
             if self._data_root:
-                return os.path.relpath(path.resolve(), self._data_root.resolve())
-            return str(path.resolve())
+                rel = os.path.relpath(resolved, self._data_root.resolve())
+                # relpath happily emits '../' escapes for paths outside the
+                # root — only trust the relative form when it stays inside
+                if not rel.split(os.sep)[0].startswith(".."):
+                    return rel
+            return str(resolved)
         except ValueError:
-            return str(path.resolve())
+            return str(resolved)
 
     def _resolve_image_path(
         self, image_path: str, base: Path | None = None

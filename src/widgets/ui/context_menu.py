@@ -81,10 +81,13 @@ class ContextMenu:
         mouse_pos = getattr(event, "pos", None) or pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            activate = event.button == 1
             action = self._action_at(mouse_pos)
             self.close()
-            if isinstance(action, MenuAction) and (
-                action.is_enabled is None or action.is_enabled()
+            if (
+                activate
+                and isinstance(action, MenuAction)
+                and (action.is_enabled is None or action.is_enabled())
             ):
                 action.callback()
             return True

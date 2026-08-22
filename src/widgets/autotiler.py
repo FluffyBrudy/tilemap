@@ -661,7 +661,7 @@ class AutotileRuleDesigner:
             COLORS.accent,
             Rect(self.rect.x, self.rect.y, self.rect.width, self.header_height),
         )
-        title = self.title_font.render("Autotile Designer", True, COLORS.text)
+        title = self.title_font.render("Autotile Designer", True, COLORS.text_on_accent)
         screen.blit(title, (self.rect.x + 10, self.rect.y + 5))
 
         pygame.draw.rect(screen, COLORS.danger, self.close_btn_rect)
@@ -714,8 +714,15 @@ class AutotileRuleDesigner:
                     name = prefix + " " + display_name[cursor_offset:]
 
             d_name = name if len(name) < 22 else name[:19] + ".."
-            on_blue = i == self.renaming_group_idx or i == self.selected_group_idx
-            g_color = COLORS.text_on_accent if on_blue else COLORS.text
+            # renaming paints the selected (blue) fill -> light ink;
+            # selected-only sits on the neutral hover tint -> normal ink
+            g_color = (
+                COLORS.text_on_selected
+                if i == self.renaming_group_idx
+                else COLORS.text
+                if i == self.selected_group_idx
+                else COLORS.text
+            )
             screen.blit(self.font.render(d_name, True, g_color), (r.x + 5, r.y + 5))
 
         pygame.draw.rect(

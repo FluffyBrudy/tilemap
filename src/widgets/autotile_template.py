@@ -243,6 +243,6 @@ class AutotileTemplateApplier:
             if is_hover:
                 pygame.draw.rect(screen, COLORS.accent, item_rect)
 
-            txt_color = COLORS.text if is_hover else COLORS.text_dim
+            txt_color = COLORS.text_on_accent if is_hover else COLORS.text_dim
             txt = self.font.render(template.name, True, txt_color)
             screen.blit(txt, (item_rect.x + 10, item_rect.y + 5))

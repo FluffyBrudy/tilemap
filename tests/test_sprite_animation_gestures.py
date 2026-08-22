@@ -324,3 +324,52 @@ class TestFrameSizeMode:
         editor._surface = pg.Surface((160, 128))
         editor._apply_frame_size()
         assert editor._tile_size == (20, 32)
+
+
+class TestPaintSweepTraversal:
+    def test_single_motion_event_crosses_multiple_tiles(self):
+        """Regression: one fast MOUSEMOTION crossing several tiles must paint
+        every crossed tile, not just the one under the final cursor."""
+        fp = FramePicker(
+            pygame.Rect(0, 0, 400, 300),
+            pygame.Surface((320, 64)),
+            (32, 32),
+        )
+        fp._recalc_grid()
+        fp.offset_y = 60
+
+        clip: list[int] = []
+        fp.on_frame_clicked = lambda vid: (
+            clip.remove(vid) if vid in clip else clip.append(vid)
+        )
+        fp.on_frame_paint = lambda vid, add: (
+            clip.append(vid) if add and vid not in clip else None
+        ) if add else (clip.remove(vid) if vid in clip else None)
+        fp.is_variant_in_clip = lambda vid: vid in clip
+
+        def tile(col):
+            return (
+                int(fp.rect.x + fp.offset_x + col * 32 * fp.zoom + 16),
+                int(fp.rect.y + fp.offset_y + 16),
+            )
+
+        down(fp, tile(0))                       # arm stroke on tile 0
+        motion(fp, tile(3))                     # single fast event -> tiles 1..3
+        up(fp, tile(3))
+
+        # arm-down painted tile 0; sweep painted 1..3
+        assert sorted(clip) == [0, 1, 2, 3]
+
+
+def down(obj, pos):
+    pygame.mouse.set_pos(pos)
+    obj.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pos))
+
+
+def up(obj, pos):
+    obj.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=pos))
+
+
+def motion(obj, pos):
+    pygame.mouse.set_pos(pos)
+    obj.handle_event(pygame.event.Event(pygame.MOUSEMOTION, pos=pos))

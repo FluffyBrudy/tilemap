@@ -479,7 +479,7 @@ class Editor:
     def do_save_as(self, filename: str):
         try:
             if self.is_sandbox:
-                target = self.data_root / filename
+                target = self._project_data_root / filename
                 self._sandbox_save_as(target)
                 return
             self.tilemap.save_map(filename)
@@ -527,6 +527,7 @@ class Editor:
         self._sandbox_export_map(path, assets_src, assets_dst)
 
     def _sandbox_export_map(self, path: Path, assets_src: Path, assets_dst: Path):
+        redirected: list[tuple[object, Path]] = []
         try:
             assets_dst.mkdir(parents=True, exist_ok=True)
             for src in assets_src.iterdir():
@@ -545,6 +546,7 @@ class Editor:
                     except OSError:
                         inside_sandbox = False
                     if inside_sandbox:
+                        redirected.append((ts, Path(ts_path)))
                         ts.path = assets_dst / ts_path.name
 
             self.tilemap.save_map(path)
@@ -556,8 +558,17 @@ class Editor:
             self.notifications.success(f"Exported to {path.name}")
             logger.info(f"Sandbox session exported to {path}; data_root restored to {self.data_root}")
         except Exception as e:
+            # undo path redirection so the editor keeps working off the sandbox
+            for ts, original in redirected:
+                try:
+                    ts.path = original
+                except Exception:
+                    error_handler.capture(e, context="sandbox_restore_paths")
             error_handler.capture(e, context="sandbox_export")
-            self.notifications.error("Export failed", str(e))
+            self.notifications.error(
+                "Export failed",
+                f"{e} Copied asset files may remain in {assets_dst}.",
+            )
 
     def export_selection_as_png(self):
         if self.tile_grid_widget is None:
@@ -671,6 +682,10 @@ class Editor:
         try:
             self.handle_resize(self.width, self.height)
             self.tilemap.apply_map_payload(path, payload_or_error)
+            if getattr(self, "is_sandbox", False):
+                self.notifications.notify(
+                    f"SANDBOX map loaded: {path.name}", duration=4.0
+                )
         except Exception as e:
             error_handler.capture(e, context="load_map_apply")
             import traceback
@@ -1368,7 +1383,7 @@ class Editor:
                 if map_path.is_file():
                     self.start_async_load_map(map_path)
                     self.notifications.notify(
-                        f"SANDBOX mode: loaded {_display_load_path(map_path)}",
+                        f"SANDBOX mode: loading {_display_load_path(map_path)}...",
                         duration=4.0,
                     )
             except Exception as e:

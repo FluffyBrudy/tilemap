@@ -135,8 +135,9 @@ class Tool:
 
 
 class SelectTool(Tool):
-    overlay_kind = "selection"
     """Grid-mode tool: click select, rubber-band, drag-move, keyboard edits."""
+
+    overlay_kind = "selection"
 
     def __init__(self, ctx: ToolContext):
         super().__init__(ctx)
@@ -345,8 +346,9 @@ class SelectTool(Tool):
 
 
 class PasteTool(Tool):
-    overlay_kind = "paste"
     """Armed by copy/paste; carries a live pixel ghost and places on click."""
+
+    overlay_kind = "paste"
 
     def __init__(self, ctx: ToolContext):
         super().__init__(ctx)
@@ -445,8 +447,9 @@ def _screen_rect_for_region(camera: Camera, region: Region) -> Rect:
 
 
 class RegionTool(Tool):
-    overlay_kind = "regions"
     """Region editing: create / select / move / resize / delete / rename."""
+
+    overlay_kind = "regions"
 
     def __init__(self, ctx: ToolContext):
         super().__init__(ctx)
