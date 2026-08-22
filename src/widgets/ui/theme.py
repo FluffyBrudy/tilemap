@@ -22,6 +22,7 @@ class UIColorSet:
     text_dim: Color = (150, 150, 150)
     text_muted: Color = (120, 120, 120)
     text_on_accent: Color = (255, 255, 255)
+    text_on_selected: Color = (255, 255, 255)
     accent: Color = (80, 120, 200)
     accent_hover: Color = (100, 140, 220)
     accent_active: Color = (70, 110, 190)
@@ -78,26 +79,31 @@ DARK_COLORS = UIColorSet(
     hover=(55, 60, 70),
     selected=(50, 70, 110),
 )
-
 MOLOKAI_COLORS = UIColorSet(
-    bg=(40, 42, 52),
-    panel=(45, 47, 57),
-    panel_alt=(35, 37, 45),
-    header=(50, 52, 62),
-    border=(70, 72, 82),
-    border_soft=(60, 62, 72),
-    text=(240, 240, 235),
-    text_dim=(160, 160, 155),
-    text_muted=(130, 130, 125),
-    accent=(120, 160, 200),
-    accent_hover=(140, 180, 220),
-    accent_active=(100, 140, 180),
-    success=(100, 200, 140),
-    danger=(220, 100, 100),
-    danger_hover=(180, 80, 80),
-    warning=(240, 200, 100),
-    hover=(65, 70, 80),
-    selected=(60, 90, 140),
+    # Base
+    bg=(32, 35, 42),
+    panel=(40, 43, 51),
+    panel_alt=(35, 38, 46),
+    header=(46, 49, 58),
+    # Borders
+    border=(68, 72, 82),
+    border_soft=(56, 60, 70),
+    # Text
+    text=(235, 238, 242),
+    text_dim=(170, 176, 185),
+    text_muted=(125, 132, 142),
+    # Accent - cleaner blue
+    accent=(75, 145, 205),
+    accent_hover=(95, 165, 220),
+    accent_active=(55, 125, 185),
+    # Semantic
+    success=(80, 190, 125),
+    danger=(220, 85, 90),
+    danger_hover=(235, 105, 110),
+    warning=(235, 175, 70),
+    # Interaction
+    hover=(58, 64, 75),
+    selected=(48, 91, 145),
 )
 
 LIGHT_COLORS = UIColorSet(
@@ -161,7 +167,8 @@ MONOKAI_COLORS = UIColorSet(
     danger_hover=(196, 30, 91),
     warning=(230, 219, 116),
     hover=(62, 63, 53),
-    selected=(117, 113, 94),
+    selected=(73, 72, 62),
+    text_on_selected=(248, 248, 242),
 )
 
 
@@ -228,6 +235,10 @@ class ThemeManager:
     @property
     def text_on_accent(self) -> Color:
         return self._colors.text_on_accent
+
+    @property
+    def text_on_selected(self) -> Color:
+        return self._colors.text_on_selected
 
     @property
     def accent(self) -> Color:

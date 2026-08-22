@@ -481,11 +481,11 @@ class LayerSelector:
                     + cursor
                     + self.rename_input.text[self.rename_input.cursor_pos :],
                     True,
-                    COLORS.text_on_accent,
+                    COLORS.text_on_selected,
                 )
             else:
                 on_highlight = i == active_idx or i == self.dragging_layer_idx
-                name_color = COLORS.text_on_accent if on_highlight else COLORS.text
+                name_color = COLORS.text_on_selected if on_highlight else COLORS.text
                 name_txt = self.font_layer.render(layer.name, True, name_color)
             screen.blit(name_txt, (item_rect.x + 22, item_rect.y + 5))
 
@@ -504,8 +504,13 @@ class LayerSelector:
                     pygame.draw.rect(
                         screen, (40, green, 40), fill_rect, border_radius=2
                     )
+                pct_col = (
+                    COLORS.text_on_selected
+                    if i == active_idx or i == self.dragging_layer_idx
+                    else COLORS.text_dim
+                )
                 pct_txt = self.font_layer.render(
-                    f"{int(layer.opacity * 100)}%", True, COLORS.text_dim
+                    f"{int(layer.opacity * 100)}%", True, pct_col
                 )
                 screen.blit(pct_txt, (opacity_bar.x - 32, opacity_bar.y - 2))
 
@@ -569,7 +574,9 @@ class LayerSelector:
             drag_surf.set_alpha(200)
             screen.blit(drag_surf, preview_rect)
 
-            name_txt = self.font_layer.render(dragging_layer.name, True, COLORS.text)
+            name_txt = self.font_layer.render(
+                dragging_layer.name, True, COLORS.text_on_accent
+            )
             screen.blit(name_txt, (preview_rect.x + 22, preview_rect.y + 5))
 
             pygame.draw.rect(screen, (150, 150, 255), preview_rect, 2)
