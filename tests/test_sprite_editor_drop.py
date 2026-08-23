@@ -102,13 +102,16 @@ class TestDropLoadsSheets:
         drop(editor, tmp_path / "sheet.png")
         assert editor.doc.tile_size == (64, 64)
 
-    def test_second_drop_replaces_canvas(self, editor, tmp_path):
+    def test_second_drop_appends_row_never_replaces(self, editor, tmp_path):
         make_png(tmp_path / "one.png", (32, 32), (1, 2, 3, 255))
         make_png(tmp_path / "two.png", (48, 48), (4, 5, 6, 255))
         drop(editor, tmp_path / "one.png")
         drop(editor, tmp_path / "two.png")
-        assert editor.doc.sheets == ["two.png"]
-        assert editor.doc.surface.get_size() == (48, 48)
+        # vertical default: second pass becomes a column right of content
+        assert editor.doc.sheets == ["one.png", "two.png"]
+        assert editor.doc.surface.get_size() == (80, 48)
+        assert editor.doc.surface.get_at((5, 5))[:3] == (1, 2, 3)
+        assert editor.doc.surface.get_at((37, 42))[:3] == (4, 5, 6)
 
 
 class TestDropFiltering:
@@ -284,28 +287,30 @@ class TestPasteStacksOntoCanvas:
         assert editor.doc.surface.get_size() == (32, 32)
         assert editor.doc.sheets == ["a.png"]
 
-    def test_second_paste_stacks_vertically(self, editor, tmp_path):
+    def test_second_paste_starts_new_column(self, editor, tmp_path):
+        """Vertical mode: each pass is a column placed RIGHT of content."""
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         b = make_png(tmp_path / "b.png", (32, 16), (0, 255, 0, 255))
         self.paste(editor, a)
         self.paste(editor, b)
-        assert editor.doc.surface.get_size() == (32, 48)
+        assert editor.doc.surface.get_size() == (64, 32)
         assert editor.doc.sheets == ["a.png", "b.png"]
 
-    def test_second_paste_stacks_horizontally(self, editor, tmp_path):
+    def test_second_paste_starts_new_row(self, editor, tmp_path):
+        """Horizontal mode: each pass is a row placed BELOW content."""
         editor._stack_horizontal = True
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         b = make_png(tmp_path / "b.png", (16, 32), (0, 255, 0, 255))
         self.paste(editor, a)
         self.paste(editor, b)
-        assert editor.doc.surface.get_size() == (48, 32)
+        assert editor.doc.surface.get_size() == (32, 64)
 
-    def test_wider_sheet_grows_width(self, editor, tmp_path):
+    def test_wider_column_grows_width(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         b = make_png(tmp_path / "b.png", (64, 16), (0, 255, 0, 255))
         self.paste(editor, a)
         self.paste(editor, b)
-        assert editor.doc.surface.get_size() == (64, 48)
+        assert editor.doc.surface.get_size() == (96, 32)
 
     def test_existing_pixels_preserved(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
@@ -313,7 +318,16 @@ class TestPasteStacksOntoCanvas:
         self.paste(editor, a)
         self.paste(editor, b)
         assert editor.doc.surface.get_at((5, 5)) == (255, 0, 0, 255)
-        assert editor.doc.surface.get_at((5, 40)) == (0, 255, 0, 255)
+        assert editor.doc.surface.get_at((37, 5)) == (0, 255, 0, 255)
+
+    def test_multi_path_single_paste_stacks_once(self, editor, tmp_path):
+        """One pass = one block: b,c vstack together into a single column."""
+        a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
+        b = make_png(tmp_path / "b.png", (32, 16), (0, 255, 0, 255))
+        c = make_png(tmp_path / "c.png", (32, 8), (0, 0, 255, 255))
+        self.paste(editor, a)
+        self.paste(editor, b, c)
+        assert editor.doc.surface.get_size() == (64, 32)
 
     def test_append_is_undoable(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
@@ -324,17 +338,8 @@ class TestPasteStacksOntoCanvas:
         editor.commands.undo(editor.doc, editor.selection)
         assert editor.doc.surface.get_size() == (32, 32)
 
-    def test_multi_path_single_paste_stacks_once(self, editor, tmp_path):
-        a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
-        b = make_png(tmp_path / "b.png", (32, 16), (0, 255, 0, 255))
-        c = make_png(tmp_path / "c.png", (32, 8), (0, 0, 255, 255))
-        self.paste(editor, a)
-        self.paste(editor, b, c)
-        assert editor.doc.surface.get_size() == (32, 56)
-
-
 class TestStackPlacement:
-    """Direction changes mid-build continue from the latest content."""
+    """Direction changes mid-build follow the row/column spec."""
 
     def paste(self, editor, *paths):
         editor._clipboard_text = lambda: "\n".join(str(p) for p in paths)
@@ -354,7 +359,7 @@ class TestStackPlacement:
         ys = [p[1] for p in pts]
         return (min(xs), min(ys), max(xs), max(ys))
 
-    def test_hstack_after_vstack_beside_latest_row(self, editor, tmp_path):
+    def test_hblock_starts_new_row_below_columns(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         b = make_png(tmp_path / "b.png", (32, 16), (0, 255, 0, 255))
         c = make_png(tmp_path / "c.png", (16, 16), (0, 0, 255, 255))
@@ -362,36 +367,36 @@ class TestStackPlacement:
         self.paste(editor, b)
         editor._stack_horizontal = True
         self.paste(editor, c)
-        assert self.bounds_of(editor.doc, (0, 0, 255)) == (32, 32, 47, 47)
+        # columns a|b fill row 0; the horizontal block lands on row 1
+        assert self.bounds_of(editor.doc, (0, 0, 255)) == (0, 32, 15, 47)
 
-    def test_hstack_snaps_up_when_not_row_multiple(self, editor, tmp_path):
-        a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
-        b = make_png(tmp_path / "b.png", (32, 16), (0, 255, 0, 255))
+    def test_hblock_snaps_up_when_height_not_tile_multiple(self, editor, tmp_path):
+        a = make_png(tmp_path / "a.png", (32, 20), (255, 0, 0, 255))
         c = make_png(tmp_path / "c.png", (16, 20), (0, 0, 255, 255))
         self.paste(editor, a)
-        self.paste(editor, b)
         editor._stack_horizontal = True
         self.paste(editor, c)
-        assert editor.doc.surface.get_size() == (48, 52)
-        assert self.bounds_of(editor.doc, (0, 0, 255)) == (32, 32, 47, 51)
+        # canvas height 20 -> next tile boundary is 32
+        assert editor.doc.surface.get_size() == (32, 52)
+        assert self.bounds_of(editor.doc, (0, 0, 255)) == (0, 32, 15, 51)
 
-    def test_vstack_pads_to_grid_on_misaligned_canvas(self, editor, tmp_path):
-        a = make_png(tmp_path / "a.png", (32, 20), (255, 0, 0, 255))
-        b = make_png(tmp_path / "b.png", (32, 16), (0, 255, 0, 255))
+    def test_vblock_snaps_right_when_width_not_tile_multiple(self, editor, tmp_path):
+        a = make_png(tmp_path / "a.png", (48, 32), (255, 0, 0, 255))
+        c = make_png(tmp_path / "c.png", (16, 32), (0, 0, 255, 255))
         self.paste(editor, a)
-        self.paste(editor, b)
-        assert editor.doc.surface.get_size() == (32, 48)
-        assert editor.doc.surface.get_at((5, 25))[3] == 0
-        assert editor.doc.surface.get_at((5, 40)) == (0, 255, 0, 255)
+        self.paste(editor, c)
+        # canvas width 48 -> next tile boundary is 64
+        assert editor.doc.surface.get_size() == (80, 32)
+        assert self.bounds_of(editor.doc, (0, 0, 255)) == (64, 0, 79, 31)
 
-    def test_oversized_hsheet_grows_canvas(self, editor, tmp_path):
+    def test_oversized_hblock_grows_canvas_downward(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         c = make_png(tmp_path / "c.png", (16, 64), (0, 0, 255, 255))
         self.paste(editor, a)
         editor._stack_horizontal = True
         self.paste(editor, c)
-        assert editor.doc.surface.get_size() == (48, 64)
-        assert self.bounds_of(editor.doc, (0, 0, 255)) == (32, 0, 47, 63)
+        assert editor.doc.surface.get_size() == (32, 96)
+        assert self.bounds_of(editor.doc, (0, 0, 255)) == (0, 32, 15, 95)
 
     def test_mixed_directions_preserve_pixels(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
@@ -403,8 +408,8 @@ class TestStackPlacement:
         self.paste(editor, c)
         px = editor.doc.surface
         assert px.get_at((5, 5)) == (255, 0, 0, 255)
-        assert px.get_at((5, 40)) == (0, 255, 0, 255)
-        assert px.get_at((40, 40)) == (0, 0, 255, 255)
+        assert px.get_at((40, 5)) == (0, 255, 0, 255)
+        assert px.get_at((5, 40)) == (0, 0, 255, 255)
 
     def test_placement_undo_restores_canvas(self, editor, tmp_path):
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
@@ -414,9 +419,9 @@ class TestStackPlacement:
         self.paste(editor, b)
         editor._stack_horizontal = True
         self.paste(editor, c)
-        assert editor.doc.surface.get_size() == (48, 48)
+        assert editor.doc.surface.get_size() == (64, 48)
         editor.commands.undo(editor.doc, editor.selection)
-        assert editor.doc.surface.get_size() == (32, 48)
+        assert editor.doc.surface.get_size() == (64, 32)
         editor.commands.undo(editor.doc, editor.selection)
         assert editor.doc.surface.get_size() == (32, 32)
 

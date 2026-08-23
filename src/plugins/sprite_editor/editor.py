@@ -1058,17 +1058,25 @@ class SpriteEditor:
                 self._status_bar.error(f"Failed: {path.name}: {e}")
         if surfaces:
             was_empty = not self.doc.has_canvas
-            self._load_surface(
-                self._build_combined_surface(surfaces, horizontal=self._stack_horizontal),
-                loaded_names,
-            )
+            combined = self._build_combined_surface(surfaces, horizontal=self._stack_horizontal)
             if was_empty:
+                self._load_surface(combined, loaded_names)
                 detected = self._detect_tile_size(surfaces[0])
                 self.doc.tile_size = detected
+            else:
+                # never clobber existing content: each import pass appends
+                # its block (undoable) per the current stacking direction
+                self.commands.push(
+                    AppendSheetCommand(combined, horizontal=self._stack_horizontal),
+                    self.doc,
+                    self.selection,
+                )
+                self.doc.sheets.extend(loaded_names)
             n = len(surfaces)
             plural = "s" if n != 1 else ""
-            self._status_bar.success(f"Loaded {n} sheet{plural}")
-            self._toast(f"Loaded {n} sheet{plural}")
+            msg = f"Loaded {n} sheet{plural}" if was_empty else f"Appended {n} sheet{plural}"
+            self._status_bar.success(msg)
+            self._toast(msg)
         self._close_file_manager()
 
     @staticmethod

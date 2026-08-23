@@ -265,10 +265,14 @@ class Document:
         return True
 
     def append_sheet(self, sheet: Surface, horizontal: bool = False) -> None:
-        """Grow the canvas and stack `sheet` below (vertical) or right of
-        (horizontal) the existing content, snapped to tile-row boundaries.
-        Horizontal appends sit beside the lowest content ("latest row");
-        blank canvas adopts the sheet as-is."""
+        """Grow the canvas by one imported block, snapped to tile boundaries.
+        Never overwrites existing pixels.
+
+        horizontal=True: the block is a *row* (batch hstacked); each import
+        pass becomes the next row stacked vertically below the content.
+        horizontal=False: the block is a *column* (batch vstacked); each
+        pass becomes the next column placed right of the content.
+        Blank canvas adopts the sheet as-is."""
         if self.surface is None:
             self.surface = sheet
             self._bump()
@@ -276,13 +280,13 @@ class Document:
         cur_w, cur_h = self.surface.get_size()
         sw, sh = sheet.get_size()
         if horizontal:
-            y = max(0, math.ceil((cur_h - sh) / self.th) * self.th)
-            pos = (cur_w, y)
-            new_size = (cur_w + sw, max(cur_h, y + sh))
-        else:
             y = math.ceil(cur_h / self.th) * self.th
             pos = (0, y)
-            new_size = (max(cur_w, sw), max(cur_h, y + sh))
+            new_size = (max(cur_w, sw), y + sh)
+        else:
+            x = math.ceil(cur_w / self.tw) * self.tw
+            pos = (x, 0)
+            new_size = (x + sw, max(cur_h, sh))
         new_surface = Surface(new_size, pygame.SRCALPHA)
         new_surface.fill((0, 0, 0, 0))
         new_surface.blit(self.surface, (0, 0))
