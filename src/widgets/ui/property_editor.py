@@ -332,7 +332,7 @@ class PropertyEditor:
         overlay = pygame.Surface(
             (self.editor.width, self.editor.height), pygame.SRCALPHA
         )
-        overlay.fill((0, 0, 0, 180))
+        overlay.fill((*COLORS.overlay, 170))
         screen.blit(overlay, (0, 0))
 
         pygame.draw.rect(screen, COLORS.panel, self.rect, border_radius=8)

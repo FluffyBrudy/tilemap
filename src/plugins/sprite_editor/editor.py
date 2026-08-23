@@ -948,7 +948,7 @@ class SpriteEditor:
 
     def _draw_shortcuts(self, screen: Surface) -> None:
         overlay = Surface((self.rect.w, self.rect.h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((*COLORS.overlay, 140))
         screen.blit(overlay, self.rect.topleft)
 
         row_h = 24

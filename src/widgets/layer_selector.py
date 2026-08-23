@@ -529,36 +529,20 @@ class LayerSelector:
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
             if layer.visible:
-                pygame.draw.circle(screen, (100, 200, 100), (eye_x, eye_y), 4)
-                pygame.draw.circle(screen, (60, 150, 60), (eye_x, eye_y), 4, 1)
-                pygame.draw.circle(screen, (200, 255, 100), (eye_x - 1, eye_y - 1), 1)
+                pygame.draw.circle(screen, COLORS.success, (eye_x, eye_y), 4)
+                pygame.draw.circle(screen, COLORS.success, (eye_x, eye_y), 4, 1)
+                pygame.draw.circle(screen, COLORS.text_on_selected, (eye_x - 1, eye_y - 1), 1)
             else:
-                pygame.draw.line(
-                    screen,
-                    (100, 100, 100),
-                    (eye_x - 4, eye_y - 4),
-                    (eye_x + 4, eye_y + 4),
-                    2,
-                )
-                pygame.draw.line(
-                    screen,
-                    (100, 100, 100),
-                    (eye_x + 4, eye_y - 4),
-                    (eye_x - 4, eye_y + 4),
-                    2,
-                )
+                pygame.draw.line(screen, COLORS.text_muted, (eye_x - 4, eye_y - 4), (eye_x + 4, eye_y + 4), 2)
+                pygame.draw.line(screen, COLORS.text_muted, (eye_x + 4, eye_y - 4), (eye_x - 4, eye_y + 4), 2)
 
             lock_x = item_rect.right - 10
             lock_y = item_rect.y + 7
             if layer.locked:
-                pygame.draw.rect(
-                    screen, (200, 100, 100), Rect(lock_x - 4, lock_y - 4, 8, 8)
-                )
-                pygame.draw.circle(screen, (150, 50, 50), (lock_x, lock_y - 2), 1)
+                pygame.draw.rect(screen, COLORS.danger, Rect(lock_x - 4, lock_y - 4, 8, 8), border_radius=2)
+                pygame.draw.circle(screen, COLORS.danger_hover, (lock_x, lock_y - 2), 1)
             else:
-                pygame.draw.rect(
-                    screen, COLORS.text_muted, Rect(lock_x - 4, lock_y - 4, 8, 8), 1
-                )
+                pygame.draw.rect(screen, COLORS.text_muted, Rect(lock_x - 4, lock_y - 4, 8, 8), 1, border_radius=2)
 
             ysort_rect = self._get_ysort_icon_rect(i)
             if ysort_rect:

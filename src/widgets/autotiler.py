@@ -16,9 +16,6 @@ from .ui.theme import COLORS, FONTS
 if TYPE_CHECKING:
     from editor import Editor
 
-WINDOW_BG = (40, 44, 52)
-PANEL_BG = (33, 37, 43)
-BORDER_COLOR = (24, 26, 31)
 GRID_ACTIVE = (152, 195, 121)
 GRID_INACTIVE = (60, 64, 72)
 GRID_CENTER = (97, 175, 239)
@@ -653,8 +650,8 @@ class AutotileRuleDesigner:
 
         self._push_hints_to_selector()
 
-        pygame.draw.rect(screen, WINDOW_BG, self.rect)
-        pygame.draw.rect(screen, BORDER_COLOR, self.rect, 1)
+        pygame.draw.rect(screen, COLORS.bg, self.rect)
+        pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
         pygame.draw.rect(
             screen,
@@ -668,7 +665,7 @@ class AutotileRuleDesigner:
         x_lbl = self.title_font.render("X", True, COLORS.text)
         screen.blit(x_lbl, (self.close_btn_rect.x + 10, self.close_btn_rect.y + 5))
 
-        pygame.draw.rect(screen, PANEL_BG, self.list_area)
+        pygame.draw.rect(screen, COLORS.panel, self.list_area)
 
         self._draw_rule_list(screen)
         self._draw_grid_editor(screen)
@@ -733,7 +730,7 @@ class AutotileRuleDesigner:
             gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5)
         )
 
-        pygame.draw.rect(screen, PANEL_BG, self.rule_list_area)
+        pygame.draw.rect(screen, COLORS.panel, self.rule_list_area)
         pygame.draw.rect(screen, COLORS.border, self.rule_list_area, 1)
 
         lbl_rules = self.title_font.render("Rules", True, COLORS.accent_hover)

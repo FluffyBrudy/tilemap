@@ -750,7 +750,7 @@ class CollisionPainter:
         self._ensure_fonts()
 
         overlay = pygame.Surface((self.rect.w, self.rect.h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
+        overlay.fill((*COLORS.overlay, 140))
         screen.blit(overlay, self.rect.topleft)
 
         panel_rect = self._help_rect

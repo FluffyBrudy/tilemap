@@ -1416,14 +1416,14 @@ class Editor:
             if self.autotiler:
                 if self.autotiler.visible:
                     overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                    overlay.fill((0, 0, 0, 100))
+                    overlay.fill((*COLORS.overlay, 100))
                     self.screen.blit(overlay, (0, 0))
                 self.autotiler.draw(self.screen)
 
             if self.regex_automap_designer:
                 if self.regex_automap_designer.visible:
                     overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                    overlay.fill((0, 0, 0, 100))
+                    overlay.fill((*COLORS.overlay, 100))
                     self.screen.blit(overlay, (0, 0))
                 self.regex_automap_designer.draw(self.screen)
 
@@ -1431,7 +1431,7 @@ class Editor:
 
             if self.map_setup_widget and self.map_setup_widget.visible:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
+                overlay.fill((*COLORS.overlay, 140))
                 self.screen.blit(overlay, (0, 0))
                 self.map_setup_widget.draw(self.screen)
 
@@ -1442,25 +1442,25 @@ class Editor:
                 self.save_input.draw(self.screen)
             if self.tileset_type_dialog.active:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
+                overlay.fill((*COLORS.overlay, 140))
                 self.screen.blit(overlay, (0, 0))
                 self.tileset_type_dialog.draw(self.screen)
             if self.resize_map_dialog and self.resize_map_dialog.active:
                 self.resize_map_dialog.draw(self.screen)
             if self.layer_type_dialog.active:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
+                overlay.fill((*COLORS.overlay, 140))
                 self.screen.blit(overlay, (0, 0))
                 self.layer_type_dialog.draw(self.screen)
             if self.confirm_dialog.active:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 150))
+                overlay.fill((*COLORS.overlay, 140))
                 self.screen.blit(overlay, (0, 0))
                 self.confirm_dialog.draw(self.screen)
 
             if self.loading_state["active"]:
                 overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 180))
+                overlay.fill((*COLORS.overlay, 170))
                 self.screen.blit(overlay, (0, 0))
 
                 msg = self.loading_state.get("message", "Loading...")

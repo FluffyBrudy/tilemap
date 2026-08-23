@@ -18,9 +18,8 @@ from enum import Enum, auto
 import pygame
 from pygame import Rect, Surface
 
-from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
-from widgets.ui.theme import COLORS
+from widgets.ui.theme import COLORS, FONTS
 
 
 class StatusType(Enum):
@@ -75,9 +74,9 @@ class StatusBar:
         self.padding = 8
         self.message_spacing = 4
 
-        self._font = font_manager.get_font("Arial", 12, FontWeight.REGULAR)
-        self._font_sm = font_manager.get_font("Arial", 10, FontWeight.REGULAR)
-        self._font_bold = font_manager.get_font("Arial", 12, FontWeight.BOLD)
+        self._font = FONTS.get_medium_font()
+        self._font_sm = FONTS.get_small_font()
+        self._font_bold = FONTS.get_bold_font()
 
         self.on_status_changed: Callable[[StatusItem], None] | None = None
 

@@ -5,7 +5,8 @@ from pygame import Rect
 
 from ..widget_base import WidgetBase
 from .button import Button
-from .theme import COLORS, FONTS
+from .draw_utils import truncate_text
+from .theme import COLORS, FONTS, SHAPE
 
 
 class ToolbarAction:
@@ -130,26 +131,27 @@ class SidebarContainer(WidgetBase):
 
         tab_bar_rect = self._get_tab_bar_rect()
         pygame.draw.rect(screen, COLORS.header, tab_bar_rect)
+        pygame.draw.line(screen, COLORS.border_soft, tab_bar_rect.bottomleft, tab_bar_rect.bottomright, 1)
 
         if self.tabs:
             tab_w = self.rect.w // len(self.tabs)
             for i, tab in enumerate(self.tabs):
                 r = Rect(self.rect.x + i * tab_w, self.rect.y, tab_w, self.tab_bar_h)
                 is_active = i == self.active_idx
-                bg = COLORS.selected if is_active else COLORS.header
-                pygame.draw.rect(screen, bg, r)
-                if not is_active:
-                    pygame.draw.line(
-                        screen, COLORS.border, r.bottomleft, r.bottomright, 1
-                    )
+                is_hover = r.collidepoint(pygame.mouse.get_pos()) and not is_active
+                bg = COLORS.selected if is_active else (COLORS.hover if is_hover else COLORS.header)
+                pygame.draw.rect(screen, bg, r, border_radius=SHAPE.radius_sm if is_active else 0)
+                if is_active:
+                    pygame.draw.rect(screen, COLORS.accent, Rect(r.x, r.bottom - 2, r.w, 2))
+                elif not is_hover:
+                    pygame.draw.line(screen, COLORS.border, r.bottomleft, r.bottomright, 1)
+                display, _ = truncate_text(tab.name, FONTS.get_medium_font(), tab_w - 16)
                 label = FONTS.get_medium_font().render(
-                    tab.name,
+                    display,
                     True,
                     COLORS.text_on_selected if is_active else COLORS.text,
                 )
-                screen.blit(
-                    label, (r.x + 8, r.y + (self.tab_bar_h - label.get_height()) // 2)
-                )
+                screen.blit(label, (r.x + 8, r.y + (self.tab_bar_h - label.get_height()) // 2))
 
         if self.tabs and self.active_idx < len(self.tabs):
             tab = self.tabs[self.active_idx]
