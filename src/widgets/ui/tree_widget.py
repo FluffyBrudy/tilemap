@@ -12,6 +12,7 @@ from utils.icon_manager import icon_manager
 
 from ..input import InlineTextInput
 from ..widget_base import WidgetBase
+from .draw_utils import truncate_text
 from .theme import COLORS, FONTS
 
 
@@ -100,6 +101,7 @@ class TreeWidget(WidgetBase):
 
         self._rename_id: str | None = None
         self._rename_input: InlineTextInput | None = None
+        self._hovered_truncated: str | None = None
 
     def set_data(self, roots: list[TreeNode]):
         seen = set()
@@ -420,6 +422,7 @@ class TreeWidget(WidgetBase):
         if not self._cache_valid:
             self._build_flat_cache()
 
+        self._hovered_truncated = None
         clip = screen.get_clip()
         screen.set_clip(self.rect)
 
@@ -465,7 +468,11 @@ class TreeWidget(WidgetBase):
                 self._draw_rename_editor(screen, row_rect, label_x)
             else:
                 lbl_color = COLORS.text_on_accent if is_selected else COLORS.text
-                label_surf = self.font.render(node.label, True, lbl_color)
+                max_w = max(0, row_rect.right - label_x - 8)
+                display, was_truncated = truncate_text(node.label, self.font, max_w)
+                if is_hover and was_truncated:
+                    self._hovered_truncated = node.label
+                label_surf = self.font.render(display, True, lbl_color)
                 label_y = y + (self.item_height - label_surf.get_height()) // 2
                 screen.blit(label_surf, (label_x, label_y))
 
@@ -503,7 +510,8 @@ class TreeWidget(WidgetBase):
                 pygame.draw.rect(ghost, (*COLORS.accent, 50), (8, 8, w, h), 2)
                 label = f"{count} items"
             else:
-                label = self._dragging_nodes[0].label
+                raw = self._dragging_nodes[0].label
+                label, _ = truncate_text(raw, self.font, w - 24)
 
             txt = self.font.render(label, True, COLORS.text_on_accent)
             ghost.blit(txt, (12, (h - txt.get_height()) // 2))
