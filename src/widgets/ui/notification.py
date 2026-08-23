@@ -27,7 +27,6 @@ class NotificationManager:
 
     def notify(self, text: str, color=(200, 200, 200), duration=3.0):
         self.notifications.append(Notification(text, color, duration))
-        print(f"NOTIFICATION: {text}")
 
     def error(self, text: str):
         self.notify(text, color=(255, 100, 100), duration=4.0)

@@ -182,32 +182,21 @@ class MenuBar:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                print(
-                    f"### [menubar] DOWN pos={mouse_pos} bar={self.rect} "
-                    f"open={[m.label for m in self.menus if m.is_open]}"
-                )
                 for menu in self.menus:
                     if menu.is_open and menu.dropdown_rect.collidepoint(mouse_pos):
-                        print(f"### [menubar] hit dropdown of '{menu.label}'")
                         for item_rect, action in menu.item_rects:
                             if not item_rect.collidepoint(mouse_pos):
                                 continue
                             if isinstance(action, MenuSeparator):
-                                print("### [menubar] item=separator")
                                 return True
                             enabled = (
                                 action.is_enabled is None or action.is_enabled()
-                            )
-                            print(
-                                f"### [menubar] item='{action.label}' "
-                                f"enabled={enabled}"
                             )
                             if not enabled:
                                 return True
                             action.callback()
                             menu.is_open = False
                             return True
-                        print("### [menubar] dropdown padding")
                         return True
 
                 for menu in self.menus:
@@ -216,14 +205,10 @@ class MenuBar:
                         for m in self.menus:
                             m.is_open = False
                         menu.is_open = not was_open
-                        print(
-                            f"### [menubar] toggle '{menu.label}' -> open={menu.is_open}"
-                        )
                         return True
 
                 for m in self.menus:
                     m.is_open = False
-                print("### [menubar] DOWN outside bar -> closed all")
 
         elif event.type == pygame.MOUSEMOTION:
             any_open = any(m.is_open for m in self.menus)

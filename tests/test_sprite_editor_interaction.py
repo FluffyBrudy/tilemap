@@ -588,13 +588,21 @@ class TestStacking:
         surf.fill((*color, 255))
         pygame.image.save(surf, str(path))
 
+    def _blank(self):
+        from plugins.sprite_editor.editor import SpriteEditor as SE
+
+        ed = SE(Rect(0, 0, 1000, 700))
+        ed._notifications.notifications.clear()
+        return ed
+
     def _load(self, editor, tmp_path, colors):
         for name, color in colors:
             self._write_png(tmp_path / name, color)
         # deliberately shuffled — must come out naturally sorted
         editor._on_add_sheets([tmp_path / name for name, _ in reversed(colors)])
 
-    def test_multi_sheet_load_sorted_naturally(self, tmp_path, editor):
+    def test_multi_sheet_load_sorted_naturally(self, tmp_path):
+        editor = self._blank()
         green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
         self._load(editor, tmp_path, [("frame_1.png", green), ("frame_2.png", red), ("frame_11.png", blue)])
         doc = editor.doc
@@ -604,7 +612,8 @@ class TestStacking:
         assert doc.surface.get_at((16, 24))[:3] == red
         assert doc.surface.get_at((16, 40))[:3] == blue
 
-    def test_stack_horizontal(self, tmp_path, editor):
+    def test_stack_horizontal(self, tmp_path):
+        editor = self._blank()
         green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
         editor._toggle_stack()
         assert editor._stack_horizontal is True
@@ -615,7 +624,8 @@ class TestStacking:
         assert doc.surface.get_at((48, 8))[:3] == red
         assert doc.surface.get_at((80, 8))[:3] == blue
 
-    def test_click_order_preserved_when_sort_off(self, tmp_path, editor):
+    def test_click_order_preserved_when_sort_off(self, tmp_path):
+        editor = self._blank()
         """Unchecked Natural Sort -> sheets stack in the order they were picked."""
         green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
         editor._toggle_sort_natural()
@@ -635,7 +645,8 @@ class TestStacking:
         assert doc.surface.get_at((16, 24))[:3] == red
         assert doc.surface.get_at((16, 40))[:3] == green
 
-    def test_natural_sort_still_default(self, tmp_path, editor):
+    def test_natural_sort_still_default(self, tmp_path):
+        editor = self._blank()
         green, red, blue = (0, 200, 0), (200, 0, 0), (0, 0, 200)
         assert editor._sort_natural is True
         self._load(
