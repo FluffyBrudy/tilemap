@@ -46,6 +46,9 @@ class TilesetData:
 
 class TileSelector(WidgetBase):
     TREE_W = 140
+    TREE_W_MIN = 100
+    TREE_W_MAX = 320
+    DIVIDER_W = 6
 
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int):
         super().__init__(Rect(x, y, w, h))
@@ -53,7 +56,9 @@ class TileSelector(WidgetBase):
         self.tilesets: list[TilesetData] = []
         self.tileset_map: dict[int, TilesetData] = {}
 
-        self._tree = TreeWidget(Rect(x, y, self.TREE_W, h - 28))
+        self._tree_w = self.TREE_W
+        self._tree_dragging = False
+        self._tree = TreeWidget(Rect(x, y, self._tree_w, h - 28))
         self._tree.on_selection_changed = self._on_tree_selection
         self._tree.on_item_activated = self._on_tree_activate
         self._tree.on_item_context = self._on_tree_context
@@ -62,13 +67,13 @@ class TileSelector(WidgetBase):
         self._tree.on_delete_requested = self._on_tree_delete_requested
 
         self._folder_btn = Button(
-            Rect(x, h - 26, self.TREE_W, 24),
+            Rect(x, h - 26, self._tree_w, 24),
             "+ Folder",
             font=FONTS.get_small_font(),
             on_click=self._add_folder,
         )
 
-        self.view_rect = Rect(x + self.TREE_W, y, w - self.TREE_W, h)
+        self.view_rect = Rect(x + self._tree_w, y, w - self._tree_w, h)
         self.is_panning = False
         self.pan_start = (0, 0)
         self.pan_start_offset = (0, 0)
@@ -370,9 +375,13 @@ class TileSelector(WidgetBase):
         if self._pending_tileset_queue:
             self._start_tileset_queue()
 
+    def _divider_rect(self) -> Rect:
+        return Rect(self.rect.x + self._tree_w - self.DIVIDER_W // 2, self.rect.y, self.DIVIDER_W, self.rect.height)
+
     def resize(self, x: int, y: int, w: int, h: int):
         super().resize(x, y, w, h)
-        tw = self.TREE_W
+        tw = max(self.TREE_W_MIN, min(self._tree_w, self.TREE_W_MAX, w - 80))
+        self._tree_w = tw
         self._tree.resize(x, y, tw, h - 28)
         self._folder_btn.resize(x, y + h - 26, tw, 24)
         self.view_rect = Rect(x + tw, y, w - tw, h)
@@ -388,7 +397,32 @@ class TileSelector(WidgetBase):
             self._start_tileset_queue()
             return True
 
-        mouse_pos = pygame.mouse.get_pos()
+        mouse_pos = getattr(event, "pos", None) or pygame.mouse.get_pos()
+
+        # divider drag (must be before tree so it takes precedence)
+        divider = self._divider_rect()
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and divider.collidepoint(mouse_pos):
+            self._tree_dragging = True
+            return True
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self._tree_dragging:
+            self._tree_dragging = False
+            return True
+        if event.type == pygame.MOUSEMOTION and self._tree_dragging:
+            new_w = mouse_pos[0] - self.rect.x
+            new_w = max(self.TREE_W_MIN, min(new_w, self.TREE_W_MAX, self.rect.w - 80))
+            if new_w != self._tree_w:
+                self._tree_w = new_w
+                self._tree.resize(self.rect.x, self.rect.y, self._tree_w, self.rect.h - 28)
+                self._folder_btn.resize(self.rect.x, self.rect.y + self.rect.h - 26, self._tree_w, 24)
+                self.view_rect = Rect(self.rect.x + self._tree_w, self.rect.y, self.rect.w - self._tree_w, self.rect.h)
+            return True
+        if event.type == pygame.MOUSEMOTION and not self._tree_dragging:
+            if divider.collidepoint(mouse_pos):
+                try:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
+                except Exception:
+                    pass
+            # let tree handle hover internally; don't return
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
             folder = self._single_selected_folder()
@@ -890,19 +924,31 @@ class TileSelector(WidgetBase):
     def draw(self, screen: pygame.Surface):
         self.draw_base(screen)
 
-        tree_bg = Rect(self.rect.x, self.rect.y, self.TREE_W, self.rect.height)
+        tree_bg = Rect(self.rect.x, self.rect.y, self._tree_w, self.rect.height)
         pygame.draw.rect(screen, COLORS.panel_alt, tree_bg)
-        pygame.draw.line(
-            screen,
-            COLORS.border,
-            (tree_bg.right, tree_bg.top),
-            (tree_bg.right, tree_bg.bottom),
-        )
+        div_x = tree_bg.right
+        div_color = COLORS.accent if self._tree_dragging else COLORS.border
+        div_w = 2 if self._tree_dragging else 1
+        pygame.draw.line(screen, div_color, (div_x, tree_bg.top), (div_x, tree_bg.bottom), div_w)
+        # hover highlight
+        if not self._tree_dragging:
+            mx, my = pygame.mouse.get_pos()
+            if self._divider_rect().collidepoint((mx, my)):
+                pygame.draw.line(screen, COLORS.text_dim, (div_x, tree_bg.top), (div_x, tree_bg.bottom), 1)
 
         self._tree.draw(screen)
         self._folder_btn.draw(screen)
 
         self.draw_view_area(screen)
+
+        # tooltip for truncated tree names
+        truncated = getattr(self._tree, "_hovered_truncated", None)
+        if truncated:
+            mx, my = pygame.mouse.get_pos()
+            try:
+                self.editor.tooltip.show(truncated, (mx + 10, my + 10))
+            except Exception:
+                pass
 
     def draw_view_area(self, screen: pygame.Surface):
         pygame.draw.rect(screen, COLORS.panel_alt, self.view_rect)
