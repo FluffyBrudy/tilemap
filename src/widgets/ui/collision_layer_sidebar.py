@@ -114,7 +114,7 @@ class CollisionLayerSidebar:
         sidebar_rect = self._sidebar_rect()
 
         overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((*COLORS.overlay, 140))
         screen.blit(overlay, (0, 0))
 
         draw_panel(screen, sidebar_rect, COLORS.panel, COLORS.border, radius=0)

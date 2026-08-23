@@ -69,9 +69,11 @@ def draw_soft_rect(
     surface: pygame.Surface,
     rect: pygame.Rect,
     color: tuple[int, int, int],
-    radius=4,
+    radius=None,
     alpha=255,
 ):
+    if radius is None:
+        radius = SHAPE.radius_sm
     if alpha >= 255:
         pygame.draw.rect(surface, color, rect, border_radius=radius)
         return

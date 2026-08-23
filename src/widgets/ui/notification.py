@@ -3,7 +3,7 @@ import time
 import pygame
 from pygame import Rect, Surface
 
-from .theme import FONTS
+from .theme import COLORS, FONTS, SHAPE
 
 
 class Notification:
@@ -60,8 +60,8 @@ class NotificationManager:
             )
 
             s = Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
-            s.fill((40, 44, 52, min(alpha, 200)))
-            pygame.draw.rect(s, (*n.color, alpha), s.get_rect(), 2, border_radius=4)
+            s.fill((*COLORS.panel, min(alpha, 230)))
+            pygame.draw.rect(s, (*n.color, alpha), s.get_rect(), 2, border_radius=SHAPE.radius)
             screen.blit(s, bg_rect.topleft)
 
             text_surf.set_alpha(alpha)

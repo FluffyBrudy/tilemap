@@ -34,7 +34,7 @@ class TileGrid:
         self.pan_start_scroll = (0, 0)
         self.hover_cell: tuple[int, int] | None = None
 
-        self.grid_color = COLORS.text_muted
+        self.grid_color = COLORS.border_soft
         self.show_grid = True
         self.show_map_boundary = True
 
@@ -1217,7 +1217,7 @@ class TileGrid:
                 sy = int((wy - erase_h / 2 - self.scroll_y) * self.zoom_level + self.rect.y)
                 sw = int(erase_w * self.zoom_level)
                 sh = int(erase_h * self.zoom_level)
-                pygame.draw.rect(screen, (255, 50, 50), Rect(sx, sy, sw, sh), 2)
+                pygame.draw.rect(screen, COLORS.danger, Rect(sx, sy, sw, sh), 2)
                 return
             if self.hover_cell:
                 eff_w, eff_h = self.effective_tile_size
@@ -1226,7 +1226,7 @@ class TileGrid:
                 size_w = int(eff_w * self.eraser_size * self.zoom_level)
                 size_h = int(eff_h * self.eraser_size * self.zoom_level)
                 dest_rect = Rect(screen_x, screen_y, size_w, size_h)
-                pygame.draw.rect(screen, (255, 50, 50), dest_rect, 2)
+                pygame.draw.rect(screen, COLORS.danger, dest_rect, 2)
                 return
 
         if self.is_moving and self.hover_cell:
@@ -1256,7 +1256,7 @@ class TileGrid:
             screen_y = (world_y - self.scroll_y) * self.zoom_level + self.rect.y
 
             dest_rect = Rect(screen_x, screen_y, sel_width, sel_height)
-            pygame.draw.rect(screen, (255, 255, 0), dest_rect, 2)
+            pygame.draw.rect(screen, COLORS.warning, dest_rect, 2)
 
             try:
                 sub_r = Rect(src_rect[0], src_rect[1], src_rect[2], src_rect[3])

@@ -199,7 +199,7 @@ class ResizeMapDialog(DialogBase):
 
         self._layout()
         overlay = pygame.Surface((self.editor.width, self.editor.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
+        overlay.fill((*COLORS.overlay, 170))
         surface.blit(overlay, (0, 0))
 
         super().draw_base(surface)

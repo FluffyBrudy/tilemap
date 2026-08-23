@@ -729,7 +729,7 @@ class ObjectTilesetCollisionEditor:
             return
 
         overlay = Surface(screen.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
+        overlay.fill((*COLORS.overlay, 170))
         screen.blit(overlay, (0, 0))
 
         panel_w = 500

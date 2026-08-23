@@ -12,12 +12,12 @@ Color = tuple[int, int, int]
 
 @dataclass(frozen=True)
 class UIColorSet:
-    bg: Color = (35, 38, 44)
-    panel: Color = (30, 32, 36)
-    panel_alt: Color = (25, 27, 30)
-    header: Color = (40, 42, 46)
-    border: Color = (60, 62, 65)
-    border_soft: Color = (50, 54, 59)
+    bg: Color = (28, 30, 35)
+    panel: Color = (34, 38, 44)
+    panel_alt: Color = (30, 34, 40)
+    header: Color = (42, 46, 52)
+    border: Color = (68, 72, 82)
+    border_soft: Color = (55, 60, 70)
     text: Color = (230, 230, 230)
     text_dim: Color = (150, 150, 150)
     text_muted: Color = (120, 120, 120)
@@ -32,6 +32,10 @@ class UIColorSet:
     warning: Color = (220, 180, 80)
     hover: Color = (55, 60, 70)
     selected: Color = (50, 70, 110)
+    overlay: Color = (0, 0, 0)
+    shadow: Color = (0, 0, 0)
+    scrollbar_thumb: Color = (85, 90, 100)
+    scrollbar_thumb_hover: Color = (105, 110, 120)
     marker_colors: tuple[Color, ...] = (
         (255, 180, 80),
         (90, 190, 255),
@@ -60,15 +64,15 @@ class UIColorSet:
 
 
 DARK_COLORS = UIColorSet(
-    bg=(35, 38, 44),
-    panel=(30, 32, 36),
-    panel_alt=(25, 27, 30),
-    header=(40, 42, 46),
-    border=(60, 62, 65),
-    border_soft=(50, 54, 59),
+    bg=(28, 30, 35),
+    panel=(34, 38, 44),
+    panel_alt=(30, 34, 40),
+    header=(42, 46, 52),
+    border=(68, 72, 82),
+    border_soft=(55, 60, 70),
     text=(230, 230, 230),
-    text_dim=(150, 150, 150),
-    text_muted=(120, 120, 120),
+    text_dim=(155, 160, 170),
+    text_muted=(120, 125, 135),
     accent=(80, 120, 200),
     accent_hover=(100, 140, 220),
     accent_active=(70, 110, 190),
@@ -76,8 +80,12 @@ DARK_COLORS = UIColorSet(
     danger=(200, 80, 80),
     danger_hover=(160, 60, 60),
     warning=(220, 180, 80),
-    hover=(55, 60, 70),
+    hover=(58, 64, 78),
     selected=(50, 70, 110),
+    overlay=(0, 0, 0),
+    shadow=(0, 0, 0),
+    scrollbar_thumb=(85, 90, 100),
+    scrollbar_thumb_hover=(105, 110, 120),
 )
 MOLOKAI_COLORS = UIColorSet(
     # Base
@@ -280,6 +288,28 @@ class ThemeManager:
     def marker_colors(self) -> tuple[Color, ...]:
         return self._colors.marker_colors
 
+    @property
+    def overlay(self) -> Color:
+        return self._colors.overlay
+
+    @property
+    def shadow(self) -> Color:
+        return self._colors.shadow
+
+    @property
+    def scrollbar_thumb(self) -> Color:
+        return self._colors.scrollbar_thumb
+
+    @property
+    def scrollbar_thumb_hover(self) -> Color:
+        return self._colors.scrollbar_thumb_hover
+
+    def __getattr__(self, name: str):
+        # future-proof: any new UIColorSet field auto-exposes
+        if name in UIColorSet.__dataclass_fields__:
+            return getattr(self._colors, name)
+        raise AttributeError(f"'ThemeManager' object has no attribute '{name}'")
+
     def resolve_theme(self, name_or_path: str) -> UIColorSet | None:
         """Try built-in themes, then registered custom themes, then JSON file in THEME_PATH."""
         if name_or_path in THEMES:
@@ -340,17 +370,21 @@ def get_current_theme_name() -> str:
 
 @dataclass(frozen=True)
 class UIShape:
-    radius: int = 5
-    radius_sm: int = 3
+    radius: int = 8
+    radius_sm: int = 6
+    radius_lg: int = 12
     border: int = 1
+    border_strong: int = 2
+    shadow_offset: int = 4
+    shadow_blur: int = 12
 
 
 @dataclass(frozen=True)
 class UIFontConfig:
     """Font configuration with family, sizes, and default weights."""
 
-    family: str = "Arial"
-    size_sm: int = 11
+    family: str = "noto"
+    size_sm: int = 12
     size_md: int = 13
     size_lg: int = 16
     size_title: int = 18

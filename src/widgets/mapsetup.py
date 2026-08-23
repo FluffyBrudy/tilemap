@@ -81,7 +81,7 @@ class MapSetup(WidgetBase):
         cx = self.rect.centerx
         btn_create_y = last_input_bottom + SPACING["xl"]
         self.btn_create.rect = Rect(cx - BTN_W // 2, btn_create_y, BTN_W, BTN_H)
-        or_h = self.font_sm.render("─ OR ─", True, COLORS.text_dim).get_height()
+        or_h = self.font_sm.render("OR", True, COLORS.text_dim).get_height()
         btn_open_y = btn_create_y + BTN_H + SPACING["md"] + or_h + SPACING["md"]
         self.btn_open.rect = Rect(cx - BTN_W // 2, btn_open_y, BTN_W, BTN_H)
 
@@ -166,7 +166,7 @@ class MapSetup(WidgetBase):
 
         self.btn_create.draw(screen)
 
-        or_surf = self.font_sm.render("─ OR ─", True, COLORS.text_dim)
+        or_surf = self.font_sm.render("OR", True, COLORS.text_dim)
         or_center_y = (
             self.btn_create.rect.bottom
             + (self.btn_open.rect.top - self.btn_create.rect.bottom) // 2

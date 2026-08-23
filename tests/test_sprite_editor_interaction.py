@@ -503,10 +503,12 @@ class TestChrome:
     def test_grid_spans_full_content_area(self, editor):
         # regression: grid lines must cover the whole canvas like TileGrid,
         # not just the sheet bounds
+        from widgets.ui.theme import COLORS
+
         screen = pygame.Surface((1000, 700))
         editor.draw(screen)
         content_y = MENU_H + TOOLBAR_H + HEADER_H
-        line_color = (120, 120, 120)  # COLORS.text_muted default theme
+        line_color = COLORS.text_muted
         # vertical line at world x=96 (col 3 edge), inside the sheet
         vx = round(editor.camera.world_to_screen(96, 0)[0])
         assert screen.get_at((vx, content_y + 100))[:3] == line_color

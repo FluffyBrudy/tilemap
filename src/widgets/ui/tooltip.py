@@ -12,7 +12,7 @@ class TooltipManager:
         self.text: str | None = None
         self.pos: tuple[int, int] = (0, 0)
         self.visible = False
-        self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
+        self.font = FONTS.get_small_font()
 
     def show(self, text: str, pos: tuple[int, int]):
         self.text = text

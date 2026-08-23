@@ -3,9 +3,9 @@ from collections.abc import Callable
 import pygame
 from pygame import Rect
 
-from .theme import COLORS
+from .theme import COLORS, SHAPE
 
-THUMB_MIN = 16
+THUMB_MIN = 20
 
 
 class Scrollbar:
@@ -152,8 +152,8 @@ class Scrollbar:
     def draw(self, screen: pygame.Surface):
         if self.content_size <= self.view_size:
             return
-        pygame.draw.rect(screen, COLORS.panel_alt, self.rect, border_radius=4)
+        pygame.draw.rect(screen, COLORS.panel_alt, self.rect, border_radius=SHAPE.radius_sm)
         thumb_col = (
-            COLORS.text_dim if self._hovered or self._dragging else COLORS.text_muted
+            COLORS.scrollbar_thumb_hover if self._hovered or self._dragging else COLORS.scrollbar_thumb
         )
-        pygame.draw.rect(screen, thumb_col, self._thumb_rect(), border_radius=4)
+        pygame.draw.rect(screen, thumb_col, self._thumb_rect(), border_radius=SHAPE.radius_sm)

@@ -470,7 +470,7 @@ class TileSelector(WidgetBase):
                     sx, sy, sw, sh = self.selected_tile
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
-                    sel_rect = Rect(img_x + sx, img_y + sy, sw, sh)
+                    sel_rect = Rect(int(img_x + sx * self.zoom), int(img_y + sy * self.zoom), int(sw * self.zoom), int(sh * self.zoom))
 
                     if sel_rect.collidepoint(mouse_pos):
                         variant_ids = self._get_selected_variant_ids(ts)
@@ -988,8 +988,8 @@ class TileSelector(WidgetBase):
             col = vid % cols
             row = vid // cols
 
-            x = img_x + col * ztw
-            y = img_y + row * zth
+            x = int(img_x + col * tw * self.zoom)
+            y = int(img_y + row * th * self.zoom)
 
             if (
                 x > self.view_rect.right
@@ -1078,7 +1078,7 @@ class TileSelector(WidgetBase):
         col, row = self.hover_pos
         ztw = int(tw * self.zoom)
         zth = int(th * self.zoom)
-        hover_rect = Rect(img_x + col * ztw, img_y + row * zth, ztw, zth)
+        hover_rect = Rect(int(img_x + col * tw * self.zoom), int(img_y + row * th * self.zoom), ztw, zth)
         pygame.draw.rect(screen, COLORS.warning, hover_rect, 2)
 
     def draw_selection(self, screen, img_x: int, img_y: int):

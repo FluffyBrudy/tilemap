@@ -4,7 +4,7 @@ import pygame
 from pygame import Rect, Surface
 
 from ..widget_base import WidgetBase
-from .theme import COLORS, FONTS
+from .theme import COLORS, FONTS, SHAPE
 
 
 class DialogBase(WidgetBase):
@@ -65,7 +65,7 @@ class DialogBase(WidgetBase):
         if hover_color is None:
             hover_color = COLORS.accent_hover
         bg = hover_color if hover else color
-        pygame.draw.rect(surface, bg, rect)
+        pygame.draw.rect(surface, bg, rect, border_radius=SHAPE.radius_sm)
         f = font or FONTS.get_medium_font()
         surf = f.render(text, True, COLORS.text)
         surface.blit(surf, surf.get_rect(center=rect.center))

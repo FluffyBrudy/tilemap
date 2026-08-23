@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pygame
 from pygame import Rect
 
-from widgets.ui.theme import COLORS, FONTS
+from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class MenuAction:
@@ -132,8 +132,8 @@ class MenuBar:
         self.rect.width = width
         self._layout_menus()
 
-    ITEM_H = 26
-    SEP_H = 12
+    ITEM_H = 28
+    SEP_H = 10
 
     def _layout_menus(self):
         x = 5
@@ -268,13 +268,14 @@ class MenuBar:
 
             if menu.is_open:
                 shadow_rect = menu.dropdown_rect.copy()
-                shadow_rect.inflate_ip(4, 4)
+                shadow_rect.inflate_ip(8, 8)
                 shadow = pygame.Surface((shadow_rect.w, shadow_rect.h), pygame.SRCALPHA)
-                shadow.fill((*COLORS.bg, 160))
+                shadow.fill((*COLORS.shadow, 60))
+                pygame.draw.rect(shadow, (*COLORS.shadow, 60), shadow.get_rect(), border_radius=SHAPE.radius)
                 screen.blit(shadow, shadow_rect.topleft)
 
-                pygame.draw.rect(screen, COLORS.panel, menu.dropdown_rect)
-                pygame.draw.rect(screen, COLORS.border, menu.dropdown_rect, 1)
+                pygame.draw.rect(screen, COLORS.panel, menu.dropdown_rect, border_radius=SHAPE.radius_sm)
+                pygame.draw.rect(screen, COLORS.border, menu.dropdown_rect, 1, border_radius=SHAPE.radius_sm)
 
                 for item_rect, action in menu.item_rects:
                     if isinstance(action, MenuSeparator):
@@ -293,7 +294,7 @@ class MenuBar:
                         item_rect.collidepoint(mouse_pos) and not disabled
                     )
                     if hovered:
-                        pygame.draw.rect(screen, COLORS.accent, item_rect)
+                        pygame.draw.rect(screen, COLORS.accent, item_rect, border_radius=SHAPE.radius_sm)
                         color = COLORS.text_on_accent
                         shortcut_color = COLORS.text_on_accent
                     elif disabled:

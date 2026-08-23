@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from editor import Editor
 from widgets.ui.button import Button
 from widgets.ui.draw_utils import draw_panel
-from widgets.ui.theme import COLORS
+from widgets.ui.theme import COLORS, SHAPE, SPACING
 from widgets.ui.tool_manager import ToolKind
 
 
@@ -16,9 +16,9 @@ class Toolbar:
         self.editor = editor
         self.rect = Rect(x, y, w, h)
         self.btn_size = 28
-        self.gap = 4
-        self.sep_w = 6
-        self.pad = 6
+        self.gap = SPACING["sm"] + 2
+        self.sep_w = 10
+        self.pad = SPACING["md"]
         self._buttons: list[Button] = []
         self._separator_centers: list[int] = []
         self._layout_buttons()
@@ -30,7 +30,7 @@ class Toolbar:
                 Rect(x, y, self.btn_size, btn_h),
                 icon_key=ico,
                 tooltip_text=tip,
-                border_radius=0,
+                border_radius=SHAPE.radius_sm,
                 on_click=lambda k=key: self._on_tool_click(k),
             )
             btn.tool_key = key
