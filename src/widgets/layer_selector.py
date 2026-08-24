@@ -85,21 +85,24 @@ class LayerSelector:
         """Handle pygame events. Returns True if event was consumed."""
         mouse_pos = pygame.mouse.get_pos()
 
+        # Rename takes priority over every other mouse target (footer
+        # buttons included): confirming needs the edited row, anything else
+        # cancels, and the click is always consumed so selection or button
+        # actions can never fire mid-rename and shift indices out from
+        # under _confirm_rename.
+        if event.type == pygame.MOUSEBUTTONDOWN and self.renaming_layer_idx is not None:
+            if (
+                self.list_rect.collidepoint(mouse_pos)
+                and self._get_layer_at_pos(mouse_pos) == self.renaming_layer_idx
+            ):
+                self._confirm_rename()
+            else:
+                self._cancel_rename()
+            return True
+
         if self.btn_add.handle_event(event):
             return True
         if self.btn_remove.handle_event(event):
-            return True
-
-        if event.type == pygame.MOUSEBUTTONDOWN and self.renaming_layer_idx is not None:
-            # clicking the same row confirms the rename, clicking anywhere
-            # else cancels it, either way the click is consumed so the
-            # selection can not silently change mid-edit
-            if self.list_rect.collidepoint(mouse_pos):
-                idx = self._get_layer_at_pos(mouse_pos)
-                if idx == self.renaming_layer_idx:
-                    self._confirm_rename()
-                else:
-                    self._cancel_rename()
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -384,7 +387,12 @@ class LayerSelector:
             return
 
         new_name = self.rename_input.text.strip()
-        layer = self.editor.tilemap.layer_manager.get_layer(self.renaming_layer_idx)
+        layers = self.editor.tilemap.layer_manager.layers
+        if self.renaming_layer_idx >= len(layers):
+            # list shrank underneath the edit; nothing safe to retarget
+            self._cancel_rename()
+            return
+        layer = layers[self.renaming_layer_idx]
         if new_name and layer:
             layer.name = new_name
         self._cancel_rename()

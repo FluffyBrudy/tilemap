@@ -259,7 +259,7 @@ class TestSandboxSaveAs:
         assert editor.tileset_widget.tilesets[1].path == target.parent / "assets" / "objects.png"
         assert editor.is_sandbox is False
         assert editor.data_root == editor._project_data_root
-        assert editor.node_manager._nodes_dir is None
+        assert editor.node_manager._nodes_dir == editor._project_data_root / "nodes"
 
         saved = json.loads(target.read_text())
         paths = [t["path"] for t in saved["resources"]["tilesets"]]
@@ -371,3 +371,91 @@ class TestDisplayLoadPath:
 
         monkeypatch.chdir(Path(__file__).parent.parent)
         assert _display_load_path(Path("sandbox/map.json")) == Path("sandbox/map.json")
+
+
+class TestNodeSidecarBelongsGuard:
+    def _manager(self, data_root: Path, nodes_rel: str = "nodes"):
+        from node_manager import NodeManager
+        from tilemap import Tilemap
+
+        class _Editor:
+            config = {"nodes_path": nodes_rel}
+
+        editor = _Editor()
+        editor.data_root = data_root
+        editor.tilemap = Tilemap(editor)
+        editor.tilemap.init_size((16, 16), (10, 10))
+        return NodeManager(editor)
+
+    EMPTY = '{"version": 2, "groups": [], "nodes": []}'
+
+    def test_diverged_active_sidecar_relocates_write_to_canonical(self, tmp_path):
+        """Loaded a legacy map-adjacent sidecar, but canonical lives in the
+        central nodes dir -> writes go to canonical (relocation accepted);
+        the legacy file is left byte-identical."""
+        maps_dir = tmp_path / "maps"
+        maps_dir.mkdir(parents=True)
+        manager = self._manager(tmp_path)
+        loaded = maps_dir / "level.json"
+        adjacent = maps_dir / "level.nodes.json"
+        adjacent.write_text(self.EMPTY)
+        manager.load(loaded)
+        assert manager._active_sidecar == adjacent
+
+        manager.add_node(manager.create_default_node("Objects"))
+        manager.save(loaded)
+
+        canonical = tmp_path / "nodes" / "level.nodes.json"
+        assert canonical.is_file(), "canonical must receive the write"
+        assert adjacent.read_text() == self.EMPTY, "diverged sidecar stays frozen"
+
+    def test_matching_active_sidecar_is_kept(self, tmp_path):
+        maps_dir = tmp_path / "maps"
+        maps_dir.mkdir(parents=True)
+        # nodes dir == map dir: canonical and adjacent coincide
+        manager = self._manager(maps_dir, nodes_rel=".")
+        loaded = maps_dir / "level.json"
+        adjacent = maps_dir / "level.nodes.json"
+        adjacent.write_text(self.EMPTY)
+        manager.load(loaded)
+
+        manager.add_node(manager.create_default_node("Objects"))
+        manager.save(loaded)
+
+        data = json.loads(adjacent.read_text())
+        assert len(data["nodes"]) == 1
+
+    def test_export_reset_sends_writes_to_canonical_not_sandbox(self, tmp_path):
+        sandbox_dir = tmp_path / "sandbox"
+        sandbox_dir.mkdir(parents=True)
+        sandbox_map = sandbox_dir / "level.json"
+        sandbox_map.write_text("{}")
+        stale = sandbox_dir / "level.nodes.json"
+        stale.write_text(self.EMPTY)
+
+        project = tmp_path / "project"
+        manager = self._manager(sandbox_dir)
+        manager.editor.data_root = sandbox_dir
+        manager.load(sandbox_map)
+        manager.add_node(manager.create_default_node("Objects"))
+
+        # what the export flow does before save_map(): point data_root back
+        # at the project, then clear the sandbox sidecar pointer
+        manager.editor.data_root = project
+        manager.reset_nodes_dir()
+        target = tmp_path / "export" / "level.json"
+        target.parent.mkdir(parents=True)
+        manager.save(target)
+
+        canonical = project / "nodes" / "level.nodes.json"
+        assert canonical.is_file(), "canonical receives the exported nodes"
+        assert stale.read_text() == self.EMPTY, "sandbox copy stays frozen"
+        assert not (target.parent / "level.nodes.json").exists()
+
+    def test_no_active_uses_canonical_fallback(self, tmp_path):
+        manager = self._manager(tmp_path)
+        manager.add_node(manager.create_default_node("Objects"))
+        target = tmp_path / "maps" / "other.json"
+        target.parent.mkdir(parents=True)
+        manager.save(target)
+        assert (tmp_path / "nodes" / "other.nodes.json").is_file()

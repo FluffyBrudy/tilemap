@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 import pygame
 from pygame import Rect, Surface
@@ -139,7 +140,7 @@ class SpriteEditor:
 
     def resize(self, x: int, y: int, w: int, h: int) -> None:
         self.rect = Rect(x, y, w, h)
-        self.menubar.resize(w)
+        self.menubar.resize(self.rect.x, self.rect.y, w, MENU_H)
         self.viewport.resize(self._content_rect())
         self._status_bar.resize(Rect(self.rect.x, self.rect.bottom - STATUS_H, self.rect.w, STATUS_H))
         self._scale_dialog.editor_rect = self.rect
@@ -610,7 +611,7 @@ class SpriteEditor:
         if self._active_tool is self._text_tool:
             # toggling off while editing keeps draft — exit cleanly
             if getattr(self._text_tool, "_mode", "idle") != "idle":
-                self._text_tool._cancel()  # type: ignore[attr-defined]
+                self._text_tool.cancel()
             self._set_tool("select" if self.mode == "grid" else "regions")
             return
         # leaving paste/region etc.
@@ -691,10 +692,15 @@ class SpriteEditor:
             mods = pygame.key.get_mods()
             ctrl = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
             if ctrl:
+                # shift-modified Z must win over plain Z or Ctrl+Shift+Z
+                # would undo instead of redo
+                if event.key == pygame.K_z and mods & pygame.KMOD_SHIFT:
+                    self._on_redo()
+                    return True
                 if event.key == pygame.K_z:
                     self._on_undo()
                     return True
-                if event.key == pygame.K_y or (event.key == pygame.K_z and mods & pygame.KMOD_SHIFT):
+                if event.key == pygame.K_y:
                     self._on_redo()
                     return True
                 if event.key == pygame.K_c:
@@ -854,7 +860,28 @@ class SpriteEditor:
             if not line:
                 continue
             if line.startswith("file://"):
-                paths.append(Path(unquote(urlparse(line).path)))
+                parsed = urlparse(line)
+                # Preserve host for UNC (file://server/share/...)
+                raw = unquote(parsed.path)
+                if parsed.netloc:
+                    # Keep localhost as local, otherwise UNC
+                    if parsed.netloc not in ("", "localhost", "127.0.0.1"):
+                        raw = f"//{parsed.netloc}{raw}"
+                # OS-aware conversion; fixes Windows drive-letter leading slash
+                try:
+                    raw = url2pathname(raw)
+                except Exception:
+                    pass
+                # Strip erroneous leading slash for Windows drive letters
+                # (url2pathname on POSIX leaves "/C:/..." intact)
+                if (
+                    len(raw) >= 3
+                    and raw[0] == "/"
+                    and raw[2] == ":"
+                    and raw[1].isalpha()
+                ):
+                    raw = raw[1:]
+                paths.append(Path(raw))
             elif line.startswith("/") or (len(line) > 2 and line[1] == ":"):
                 paths.append(Path(unquote(line)))
         return paths
@@ -912,11 +939,12 @@ class SpriteEditor:
         )
         if self.doc.has_canvas:
             self.commands.push(
-                AppendSheetCommand(combined, horizontal=self._stack_horizontal),
+                AppendSheetCommand(
+                    combined, names=names, horizontal=self._stack_horizontal
+                ),
                 self.doc,
                 self.selection,
             )
-            self.doc.sheets.extend(names)
             n = len(surfaces)
             msg = f"Appended {n} sheet{'s' if n != 1 else ''}"
         else:
@@ -1132,11 +1160,14 @@ class SpriteEditor:
                 # never clobber existing content: each import pass appends
                 # its block (undoable) per the current stacking direction
                 self.commands.push(
-                    AppendSheetCommand(combined, horizontal=self._stack_horizontal),
+                    AppendSheetCommand(
+                        combined,
+                        names=loaded_names,
+                        horizontal=self._stack_horizontal,
+                    ),
                     self.doc,
                     self.selection,
                 )
-                self.doc.sheets.extend(loaded_names)
             n = len(surfaces)
             plural = "s" if n != 1 else ""
             msg = f"Loaded {n} sheet{plural}" if was_empty else f"Appended {n} sheet{plural}"

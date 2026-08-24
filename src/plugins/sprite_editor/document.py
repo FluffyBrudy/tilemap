@@ -360,16 +360,28 @@ class Document:
 
     # -- freeform surface blit (text) -----------------------------------
     def blit_surface(self, surf: Surface, pos: tuple[int, int]) -> None:
-        """Blit an arbitrary surface at world px; expands canvas if needed."""
+        """Blit an arbitrary surface at world px; expands canvas if needed.
+
+        Negative-origin growth shifts the canvas by whole tile multiples and
+        bumps ``origin_col``/``origin_row`` by the same tile count, so the
+        grid<->pixel mapping (and anything recorded in grid space) stays
+        glued to the shifted content.
+        """
         if not self.surface or surf is None:
             return
         x, y = int(pos[0]), int(pos[1])
         sw, sh = surf.get_size()
         old_w, old_h = self.surface.get_size()
+        tw = max(1, self.tw)
+        th = max(1, self.th)
         # required final extent covers both the existing content and the
-        # whole stamp, including negative origins (shifted into view)
+        # whole stamp; negative origins are padded up to a tile multiple
         shift_x = -min(0, x)
         shift_y = -min(0, y)
+        if shift_x:
+            shift_x = ((shift_x + tw - 1) // tw) * tw
+        if shift_y:
+            shift_y = ((shift_y + th - 1) // th) * th
         need_w = max(old_w, x + sw) + shift_x
         need_h = max(old_h, y + sh) + shift_y
         if shift_x or shift_y:
@@ -378,6 +390,11 @@ class Document:
             new_surface.fill((0, 0, 0, 0))
             new_surface.blit(self.surface, (shift_x, shift_y))
             self.surface = new_surface
+            # expanding left/top prepends grid columns/rows: absolute cell
+            # addresses move negative (same convention as
+            # ensure_contains_cells) so every recorded cell stays put
+            self.origin_col -= shift_x // tw
+            self.origin_row -= shift_y // th
             x += shift_x
             y += shift_y
         elif self.surface.get_width() < need_w or self.surface.get_height() < need_h:

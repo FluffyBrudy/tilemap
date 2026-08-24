@@ -137,17 +137,40 @@ class GridResizeCommand(Command):
 
 
 class AppendSheetCommand(Command):
-    """Stack an imported sheet below (or right of) the existing canvas."""
+    """Stack an imported sheet below (or right of) the existing canvas.
+
+    The imported file names are part of the operation: they are captured
+    into the command so undo removes them again and redo re-adds them,
+    keeping ``doc.sheets`` in lockstep with the canvas across the cycle.
+    """
 
     name = "Import Sheets"
 
-    def __init__(self, sheet: pygame.Surface, horizontal: bool = False):
+    def __init__(self, sheet: pygame.Surface, names: list[str], horizontal: bool = False):
         self.sheet = sheet
+        self.names = list(names)
         self.horizontal = bool(horizontal)
+        self._prev_sheets: list[str] | None = None
+
+    def apply(self, doc: Document, selection: Selection) -> None:
+        self._prev_sheets = list(doc.sheets)
+        super().apply(doc, selection)
 
     def _do(self, doc: Document, selection: Selection) -> None:
         doc.append_sheet(self.sheet, horizontal=self.horizontal)
+        if self.names:
+            doc.sheets.extend(self.names)
         selection.replace([], anchor=None)
+
+    def undo(self, doc: Document, selection: Selection) -> None:
+        super().undo(doc, selection)
+        if self._prev_sheets is not None:
+            doc.sheets = list(self._prev_sheets)
+
+    def redo(self, doc: Document, selection: Selection) -> None:
+        super().redo(doc, selection)
+        if self.names:
+            doc.sheets.extend(self.names)
 
 
 class RegionAddCommand(Command):

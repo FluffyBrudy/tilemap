@@ -46,7 +46,9 @@ class Scrollbar:
         if self.content_size <= self.view_size:
             return self._track_size
         ratio = self.view_size / self.content_size
-        return max(THUMB_MIN, int(self._track_size * ratio))
+        # never exceed the track: a thumb longer than it would invert the
+        # available drag space on very short scrollbars
+        return min(self._track_size, max(THUMB_MIN, int(self._track_size * ratio)))
 
     @property
     def thumb_pos(self) -> int:

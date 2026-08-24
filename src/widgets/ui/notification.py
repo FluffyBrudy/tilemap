@@ -47,7 +47,7 @@ class NotificationManager:
 
         curr_y = screen_h - 40
         for n in reversed(self.notifications):
-            text_surf = self.font.render(n.text, True, (255, 255, 255))
+            text_surf = self.font.render(n.text, True, COLORS.text)
             tw, th = text_surf.get_size()
 
             age = time.time() - n.start_time

@@ -528,11 +528,27 @@ class Editor:
 
     def _sandbox_export_map(self, path: Path, assets_src: Path, assets_dst: Path):
         redirected: list[tuple[object, Path]] = []
+        newly_copied: list[Path] = []
+        # Snapshot staged outputs before any writes
+        map_existed = path.exists()
+        try:
+            proj_nodes_dir = self._project_data_root / self.config.get(
+                "nodes_path", "nodes"
+            )
+            sidecar_path = proj_nodes_dir / f"{path.stem}.nodes.json"
+            sidecar_existed = sidecar_path.exists()
+        except Exception:
+            sidecar_path = None
+            sidecar_existed = False
         try:
             assets_dst.mkdir(parents=True, exist_ok=True)
             for src in assets_src.iterdir():
                 if src.is_file():
-                    shutil.copy2(src, assets_dst / src.name)
+                    dst = assets_dst / src.name
+                    existed = dst.exists()
+                    shutil.copy2(src, dst)
+                    if not existed:
+                        newly_copied.append(dst)
 
             ts_widget = getattr(self, "tileset_widget", None)
             if ts_widget is not None and self._sandbox_root is not None:
@@ -549,12 +565,81 @@ class Editor:
                         redirected.append((ts, Path(ts_path)))
                         ts.path = assets_dst / ts_path.name
 
-            self.tilemap.save_map(path)
-
+            # Restore real-data context BEFORE saving so the node sidecar is
+            # written next to the exported map (NodeManager falls back to
+            # <map>.nodes.json once the sandbox pointer is cleared).  Prior
+            # state is reinstated if the save fails.
+            prev_data_root = self.data_root
+            prev_is_sandbox = self.is_sandbox
+            prev_nodes_dir = (
+                getattr(self.node_manager, "_nodes_dir", None)
+                if hasattr(self, "node_manager")
+                else None
+            )
+            prev_active_sidecar = getattr(
+                self.node_manager, "_active_sidecar", None
+            )
+            prev_project_path = self.tilemap.active_project_path
             self.data_root = self._project_data_root
             self.is_sandbox = False
             if hasattr(self, "node_manager"):
                 self.node_manager.reset_nodes_dir()
+
+            try:
+                ok = self.tilemap.save_map(path)
+                if not ok:
+                    self.data_root = prev_data_root
+                    self.is_sandbox = prev_is_sandbox
+                    if hasattr(self, "node_manager"):
+                        self.node_manager._nodes_dir = prev_nodes_dir
+                        self.node_manager._active_sidecar = prev_active_sidecar
+                    self.tilemap.active_project_path = prev_project_path
+                    for ts, original in redirected:
+                        try:
+                            ts.path = original
+                        except Exception:
+                            pass
+                    # Remove staged outputs created for this export
+                    if not map_existed:
+                        try:
+                            path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    if sidecar_path is not None and not sidecar_existed:
+                        try:
+                            sidecar_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    for dst in newly_copied:
+                        try:
+                            dst.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    return
+            except Exception:
+                self.data_root = prev_data_root
+                self.is_sandbox = prev_is_sandbox
+                if hasattr(self, "node_manager"):
+                    self.node_manager._nodes_dir = prev_nodes_dir
+                    self.node_manager._active_sidecar = prev_active_sidecar
+                self.tilemap.active_project_path = prev_project_path
+                if not map_existed:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                if sidecar_path is not None and not sidecar_existed:
+                    try:
+                        sidecar_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                for dst in newly_copied:
+                    try:
+                        dst.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                raise
+
             self.notifications.success(f"Exported to {path.name}")
             logger.info(f"Sandbox session exported to {path}; data_root restored to {self.data_root}")
         except Exception as e:
@@ -564,6 +649,22 @@ class Editor:
                     ts.path = original
                 except Exception:
                     error_handler.capture(e, context="sandbox_restore_paths")
+            # Remove staged outputs that were newly created for this export
+            for dst in newly_copied:
+                try:
+                    dst.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            if not map_existed:
+                try:
+                    path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            if sidecar_path is not None and not sidecar_existed:
+                try:
+                    sidecar_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
             error_handler.capture(e, context="sandbox_export")
             self.notifications.error(
                 "Export failed",
@@ -730,7 +831,7 @@ class Editor:
         self.height = height
 
         if hasattr(self, "menubar") and self.menubar:
-            self.menubar.resize(width)
+            self.menubar.resize(0, 0, width, self.menubar.rect.height)
 
         if hasattr(self, "toolbar") and self.toolbar:
             self.toolbar.resize(width)

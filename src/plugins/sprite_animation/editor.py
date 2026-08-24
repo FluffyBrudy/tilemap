@@ -428,7 +428,7 @@ class SpriteAnimationEditor:
                     self._editing_offset_x = True
                     return True
                 if event.key == pygame.K_ESCAPE:
-                    self._frame_height_input = str(self._tile_size[1])
+                    self._set_frame_inputs_px(*self._tile_size)
                     self._editing_frame_height = False
                     return True
                 if event.key == pygame.K_BACKSPACE:
@@ -1190,21 +1190,26 @@ class SpriteAnimationEditor:
             )
 
     def _toggle_frame_size_mode(self) -> None:
-        """Flip px <-> cells and convert the shown values so the grid holds still."""
-        sw = max(1, self._surface.get_width())
-        sh = max(1, self._surface.get_height())
+        """Flip px <-> cells, converting only the *displayed* values.
 
-        if self._frame_size_mode == "px":
+        The applied grid is intentionally left untouched here (no
+        ``_apply_frame_size``): rounding a non-divisible sheet into cell
+        counts and reapplying would silently resize frames on a pure unit
+        toggle.  The new values take effect when the user commits via
+        Enter/Tab like any other edit.
+        """
+        if self._frame_size_mode == "cells":
+            self._frame_size_mode = "px"
+            # show the currently applied frame size in px
+            self._frame_width_input = str(self._tile_size[0])
+            self._frame_height_input = str(self._tile_size[1])
+        else:
             self._frame_size_mode = "cells"
+            sw = max(1, self._surface.get_width())
+            sh = max(1, self._surface.get_height())
             tw, th = self._tile_size
             self._frame_width_input = str(max(1, round(sw / max(1, tw))))
             self._frame_height_input = str(max(1, round(sh / max(1, th))))
-        else:
-            self._frame_size_mode = "px"
-            self._frame_width_input = str(self._tile_size[0])
-            self._frame_height_input = str(self._tile_size[1])
-
-        self._apply_frame_size()
 
     def _apply_grid_offset(self) -> None:
         """Apply the grid offset from input fields and update the frame picker."""

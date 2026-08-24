@@ -12,7 +12,7 @@ import pygame
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.standalone import load_standalone_theme  # noqa: E402
-from widgets.ui.theme import FONTS  # noqa: E402
+from widgets.ui.theme import COLORS, FONTS  # noqa: E402
 
 
 class ImageViewer:
@@ -59,17 +59,21 @@ class ImageViewer:
         self.font_bold = FONTS.get_bold_font(14)
         self.font_small = FONTS.get_small_font()
 
+        def _token(name: str, fallback: tuple) -> tuple:
+            return getattr(COLORS, name, fallback)
+
         self.colors = {
-            "bg": (30, 32, 36),
-            "panel": (40, 42, 46),
-            "border": (60, 62, 65),
-            "text": (230, 230, 230),
-            "text_dim": (140, 140, 140),
-            "accent": (80, 120, 200),
+            "bg": _token("bg", (30, 32, 36)),
+            "panel": _token("panel", (40, 42, 46)),
+            "border": _token("border", (60, 62, 65)),
+            "text": _token("text", (230, 230, 230)),
+            "text_dim": _token("text_muted", (140, 140, 140)),
+            "accent": _token("accent", (80, 120, 200)),
+            # functional overlay colour: stays high-contrast red by design
             "grid": (255, 0, 0),
-            "input_bg": (50, 52, 56),
-            "button": (60, 80, 120),
-            "button_hover": (80, 100, 140),
+            "input_bg": _token("panel_alt", (50, 52, 56)),
+            "button": _token("accent_hover", (60, 80, 120)),
+            "button_hover": _token("danger_hover", (80, 100, 140)),
         }
 
         self.running = True

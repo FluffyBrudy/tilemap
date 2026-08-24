@@ -788,8 +788,8 @@ class ParticleConfigDialog:
             draw_y = cy + (base_y - self.rect.y - 44)
             dd.rect.y = int(draw_y)
             lbl = key.replace("_", " ").title()
-            l = self.font_label.render(lbl, True, COLORS.text_dim)
-            screen.blit(l, (self.rect.x + CONTENT_X, draw_y + 3))
+            label_surface = self.font_label.render(lbl, True, COLORS.text_dim)
+            screen.blit(label_surface, (self.rect.x + CONTENT_X, draw_y + 3))
             dd.draw(screen, COLORS.header, COLORS.border)
 
         for key, sl in self.sliders:
@@ -797,8 +797,8 @@ class ParticleConfigDialog:
             draw_y = cy + (base_y - self.rect.y - 44)
             sl.rect.y = int(draw_y)
             lbl = FLOAT_FIELDS.get(key, (0, 0, ""))[2]
-            l = self.font_label.render(lbl, True, COLORS.text_dim)
-            screen.blit(l, (self.rect.x + CONTENT_X, draw_y + 2))
+            label_surface = self.font_label.render(lbl, True, COLORS.text_dim)
+            screen.blit(label_surface, (self.rect.x + CONTENT_X, draw_y + 2))
             sl.draw(screen, COLORS.accent)
 
         colors_base_y = self._colors_y

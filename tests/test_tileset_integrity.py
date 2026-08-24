@@ -32,6 +32,7 @@ from utils.tileset_ops import (  # noqa: E402
     make_placeholder_tileset,
     remap_after_removal,
     remap_rule_indexes,
+    is_placeholder,
     validate_ttype_bounds,
 )
 from widgets.tile_selector import TileSelector, TilesetData  # noqa: E402
@@ -182,6 +183,30 @@ class TestPureOps:
 
     def test_validate_bounds_empty_world_ok(self):
         assert validate_ttype_bounds(create_default_layer_manager(), 3) == []
+
+    def test_validate_bounds_zero_tilesets_reports_every_record(self):
+        """A painted record with zero tilesets is corrupt by definition --
+        the old early-return let it slip through the save gate."""
+        ed = FakeEditor()
+        lm = ed.tilemap.layer_manager
+        lm.create_layer("t", "tile")
+        paint(lm.layers[0], (0, 0), 0)
+        problems = validate_ttype_bounds(lm, 0)
+        assert len(problems) == 1
+        assert "ttype 0" in problems[0]
+
+    def test_is_placeholder_handles_missing_properties(self):
+        from types import SimpleNamespace as NS
+
+        ph = make_placeholder_tileset("/x/gone.png", (8, 8))
+        assert is_placeholder(ph) is True
+
+        class Bare:  # no properties attribute at all
+            pass
+
+        assert is_placeholder(Bare()) is False
+        assert is_placeholder(NS(properties=None)) is False
+        assert is_placeholder(NS(properties={"placeholder": False})) is False
 
     def test_rule_remap_down_and_path_fallback(self):
         auto = make_autotiler([("/a.png", 0), ("/b.png", 1), ("/c.png", 2)])
@@ -502,34 +527,41 @@ class TestFuzzInvariant:
             sel, _ = make_selector(n, ed=ed)
             lay = add_layer(ed, "fuzz")
 
-            live = list(range(n))
-            painted = {}
+            painted: dict[tuple[int, int], int] = {}
             for i in range(rng.randint(0, 12)):
-                idx = rng.choice(live) if live else 0
+                idx = rng.randrange(n)
                 painted[(i % 8, i % 6)] = idx
                 paint(lay, (i % 8, i % 6), idx, variant=rng.randint(0, 3))
 
-            # attempt random removals; referenced ones must be blocked
+            remaining = n
             for _ in range(rng.randint(1, n)):
-                if not live:
+                if remaining == 0:
                     break
-                victim = rng.randrange(len(live))
-                refs_any = any(v == victim for v in painted.values())
-                used_names = {sel.tilesets[v].name for v in set(painted.values())}
+                victim = rng.randrange(remaining)
+                referenced = any(v == victim for v in painted.values())
                 sel.active_idx = victim
                 sel.remove_tileset()
-                if refs_any and sel.tilesets[victim].name in used_names:
-                    # blocked -> index space unchanged
-                    pass
+
+                if referenced:
+                    # gate blocked it: index space must be untouched
+                    assert len(sel.tilesets) == remaining
                 else:
-                    live = [i if i < victim else i - 1 for i in live if i != victim]
+                    remaining -= 1
                     painted = {
-                        k: (v if v < victim else v - 1) for k, v in painted.items()
+                        k: (v if v < victim else v - 1)
+                        for k, v in painted.items()
+                        if v != victim
                     }
+                    assert len(sel.tilesets) == remaining
 
                 problems = validate_ttype_bounds(
-                    ed.tilemap.layer_manager, len(sel.tilesets)
+                    ed.tilemap.layer_manager, remaining
                 )
                 assert problems == [], f"trial {trial}: {problems[:3]}"
-                assert len(sel.tileset_map) == len(sel.tilesets)
-                assert sel._tree.find_node is not None
+                assert len(sel.tileset_map) == remaining == len(sel.tilesets)
+                # tree mirrors the tileset list exactly (no ghosts, no gaps)
+                live_uids = {t.uid for t in sel.tilesets}
+                tree_ids = {
+                    x.id for x in sel._walk_all(sel._tree.roots) if not x.is_folder
+                }
+                assert tree_ids == live_uids, f"trial {trial}: tree drifted"

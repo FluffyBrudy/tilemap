@@ -295,8 +295,10 @@ class FramePicker:
         if event.type == pygame.MOUSEMOTION and self._painting:
             idx = self._index_at(mouse)
             if idx >= 0 and idx != self._last_paint_idx:
-                # fast sweeps skip cells between events: walk the grid line
-                # from the last painted index so every crossed tile is painted
+                # fast sweeps skip events: paint every index between last
+                # and current so nothing along the index path is missed
+                # (diagonal drags over-cover row-wrapped cells by design --
+                # over-painting beats skipping)
                 li, ci = self._last_paint_idx, idx
                 step = 1 if idx > li else -1
                 cur = li + step
