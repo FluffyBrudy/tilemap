@@ -204,6 +204,45 @@ class RegionRenameCommand(Command):
         doc.rename_region(self.region_id, self.new_name)
 
 
+class TextStampCommand(Command):
+    """Bake a text surface onto the canvas at a world-space rect.
+
+    Text is rendered at image-pixel scale (respects zoom) and then
+    blitted; rotation is baked into the source surface before blit.
+    """
+
+    name = "Stamp Text"
+
+    def __init__(
+        self,
+        rect: tuple[float, float, float, float],
+        text_surface: pygame.Surface,
+        angle: float = 0.0,
+    ):
+        self.rect = tuple(float(v) for v in rect)
+        # store a copy so redo is deterministic
+        self.text_surface = text_surface.copy() if text_surface else None
+        self.angle = float(angle)
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        if not doc.has_canvas or self.text_surface is None:
+            return
+        surf = self.text_surface
+        if abs(self.angle) > 0.01:
+            # rotate around center, keep alpha
+            surf = pygame.transform.rotate(surf, self.angle)
+        x, y, w, h = self.rect
+        # center the (possibly rotated) surface in the original rect
+        sw, sh = surf.get_size()
+        # world rect center vs rotated surface center
+        cx = x + w / 2.0
+        cy = y + h / 2.0
+        blit_x = int(round(cx - sw / 2.0))
+        blit_y = int(round(cy - sh / 2.0))
+        doc.blit_surface(surf, (blit_x, blit_y))
+        selection.replace([], anchor=None)
+
+
 class CommandStack:
     """Bounded undo/redo stack. Commands hold data, not events."""
 

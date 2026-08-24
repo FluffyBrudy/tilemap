@@ -358,6 +358,47 @@ class Document:
         self._bump()
         return True
 
+    # -- freeform surface blit (text) -----------------------------------
+    def blit_surface(self, surf: Surface, pos: tuple[int, int]) -> None:
+        """Blit an arbitrary surface at world px; expands canvas if needed."""
+        if not self.surface or surf is None:
+            return
+        x, y = int(pos[0]), int(pos[1])
+        sw, sh = surf.get_size()
+        # expand so the whole blit is visible (respect tile alignment)
+        need_w = max(self.surface.get_width(), x + sw if x >= 0 else sw)
+        need_h = max(self.surface.get_height(), y + sh if y >= 0 else sh)
+        # also handle negative origins (rare for text)
+        offset_x = offset_y = 0
+        if x < 0 or y < 0:
+            # grow left/top transparently and shift existing content
+            new_w = max(self.surface.get_width(), self.surface.get_width() - min(0, x))
+            new_h = max(self.surface.get_height(), self.surface.get_height() - min(0, y))
+            # simpler: expand canvas, shift if negative
+            if x < 0:
+                new_w = self.surface.get_width() - x
+                offset_x = -x
+            if y < 0:
+                new_h = self.surface.get_height() - y
+                offset_y = -y
+            if offset_x or offset_y:
+                new_surface = Surface((new_w, new_h), pygame.SRCALPHA)
+                new_surface.fill((0, 0, 0, 0))
+                new_surface.blit(self.surface, (offset_x, offset_y))
+                self.surface = new_surface
+                x += offset_x
+                y += offset_y
+                need_w = new_w
+                need_h = new_h
+        if self.surface.get_width() < need_w or self.surface.get_height() < need_h:
+            # grow without shifting
+            new_surface = Surface((need_w, need_h), pygame.SRCALPHA)
+            new_surface.fill((0, 0, 0, 0))
+            new_surface.blit(self.surface, (0, 0))
+            self.surface = new_surface
+        self.surface.blit(surf, (x, y))
+        self._bump()
+
     # -- snapshots (command undo/redo) ---------------------------------
     def snapshot(self) -> tuple[Surface | None, list[Region], tuple[int, int], tuple[int, int]]:
         return (
