@@ -41,7 +41,7 @@ from .region_export import (
     save_regions_json,
 )
 from .selection import Selection
-from .tools import PasteTool, RegionTool, SelectTool, Tool, ToolContext
+from .tools import PasteTool, RegionTool, SelectTool, TextTool, Tool, ToolContext
 from .viewport import Viewport
 
 MENU_H = 30
@@ -94,10 +94,12 @@ class SpriteEditor:
         self._select_tool = SelectTool(self.ctx)
         self._paste_tool = PasteTool(self.ctx)
         self._region_tool = RegionTool(self.ctx)
+        self._text_tool = TextTool(self.ctx)
         self._tools: dict[str, Tool] = {
             "select": self._select_tool,
             "paste": self._paste_tool,
             "regions": self._region_tool,
+            "text": self._text_tool,
         }
         self._active_tool: Tool = self._select_tool
 
@@ -350,12 +352,28 @@ class SpriteEditor:
             self._separators.append((x + SEP_W // 2, row_y + BTN_H // 2))
             x += SEP_W
 
-        add_btn("Open", tooltip="Open spritesheets (Ctrl+O)", on_click=self._on_open, tag="open")
-        add_btn("Save", tooltip="Save PNG (Ctrl+S)", on_click=self._on_save, tag="save")
+        # icon-only for file ops to reduce clutter (matches main Toolbar 28px style)
+        def add_icon(icon: str, tooltip: str, on_click, tag: str) -> Button:
+            nonlocal x
+            btn = Button(
+                Rect(x, row_y, BTN_H, BTN_H),
+                icon_key=icon,
+                tooltip_text=tooltip,
+                border_radius=3,
+                on_click=on_click,
+            )
+            btn._tag = tag
+            btn.icon_size = 16
+            self._buttons.append(btn)
+            x += BTN_H + BTN_GAP
+            return btn
+
+        add_icon("load", "Open spritesheets (Ctrl+O)", self._on_open, "open")
+        add_icon("save", "Save PNG (Ctrl+S)", self._on_save, "save")
         sep()
 
-        add_btn("Undo", tooltip="Undo (Ctrl+Z)", on_click=self._on_undo, tag="undo")
-        add_btn("Redo", tooltip="Redo (Ctrl+Shift+Z)", on_click=self._on_redo, tag="redo")
+        add_icon("undo", "Undo (Ctrl+Z)", self._on_undo, "undo")
+        add_icon("redo", "Redo (Ctrl+Shift+Z)", self._on_redo, "redo")
         sep()
 
         add_btn(
@@ -365,6 +383,18 @@ class SpriteEditor:
             tag="transform",
         )
         add_btn("Tile Size", tooltip="Change tile size", on_click=self._on_grid, tag="grid")
+        # Text as icon button (flameshot-like) — avoids text clutter; active while editing
+        t_btn = Button(
+            Rect(x, row_y, BTN_H, BTN_H),
+            icon_key="text",
+            tooltip_text="Text label (T) — drag anywhere, Enter to bake, drag ○ to rotate",
+            border_radius=3,
+            on_click=self._on_text,
+        )
+        t_btn._tag = "text"
+        t_btn.icon_size = 16
+        self._buttons.append(t_btn)
+        x += BTN_H + BTN_GAP
         sep()
 
         self._mode_indicator = ModeIndicator(
@@ -379,15 +409,15 @@ class SpriteEditor:
         x += 150 + SEP_W
         sep()
 
-        add_btn("\u2212", tooltip="Zoom out", on_click=self._on_zoom_out, tag="zoom_out")
+        add_icon("zoomout", "Zoom out (−)", self._on_zoom_out, "zoom_out")
         self._zoom_btn = add_btn(
             "100%",
             tooltip="Click to reset zoom",
             on_click=self._on_reset_zoom,
             tag="zoom_pct",
         )
-        add_btn("+", tooltip="Zoom in", on_click=self._on_zoom_in, tag="zoom_in")
-        add_btn("Fit", tooltip="Fit sheet to window (F)", on_click=self._on_fit, tag="fit")
+        add_icon("zoomin", "Zoom in (+)", self._on_zoom_in, "zoom_in")
+        add_icon("fit", "Fit sheet to window (F)", self._on_fit, "fit")
 
         export_x = self.rect.right - BTN_W - BTN_GAP - 2
         export = Button(
@@ -439,6 +469,10 @@ class SpriteEditor:
         self._update_button_states()
 
     def _on_mode_changed(self, old: str, new: str) -> None:
+        # flameshot-like text tool is modal — switching mode cancels it
+        if self._active_tool is self._text_tool:
+            self._text_tool.exit()
+            self._toast("Text canceled")
         if new == "regions":
             if self._active_tool is self._paste_tool:
                 self._toast("Paste canceled")
@@ -572,6 +606,18 @@ class SpriteEditor:
             return
         self._open_export_dir_dialog(regions)
 
+    def _on_text(self) -> None:
+        if self._active_tool is self._text_tool:
+            # toggling off while editing keeps draft — exit cleanly
+            if getattr(self._text_tool, "_mode", "idle") != "idle":
+                self._text_tool._cancel()  # type: ignore[attr-defined]
+            self._set_tool("select" if self.mode == "grid" else "regions")
+            return
+        # leaving paste/region etc.
+        if self._active_tool is self._paste_tool:
+            self._toast("Paste canceled")
+        self._set_tool("text")
+
     # -- status / button sync ----------------------------------------------
     def _update_button_states(self) -> None:
         undo_btn = self._get_btn("undo")
@@ -583,6 +629,9 @@ class SpriteEditor:
         paste_btn = self._get_btn("paste")
         if paste_btn:
             paste_btn.active = self._active_tool is self._paste_tool
+        text_btn = self._get_btn("text")
+        if text_btn:
+            text_btn.active = self._active_tool is self._text_tool
         export_btn = self._get_btn("export_all")
         if export_btn:
             export_btn.enabled = bool(self.doc.regions) and self.doc.has_canvas
@@ -679,6 +728,11 @@ class SpriteEditor:
                 if event.key == pygame.K_g:
                     self._toggle_grid()
                     return True
+                if event.key == pygame.K_t:
+                    # don't hijack typing when text box is focused
+                    if not (self._active_tool is self._text_tool and getattr(self._text_tool, "_input", None) and self._text_tool._input.is_focused):
+                        self._on_text()
+                        return True
                 if event.key == pygame.K_0:
                     self._on_reset_zoom()
                     return True
@@ -702,6 +756,9 @@ class SpriteEditor:
             return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if self._active_tool is self._text_tool and getattr(self._text_tool, "_mode", "idle") == "idle":
+                self._set_tool("select" if self.mode == "grid" else "regions")
+                return True
             if self.selection:
                 self._on_deselect()
                 return True
@@ -942,7 +999,8 @@ class SpriteEditor:
         ("Open", "Ctrl+O"), ("Save", "Ctrl+S"), ("Export PNGs", "Ctrl+E"),
         ("Undo", "Ctrl+Z"), ("Redo", "Ctrl+Shift+Z"),
         ("Cut / Copy / Paste", "Ctrl+X/C/V"), ("Select All", "Ctrl+A"),
-        ("Deselect", "Esc"), ("Fit to window", "F"), ("Toggle grid", "G"),
+        ("Deselect", "Esc"), ("Text label", "T → drag, Enter bake, drag ○ rotate"),
+        ("Fit to window", "F"), ("Toggle grid", "G"),
         ("Reset zoom", "0"), ("Zoom in / out", "+ / -"),
     ]
 

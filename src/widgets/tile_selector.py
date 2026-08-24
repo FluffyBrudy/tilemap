@@ -127,6 +127,13 @@ class TileSelector(WidgetBase):
         self._tree.begin_rename(folder.id)
 
     def _ts_node(self, node_id: str) -> TilesetData | None:
+        # Identity first: node ids are TilesetData.uid values, which stay
+        # stable across index shifts.  The legacy node.data index is only
+        # a fallback -- trusting it after a removal silently selected a
+        # *different* surviving tileset.
+        for ts in self.tilesets:
+            if ts.uid == node_id:
+                return ts
         node = self._tree.find_node(node_id)
         if node and isinstance(node.data, int) and 0 <= node.data < len(self.tilesets):
             return self.tilesets[node.data]
@@ -803,17 +810,50 @@ class TileSelector(WidgetBase):
             self.selected_tile = previous_selected_tile
 
     def remove_tileset(self):
-        if 0 <= self.active_idx < len(self.tilesets):
-            self.tilesets.pop(self.active_idx)
+        if not (0 <= self.active_idx < len(self.tilesets)):
+            return
 
-            self.tileset_map.clear()
-            for i, ts in enumerate(self.tilesets):
-                self.tileset_map[i] = ts
-            self.active_idx = max(0, len(self.tilesets) - 1)
-            if not self.tilesets:
-                self.active_idx = -1
-                self._sync_tree()
-            self.editor.suggestion_registry.refresh(self.editor)
+        removed_idx = self.active_idx
+        removed_ts = self.tilesets[removed_idx]
+
+        # Hard gate: never orphan painted tiles.  Removing a referenced
+        # tileset would silently re-point every later index at the wrong
+        # sheet once saved.
+        from utils.tileset_ops import count_ttype_refs, remap_after_removal, remap_rule_indexes
+
+        refs = count_ttype_refs(self.editor.tilemap.layer_manager, removed_idx)
+        if refs:
+            self.editor.notifications.notify(
+                f"Cannot remove '{removed_ts.name}': {refs} painted tile(s)/object(s) use it",
+                color=(255, 120, 120),
+                duration=5.0,
+            )
+            return
+
+        self.tilesets.pop(removed_idx)
+
+        self.tileset_map.clear()
+        for i, ts in enumerate(self.tilesets):
+            self.tileset_map[i] = ts
+
+        # Keep every surviving reference pointing at the same sheet.
+        remap_after_removal(self.editor.tilemap.layer_manager, removed_idx)
+        autotiler = getattr(self.editor, "autotiler", None)
+        if autotiler is not None:
+            remap_rule_indexes(autotiler, removed_idx, self.tilesets)
+
+        self.active_idx = max(0, len(self.tilesets) - 1)
+        if not self.tilesets:
+            self.active_idx = -1
+
+        # Always resync: skipping this left a ghost node whose stale data
+        # index resolved clicks to a *different* surviving tileset.
+        self._sync_tree()
+
+        self.editor.suggestion_registry.refresh(self.editor)
+        self.editor.notifications.notify(
+            f"Removed tileset '{removed_ts.name}'", duration=2.5
+        )
 
     def open_collision_editor(self):
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):

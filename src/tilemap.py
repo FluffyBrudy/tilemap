@@ -273,6 +273,29 @@ class Tilemap:
                 save_data["resources"]["tilesets"].append(ts_data)
                 firstgid += tile_count
 
+        # Hard gate: abort instead of writing a file whose gids were
+        # derived from a shifted/shortened tileset list.  A map saved
+        # with out-of-range ttypes silently re-points tiles at the wrong
+        # sheets on next load.
+        from utils.tileset_ops import validate_ttype_bounds
+
+        problems = validate_ttype_bounds(self.layer_manager, len(ttype_to_firstgid))
+        if problems:
+            msg = (
+                f"Save aborted: {len(problems)} tile(s)/object(s) reference a "
+                f"missing tileset index. First few: {'; '.join(problems[:3])}"
+            )
+            print(f"ERROR: {msg}")
+            error_handler.capture(
+                Exception(msg),
+                context="save_map_ttype_out_of_range",
+                severity="error",
+            )
+            notifications = getattr(self.editor, "notifications", None)
+            if notifications is not None:
+                notifications.notify(msg, color=(255, 120, 120), duration=6.0)
+            return
+
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             if "groups" not in save_data["project_state"]:
                 save_data["project_state"]["groups"] = []
@@ -492,6 +515,17 @@ class Tilemap:
                     import logging
 
                     logging.error(error_msg)
+                    # Placeholder instead of skip: dropping the entry would
+                    # shift every later index and silently re-point all
+                    # tiles painted from subsequent tilesets.
+                    from utils.tileset_ops import make_placeholder_tileset
+
+                    placeholder = make_placeholder_tileset(
+                        path_str, self.tile_size, tileset_type
+                    )
+                    ts_widget = self.editor.tileset_widget
+                    ts_widget.tilesets.append(placeholder)
+                    ts_widget.tileset_map[len(ts_widget.tilesets) - 1] = placeholder
                     continue
 
                 try:
