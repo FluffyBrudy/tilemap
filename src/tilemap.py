@@ -526,6 +526,8 @@ class Tilemap:
                     ts_widget = self.editor.tileset_widget
                     ts_widget.tilesets.append(placeholder)
                     ts_widget.tileset_map[len(ts_widget.tilesets) - 1] = placeholder
+                    ts_widget._sync_tree()
+                    self.editor.suggestion_registry.refresh(self.editor)
                     continue
 
                 try:
