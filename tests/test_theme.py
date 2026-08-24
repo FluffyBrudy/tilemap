@@ -22,6 +22,14 @@ from widgets.ui.theme import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def restore_default_theme():
+    # other suites call pygame.quit() in teardowns; theme swaps touch font
+    # caches so make sure pygame is alive before and after each test
+    import pygame
+
+    if not pygame.get_init():
+        pygame.init()
+    if not pygame.display.get_init():
+        pygame.display.set_mode((1, 1))
     yield
     set_theme("dark")
 

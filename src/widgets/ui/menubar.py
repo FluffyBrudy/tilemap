@@ -128,8 +128,8 @@ class MenuBar:
             ),
         ]
 
-    def resize(self, width: int):
-        self.rect.width = width
+    def resize(self, x: int, y: int, w: int, h: int):
+        self.rect.update(x, y, w, h)
         self._layout_menus()
 
     ITEM_H = 28

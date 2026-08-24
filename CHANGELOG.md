@@ -1,6 +1,30 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 5.0.0 (Unreleased) — Major
+
+## What's New
+
+- **Try maps safely in a sandbox** — open an external map in an isolated workspace, experiment, then export it to your project when ready. Your original project stays untouched if the export has a problem, and images are copied alongside the new map automatically.
+- **Drag & drop images into the sprite editor** — drop files from your desktop or copy a file path and paste (`Cmd/Ctrl+V`). New sheets are added next to your current work without overwriting it, and you can undo. Works with filenames that have spaces and with shared network drives on Windows.
+- **Smarter sprite sheets** — sheets stack neatly (stack vertically or horizontally), filenames sort naturally (`s1, s2, s10` not `s1, s10, s2`), and the canvas grows automatically when you paste outside it. Move, select, and add text directly on the canvas.
+- **Cleaner animation editing** — smoother zoom/pan gestures and clearer controls for frame size (`px` or `cells`).
+- **Organize tilesets** — group tilesets into folders, keep missing images as placeholders so your map doesn't scramble, and pick the draw order with y-sort.
+
+## Fixes & Polish
+
+- Saving is now safer — the editor checks for problems before writing and keeps your project intact if something fails.
+- Sprite editor feels smoother: canvas sizing, undo/redo, and switching tools no longer conflict with typing.
+- Better look and feel: updated themes, tidier toolbars, and a draggable splitter between panels.
+
+## Breaking Changes
+
+- No intentional breaking changes yet — file format and workflow stay compatible with `4.x`. Any required migration steps will be listed here before `5.0.0` ships.
+
+## Upgrading from 4.x
+
+- Just update — no steps needed yet. If you use maps with missing tilesets, they now stay in place as placeholders instead of shifting other tiles.
+
 # tilemap_editor 4.4.0 (2026-08-19)
 
 ## Features

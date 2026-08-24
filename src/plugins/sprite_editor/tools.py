@@ -1011,9 +1011,12 @@ class TextTool(Tool):
         self._input.is_focused = False
         self.ctx.status("Text — drag to place label", "Enter commit · Esc cancel")
 
-    def _cancel(self) -> None:
+    def cancel(self) -> None:
         self._reset_to_idle()
         self.ctx.toast("Text canceled")
+
+    def _cancel(self) -> None:
+        self.cancel()
 
     # -- events --------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:

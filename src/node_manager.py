@@ -78,9 +78,13 @@ class NodeManager:
             logging.warning(f"Failed to load nodes from {sidecar}")
 
     def save(self, map_path: Path) -> None:
-        # keep writing to the sidecar that was actually loaded (e.g. a
-        # map-adjacent sandbox file) instead of silently diverging paths
-        sidecar = self._active_sidecar or self._sidecar_path_for(map_path)
+        # Trust the loaded sidecar only while it IS the canonical one for the
+        # requested map.  A diverged pointer (e.g. left over from a sandbox
+        # session) must never swallow writes aimed elsewhere: after an export
+        # the canonical location wins so the sandbox copy stays frozen.
+        fallback = self._sidecar_path_for(map_path)
+        active = self._active_sidecar
+        sidecar = fallback if (active is None or active != fallback) else active
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
         rs = self.editor.tilemap.render_scale
         orig_areas: dict[str, tuple[int, int]] = {}
@@ -88,14 +92,20 @@ class NodeManager:
             orig_areas[nid] = (node.area.x, node.area.y)
             node.area.x = int(node.area.x / rs)
             node.area.y = int(node.area.y / rs)
+        tmp_sidecar = sidecar.with_name(f".{sidecar.name}.tmp")
         try:
             data: dict[str, Any] = {
                 "version": SIDECAR_VERSION,
                 "groups": self.groups,
                 "nodes": [node.to_dict() for node in self.nodes.values()],
             }
-            sidecar.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp_sidecar.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp_sidecar.replace(sidecar)
         finally:
+            try:
+                tmp_sidecar.unlink(missing_ok=True)
+            except Exception:
+                pass
             for nid, (ox, oy) in orig_areas.items():
                 self.nodes[nid].area.x = ox
                 self.nodes[nid].area.y = oy

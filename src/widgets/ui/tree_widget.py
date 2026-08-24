@@ -353,7 +353,8 @@ class TreeWidget(WidgetBase):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self._rename_id is not None:
                 self._commit_rename()
-                return True
+                # no early return: the same right-click continues into the
+                # context-menu handling below so on_item_context still fires
             if not in_bounds:
                 return False
             node, _ = self._hit_test(mouse)

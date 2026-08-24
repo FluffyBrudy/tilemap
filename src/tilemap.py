@@ -194,8 +194,10 @@ class Tilemap:
                 tiles_around.append(check_loc)
         return tuple(tiles_around)
 
-    def save_map(self, relative_path: str | Path | None = None):
+    def save_map(self, relative_path: str | Path | None = None) -> bool:
         target_path: Path | None = None
+        # captured so a validation abort can leave the pointer untouched
+        prev_active_project_path = self.active_project_path
 
         if relative_path:
             path_obj = Path(relative_path)
@@ -294,7 +296,8 @@ class Tilemap:
             notifications = getattr(self.editor, "notifications", None)
             if notifications is not None:
                 notifications.notify(msg, color=(255, 120, 120), duration=6.0)
-            return
+            self.active_project_path = prev_active_project_path
+            return False
 
         if hasattr(self.editor, "autotiler") and self.editor.autotiler:
             if "groups" not in save_data["project_state"]:
@@ -387,13 +390,24 @@ class Tilemap:
                     tile_data["gid"] = ttype_to_firstgid[ttype] + variant
                 save_data["data"]["ongrid"][key] = tile_data
 
-        with open(target_path, "w") as f:
-            JSONDump(save_data, f, indent=2)
+        # Atomic write: stage to temp file then replace
+        tmp_path = target_path.with_name(f".{target_path.name}.tmp")
+        try:
+            with open(tmp_path, "w") as f:
+                JSONDump(save_data, f, indent=2)
+            tmp_path.replace(target_path)
+        except Exception:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
 
         if hasattr(self.editor, "node_manager"):
             self.editor.node_manager.save(target_path)
 
         print(f"Saved to {target_path}")
+        return True
 
     def _project_base_path(self) -> Path:
         base_path = getattr(getattr(self, "editor", None), "base_path", None)
@@ -487,6 +501,7 @@ class Tilemap:
 
             object_tileset_indices = self._object_tileset_indices_from_payload(payload)
 
+            added_placeholders = False
             for resource_idx, ts_entry in enumerate(tilesets):
                 if isinstance(ts_entry, str):
                     path_str = ts_entry
@@ -526,8 +541,7 @@ class Tilemap:
                     ts_widget = self.editor.tileset_widget
                     ts_widget.tilesets.append(placeholder)
                     ts_widget.tileset_map[len(ts_widget.tilesets) - 1] = placeholder
-                    ts_widget._sync_tree()
-                    self.editor.suggestion_registry.refresh(self.editor)
+                    added_placeholders = True
                     continue
 
                 try:
@@ -548,6 +562,13 @@ class Tilemap:
                     import logging
 
                     logging.error(error_msg)
+
+            if added_placeholders and hasattr(
+                self.editor.tileset_widget, "_sync_tree"
+            ):
+                self.editor.tileset_widget._sync_tree()
+            if added_placeholders and hasattr(self.editor, "suggestion_registry"):
+                self.editor.suggestion_registry.refresh(self.editor)
 
             self.editor.tileset_widget.load_object_tileset_companions()
 

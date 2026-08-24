@@ -87,8 +87,11 @@ class TestOpenFlowAppends:
         second = pygame.Surface((256, 32), pygame.SRCALPHA)
         second.fill((80, 5, 30))
         combined = ed._build_combined_surface([second], horizontal=True)
-        ed.commands.push(AppendSheetCommand(combined, horizontal=True), ed.doc, ed.selection)
-        ed.doc.sheets.extend(["batch2"])
+        ed.commands.push(
+            AppendSheetCommand(combined, names=["batch2"], horizontal=True),
+            ed.doc,
+            ed.selection,
+        )
 
         assert ed.doc.size[0] == max(size_before[0], 256)
         assert ed.doc.size[1] == size_before[1] + 32
@@ -103,7 +106,63 @@ class TestOpenFlowAppends:
         ed._load_surface(pygame.Surface((32, 64), pygame.SRCALPHA), ["c1"])
         col = pygame.Surface((32, 64), pygame.SRCALPHA)
         col.fill((60, 60, 60))
-        ed.commands.push(AppendSheetCommand(col, horizontal=False), ed.doc, ed.selection)
+        ed.commands.push(
+            AppendSheetCommand(col, names=["c2"], horizontal=False), ed.doc, ed.selection
+        )
         assert ed.doc.size == (64, 64)
         ed._on_undo()
         assert ed.doc.size == (32, 64)
+
+    def test_undo_restores_sheet_list(self):
+        """Sheet names ride inside the command: undo must revert the append."""
+        ed = self._editor()
+        ed._load_surface(solid(32, 32, (1, 1, 1)), ["batch1"])
+        ed.commands.push(
+            AppendSheetCommand(
+                solid(32, 32, (2, 2, 2)), names=["batch2"], horizontal=True
+            ),
+            ed.doc,
+            ed.selection,
+        )
+        assert ed.doc.sheets == ["batch1", "batch2"]
+
+        ed._on_undo()
+        assert ed.doc.sheets == ["batch1"]
+        assert ed.doc.size == (32, 32)
+
+        ed._on_redo()
+        assert ed.doc.sheets == ["batch1", "batch2"]
+        assert ed.doc.size == (32, 64)
+
+
+class TestBlitSurfaceGrowth:
+    def _doc(self):
+        return Document(tile_size=(32, 32))
+
+    def test_negative_origin_shift_is_tile_aligned_and_bumps_origin(self):
+        doc = self._doc()
+        doc.set_surface(solid(64, 64, (200, 0, 0)))
+        # stamp 17px left of origin -> shift pads up to a full 32px tile
+        doc.blit_surface(solid(20, 20, (0, 200, 0)), (-17, 4))
+
+        assert doc.origin_col == -1
+        assert doc.origin_row == 0
+        # old content re-anchored at +32px; grid mapping follows the content
+        assert doc.surface.get_at((10 + 32, 10))[:3] == (200, 0, 0)
+        col, row = doc.cell_at(10 + 32, 10)
+        assert (col, row) == (0, 0)  # same content, same absolute cell
+
+    def test_pixel_to_cell_tracks_shifted_content(self):
+        doc = self._doc()
+        doc.set_surface(solid(64, 64, (9, 9, 9)))
+        before = doc.cell_at_unbounded(40, 40)  # (1, 1)
+        doc.blit_surface(solid(16, 16, (5, 5, 5)), (-64, -32))
+        after = doc.cell_at_unbounded(40 + 64, 40 + 32)
+        assert after == before  # same content cell, new coordinates
+
+    def test_positive_growth_unchanged_no_origin_bump(self):
+        doc = self._doc()
+        doc.set_surface(solid(32, 32, (7, 7, 7)))
+        doc.blit_surface(solid(16, 16, (8, 8, 8)), (40, 50))
+        assert doc.origin_col == 0 and doc.origin_row == 0
+        assert doc.surface.get_at((45, 55))[:3] == (8, 8, 8)

@@ -91,8 +91,6 @@ def validate_ttype_bounds(
     shorter/shifted tileset list would silently corrupt the map.
     """
     problems: list[str] = []
-    if tileset_count <= 0:
-        return problems
     for layer in _iter_layers(layer_manager):
         name = getattr(layer, "name", "?")
         tiles = getattr(layer, "tiles", None)
@@ -206,4 +204,5 @@ def make_placeholder_tileset(
 
 
 def is_placeholder(ts: Any) -> bool:
-    return bool(getattr(ts, "properties", None) or {}).get("placeholder", False)
+    props = getattr(ts, "properties", None) or {}
+    return bool(props.get("placeholder", False))
