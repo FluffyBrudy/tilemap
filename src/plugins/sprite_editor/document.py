@@ -365,32 +365,22 @@ class Document:
             return
         x, y = int(pos[0]), int(pos[1])
         sw, sh = surf.get_size()
-        # expand so the whole blit is visible (respect tile alignment)
-        need_w = max(self.surface.get_width(), x + sw if x >= 0 else sw)
-        need_h = max(self.surface.get_height(), y + sh if y >= 0 else sh)
-        # also handle negative origins (rare for text)
-        offset_x = offset_y = 0
-        if x < 0 or y < 0:
+        old_w, old_h = self.surface.get_size()
+        # required final extent covers both the existing content and the
+        # whole stamp, including negative origins (shifted into view)
+        shift_x = -min(0, x)
+        shift_y = -min(0, y)
+        need_w = max(old_w, x + sw) + shift_x
+        need_h = max(old_h, y + sh) + shift_y
+        if shift_x or shift_y:
             # grow left/top transparently and shift existing content
-            new_w = max(self.surface.get_width(), self.surface.get_width() - min(0, x))
-            new_h = max(self.surface.get_height(), self.surface.get_height() - min(0, y))
-            # simpler: expand canvas, shift if negative
-            if x < 0:
-                new_w = self.surface.get_width() - x
-                offset_x = -x
-            if y < 0:
-                new_h = self.surface.get_height() - y
-                offset_y = -y
-            if offset_x or offset_y:
-                new_surface = Surface((new_w, new_h), pygame.SRCALPHA)
-                new_surface.fill((0, 0, 0, 0))
-                new_surface.blit(self.surface, (offset_x, offset_y))
-                self.surface = new_surface
-                x += offset_x
-                y += offset_y
-                need_w = new_w
-                need_h = new_h
-        if self.surface.get_width() < need_w or self.surface.get_height() < need_h:
+            new_surface = Surface((need_w, need_h), pygame.SRCALPHA)
+            new_surface.fill((0, 0, 0, 0))
+            new_surface.blit(self.surface, (shift_x, shift_y))
+            self.surface = new_surface
+            x += shift_x
+            y += shift_y
+        elif self.surface.get_width() < need_w or self.surface.get_height() < need_h:
             # grow without shifting
             new_surface = Surface((need_w, need_h), pygame.SRCALPHA)
             new_surface.fill((0, 0, 0, 0))

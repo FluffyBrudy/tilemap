@@ -722,26 +722,33 @@ class SpriteEditor:
                     self._on_select_all()
                     return True
             else:
-                if event.key == pygame.K_f:
-                    self._on_fit()
-                    return True
-                if event.key == pygame.K_g:
-                    self._toggle_grid()
-                    return True
-                if event.key == pygame.K_t:
-                    # don't hijack typing when text box is focused
-                    if not (self._active_tool is self._text_tool and getattr(self._text_tool, "_input", None) and self._text_tool._input.is_focused):
+                # while the text tool input is focused every unmodified
+                # keypress belongs to the label — skipping these shortcuts
+                # lets them fall through to the tool's InputBox instead
+                typing_in_text_input = (
+                    self._active_tool is self._text_tool
+                    and getattr(self._text_tool, "_input", None) is not None
+                    and self._text_tool._input.is_focused
+                )
+                if not typing_in_text_input:
+                    if event.key == pygame.K_f:
+                        self._on_fit()
+                        return True
+                    if event.key == pygame.K_g:
+                        self._toggle_grid()
+                        return True
+                    if event.key == pygame.K_t:
                         self._on_text()
                         return True
-                if event.key == pygame.K_0:
-                    self._on_reset_zoom()
-                    return True
-                if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
-                    self._on_zoom_in()
-                    return True
-                if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    self._on_zoom_out()
-                    return True
+                    if event.key == pygame.K_0:
+                        self._on_reset_zoom()
+                        return True
+                    if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                        self._on_zoom_in()
+                        return True
+                    if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                        self._on_zoom_out()
+                        return True
 
         for btn in self._buttons:
             if btn.handle_event(event):
