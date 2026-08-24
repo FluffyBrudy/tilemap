@@ -14,8 +14,9 @@ without a running editor.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from widgets.autotiler import AutotileRule
@@ -28,8 +29,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def _iter_layers(layer_manager: Any) -> Iterable[Any]:
     """Yield every layer of a LayerManager-like object."""
-    for layer in getattr(layer_manager, "layers", []) or []:
-        yield layer
+    yield from getattr(layer_manager, "layers", []) or []
 
 
 def iter_ttype_records(layer_manager: Any) -> Iterable[dict]:
@@ -122,7 +122,7 @@ def validate_ttype_bounds(
 # autotile rules
 # ---------------------------------------------------------------------------
 
-def _iter_rules(autotiler: Any) -> Iterable["AutotileRule"]:
+def _iter_rules(autotiler: Any) -> Iterable[AutotileRule]:
     for group in getattr(autotiler, "groups", []) or []:
         yield from getattr(group, "rules", []) or []
     yield from getattr(autotiler, "rules", []) or []
@@ -182,7 +182,7 @@ def make_placeholder_tileset(
     missing_path_str: str,
     tile_size: tuple[int, int],
     tileset_type: str = "tile",
-) -> "TilesetData":
+) -> TilesetData:
     """Build a magenta stand-in preserving the resource slot of a missing file.
 
     The surface is exactly one tile so downstream variant math stays in
