@@ -295,6 +295,52 @@ class TestRemoval:
         sel.remove_tileset()  # must not raise / mutate
         assert len(sel.tilesets) == 3
 
+    def test_remove_with_invalid_index_notifies(self, sel3):
+        sel, ed = sel3
+        sel.active_idx = 99
+        sel.remove_tileset()
+        assert ed.notifications.has("No tileset selected")
+        assert len(sel.tilesets) == 3
+
+    def test_removal_clears_rule_hints(self, sel3):
+        sel, ed = sel3
+        sel.rule_hints = {7, 13}
+        sel.active_idx = 0
+        sel.remove_tileset()
+        assert sel.rule_hints == set()
+
+    def test_deprecated_regex_designer_warns_on_stale_rules(self, sel3):
+        from types import SimpleNamespace
+
+        sel, ed = sel3
+        # designer with saved rules -> removal warns about stale indices
+        ed.regex_automap_designer = SimpleNamespace(pattern_rules=[object()])
+        sel.active_idx = 1  # unreferenced middle set
+        sel.remove_tileset()
+        assert ed.notifications.has("Regex Automap is deprecated")
+
+        # designer without rules -> no extra noise beyond the removal toast
+        ed2_notifications = FakeNotifications()
+        sel2, ed2 = make_selector(2)
+        ed2.regex_automap_designer = SimpleNamespace(pattern_rules=[])
+        sel2.active_idx = 0
+        sel2.remove_tileset()
+        assert not ed2.notifications.has("Regex Automap is deprecated")
+
+    def test_regex_designer_emits_deprecation_warning(self, sel3):
+        import warnings as _w
+
+        from widgets.regex_automap_designer import RegexAutomapDesigner
+
+        with _w.catch_warnings(record=True) as caught:
+            _w.simplefilter("always")
+            RegexAutomapDesigner(sel3[1], 0, 0)
+        assert any(
+            issubclass(w.category, DeprecationWarning)
+            and "deprecated" in str(w.message)
+            for w in caught
+        )
+
     def test_ghost_click_never_selects_wrong_set(self, sel3):
         sel, _ = sel3
         a, b, c = sel.tilesets

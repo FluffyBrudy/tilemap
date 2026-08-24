@@ -811,6 +811,7 @@ class TileSelector(WidgetBase):
 
     def remove_tileset(self):
         if not (0 <= self.active_idx < len(self.tilesets)):
+            self.editor.notifications.notify("No tileset selected", duration=2.5)
             return
 
         removed_idx = self.active_idx
@@ -848,12 +849,25 @@ class TileSelector(WidgetBase):
 
         # Always resync: skipping this left a ghost node whose stale data
         # index resolved clicks to a *different* surviving tileset.
+        self.rule_hints.clear()
         self._sync_tree()
 
         self.editor.suggestion_registry.refresh(self.editor)
         self.editor.notifications.notify(
             f"Removed tileset '{removed_ts.name}'", duration=2.5
         )
+
+        # The deprecated regex automap designer keeps raw tileset indices in
+        # its saved rules and is intentionally not remapped (slated for
+        # removal) — warn instead of silently re-pointing its rules.
+        designer = getattr(self.editor, "regex_automap_designer", None)
+        if designer is not None and getattr(designer, "pattern_rules", None):
+            self.editor.notifications.notify(
+                "Regex Automap is deprecated: saved rules reference the "
+                "removed tileset and are now stale",
+                color=(255, 165, 0),
+                duration=6.0,
+            )
 
     def open_collision_editor(self):
         if self.active_idx == -1 or self.active_idx >= len(self.tilesets):

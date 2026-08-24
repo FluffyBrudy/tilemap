@@ -898,7 +898,6 @@ class TextTool(Tool):
         self._btn_plus: Rect | None = None
         self._btn_bold: Rect | None = None
         self._rot_handle_screen: tuple[int, int] | None = None
-        self._hover_swatch: tuple[str, int] | None = None
 
     def enter(self) -> None:
         self._mode = "idle"
@@ -970,11 +969,6 @@ class TextTool(Tool):
         self._btn_bold = Rect(cx, cy, 26, _SWATCH)
         self._rot_handle_screen = self._rotation_handle_screen_pos(srect)
 
-    def _hit_panel(self, pos: tuple[int, int]) -> str | None:
-        if self._panel_rect and self._panel_rect.collidepoint(pos):
-            return "panel"
-        return None
-
     def _normalize_rect(self, r: list[float]) -> list[float]:
         x, y, w, h = r
         if w < 0:
@@ -983,20 +977,6 @@ class TextTool(Tool):
         if h < 0:
             y += h
             h = -h
-        return [x, y, w, h]
-
-    def _clamp_rect_to_doc(self, rect: list[float]) -> list[float]:
-        if not self.ctx.doc.has_canvas:
-            return rect
-        dw, dh = self.ctx.doc.size
-        # allow anywhere; expand canvas will handle positive overflow, but keep x/y >=0
-        # and let _blit_surface grow. Minimal clamp: keep non-negative origin
-        x, y, w, h = rect
-        # don't force inside doc — free anywhere — just prevent negative size
-        w = max(self._min_world(), w)
-        h = max(self._min_world(), h)
-        x = max(0.0, x)
-        y = max(0.0, y)
         return [x, y, w, h]
 
     # -- commit --------------------------------------------------------

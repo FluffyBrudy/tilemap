@@ -3,8 +3,15 @@ RegexAutomapDesigner UI component for pattern-based tile transformations.
 
 This module provides a visual interface for creating and managing automap pattern rules,
 allowing users to define input patterns that match tiles and output patterns that replace them.
+
+.. deprecated::
+    This designer is scheduled for removal. Its rules persist positional
+    ``tileset_index`` values that are NOT remapped when a tileset is removed
+    from the widget; saved rules may silently re-point at the wrong tileset.
+    Use the autotiler (``widgets/autotiler.py``) instead.
 """
 
+import warnings
 from typing import TYPE_CHECKING
 
 import pygame
@@ -45,6 +52,12 @@ MATCH_MODE_COLORS = {
 class RegexAutomapDesigner:
     """UI component for creating and managing regex-like pattern rules for automap.
 
+    .. deprecated::
+        Scheduled for removal. Saved ``pattern_rules`` keep raw
+        ``tileset_index`` values; removing/reordering tilesets makes them
+        stale (they are intentionally not remapped here). Prefer the
+        autotiler, which re-resolves rules by persisted ``tileset_path``.
+
     Provides a dual-grid interface where users can define input patterns (what to match)
     and output patterns (what to replace with). Supports various match modes including
     wildcards, exact matches, and special conditions.
@@ -67,6 +80,12 @@ class RegexAutomapDesigner:
             x: Initial X position
             y: Initial Y position
         """
+        warnings.warn(
+            "RegexAutomapDesigner is deprecated and will be removed in a "
+            "future release. Its rules are not resilient to tileset removal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.editor = editor
         self.rect = Rect(x, y, 700, 500)
         self.header_height = 30
