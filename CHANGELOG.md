@@ -1,7 +1,7 @@
 # Changelog
 
 <!-- towncrier release notes start -->
-# tilemap_editor 5.0.0 (Unreleased) — Major
+# tilemap_editor 5.0.0 (2026-08-25)
 
 ## What's New
 
