@@ -1,6 +1,13 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 5.0.1 (2026-08-30)
+
+## Bug Fixes
+
+- Padded spritesheet images to tile-multiple dimensions on save to prevent clipped rows/columns in the animation editor. (#1)
+
+
 # tilemap_editor 5.0.0 (2026-08-25)
 
 ## What's New

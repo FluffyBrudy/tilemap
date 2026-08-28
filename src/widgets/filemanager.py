@@ -1070,8 +1070,8 @@ class FileManager:
 
         footer_lx = lx - self.sidebar_width
 
-        file_list_rect = self._get_file_list_rect()
-        footer_width = file_list_rect.width
+        # Footer spans full content width (consistent with draw/handle_event)
+        footer_width = self.rect.width - self.sidebar_width
 
         cancel_x = footer_width - btn_w - pad
         open_x = cancel_x - btn_w - pad
@@ -1294,10 +1294,11 @@ class FileManager:
         file_list_rect = self._get_file_list_rect()
         self._draw_file_list(screen, file_list_rect)
 
+        # Footer always spans full content width (stable hit-test vs. input)
         footer_rect = pygame.Rect(
             self.rect.x + self.sidebar_width,
             self.rect.bottom - self.footer_height,
-            file_list_rect.width,
+            self.rect.width - self.sidebar_width,
             self.footer_height,
         )
         self._update_save_name_rect(footer_rect)

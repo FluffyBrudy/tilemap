@@ -1324,6 +1324,19 @@ class SpriteAnimationEditor:
             return
         max_v = max(0, self.frame_picker.total_frames - 1)
         self._clip_warnings = collect_clip_warnings(anim, max_v)
+        # warn when spritesheet not tile-multiple (floor clips partial row/col)
+        try:
+            sw, sh = self._surface.get_size() if self._surface else (0, 0)
+            tw, th = self._tile_size
+            if tw and th and (sw % tw != 0 or sh % th != 0):
+                need_w = ((sw + tw - 1) // tw) * tw
+                need_h = ((sh + th - 1) // th) * th
+                self._clip_warnings.append(
+                    f"Spritesheet {sw}×{sh} not divisible by {tw}×{th} — "
+                    f"last row/col clipped (floor). Pad to {need_w}×{need_h} for full tiles."
+                )
+        except Exception:
+            pass
 
     def _duplicate_active_animation(self) -> None:
         anim = self._get_active()

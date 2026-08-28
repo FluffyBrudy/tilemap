@@ -1114,7 +1114,19 @@ class SpriteEditor:
 
     def _on_save_path_selected(self, path: Path) -> None:
         try:
-            pygame.image.save(self.doc.surface, str(path))
+            # ensure saved spritesheet is tile-multiple (animation editor uses floor)
+            surf = self.doc.surface
+            if surf is not None:
+                w, h = surf.get_size()
+                tw, th = self.doc.tile_size
+                pad_w = ((w + tw - 1) // tw) * tw if tw else w
+                pad_h = ((h + th - 1) // th) * th if th else h
+                if pad_w != w or pad_h != h:
+                    padded = pygame.Surface((pad_w, pad_h), pygame.SRCALPHA)
+                    padded.fill((0, 0, 0, 0))
+                    padded.blit(surf, (0, 0))
+                    surf = padded
+            pygame.image.save(surf, str(path))
             self.set_save_path(path)
             self._status_bar.success(f"Saved {path.name}")
             self._toast(f"Saved {path.name}")
