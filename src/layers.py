@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 class Layer:
     """Represents a single layer in the tilemap.
 
-    Tile layers: store tiles at grid coordinates (grid_x, grid_y)
-    Object layers: store objects at pixel coordinates (pixel_x, pixel_y) with unique IDs
+    Tile layers: store tiles at grid coordinates (grid_x, grid_y).
+    Object layers: store objects at pixel coordinates (pixel_x, pixel_y) with unique IDs.
+    Image layers: store one external image and a pixel-space display rectangle.
     """
 
     def __init__(
@@ -29,6 +30,8 @@ class Layer:
         opacity: float = 1.0,
         y_sort: bool = False,
         y_sort_origin: int = 0,
+        image_path: str | None = None,
+        image_rect: dict[str, int] | None = None,
     ):
         self.name = name
         self.layer_type = layer_type
@@ -39,6 +42,13 @@ class Layer:
         self.y_sort = y_sort
         self.y_sort_origin = y_sort_origin
         self.properties: dict[str, Any] = {}
+
+        self.image_path = image_path if layer_type == "image" else None
+        self.image_rect = (
+            dict(image_rect)
+            if layer_type == "image" and image_rect is not None
+            else None
+        )
 
         self.tiles: dict[tuple[int, int], TypeTile] = {}
 
@@ -54,7 +64,7 @@ class Layer:
 
     def set_tile(self, pos: tuple[int, int], tile: TypeTile) -> None:
         """Set a tile at the given grid position."""
-        if not self.locked:
+        if not self.locked and self.layer_type != "image":
             self.tiles[pos] = tile
 
     def get_tile(self, pos: tuple[int, int]) -> TypeTile | None:
@@ -207,7 +217,7 @@ class Layer:
 
     def remove_tile(self, pos: tuple[int, int]) -> bool:
         """Remove a tile at the given grid position. Returns True if tile existed."""
-        if not self.locked and pos in self.tiles:
+        if not self.locked and self.layer_type != "image" and pos in self.tiles:
             del self.tiles[pos]
             return True
         return False
@@ -269,7 +279,7 @@ class Layer:
 
     def add_object(self, pos: tuple[int, int], obj: TypeObject) -> int:
         """Add an object at the given pixel position. Returns the object ID."""
-        if not self.locked:
+        if not self.locked and self.layer_type != "image":
             obj_id = self.next_object_id
             self.next_object_id += 1
             self.objects[obj_id] = obj
@@ -282,7 +292,7 @@ class Layer:
 
     def remove_object(self, obj_id: int) -> bool:
         """Remove an object by ID. Returns True if object existed."""
-        if not self.locked and obj_id in self.objects:
+        if not self.locked and self.layer_type != "image" and obj_id in self.objects:
             del self.objects[obj_id]
             return True
         return False
@@ -318,6 +328,16 @@ class Layer:
             "y_sort_origin": self.y_sort_origin,
         }
 
+        if self.layer_type == "image":
+            data["image_path"] = self.image_path
+            data["image_rect"] = self.image_rect
+            data["tiles"] = {}
+            data["objects"] = {}
+            data["next_object_id"] = self.next_object_id
+            data["properties"] = dict(getattr(self, "properties", {}))
+            data["metadata"] = getattr(self, "metadata", {})
+            return data
+
         if self.tiles:
             data["tiles"] = {str(k): v for k, v in self.tiles.items()}
         else:
@@ -329,7 +349,7 @@ class Layer:
             data["objects"] = {}
 
         data["next_object_id"] = self.next_object_id
-
+        data["properties"] = dict(getattr(self, "properties", {}))
         data["metadata"] = getattr(self, "metadata", {})
 
         return data
@@ -346,9 +366,14 @@ class Layer:
             opacity=data.get("opacity", 1.0),
             y_sort=data.get("y_sort", False),
             y_sort_origin=data.get("y_sort_origin", 0),
+            image_path=data.get("image_path"),
+            image_rect=data.get("image_rect"),
         )
+        layer.properties = dict(data.get("properties", {}))
+        if "metadata" in data:
+            layer.metadata = dict(data["metadata"])
 
-        if "tiles" in data:
+        if layer.layer_type != "image" and "tiles" in data:
             for pos_str, tile_data in data["tiles"].items():
                 pos_parts = pos_str.strip("()").split(",")
                 if len(pos_parts) == 2:
@@ -358,7 +383,7 @@ class Layer:
                     except (ValueError, IndexError):
                         pass
 
-        if "objects" in data:
+        if layer.layer_type != "image" and "objects" in data:
             for obj_id_str, obj_data in data["objects"].items():
                 try:
                     obj_id = int(obj_id_str)
