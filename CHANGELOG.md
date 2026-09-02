@@ -1,6 +1,13 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor Unreleased (2026-09-04)
+
+## Bug Fixes
+
+- Fix image-layer metadata round-trip and guards: persist image-layer `metadata` alongside `properties` in `Tilemap` save/load, guard `TileGrid` image handle/rect calls against partial `image_rect`, coerce `custom_frames` entries to `int`, centralize frame-aware object selection, avoid `anim_*` collisions via explicit mapping, and handle `OSError` in image validation. (#999)
+
+
 # tilemap_editor 5.0.1 (2026-08-30)
 
 ## Bug Fixes

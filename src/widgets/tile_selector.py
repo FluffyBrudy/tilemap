@@ -139,6 +139,24 @@ class TileSelector(WidgetBase):
             return self.tilesets[node.data]
         return None
 
+    def _frame_aware_object_selected_tile(self, ts) -> tuple[int, int, int, int]:
+        """Return frame-sized selected_tile for object tilesets, full surface otherwise."""
+        if ts.tileset_type == "object":
+            if (
+                ts.animation
+                and "frame_w" in ts.animation
+                and "frame_h" in ts.animation
+            ):
+                return (0, 0, ts.animation["frame_w"], ts.animation["frame_h"])
+            elif (
+                ts.animation
+                and ts.animation.get("frame_count", 1) > 1
+                and ts.surface.get_width() % ts.animation["frame_count"] == 0
+            ):
+                fw = ts.surface.get_width() // ts.animation["frame_count"]
+                return (0, 0, fw, ts.surface.get_height())
+        return (0, 0, ts.surface.get_width(), ts.surface.get_height())
+
     def _on_tree_selection(self, selected_ids: list[str]) -> None:
         if not selected_ids:
             return
@@ -147,7 +165,7 @@ class TileSelector(WidgetBase):
             return
         self.active_idx = self.tilesets.index(ts)
         if ts.tileset_type == "object":
-            self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+            self.selected_tile = self._frame_aware_object_selected_tile(ts)
         else:
             self.selected_tile = None
         self.rule_hints.clear()
@@ -191,10 +209,26 @@ class TileSelector(WidgetBase):
         ts_name = ctx.extra.get("tileset_name")
         if ts_name:
             title = f"{title} ({ts_name})"
+        props = dict(obj.get("properties", {}))
+        generated_anim_keys = set()
+        anim_editor_map: dict[str, str] = {}
+        if "animation" in obj and isinstance(obj["animation"], dict):
+            for k, v in obj["animation"].items():
+                gen_key = f"anim_{k}"
+                base_key = gen_key
+                counter = 0
+                while gen_key in props:
+                    counter += 1
+                    gen_key = f"{base_key}_{counter}"
+                props[gen_key] = v
+                generated_anim_keys.add(gen_key)
+                anim_editor_map[gen_key] = k
+        ctx.extra["generated_anim_keys"] = generated_anim_keys
+        ctx.extra["anim_editor_map"] = anim_editor_map
         self.editor.property_editor = PropertyEditor(
             self.editor,
             title,
-            obj.get("properties", {}),
+            props,
             context=ctx,
         )
 
@@ -202,7 +236,47 @@ class TileSelector(WidgetBase):
         obj = ctx.target
         if obj is None:
             return
-        obj["properties"] = props
+        orig_props = obj.get("properties", {})
+        generated_anim_keys = ctx.extra.get("generated_anim_keys")
+        anim_editor_map = ctx.extra.get("anim_editor_map")
+        if generated_anim_keys is None:
+            generated_anim_keys = (
+                {f"anim_{k}" for k in obj.get("animation", {})}
+                if isinstance(obj.get("animation"), dict)
+                else set()
+            )
+        if anim_editor_map is None:
+            anim_editor_map = {k: k[5:] for k in generated_anim_keys}
+        # known ObjectAnimation fields for newly added anim_* keys
+        known_anim_keys = {
+            "frame_count",
+            "frame_duration_ms",
+            "speed",
+            "loop",
+            "animation_mode",
+            "random_phase",
+            "frames",
+        }
+        obj_props = {}
+        anim_overrides = {}
+        for k, v in props.items():
+            if k in anim_editor_map:
+                anim_key = anim_editor_map[k]
+                anim_overrides[anim_key] = v
+            elif k in generated_anim_keys:
+                anim_key = k[5:]
+                anim_overrides[anim_key] = v
+            elif k.startswith("anim_") and k[5:] in known_anim_keys and k not in orig_props:
+                # newly added valid animation key (e.g., anim_random_phase) -> animation
+                anim_key = k[5:]
+                anim_overrides[anim_key] = v
+            else:
+                obj_props[k] = v
+        obj["properties"] = obj_props
+        if anim_overrides:
+            obj["animation"] = anim_overrides
+        elif "animation" in obj:
+            del obj["animation"]
         self.editor.suggestion_registry.refresh(self.editor)
 
     def _on_tree_structure_changed(self) -> None:
@@ -514,12 +588,7 @@ class TileSelector(WidgetBase):
                 if self.hover_pos:
                     ts = self.tilesets[self.active_idx]
                     if ts.tileset_type == "object":
-                        self.selected_tile = (
-                            0,
-                            0,
-                            ts.surface.get_width(),
-                            ts.surface.get_height(),
-                        )
+                        self.selected_tile = self._frame_aware_object_selected_tile(ts)
                     else:
                         self.is_selecting = True
                         self.selection_start_grid = self.hover_pos
@@ -672,7 +741,7 @@ class TileSelector(WidgetBase):
                 self._sync_tree()
                 self._tree.selected_ids = {tileset_data.uid}
                 if tileset_type == "object":
-                    self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
+                    self.selected_tile = self._frame_aware_object_selected_tile(tileset_data)
                 self.editor.suggestion_registry.refresh(self.editor)
             except Exception as e:
                 error_handler.capture(e, context="load_tileset_surface")
@@ -706,12 +775,26 @@ class TileSelector(WidgetBase):
         tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
         animation = self.editor.tileset_type_dialog.get_animation_config()
         if animation:
-            tw, th = self.editor.tilemap.tile_size
-            if tw <= 0 or th <= 0:
+            frame_count = animation.get("frame_count", 0)
+            if frame_count <= 0:
                 animation = None
+            elif tileset_type == "object":
+                if surf.get_width() % frame_count == 0:
+                    animation["frame_w"] = surf.get_width() // frame_count
+                    animation["frame_h"] = surf.get_height()
+                elif surf.get_height() % frame_count == 0:
+                    animation["frame_w"] = surf.get_width()
+                    animation["frame_h"] = surf.get_height() // frame_count
+                else:
+                    animation["frame_w"] = (
+                        surf.get_width() // frame_count
+                        if surf.get_width() >= frame_count
+                        else surf.get_width()
+                    )
+                    animation["frame_h"] = surf.get_height()
             else:
-                frame_count = animation.get("frame_count", 0)
-                if frame_count <= 0:
+                tw, th = self.editor.tilemap.tile_size
+                if tw <= 0 or th <= 0:
                     animation = None
                 else:
                     sheet_cols = surf.get_width() // tw
@@ -732,7 +815,7 @@ class TileSelector(WidgetBase):
         self.tileset_map[self.active_idx] = tileset_data
 
         if tileset_type == "object":
-            self.selected_tile = (0, 0, surf.get_width(), surf.get_height())
+            self.selected_tile = self._frame_aware_object_selected_tile(tileset_data)
 
         self._sync_tree()
         self._tree.selected_ids = {tileset_data.uid}
@@ -932,7 +1015,7 @@ class TileSelector(WidgetBase):
         ts = self.tilesets[tileset_index]
         if ts.tileset_type == "object":
             self.active_idx = tileset_index
-            self.selected_tile = (0, 0, ts.surface.get_width(), ts.surface.get_height())
+            self.selected_tile = self._frame_aware_object_selected_tile(ts)
             return True
 
         tw, th = self.editor.tilemap.tile_size

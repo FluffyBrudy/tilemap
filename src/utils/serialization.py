@@ -54,6 +54,13 @@ def copy_object(obj: "TypeObject") -> "TypeObject":
         "variant": obj["variant"],
     }
 
+    import copy
+
+    if "properties" in obj:
+        obj_copy["properties"] = copy.deepcopy(obj["properties"])
+    if "animation" in obj:
+        obj_copy["animation"] = copy.deepcopy(obj["animation"])
+
     return obj_copy
 
 

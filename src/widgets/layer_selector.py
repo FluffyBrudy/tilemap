@@ -3,6 +3,7 @@ Layer selector widget for the tilemap editor.
 Displays list of layers with ability to select, reorder, and manage them.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pygame
@@ -61,6 +62,11 @@ class LayerSelector:
             "-",
             on_click=self._remove_layer,
         )
+        self.btn_replace_image = Button(
+            Rect(x + 65, btn_y, 115, btn_h),
+            "Replace Image…",
+            on_click=self._replace_image,
+        )
 
         self.font_header = FONTS.get_bold_font(FONTS.size_md)
         self.font_layer = FONTS.get_small_font()
@@ -80,6 +86,7 @@ class LayerSelector:
         btn_y = self.footer_rect.y + 5
         self.btn_add.resize(x + 5, btn_y, 25, 25)
         self.btn_remove.resize(x + 35, btn_y, 25, 25)
+        self.btn_replace_image.resize(x + 65, btn_y, 115, 25)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle pygame events. Returns True if event was consumed."""
@@ -103,6 +110,13 @@ class LayerSelector:
         if self.btn_add.handle_event(event):
             return True
         if self.btn_remove.handle_event(event):
+            return True
+        active_layer = self._get_active_layer()
+        if (
+            active_layer
+            and getattr(active_layer, "layer_type", "tile") == "image"
+            and self.btn_replace_image.handle_event(event)
+        ):
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -269,6 +283,13 @@ class LayerSelector:
 
         return None
 
+    def _get_active_layer(self):
+        """Return the active layer while retaining compatibility with test doubles."""
+        manager = self.editor.tilemap.layer_manager
+        if hasattr(manager, "get_active_layer"):
+            return manager.get_active_layer()
+        return manager.get_layer(getattr(manager, "active_layer_idx", -1))
+
     def _get_opacity_bar_rect(self, layer_idx: int) -> Rect | None:
         """Get the clickable rect for the opacity bar of a layer."""
         item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
@@ -362,14 +383,95 @@ class LayerSelector:
 
     def _on_layer_type_selected(self, layer_type: str) -> None:
         """Callback when user selects layer type from dialog."""
+        if layer_type == "image":
+            self.editor.open_file_manager(
+                on_select=self._create_image_layer_from_path,
+                initial_dir=getattr(self.editor, "data_root", Path.cwd()),
+                allowed_exts=[".png", ".jpg", ".jpeg"],
+            )
+            return
         count = self.editor.tilemap.layer_manager.get_layer_count()
         name = f"Layer {count + 1}"
         self.editor.tilemap.layer_manager.create_layer(name, layer_type=layer_type)
 
+    def _initial_image_rect(self) -> dict[str, int]:
+        """Return the image rectangle that covers the current map in pixels."""
+        tilemap = self.editor.tilemap
+        tile_w, tile_h = tilemap.tile_size
+        offset_x, offset_y = tilemap.offset
+        map_w, map_h = tilemap.map_size
+        return {
+            "x": offset_x * tile_w,
+            "y": offset_y * tile_h,
+            "w": map_w * tile_w,
+            "h": map_h * tile_h,
+        }
+
+    @staticmethod
+    def _valid_image_path(path: Path) -> bool:
+        try:
+            pygame.image.load(str(path))
+            return True
+        except (pygame.error, OSError):
+            return False
+
+    def _create_image_layer_from_path(self, path: Path) -> None:
+        if not isinstance(path, Path) or not path.exists() or not self._valid_image_path(path):
+            self.editor.notifications.notify("Could not load image", duration=2.0)
+            return
+
+        self.editor.tilemap.capture_history("Add Image Layer")
+        count = self.editor.tilemap.layer_manager.get_layer_count()
+        layer = self.editor.tilemap.layer_manager.create_layer(
+            f"Image Layer {count + 1}", layer_type="image"
+        )
+        layer.image_path = str(path.resolve())
+        layer.image_rect = self._initial_image_rect()
+        self.editor.tilemap.layer_manager.set_active_layer(count)
+        self.editor.notifications.success("Image layer added")
+
+    def _replace_image(self) -> None:
+        layer = self._get_active_layer()
+        if not layer or getattr(layer, "layer_type", "tile") != "image":
+            return
+        initial_dir = Path(layer.image_path).parent if layer.image_path else getattr(
+            self.editor, "data_root", Path.cwd()
+        )
+        captured_layer = layer
+        self.editor.open_file_manager(
+            on_select=lambda p: self._replace_image_from_path(p, captured_layer),
+            initial_dir=initial_dir,
+            allowed_exts=[".png", ".jpg", ".jpeg"],
+        )
+
+    def _replace_image_from_path(self, path: Path, layer=None) -> None:
+        if layer is None:
+            layer = self._get_active_layer()
+        # verify captured layer still exists by identity
+        if layer not in self.editor.tilemap.layer_manager.layers:
+            self.editor.notifications.notify("Could not load image", duration=2.0)
+            return
+        if (
+            not layer
+            or getattr(layer, "layer_type", "tile") != "image"
+            or not isinstance(path, Path)
+            or not path.exists()
+            or not self._valid_image_path(path)
+        ):
+            self.editor.notifications.notify("Could not load image", duration=2.0)
+            return
+
+        self.editor.tilemap.capture_history("Replace Image Layer Image")
+        layer.image_path = str(path.resolve())
+        self.editor.tile_grid_widget.invalidate_image_cache(layer)
+        self.editor.notifications.success("Image replaced")
+
     def _remove_layer(self) -> None:
         """Remove the currently active layer."""
         active_idx = self.editor.tilemap.layer_manager.active_layer_idx
-        self.editor.tilemap.layer_manager.delete_layer(active_idx)
+        if self.editor.tilemap.layer_manager.delete_layer(active_idx):
+            if hasattr(self.editor, 'tile_grid_widget') and self.editor.tile_grid_widget:
+                self.editor.tile_grid_widget.invalidate_image_cache()
 
     def _start_rename(self, layer_idx: int) -> None:
         """Start renaming a layer."""
@@ -609,9 +711,18 @@ class LayerSelector:
         self.btn_add.draw(screen)
         self.btn_remove.draw(screen)
 
+        active_layer = self._get_active_layer()
+        if active_layer and getattr(active_layer, "layer_type", "tile") == "image":
+            self.btn_replace_image.draw(screen)
+
         count = self.editor.tilemap.layer_manager.get_layer_count()
         info_txt = self.font_layer.render(f"{count} layer(s)", True, COLORS.text_dim)
-        screen.blit(info_txt, (self.btn_remove.rect.right + 10, self.footer_rect.y + 8))
+        info_x = (
+            self.btn_replace_image.rect.right + 8
+            if active_layer and getattr(active_layer, "layer_type", "tile") == "image"
+            else self.btn_remove.rect.right + 10
+        )
+        screen.blit(info_txt, (info_x, self.footer_rect.y + 8))
         mx, my = pygame.mouse.get_pos()
         if self.btn_add.rect.collidepoint(mx, my):
             self.editor.tooltip.show("Add Layer", (mx + 10, my + 10))
