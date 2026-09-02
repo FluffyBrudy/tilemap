@@ -1,6 +1,18 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 5.2.0 (2026-09-04)
+
+## Features
+
+- **Background layer support** — load and display image layers from your map. The first image layer loads automatically as the background, and can place additional layers manually.
+- **Object animation** — animate objects on object layers with per-object or shared tileset animation strips. Configure frame count, duration, loop mode, and custom frame order. Objects without animation fall back to their tileset's shared strip automatically.
+
+## Bug Fixes
+
+- Fixed image-layer metadata round-trip: persists `metadata` alongside `properties` in save/load, guards image handle/rect calls against partial `image_rect`, coerces `custom_frames` to int, centralizes frame-aware object selection, avoids `anim_*` collisions via explicit mapping, and handles `OSError` in image validation. (#999)
+
+
 # tilemap_editor 5.0.1 (2026-08-30)
 
 ## Bug Fixes

@@ -15,7 +15,7 @@ class LayerTypeDialog(DialogBase):
     """Dialog to select whether a new layer is tile-based or object-based."""
 
     def __init__(self, editor_rect: Rect):
-        super().__init__(editor_rect, (400, 220), title="Layer Type")
+        super().__init__(editor_rect, (400, 270), title="Layer Type")
         self.selected_type: str | None = None
         self.on_confirm: Callable[[str], None] | None = None
         self.on_cancel: Callable[[], None] | None = None
@@ -30,11 +30,13 @@ class LayerTypeDialog(DialogBase):
         radio_x = self.rect.x + 40
         self.radio_tile_rect = Rect(radio_x, radio_y, 20, 20)
         self.radio_object_rect = Rect(radio_x, radio_y + 50, 20, 20)
+        self.radio_image_rect = Rect(radio_x, radio_y + 100, 20, 20)
 
         self.radio_tile_label_rect = Rect(radio_x + 35, radio_y - 5, 200, 30)
         self.radio_object_label_rect = Rect(radio_x + 35, radio_y + 45, 200, 30)
+        self.radio_image_label_rect = Rect(radio_x + 35, radio_y + 95, 260, 30)
 
-        btn_y = self.rect.y + 160
+        btn_y = self.rect.y + 210
         btn_w, btn_h = 80, 30
         self.btn_ok = Rect(self.rect.x + 100, btn_y, btn_w, btn_h)
         self.btn_cancel = Rect(self.rect.x + 220, btn_y, btn_w, btn_h)
@@ -69,6 +71,9 @@ class LayerTypeDialog(DialogBase):
                 return True
             if self.radio_object_rect.collidepoint(mouse_pos):
                 self.selected_type = "object"
+                return True
+            if self.radio_image_rect.collidepoint(mouse_pos):
+                self.selected_type = "image"
                 return True
 
             if self.btn_ok.collidepoint(mouse_pos):
@@ -118,6 +123,13 @@ class LayerTypeDialog(DialogBase):
             self.selected_type == "object",
             "Object Layer (free-positioned)",
             self.radio_object_label_rect,
+        )
+        self._draw_radio(
+            surface,
+            self.radio_image_rect,
+            self.selected_type == "image",
+            "Image Layer (one image)",
+            self.radio_image_label_rect,
         )
 
         self._draw_button(surface, self.btn_ok, self.btn_ok_hover, "OK")

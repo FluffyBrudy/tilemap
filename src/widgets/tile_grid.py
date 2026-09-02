@@ -69,6 +69,14 @@ class TileGrid:
         self._node_original_rect = None
         self._node_drag_tracker = DragTracker()
 
+        self._image_drag_state: str | None = None
+        self._image_drag_handle: str | None = None
+        self._image_original_rect: dict[str, int] | None = None
+        self._image_drag_start: tuple[float, float] | None = None
+        self._image_history_pending = False
+        self._image_cache: dict[str, Surface | None] = {}
+        self._scaled_image_cache: dict[tuple[int, tuple[int, int], str | None], Surface] = {}
+
         self._particle_previews: dict[str, ParticlePreview] = {}
         self._last_preview_time: float = 0.0
         self._last_active_node_id: str | None = None
@@ -118,6 +126,11 @@ class TileGrid:
     def invalidate_bounds_cache(self):
         """Invalidate the cached bounds when tiles, objects, or layers change."""
         self._cached_bounds = None
+
+    def invalidate_image_cache(self, _layer=None) -> None:
+        """Drop decoded image surfaces after a layer image is replaced."""
+        self._image_cache.clear()
+        self._scaled_image_cache.clear()
 
     def _on_h_scroll(self, val: float):
         world_min_x, _, _, _ = self._get_map_bounds()
@@ -274,6 +287,9 @@ class TileGrid:
             return self._handle_node_event(event)
 
         if self.editor.show_nodes and self._handle_show_node_event(event):
+            return True
+
+        if self._handle_image_layer_event(event):
             return True
 
         mouse_pos = pygame.mouse.get_pos()
@@ -540,6 +556,9 @@ class TileGrid:
         if not active_layer:
             return
 
+        if active_layer.layer_type == "image":
+            return
+
         sheet_width = tileset_data.surface.get_width()
         tile_w, tile_h = self.tile_size
         sheet_cols = sheet_width // tile_w
@@ -684,8 +703,24 @@ class TileGrid:
         rs = self.editor.tilemap.render_scale
 
         if tileset_type == "object":
-            sel_width = tileset_data.surface.get_width()
-            sel_height = tileset_data.surface.get_height()
+            if (
+                tileset_data.animation
+                and "frame_w" in tileset_data.animation
+                and "frame_h" in tileset_data.animation
+            ):
+                sel_width = tileset_data.animation["frame_w"]
+                sel_height = tileset_data.animation["frame_h"]
+            elif (
+                tileset_data.animation
+                and tileset_data.animation.get("frame_count", 1) > 1
+                and tileset_data.surface.get_width() % tileset_data.animation["frame_count"] == 0
+            ):
+                fc = tileset_data.animation["frame_count"]
+                sel_width = tileset_data.surface.get_width() // fc
+                sel_height = tileset_data.surface.get_height()
+            else:
+                sel_width = tileset_data.surface.get_width()
+                sel_height = tileset_data.surface.get_height()
             variant_id = 0
         else:
             sel_width = src_rect[2]
@@ -712,6 +747,9 @@ class TileGrid:
         """Remove tile or object at hover position."""
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
         if not active_layer:
+            return
+
+        if active_layer.layer_type == "image":
             return
 
         if active_layer.layer_type == "object":
@@ -1186,6 +1224,7 @@ class TileGrid:
             self._draw_preview(screen)
             self._draw_move_preview(screen)
             self._draw_selection_rect(screen)
+            self._draw_active_image_layer_selection(screen)
             self._draw_nodes(screen)
 
             screen.set_clip(prev_clip)
@@ -1259,13 +1298,34 @@ class TileGrid:
             pygame.draw.rect(screen, COLORS.warning, dest_rect, 2)
 
             try:
-                sub_r = Rect(src_rect[0], src_rect[1], src_rect[2], src_rect[3])
-                tile_surf = tileset_data.surface.subsurface(sub_r)
-                if self.zoom_level != 1.0:
-                    tile_surf = pygame.transform.scale(tile_surf, (sel_width, sel_height))
-                tile_surf.set_alpha(128)
-                screen.blit(tile_surf, (screen_x, screen_y))
-            except ValueError:
+                sub_x, sub_y, sub_w, sub_h = src_rect[0], src_rect[1], src_rect[2], src_rect[3]
+                if tileset_data.animation:
+                    anim = tileset_data.animation
+                    duration = anim.get("frame_duration_ms", 200)
+                    fc = anim.get("frame_count", 1)
+                    if duration > 0 and fc > 1:
+                        frame_idx = int(pygame.time.get_ticks() / duration) % fc
+                        if tileset_data.tileset_type == "object":
+                            sheet_w = tileset_data.surface.get_width()
+                            cols = max(1, sheet_w // sub_w) if sub_w > 0 else 1
+                            sub_x = (frame_idx % cols) * sub_w
+                            sub_y = (frame_idx // cols) * sub_h
+                        else:
+                            stride = anim.get("frame_stride", 1)
+                            sheet_cols = max(1, tileset_data.surface.get_width() // tile_w) if tile_w > 0 else 1
+                            var = ((sub_y // tile_h) * sheet_cols) + (sub_x // tile_w)
+                            var += frame_idx * stride
+                            sub_x = (var % sheet_cols) * tile_w
+                            sub_y = (var // sheet_cols) * tile_h
+
+                sub_r = Rect(sub_x, sub_y, sub_w, sub_h)
+                if tileset_data.surface.get_rect().contains(sub_r):
+                    tile_surf = tileset_data.surface.subsurface(sub_r)
+                    if self.zoom_level != 1.0 or rs != 1.0:
+                        tile_surf = pygame.transform.scale(tile_surf, (sel_width, sel_height))
+                    tile_surf.set_alpha(128)
+                    screen.blit(tile_surf, (screen_x, screen_y))
+            except (ValueError, pygame.error):
                 pass
         else:
             if not self.hover_cell:
@@ -1517,7 +1577,10 @@ class TileGrid:
                 draw_offset_x = 0
                 draw_offset_y = 0
 
-            if layer.layer_type == "tile":
+            if layer.layer_type == "image":
+                self._render_image_layer(layer_surf, layer, draw_offset_x, draw_offset_y)
+
+            elif layer.layer_type == "tile":
                 for x in range(start_col, end_col):
                     for y in range(start_row, end_row):
                         location = (x, y)
@@ -1582,13 +1645,42 @@ class TileGrid:
                     area = obj["area"]
                     obj_x, obj_y = area["x"], area["y"]
                     obj_w, obj_h = area["w"], area["h"]
+
+                    anim = obj.get("animation") or tileset_data.animation
+                    frame_idx = 0
+                    if anim and anim.get("enabled", True):
+                        duration = anim.get("frame_duration_ms", 200)
+                        speed = float(anim.get("speed", 1.0))
+                        if speed > 0:
+                            duration = max(1, int(duration / speed))
+                        frame_count = int(anim.get("frame_count", 1))
+                        if duration > 0 and frame_count > 1:
+                            frame_ms = pygame.time.get_ticks()
+                            frame_idx = int(frame_ms / duration) % frame_count
+                            if anim.get("animation_mode") == "random_start_times" or anim.get("random_phase"):
+                                phase = hash((obj_x, obj_y, ttype, str(_obj_id))) % frame_count
+                                frame_idx = (frame_idx + phase) % frame_count
+
+                            custom_frames = anim.get("frames")
+                            if isinstance(custom_frames, list) and len(custom_frames) > 0:
+                                try:
+                                    frame_idx = int(custom_frames[frame_idx % len(custom_frames)])
+                                except (ValueError, TypeError):
+                                    pass
+
                     if tileset_data.tileset_type == "object":
-                        src_rect = Rect(0, 0, obj_w, obj_h)
+                        sheet_w = base_surf.get_width()
+                        cols = max(1, sheet_w // obj_w) if obj_w > 0 else 1
+                        src_x = (frame_idx % cols) * obj_w
+                        src_y = (frame_idx // cols) * obj_h
+                        src_rect = Rect(src_x, src_y, obj_w, obj_h)
                     else:
                         sheet_w = base_surf.get_width()
-                        sheet_cols = sheet_w // tile_w
-                        src_x = (variant_id % sheet_cols) * tile_w
-                        src_y = (variant_id // sheet_cols) * tile_h
+                        sheet_cols = max(1, sheet_w // tile_w) if tile_w > 0 else 1
+                        stride = anim.get("frame_stride", 1) if anim else 1
+                        eff_var = variant_id + (frame_idx * stride)
+                        src_x = (eff_var % sheet_cols) * tile_w
+                        src_y = (eff_var // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
                     dest_x = (obj_x * rs - self.scroll_x) * self.zoom_level + self.rect.x + draw_offset_x
@@ -1608,6 +1700,219 @@ class TileGrid:
             if layer.opacity < 1.0:
                 layer_surf.set_alpha(int(layer.opacity * 255))
                 surface.blit(layer_surf, (self.rect.x, self.rect.y))
+
+    def _get_image_surface(self, image_path: str | None) -> Surface | None:
+        if not image_path:
+            return None
+        if image_path not in self._image_cache:
+            try:
+                self._image_cache[image_path] = pygame.image.load(image_path).convert_alpha()
+            except (pygame.error, OSError):
+                self._image_cache[image_path] = None
+        return self._image_cache[image_path]
+
+    def _image_screen_rect(self, image_rect: dict[str, int]) -> Rect:
+        rs = self.editor.tilemap.render_scale
+        sx = (image_rect["x"] * rs - self.scroll_x) * self.zoom_level + self.rect.x
+        sy = (image_rect["y"] * rs - self.scroll_y) * self.zoom_level + self.rect.y
+        sw = image_rect["w"] * rs * self.zoom_level
+        sh = image_rect["h"] * rs * self.zoom_level
+        return Rect(int(sx), int(sy), max(1, int(sw)), max(1, int(sh)))
+
+    def _render_image_layer(self, layer_surf: Surface, layer, draw_offset_x: int, draw_offset_y: int) -> None:
+        image_rect = layer.image_rect
+        if not image_rect:
+            return
+        try:
+            rect = self._image_screen_rect(image_rect)
+        except (KeyError, TypeError):
+            return
+        rect.move_ip(draw_offset_x, draw_offset_y)
+        image = self._get_image_surface(layer.image_path)
+        if image is None:
+            pygame.draw.rect(layer_surf, COLORS.danger, rect, 2)
+            pygame.draw.line(layer_surf, COLORS.danger, rect.topleft, rect.bottomright, 2)
+            pygame.draw.line(layer_surf, COLORS.danger, rect.topright, rect.bottomleft, 2)
+            label = self.font_status.render("Missing image", True, COLORS.danger)
+            layer_surf.blit(label, (rect.x + 4, rect.y + 4))
+            return
+
+        if image.get_size() == rect.size:
+            layer_surf.blit(image, rect)
+        else:
+            cache_key = (id(layer), rect.size, layer.image_path)
+            scaled = self._scaled_image_cache.get(cache_key)
+            if scaled is None or scaled.get_size() != rect.size:
+                scaled = pygame.transform.scale(image, rect.size)
+                # invalidate old sizes for this layer to avoid unbounded growth
+                # keep at most one scaled entry per layer (latest size)
+                for k in list(self._scaled_image_cache.keys()):
+                    if k[0] == id(layer):
+                        self._scaled_image_cache.pop(k, None)
+                self._scaled_image_cache[cache_key] = scaled
+            layer_surf.blit(scaled, rect)
+
+    def _active_image_layer(self):
+        layer = self.editor.tilemap.layer_manager.get_active_layer()
+        if (
+            layer
+            and layer.layer_type == "image"
+            and isinstance(layer.image_rect, dict)
+            and all(k in layer.image_rect for k in ("x", "y", "w", "h"))
+        ):
+            return layer
+        return None
+
+    def _draw_active_image_layer_selection(self, screen: Surface) -> None:
+        layer = self._active_image_layer()
+        if not layer or not self.editor.tool_manager.is_active(ToolKind.SELECT):
+            return
+        try:
+            rect = self._image_screen_rect(layer.image_rect)
+        except (KeyError, TypeError):
+            return
+        color = COLORS.accent if not layer.locked else COLORS.text_muted
+        pygame.draw.rect(screen, color, rect, max(1, int(2 * self.zoom_level)))
+        if not layer.locked:
+            self._draw_image_handles(screen, rect, color)
+
+    def _draw_image_handles(self, screen: Surface, rect: Rect, color) -> None:
+        hsize = max(4, int(6 * self.zoom_level))
+        for px, py in self._image_handle_points(rect):
+            handle_rect = Rect(px - hsize, py - hsize, hsize * 2, hsize * 2)
+            pygame.draw.rect(screen, COLORS.text, handle_rect)
+            pygame.draw.rect(screen, color, handle_rect, 1)
+
+    @staticmethod
+    def _image_handle_points(rect: Rect) -> list[tuple[int, int]]:
+        return [
+            (rect.left, rect.top), (rect.centerx, rect.top), (rect.right, rect.top),
+            (rect.left, rect.centery), (rect.right, rect.centery),
+            (rect.left, rect.bottom), (rect.centerx, rect.bottom),
+            (rect.right, rect.bottom),
+        ]
+
+    def _get_image_handle_at(self, image_rect: dict[str, int], screen_pos) -> str | None:
+        rect = self._image_screen_rect(image_rect)
+        hs = max(4, int(6 * self.zoom_level))
+        d = hs * 2
+        handles = {
+            "tl": Rect(rect.left - hs, rect.top - hs, d, d),
+            "t": Rect(rect.centerx - hs, rect.top - hs, d, d),
+            "tr": Rect(rect.right - hs, rect.top - hs, d, d),
+            "l": Rect(rect.left - hs, rect.centery - hs, d, d),
+            "r": Rect(rect.right - hs, rect.centery - hs, d, d),
+            "bl": Rect(rect.left - hs, rect.bottom - hs, d, d),
+            "b": Rect(rect.centerx - hs, rect.bottom - hs, d, d),
+            "br": Rect(rect.right - hs, rect.bottom - hs, d, d),
+        }
+        for name, handle_rect in handles.items():
+            if handle_rect.collidepoint(screen_pos):
+                return name
+        return None
+
+    def _screen_to_image_world(self, screen_pos) -> tuple[float, float]:
+        wx, wy = self._screen_to_world_float(screen_pos)
+        rs = self.editor.tilemap.render_scale
+        return (wx / rs, wy / rs) if rs else (wx, wy)
+
+    def _clear_image_drag(self, restore: bool = False) -> None:
+        layer = self._active_image_layer()
+        if restore and layer and self._image_original_rect:
+            layer.image_rect = dict(self._image_original_rect)
+        self._image_drag_state = None
+        self._image_drag_handle = None
+        self._image_original_rect = None
+        self._image_drag_start = None
+        self._image_history_pending = False
+
+    def _finish_image_drag(self) -> None:
+        self._clear_image_drag()
+
+    def _update_image_resize(self, layer, point: tuple[float, float]) -> None:
+        original = self._image_original_rect
+        handle = self._image_drag_handle
+        if not original or not handle:
+            return
+        min_size = 8
+        left, top = original["x"], original["y"]
+        right = left + original["w"]
+        bottom = top + original["h"]
+        px, py = int(point[0]), int(point[1])
+        if "l" in handle:
+            left = min(px, right - min_size)
+        if "r" in handle:
+            right = max(px, left + min_size)
+        if "t" in handle:
+            top = min(py, bottom - min_size)
+        if "b" in handle:
+            bottom = max(py, top + min_size)
+        layer.image_rect = {"x": left, "y": top, "w": right - left, "h": bottom - top}
+
+    def _handle_image_layer_event(self, event: pygame.event.Event) -> bool:
+        layer = self._active_image_layer()
+        if not layer:
+            return False
+        mouse_pos = pygame.mouse.get_pos()
+        is_hovering = self.rect.collidepoint(mouse_pos)
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE and self._image_drag_state:
+                self._clear_image_drag(restore=True)
+                return True
+            if event.key in (pygame.K_f, pygame.K_q, pygame.K_DELETE, pygame.K_BACKSPACE):
+                return True
+            mods = pygame.key.get_mods()
+            if event.key in (pygame.K_a, pygame.K_c, pygame.K_x, pygame.K_v) and (
+                mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL | pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+            ):
+                return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and is_hovering:
+            if self._is_pan_event(event):
+                return False
+            if self.editor.tool_manager.is_active(ToolKind.SELECT):
+                if layer.locked:
+                    return True
+                try:
+                    handle = self._get_image_handle_at(layer.image_rect, mouse_pos)
+                    rect = self._image_screen_rect(layer.image_rect)
+                except (KeyError, TypeError):
+                    return True
+                if handle or rect.collidepoint(mouse_pos):
+                    self._image_drag_state = "resizing" if handle else "moving"
+                    self._image_drag_handle = handle
+                    self._image_original_rect = dict(layer.image_rect)
+                    self._image_drag_start = self._screen_to_image_world(mouse_pos)
+                return True
+            if not self.editor.tool_manager.is_active(ToolKind.SELECT):
+                self.editor.notifications.notify(
+                    "Image layers are edited with Select and Replace Image…",
+                    duration=2.0,
+                )
+                return True
+
+        if event.type == pygame.MOUSEMOTION and self._image_drag_state:
+            if not self._image_history_pending:
+                self.editor.tilemap.capture_history("Edit Image Layer")
+                self._image_history_pending = True
+            if self._image_drag_state == "moving" and self._image_original_rect and self._image_drag_start:
+                px, py = self._screen_to_image_world(mouse_pos)
+                sx, sy = self._image_drag_start
+                layer.image_rect = {
+                    **self._image_original_rect,
+                    "x": int(self._image_original_rect["x"] + px - sx),
+                    "y": int(self._image_original_rect["y"] + py - sy),
+                }
+            elif self._image_drag_state == "resizing":
+                self._update_image_resize(layer, self._screen_to_image_world(mouse_pos))
+            return True
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self._image_drag_state:
+            self._finish_image_drag()
+            return True
+
+        return event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and is_hovering
 
     def _draw_eraser_overlay(self, screen):
         if self.eraser_overlay_timer <= 0:

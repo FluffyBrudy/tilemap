@@ -338,6 +338,17 @@ class Tilemap:
                 "tiles": {},
             }
 
+            if layer.layer_type == "image":
+                if layer.image_path:
+                    layer_data["image_path"] = to_project_path(
+                        layer.image_path, map_dir
+                    )
+                layer_data["image_rect"] = dict(layer.image_rect or {})
+                layer_data["properties"] = getattr(layer, "properties", {})
+                layer_data["metadata"] = getattr(layer, "metadata", {})
+                save_data["data"]["layers"].append(layer_data)
+                continue
+
             for loc, tile in layer.tiles.items():
                 key = serialize_point(loc)
                 ttype = tile["ttype"]
@@ -366,6 +377,8 @@ class Tilemap:
                     }
                     if "properties" in obj:
                         obj_data["properties"] = obj["properties"]
+                    if "animation" in obj:
+                        obj_data["animation"] = obj["animation"]
                     layer_data["objects"][str(obj_id)] = obj_data
 
                 layer_data["next_object_id"] = layer.next_object_id
@@ -665,7 +678,10 @@ class Tilemap:
                 self.editor.tile_grid_widget.scroll_y = scroll[1]
             if hasattr(self.editor.tile_grid_widget, "clamp_scroll"):
                 self.editor.tile_grid_widget.clamp_scroll()
-            self.editor.tile_grid_widget.invalidate_bounds_cache()
+            if hasattr(self.editor.tile_grid_widget, "invalidate_bounds_cache"):
+                self.editor.tile_grid_widget.invalidate_bounds_cache()
+            if hasattr(self.editor.tile_grid_widget, "invalidate_image_cache"):
+                self.editor.tile_grid_widget.invalidate_image_cache()
 
     def _object_tileset_indices_from_payload(self, payload: dict) -> set[int]:
         """Infer legacy object tileset resources from object-layer references."""
@@ -700,6 +716,17 @@ class Tilemap:
         """Load a layer from dictionary format."""
         from layers import Layer
 
+        image_path = layer_data.get("image_path")
+        if layer_data.get("type") == "image" and image_path:
+            map_dir = self.active_project_path.parent if self.active_project_path else Path()
+            image_path = str(
+                resolve_project_path(
+                    image_path,
+                    map_dir,
+                    fallback_roots=[self._project_base_path()],
+                )
+            )
+
         layer = Layer(
             name=layer_data.get("name", "Unnamed"),
             layer_type=layer_data.get("type", "tile"),
@@ -709,8 +736,15 @@ class Tilemap:
             opacity=layer_data.get("opacity", 1.0),
             y_sort=layer_data.get("y_sort", False),
             y_sort_origin=layer_data.get("y_sort_origin", 0),
+            image_path=image_path,
+            image_rect=layer_data.get("image_rect"),
         )
         layer.properties = layer_data.get("properties", {})
+        if "metadata" in layer_data:
+            layer.metadata = dict(layer_data["metadata"])
+
+        if layer.layer_type == "image":
+            return layer
 
         for loc_str, tile_data in layer_data.get("tiles", {}).items():
             pos = deserialize_point(loc_str)
@@ -735,6 +769,8 @@ class Tilemap:
                         "variant": obj_data.get("variant", 0),
                         "properties": obj_data.get("properties", {}),
                     }
+                    if "animation" in obj_data:
+                        obj_copy["animation"] = obj_data["animation"]
                     layer.objects[obj_id] = obj_copy
 
                     if obj_id >= layer.next_object_id:

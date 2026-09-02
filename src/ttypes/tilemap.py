@@ -31,6 +31,7 @@ class TypeObject(TypedDict, total=True):
     tileset_type: str
     variant: int
     properties: NotRequired[dict[str, Any]]
+    animation: NotRequired[dict[str, Any]]
 
 
 class TypeTileSerealized(TypedDict, total=True):
@@ -48,6 +49,7 @@ class TypeObjectSerialized(TypedDict, total=True):
     tileset_type: str
     variant: int
     properties: NotRequired[dict[str, Any]]
+    animation: NotRequired[dict[str, Any]]
 
 
 class TypeLayerSerialized(TypedDict, total=True):
@@ -61,6 +63,8 @@ class TypeLayerSerialized(TypedDict, total=True):
     objects: NotRequired[dict[str, TypeObjectSerialized]]
     next_object_id: NotRequired[int]
     properties: NotRequired[dict[str, Any]]
+    image_path: NotRequired[str | None]
+    image_rect: NotRequired[TypeArea | None]
 
 
 class TypeTilesetSerialized(TypedDict, total=True):
