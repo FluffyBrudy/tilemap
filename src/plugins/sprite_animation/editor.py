@@ -273,8 +273,7 @@ class SpriteAnimationEditor:
                             self.timeline.cancel_pending_move()
                             continue
 
-                        if self._file_manager is None:
-                            running = False
+                        # ESC never exits the editor: close via window.
                         continue
                 self.handle_event(event)
 

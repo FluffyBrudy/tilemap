@@ -6,6 +6,7 @@ class ToolKind(Enum):
     SELECT = "select"
     ERASER = "eraser"
     FILL = "fill"
+    PICK = "pick"
     PAN = "pan"
 
 

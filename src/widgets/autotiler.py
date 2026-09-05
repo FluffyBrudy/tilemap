@@ -125,6 +125,7 @@ class AutotileRuleDesigner:
         self.group_menu_idx: int | None = None
         self.group_menu_options = ("Rename (F2)", "Delete group")
         self.del_group_btn_rect: Rect = Rect(0, 0, 0, 0)
+        self.dup_btn_rect: Rect = Rect(0, 0, 0, 0)
 
         self.scroll_offset: int = 0
         self.max_visible_rules: int = 6
@@ -181,8 +182,10 @@ class AutotileRuleDesigner:
         btn_y = self.edit_area.bottom - 40
         btn_w = 80
         cx = self.edit_area.centerx
-        self.save_btn_rect = Rect(cx - btn_w - 5, btn_y, btn_w, 30)
-        self.delete_btn_rect = Rect(cx + 5, btn_y, btn_w, 30)
+        x0 = cx - (btn_w * 3 + 10) // 2
+        self.save_btn_rect = Rect(x0, btn_y, btn_w, 30)
+        self.dup_btn_rect = Rect(x0 + btn_w + 5, btn_y, btn_w, 30)
+        self.delete_btn_rect = Rect(x0 + 2 * (btn_w + 5), btn_y, btn_w, 30)
 
         self.new_group_btn_rect = Rect(
             self.group_list_area.x + 10,
@@ -314,9 +317,12 @@ class AutotileRuleDesigner:
             event.type == pygame.KEYDOWN
             and event.key == pygame.K_DELETE
             and self.renaming_group_idx is None
-            and self.selected_rule_index == -1
         ):
-            if 0 <= self.selected_group_idx < len(self.groups):
+            group, rule = self._selected_rule()
+            if rule is not None:
+                self._request_delete_rule()
+                return True
+            if group is not None and self.selected_rule_index == -1:
                 self._request_delete_group(self.selected_group_idx)
                 return True
 
@@ -368,6 +374,8 @@ class AutotileRuleDesigner:
                 if self.edit_area.collidepoint(mouse_pos):
                     if self.save_btn_rect.collidepoint(mouse_pos):
                         self._save_current_rule()
+                    elif self.dup_btn_rect.collidepoint(mouse_pos):
+                        self._duplicate_current_rule()
                     elif self.delete_btn_rect.collidepoint(mouse_pos):
                         self._delete_current_rule()
                     elif self.external_btn_rect.collidepoint(mouse_pos):
@@ -749,16 +757,74 @@ class AutotileRuleDesigner:
         print(f"Group deleted: {name}")
         return True
 
-    def _delete_current_rule(self):
-        if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(
-            self.groups[self.selected_group_idx].rules
-        ):
-            self.groups[self.selected_group_idx].rules.pop(self.selected_rule_index)
-            self._reset_selection()
+    def _unique_rule_name(self, group, base: str) -> str:
+        existing = {r.name for r in group.rules}
+        name = base
+        while name in existing:
+            name = self._get_next_rule_name(name)
+        return name
 
-            group = self.groups[self.selected_group_idx]
-            max_scroll = max(0, len(group.rules) - self.max_visible_rules)
-            self.scroll_offset = min(self.scroll_offset, max_scroll)
+    def _selected_rule(self):
+        if not (0 <= self.selected_group_idx < len(self.groups)):
+            return None, None
+        group = self.groups[self.selected_group_idx]
+        if not (0 <= self.selected_rule_index < len(group.rules)):
+            return group, None
+        return group, group.rules[self.selected_rule_index]
+
+    def _duplicate_current_rule(self) -> bool:
+        group, src = self._selected_rule()
+        if group is None or src is None:
+            return False
+        clone = AutotileRule(
+            name=self._unique_rule_name(group, f"{src.name} copy"),
+            neighbors=set(src.neighbors),
+            tileset_path=src.tileset_path,
+            variant_ids=list(src.variant_ids),
+            surface_subsurface=src.preview_surf,
+            tileset_index=src.tileset_index,
+            group_id=group.name,
+        )
+        group.rules.insert(self.selected_rule_index + 1, clone)
+        self.selected_rule_index += 1
+        self._load_rule_to_editor(clone)
+        print(f"Rule duplicated: {src.name} -> {clone.name}")
+        return True
+
+    def _request_delete_rule(self):
+        group, rule = self._selected_rule()
+        if group is None or rule is None:
+            return
+        confirm = getattr(getattr(self.editor, "confirm_dialog", None), "show", None)
+        if callable(confirm):
+            try:
+                self.editor.confirm_dialog.show(
+                    "Delete autotile rule",
+                    f"Delete rule '{rule.name}' from group '{group.name}'?",
+                    on_confirm=lambda: self._confirm_delete_rule(),
+                    on_cancel=lambda: None,
+                )
+                return
+            except Exception:
+                pass
+        self._confirm_delete_rule()
+
+    def _confirm_delete_rule(self) -> bool:
+        group, _rule = self._selected_rule()
+        if group is None:
+            return False
+        group.rules.pop(self.selected_rule_index)
+        self._reset_selection()
+
+        max_scroll = max(0, len(group.rules) - self.max_visible_rules)
+        self.scroll_offset = min(self.scroll_offset, max_scroll)
+        print(f"Rule deleted from group '{group.name}'")
+        return True
+
+    def _delete_current_rule(self):
+        group, rule = self._selected_rule()
+        if group is not None and rule is not None:
+            self._request_delete_rule()
         elif self.selected_group_idx != -1 and self.selected_rule_index == -1:
             self._request_delete_group(self.selected_group_idx)
 
@@ -1175,6 +1241,13 @@ class AutotileRuleDesigner:
         screen.blit(s_lbl, (self.save_btn_rect.x + 25, self.save_btn_rect.y + 8))
 
         if self.selected_rule_index != -1:
+            pygame.draw.rect(
+                screen, (90, 110, 150), self.dup_btn_rect, border_radius=4
+            )
+            dup_lbl = self.font.render("Dup", True, COLORS.text)
+            screen.blit(
+                dup_lbl, (self.dup_btn_rect.x + 25, self.dup_btn_rect.y + 8)
+            )
             pygame.draw.rect(
                 screen, (180, 70, 70), self.delete_btn_rect, border_radius=4
             )

@@ -44,13 +44,13 @@ class Toolbar:
 
         sep()
         add("pan", "pan", "Pan Mode (Ctrl+Space)")
-        add("select", "select", "Select/Move Tool")
-        add("eraser", "eraser", "Eraser Tool")
-        add("fill", "fill", "Flood Fill (click a cell)")
+        add("select", "select", "Select/Move Tool (V)")
+        add("eraser", "eraser", "Eraser Tool (R; size Ctrl+=/-)")
+        add("fill", "fill", "Flood Fill (click a cell; F fills at cursor)")
+        add("pick", "pick", "Pick Tile (I; click a tile)")
         sep()
         add("grid", "grid", "Toggle Grid (G)")
         add("auto", "auto", "Auto-Autotile")
-        add("nodes", "nodes", "Show Node Overlay")
         add("edit_nodes", "pencil", "Edit Nodes (Ctrl+Shift+N)")
         sep()
         add("zoom_out", "zoomout", "Zoom Out (Ctrl+Wheel)")
@@ -70,14 +70,12 @@ class Toolbar:
             e.tool_manager.toggle(ToolKind.ERASER)
         elif key == "fill":
             e.tool_manager.toggle(ToolKind.FILL)
+        elif key == "pick":
+            e.tool_manager.toggle(ToolKind.PICK)
         elif key == "grid":
             e.toggle_grid()
         elif key == "auto":
             e.toggle_auto_autotile()
-        elif key == "nodes":
-            e.show_nodes = not e.show_nodes
-            if e.show_nodes:
-                e.node_editing_mode = False
         elif key == "edit_nodes":
             e.toggle_node_editing()
         elif key == "zoom_in" and e.tile_grid_widget:
@@ -101,12 +99,12 @@ class Toolbar:
                 btn.active = e.tool_manager.is_active(ToolKind.ERASER)
             elif k == "fill":
                 btn.active = e.tool_manager.is_active(ToolKind.FILL)
+            elif k == "pick":
+                btn.active = e.tool_manager.is_active(ToolKind.PICK)
             elif k == "grid":
                 btn.active = bool(e.tile_grid_widget and e.tile_grid_widget.show_grid)
             elif k == "auto":
                 btn.active = e.autotile_mode
-            elif k == "nodes":
-                btn.active = e.show_nodes
             elif k == "edit_nodes":
                 btn.active = e.node_editing_mode
             else:

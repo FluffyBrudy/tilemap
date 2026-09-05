@@ -489,11 +489,13 @@ class NodeSelector:
                     else:
                         mgr.set_active_node(rows[0]["node_id"])
                 return True
-            if event.unicode.isprintable():
+            if event.unicode and event.unicode.isprintable():
                 self.search_text += event.unicode
                 self._rebuild_filter()
                 return True
-            return True
+            # Anything else (function keys, arrows, Delete, Ctrl+combos)
+            # belongs to the editor dispatch chain, not the search field.
+            return False
 
         if event.type == pygame.MOUSEWHEEL:
             if self.rect.collidepoint(mouse_pos):

@@ -271,16 +271,27 @@ class LayerSelector:
                     return True
                 return True
 
+            if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                self._remove_layer()
+                return True
+
             if event.key == pygame.K_UP:
-                if self.list_rect.collidepoint(pygame.mouse.get_pos()):
-                    self._scroll(-self.scroll_speed)
-                    return True
-            elif event.key == pygame.K_DOWN:
-                if self.list_rect.collidepoint(pygame.mouse.get_pos()):
-                    self._scroll(self.scroll_speed)
-                    return True
+                self._step_active_layer(-1)
+                return True
+            if event.key == pygame.K_DOWN:
+                self._step_active_layer(1)
+                return True
 
         return False
+
+    def _step_active_layer(self, delta: int) -> None:
+        """Move the active layer selection; list scrolls via wheel/drag."""
+        mgr = self.editor.tilemap.layer_manager
+        count = mgr.get_layer_count()
+        if count == 0:
+            return
+        mgr.set_active_layer(
+            max(0, min(count - 1, mgr.active_layer_idx + delta)))
 
     def _get_layer_at_pos(self, pos) -> int | None:
         """Get layer index at the given mouse position."""

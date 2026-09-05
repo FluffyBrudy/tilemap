@@ -62,6 +62,11 @@ class FakeEditor:
             self.show_nodes = False
             self.tool_manager.deactivate()
 
+    def toggle_show_nodes(self):
+        self.show_nodes = not self.show_nodes
+        if self.show_nodes:
+            self.node_editing_mode = False
+
 
 def make_toolbar(x=0, y=0, w=800, h=35) -> "Toolbar":
 
@@ -252,24 +257,18 @@ class TestEditNodesButton:
         btn = _find_button(tb, "edit_nodes")
         assert "Ctrl+Shift+N" in btn.tooltip_text
 
-    def test_nodes_overlay_tooltip_no_longer_claims_shortcut(self):
+    def test_overlay_button_removed_overlay_lives_in_view(self):
         tb = make_toolbar()
-        btn = _find_button(tb, "nodes")
-        assert "Ctrl+Shift+N" not in btn.tooltip_text
-
-    def test_overlay_button_disables_editing(self):
-        tb = make_toolbar()
-        click_button(tb, "edit_nodes")
-        click_button(tb, "nodes")
-        assert tb.editor.show_nodes is True
-        assert tb.editor.node_editing_mode is False
+        assert _find_button(tb, "nodes") is None
+        # pencil button is now the single node entry point
+        assert _find_button(tb, "edit_nodes") is not None
 
     def test_edit_nodes_does_not_overlap_neighbors(self):
         tb = make_toolbar()
         edit_r = _find_button(tb, "edit_nodes").rect
-        nodes_r = _find_button(tb, "nodes").rect
+        auto_r = _find_button(tb, "auto").rect
         zoom_out_r = _find_button(tb, "zoom_out").rect
-        assert not edit_r.colliderect(nodes_r)
+        assert not edit_r.colliderect(auto_r)
         assert not edit_r.colliderect(zoom_out_r)
 
 
@@ -311,3 +310,81 @@ class TestFillButton:
         grid_r = _find_button(tb, "grid").rect
         assert not fill_r.colliderect(ers_r)
         assert not fill_r.colliderect(grid_r)
+
+    def test_fill_icon_bundled_and_nonempty(self):
+        from utils.icon_manager import icon_manager
+
+        assert icon_manager.has_icon("fill")
+        surf = icon_manager.get_icon("fill", 20, (255, 255, 255))
+        opaque = sum(
+            1
+            for x in range(4, 16)
+            for y in range(4, 16)
+            if surf.get_at((x, y))[3] > 0
+        )
+        assert opaque > 10
+
+
+class TestPickButton:
+    def test_pick_button_registered(self):
+        tb = make_toolbar()
+        assert _find_button(tb, "pick") is not None
+
+    def test_click_pick_activates_pick_tool(self):
+        tb = make_toolbar()
+        click_button(tb, "pick")
+        assert tb.editor.tool_manager.is_active(ToolKind.PICK)
+
+    def test_click_pick_twice_deactivates(self):
+        tb = make_toolbar()
+        click_button(tb, "pick")
+        click_button(tb, "pick")
+        assert not tb.editor.tool_manager.is_active(ToolKind.PICK)
+
+    def test_pick_active_state_follows_tool(self):
+        tb = make_toolbar()
+        tb._update_active_states()
+        assert _find_button(tb, "pick").active is False
+        click_button(tb, "pick")
+        tb._update_active_states()
+        assert _find_button(tb, "pick").active is True
+
+    def test_pick_deactivates_when_fill_picked(self):
+        tb = make_toolbar()
+        click_button(tb, "pick")
+        click_button(tb, "fill")
+        assert tb.editor.tool_manager.is_active(ToolKind.FILL)
+        assert not tb.editor.tool_manager.is_active(ToolKind.PICK)
+
+    def test_pick_does_not_overlap_neighbors(self):
+        tb = make_toolbar()
+        pick_r = _find_button(tb, "pick").rect
+        fill_r = _find_button(tb, "fill").rect
+        grid_r = _find_button(tb, "grid").rect
+        assert not pick_r.colliderect(fill_r)
+        assert not pick_r.colliderect(grid_r)
+
+    def test_pick_icon_bundled_and_nonempty(self):
+        from utils.icon_manager import icon_manager
+
+        assert icon_manager.has_icon("pick")
+        surf = icon_manager.get_icon("pick", 20, (255, 255, 255))
+        opaque = sum(
+            1
+            for x in range(4, 16)
+            for y in range(4, 16)
+            if surf.get_at((x, y))[3] > 0
+        )
+        assert opaque > 10
+
+
+class TestToolTooltips:
+    def test_select_shows_key(self):
+        assert "(V)" in _find_button(make_toolbar(), "select").tooltip_text
+
+    def test_eraser_shows_key_and_size_hint(self):
+        tip = _find_button(make_toolbar(), "eraser").tooltip_text
+        assert "(R" in tip and "Ctrl" in tip
+
+    def test_pick_shows_key(self):
+        assert "(I" in _find_button(make_toolbar(), "pick").tooltip_text

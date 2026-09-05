@@ -41,6 +41,26 @@ class TestBuiltinThemes:
         assert colors.bg == (39, 40, 34)
         assert colors.accent == (253, 151, 31)
 
+    def test_midnight_registered(self):
+        assert "midnight" in THEMES
+        colors = THEMES["midnight"]
+        assert colors.bg == (10, 13, 22)
+        assert colors.accent == (45, 190, 205)
+
+    def test_nord_registered(self):
+        assert "nord" in THEMES
+        colors = THEMES["nord"]
+        assert colors.bg == (32, 36, 47)
+        assert colors.accent == (136, 192, 208)
+        # light frost accent needs dark foreground for contrast
+        assert sum(colors.text_on_accent) / 3 < 100
+
+    def test_surfaces_have_elevation_depth(self):
+        """No more flat same-bg-everywhere: bg/panel/alt/header distinct."""
+        for name, colors in THEMES.items():
+            assert len({colors.bg, colors.panel, colors.panel_alt,
+                        colors.header}) == 4, name
+
     def test_set_theme_by_name(self):
         assert set_theme("monokai") is True
         assert get_theme_manager().name == "monokai"
