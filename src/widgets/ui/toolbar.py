@@ -46,10 +46,12 @@ class Toolbar:
         add("pan", "pan", "Pan Mode (Ctrl+Space)")
         add("select", "select", "Select/Move Tool")
         add("eraser", "eraser", "Eraser Tool")
+        add("fill", "fill", "Flood Fill (click a cell)")
         sep()
         add("grid", "grid", "Toggle Grid (G)")
         add("auto", "auto", "Auto-Autotile")
-        add("nodes", "nodes", "Show Nodes (Ctrl+Shift+N)")
+        add("nodes", "nodes", "Show Node Overlay")
+        add("edit_nodes", "pencil", "Edit Nodes (Ctrl+Shift+N)")
         sep()
         add("zoom_out", "zoomout", "Zoom Out (Ctrl+Wheel)")
         add("zoom_in", "zoomin", "Zoom In (Ctrl+Wheel)")
@@ -66,6 +68,8 @@ class Toolbar:
             e.tool_manager.toggle(ToolKind.SELECT)
         elif key == "eraser":
             e.tool_manager.toggle(ToolKind.ERASER)
+        elif key == "fill":
+            e.tool_manager.toggle(ToolKind.FILL)
         elif key == "grid":
             e.toggle_grid()
         elif key == "auto":
@@ -74,6 +78,8 @@ class Toolbar:
             e.show_nodes = not e.show_nodes
             if e.show_nodes:
                 e.node_editing_mode = False
+        elif key == "edit_nodes":
+            e.toggle_node_editing()
         elif key == "zoom_in" and e.tile_grid_widget:
             e.tile_grid_widget.zoom_by(0.1)
         elif key == "zoom_out" and e.tile_grid_widget:
@@ -93,12 +99,16 @@ class Toolbar:
                 btn.active = e.tool_manager.is_active(ToolKind.SELECT)
             elif k == "eraser":
                 btn.active = e.tool_manager.is_active(ToolKind.ERASER)
+            elif k == "fill":
+                btn.active = e.tool_manager.is_active(ToolKind.FILL)
             elif k == "grid":
                 btn.active = bool(e.tile_grid_widget and e.tile_grid_widget.show_grid)
             elif k == "auto":
                 btn.active = e.autotile_mode
             elif k == "nodes":
                 btn.active = e.show_nodes
+            elif k == "edit_nodes":
+                btn.active = e.node_editing_mode
             else:
                 btn.active = False
 

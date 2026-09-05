@@ -41,6 +41,8 @@ class NodeSelector:
 
         self.hover_idx: int | None = None
         self.delete_hover: bool = False
+        self.dup_hover: bool = False
+        self.collapse_all_hover: bool = False
         self.arrow_hover: bool = False
         self.add_btn_hover: bool = False
         self._add_dropdown_hover_idx: int | None = None
@@ -103,6 +105,29 @@ class NodeSelector:
     @property
     def visible(self) -> bool:
         return self.editor.node_editing_mode
+
+    def _collapse_toggle_rect(self) -> Rect:
+        return Rect(self.rect.right - 32, self.rect.y + 4, 26, 24)
+
+    def _all_collapsed(self) -> bool:
+        mgr = self.editor.node_manager
+        return bool(mgr.groups) and all(
+            g in self.collapsed_groups for g in mgr.groups
+        )
+
+    def _toggle_collapse_all(self):
+        mgr = self.editor.node_manager
+        if self._all_collapsed():
+            self.collapsed_groups.clear()
+        else:
+            self.collapsed_groups.update(mgr.groups)
+        self._rebuild_filter()
+
+    def _duplicate_node(self, node_id: str):
+        mgr = self.editor.node_manager
+        if mgr.duplicate_node(node_id) is not None:
+            self._rebuild_filter()
+            self.editor.tilemap.capture_history("Duplicate Node")
 
     def _add_button_rect(self) -> Rect:
         add_h = 28
@@ -256,10 +281,16 @@ class NodeSelector:
             if not self.rect.collidepoint(mouse_pos):
                 self.hover_idx = None
                 self.delete_hover = False
+                self.dup_hover = False
+                self.collapse_all_hover = False
                 self.arrow_hover = False
                 self.add_btn_hover = False
                 self._add_dropdown_hover_idx = None
                 return False
+
+            self.collapse_all_hover = self._collapse_toggle_rect().collidepoint(
+                mouse_pos
+            )
 
             add_btn = self._add_button_rect()
             self.add_btn_hover = add_btn.collidepoint(mouse_pos)
@@ -287,6 +318,9 @@ class NodeSelector:
                     del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
                     self.delete_hover = del_rect.collidepoint(mouse_pos)
 
+                    dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
+                    self.dup_hover = dup_rect.collidepoint(mouse_pos)
+
                     if rows[idx]["type"] == "group":
                         arrow_rect = Rect(item_rect.x + 4, item_rect.y + 8, 12, 12)
                         self.arrow_hover = arrow_rect.collidepoint(mouse_pos)
@@ -295,10 +329,12 @@ class NodeSelector:
                 else:
                     self.hover_idx = None
                     self.delete_hover = False
+                    self.dup_hover = False
                     self.arrow_hover = False
             else:
                 self.hover_idx = None
                 self.delete_hover = False
+                self.dup_hover = False
                 self.arrow_hover = False
             return True
 
@@ -310,6 +346,10 @@ class NodeSelector:
                 return False
 
             if event.button == 1:
+                if self._collapse_toggle_rect().collidepoint(mouse_pos):
+                    self._toggle_collapse_all()
+                    return True
+
                 if self._add_dropdown_open:
                     dropdown_items = self._add_dropdown_items()
                     for idx, (t_name, _t_label, _t_color, r) in enumerate(dropdown_items):
@@ -342,6 +382,15 @@ class NodeSelector:
                             list_rect.x, y_pos, list_rect.width, self.item_h
                         )
                         del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
+                        dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
+
+                        if dup_rect.collidepoint(mouse_pos):
+                            if row["type"] == "node":
+                                self._duplicate_node(row["node_id"])
+                            self.hover_idx = None
+                            self.delete_hover = False
+                            self.dup_hover = False
+                            return True
 
                         if del_rect.collidepoint(mouse_pos):
                             if row["type"] == "group":
@@ -360,6 +409,7 @@ class NodeSelector:
                             self._rebuild_filter()
                             self.hover_idx = None
                             self.delete_hover = False
+                            self.dup_hover = False
                             return True
 
                         if row["type"] == "group":
@@ -414,6 +464,18 @@ class NodeSelector:
                 else:
                     self.editor.node_editing_mode = False
                 return True
+            mods = pygame.key.get_mods()
+            if mods & (
+                pygame.KMOD_LCTRL
+                | pygame.KMOD_RCTRL
+                | pygame.KMOD_LMETA
+                | pygame.KMOD_RMETA
+            ):
+                if event.key == pygame.K_d:
+                    mgr = self.editor.node_manager
+                    if mgr.active_node_id is not None:
+                        self._duplicate_node(mgr.active_node_id)
+                    return True
             if event.key == pygame.K_BACKSPACE:
                 self.search_text = self.search_text[:-1]
                 self._rebuild_filter()
@@ -458,8 +520,21 @@ class NodeSelector:
             radius=SHAPE.radius_sm,
         )
 
-        header = self.font_bold.render("Nodes", True, COLORS.text)
+        header = self.font_bold.render(
+            f"Nodes ({len(self.editor.node_manager.nodes)})", True, COLORS.text
+        )
         screen.blit(header, (self.rect.x + 8, self.rect.y + 6))
+
+        toggle_rect = self._collapse_toggle_rect()
+        toggle_bg = COLORS.hover if self.collapse_all_hover else COLORS.panel_alt
+        pygame.draw.rect(screen, toggle_bg, toggle_rect, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            screen, COLORS.border_soft, toggle_rect, 1, border_radius=SHAPE.radius_sm
+        )
+        toggle_lbl = self.font_bold.render(
+            "+" if self._all_collapsed() else "-", True, COLORS.text
+        )
+        screen.blit(toggle_lbl, toggle_lbl.get_rect(center=toggle_rect.center))
 
         add_btn = self._add_button_rect()
         btn_bg = COLORS.accent if self.add_btn_hover else COLORS.panel_alt
@@ -568,6 +643,17 @@ class NodeSelector:
                 screen.blit(lbl, (item_rect.x + indent_offset + 20, item_rect.y + 6))
 
             if is_hover:
+                dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
+                dup_color = COLORS.text if self.dup_hover else COLORS.text_dim
+                bx = dup_rect.centerx - 4
+                by = dup_rect.centery - 4
+                back = Rect(bx + 3, by - 1, 7, 7)
+                front = Rect(bx, by + 2, 7, 7)
+                pygame.draw.rect(screen, COLORS.panel, back)
+                pygame.draw.rect(screen, dup_color, back, 1)
+                pygame.draw.rect(screen, COLORS.panel, front)
+                pygame.draw.rect(screen, dup_color, front, 1)
+
                 del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
                 del_color = COLORS.danger if self.delete_hover else COLORS.text_dim
                 del_txt = self.font_bold.render("×", True, del_color)

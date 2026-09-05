@@ -120,6 +120,12 @@ class AutotileRuleDesigner:
         self.renaming_group_idx: int | None = None
         self.rename_input = InlineTextInput("group_rename", "")
 
+        self.group_menu_visible: bool = False
+        self.group_menu_rect: Rect = Rect(0, 0, 170, 60)
+        self.group_menu_idx: int | None = None
+        self.group_menu_options = ("Rename (F2)", "Delete group")
+        self.del_group_btn_rect: Rect = Rect(0, 0, 0, 0)
+
         self.scroll_offset: int = 0
         self.max_visible_rules: int = 6
         self.scroll_bar_rect: Rect | None = None
@@ -181,7 +187,13 @@ class AutotileRuleDesigner:
         self.new_group_btn_rect = Rect(
             self.group_list_area.x + 10,
             self.group_list_area.bottom + 5,
-            self.group_list_area.width - 20,
+            (self.group_list_area.width - 25) // 2,
+            25,
+        )
+        self.del_group_btn_rect = Rect(
+            self.new_group_btn_rect.right + 5,
+            self.group_list_area.bottom + 5,
+            (self.group_list_area.width - 25) // 2,
             25,
         )
         self.new_rule_btn_rect = Rect(
@@ -222,9 +234,9 @@ class AutotileRuleDesigner:
         self.visible = False
         self.is_dragging = False
 
-        if hasattr(self.editor, "tileset_widget"):
-            assert self.editor.tileset_widget is not None
-            self.editor.tileset_widget.set_rule_hints(set())
+        selector = getattr(self.editor, "tileset_widget", None)
+        if selector is not None:
+            selector.set_rule_hints(set())
 
     def _push_hints_to_selector(self):
         selector = getattr(self.editor, "tileset_widget", None)
@@ -281,6 +293,9 @@ class AutotileRuleDesigner:
         if self.template_manager.handle_event(event):
             return True
 
+        if self._handle_group_menu_event(event):
+            return True
+
         if self._handle_scroll_event(event):
             return True
 
@@ -295,7 +310,25 @@ class AutotileRuleDesigner:
             self.hide()
             return True
 
+        if (
+            event.type == pygame.KEYDOWN
+            and event.key == pygame.K_DELETE
+            and self.renaming_group_idx is None
+            and self.selected_rule_index == -1
+        ):
+            if 0 <= self.selected_group_idx < len(self.groups):
+                self._request_delete_group(self.selected_group_idx)
+                return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 3:
+                if self.group_list_area.collidepoint(mouse_pos):
+                    idx = self._group_index_at_pos(mouse_pos)
+                    if idx is not None:
+                        self.selected_group_idx = idx
+                        self.selected_rule_index = -1
+                        self._open_group_menu(idx, mouse_pos)
+                        return True
             if event.button == 1:
                 header_rect = Rect(
                     self.rect.x, self.rect.y, self.rect.width, self.header_height
@@ -313,6 +346,11 @@ class AutotileRuleDesigner:
 
                 if self.new_group_btn_rect.collidepoint(mouse_pos):
                     self._create_new_group_with_focus()
+                    return True
+
+                if self.del_group_btn_rect.collidepoint(mouse_pos):
+                    if 0 <= self.selected_group_idx < len(self.groups):
+                        self._request_delete_group(self.selected_group_idx)
                     return True
 
                 if self.new_rule_btn_rect.collidepoint(mouse_pos):
@@ -598,6 +636,119 @@ class AutotileRuleDesigner:
         for r in self.rules:
             print(f"  - {r.name}: neighbors={r.neighbors}, variants={r.variant_ids}")
 
+    def _group_index_at_pos(self, mouse_pos) -> int | None:
+        start_y = self.group_list_area.y + 25
+        item_h = 25
+        for i in range(len(self.groups)):
+            item_rect = Rect(
+                self.group_list_area.x + 5,
+                start_y + i * item_h,
+                self.group_list_area.width - 10,
+                item_h,
+            )
+            if item_rect.collidepoint(mouse_pos):
+                return i
+        return None
+
+    def _open_group_menu(self, idx: int, mouse_pos):
+        self.group_menu_idx = idx
+        w = 170
+        h = 10 + len(self.group_menu_options) * 26
+        ed = self.editor
+        ex = getattr(ed, "width", 800)
+        ey = getattr(ed, "height", 600)
+        x = min(max(0, mouse_pos[0]), max(0, ex - w))
+        y = min(max(0, mouse_pos[1]), max(0, ey - h))
+        self.group_menu_rect = Rect(x, y, w, h)
+        self.group_menu_visible = True
+
+    def _close_group_menu(self):
+        self.group_menu_visible = False
+        self.group_menu_idx = None
+
+    def _handle_group_menu_event(self, event) -> bool:
+        if not self.group_menu_visible:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = getattr(event, "pos", None) or pygame.mouse.get_pos()
+            for i, opt in enumerate(self.group_menu_options):
+                row = Rect(
+                    self.group_menu_rect.x + 4,
+                    self.group_menu_rect.y + 5 + i * 26,
+                    self.group_menu_rect.width - 8,
+                    24,
+                )
+                if row.collidepoint(pos):
+                    idx = self.group_menu_idx
+                    self._close_group_menu()
+                    if opt.startswith("Rename"):
+                        if idx is not None and 0 <= idx < len(self.groups):
+                            self.selected_group_idx = idx
+                            self.renaming_group_idx = idx
+                            self.rename_input.text = self.groups[idx].name
+                            self.rename_input.cursor_pos = len(
+                                self.rename_input.text)
+                            self.rename_input.is_focused = True
+                    else:
+                        if idx is not None:
+                            self._request_delete_group(idx)
+                    return True
+            if not self.group_menu_rect.collidepoint(pos):
+                self._close_group_menu()
+                return True
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._close_group_menu()
+            return True
+        return False
+
+    def _notify(self, text: str, color=(200, 200, 200)):
+        notifications = getattr(self.editor, "notifications", None)
+        if notifications is not None:
+            try:
+                notifications.notify(text, color=color)
+            except TypeError:
+                notifications.notify(text)
+            except Exception:
+                pass
+
+    def _request_delete_group(self, idx: int):
+        if not (0 <= idx < len(self.groups)):
+            return
+        if len(self.groups) <= 1:
+            self._notify("Cannot delete the last group", color=(255, 180, 100))
+            return
+        name = self.groups[idx].name
+        n_rules = len(self.groups[idx].rules)
+        confirm = getattr(getattr(self.editor, "confirm_dialog", None), "show", None)
+        if callable(confirm):
+            try:
+                self.editor.confirm_dialog.show(
+                    "Delete autotile group",
+                    f"Delete group '{name}' with {n_rules} rule(s)? "
+                    f"Tiles stamped with it stay but stop autotiling.",
+                    on_confirm=lambda i=idx: self._confirm_delete_group(i),
+                    on_cancel=lambda: None,
+                )
+                return
+            except Exception:
+                pass
+        self._confirm_delete_group(idx)
+
+    def _confirm_delete_group(self, idx: int) -> bool:
+        if not (0 <= idx < len(self.groups)):
+            return False
+        if len(self.groups) <= 1:
+            return False
+        name = self.groups[idx].name
+        self.groups.pop(idx)
+        self.selected_group_idx = min(max(0, idx - 1), len(self.groups) - 1)
+        self.selected_rule_index = -1
+        self.scroll_offset = 0
+        self._close_group_menu()
+        print(f"Group deleted: {name}")
+        return True
+
     def _delete_current_rule(self):
         if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(
             self.groups[self.selected_group_idx].rules
@@ -609,11 +760,7 @@ class AutotileRuleDesigner:
             max_scroll = max(0, len(group.rules) - self.max_visible_rules)
             self.scroll_offset = min(self.scroll_offset, max_scroll)
         elif self.selected_group_idx != -1 and self.selected_rule_index == -1:
-            if len(self.groups) > 1:
-                self.groups.pop(self.selected_group_idx)
-                self.selected_group_idx = 0
-                self.selected_rule_index = -1
-                self.scroll_offset = 0
+            self._request_delete_group(self.selected_group_idx)
 
     def _launch_external_viewer(self):
         import tempfile
@@ -671,6 +818,28 @@ class AutotileRuleDesigner:
         self._draw_grid_editor(screen)
 
         self.template_manager.draw(screen)
+        self._draw_group_menu(screen)
+
+    def _draw_group_menu(self, screen):
+        if not self.group_menu_visible:
+            return
+        pygame.draw.rect(screen, COLORS.panel, self.group_menu_rect)
+        pygame.draw.rect(screen, COLORS.border, self.group_menu_rect, 1)
+        mouse_pos = pygame.mouse.get_pos()
+        for i, opt in enumerate(self.group_menu_options):
+            row = Rect(
+                self.group_menu_rect.x + 4,
+                self.group_menu_rect.y + 5 + i * 26,
+                self.group_menu_rect.width - 8,
+                24,
+            )
+            hover = row.collidepoint(mouse_pos)
+            if hover:
+                pygame.draw.rect(screen, COLORS.accent, row, border_radius=4)
+                color = COLORS.text_on_accent
+            else:
+                color = COLORS.text_dim
+            screen.blit(self.font.render(opt, True, color), (row.x + 10, row.y + 4))
 
     def _draw_rule_list(self, screen):
 
@@ -678,7 +847,7 @@ class AutotileRuleDesigner:
         pygame.draw.rect(screen, COLORS.border, self.group_list_area, 1)
 
         lbl_groups = self.title_font.render(
-            "Groups (F2: Rename)", True, COLORS.accent_hover
+            "Groups (F2/R-click)", True, COLORS.accent_hover
         )
         screen.blit(
             lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5)
@@ -725,9 +894,17 @@ class AutotileRuleDesigner:
         pygame.draw.rect(
             screen, COLORS.success, self.new_group_btn_rect, border_radius=4
         )
-        gntxt = self.font.render("+ New Group", True, COLORS.text)
+        gntxt = self.font.render("+ Group", True, COLORS.text)
         screen.blit(
-            gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5)
+            gntxt, (self.new_group_btn_rect.x + 8, self.new_group_btn_rect.y + 5)
+        )
+
+        pygame.draw.rect(
+            screen, (150, 80, 80), self.del_group_btn_rect, border_radius=4
+        )
+        dgntxt = self.font.render("Del Group", True, COLORS.text)
+        screen.blit(
+            dgntxt, (self.del_group_btn_rect.x + 8, self.del_group_btn_rect.y + 5)
         )
 
         pygame.draw.rect(screen, COLORS.panel, self.rule_list_area)
@@ -904,6 +1081,8 @@ class AutotileRuleDesigner:
                         for rule in group.rules:
                             rule.group_id = new_name
 
+                        self._migrate_tile_stamps(old_name, new_name)
+
                     self.renaming_group_idx = None
                     self.rename_input.is_focused = False
                     return True
@@ -917,6 +1096,23 @@ class AutotileRuleDesigner:
                     return True
 
         return False
+
+    def _migrate_tile_stamps(self, old_name: str, new_name: str) -> int:
+        """Rename tile ``autotile_group`` stamps so renamed groups keep working."""
+        migrated = 0
+        try:
+            manager = self.editor.tilemap.layer_manager
+        except Exception:
+            return 0
+        for layer in getattr(manager, "layers", []):
+            for tile in getattr(layer, "tiles", {}).values():
+                try:
+                    if tile.get("autotile_group") == old_name:
+                        tile["autotile_group"] = new_name
+                        migrated += 1
+                except Exception:
+                    continue
+        return migrated
 
     def _create_new_group_with_focus(self) -> None:
         """Create new group and immediately enter rename mode"""

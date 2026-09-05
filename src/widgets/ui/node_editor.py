@@ -16,9 +16,25 @@ from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class NodeEditor:
+    # Roomy layout metrics (single source of truth for event + draw code).
+    HEADER_H = 24
+    FIELDS_TOP = 32
+    FIELD_H = 22
+    FIELD_PITCH = 27
+    SECTION_GAP = 10
+    PRESET_H = 26
+    BUTTON_H = 28
+    BUTTON_GAP = 10
+    SIDE_PAD = 12
+    BOTTOM_PAD = 12
+
     def __init__(self, editor: "Editor", x: int, y: int, w: int = 260, h: int = 180):
         self.editor = editor
         self.rect = Rect(x, y, w, h)
+        # Dock slot: constructor position. Auto-reposition falls back here
+        # when no floating candidate clears the node + sidebar panels.
+        self._dock_x = x
+        self._dock_y = y
 
         self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
         self.font_bold = font_manager.get_font(
@@ -49,6 +65,44 @@ class NodeEditor:
     def _header_rect(self) -> Rect:
         return Rect(self.rect.x, self.rect.y, self.rect.width, 24)
 
+    def _sidebar_avoid_rects(self, screen_w: int) -> list[Rect]:
+        """Panels the floating editor must not cover (besides the node)."""
+        avoid: list[Rect] = [Rect(0, 0, screen_w, 65)]  # menu + toolbar strip
+        selector = getattr(self.editor, "node_selector", None)
+        if selector is not None and getattr(selector, "visible", False):
+            try:
+                avoid.append(selector.rect.copy())
+            except Exception:
+                pass
+        return avoid
+
+    @staticmethod
+    def _pick_position(
+        positions: list[tuple[int, int]],
+        panel_w: int,
+        panel_h: int,
+        screen_w: int,
+        screen_h: int,
+        avoid: list[Rect],
+    ) -> tuple[int, int]:
+        """First candidate (screen-clamped) clear of all avoid rects.
+
+        Falls back to the first candidate clamped on-screen when every
+        candidate overlaps something (tiny screens).
+        """
+        fallback: tuple[int, int] | None = None
+        for px, py in positions:
+            cx = max(10, min(px, screen_w - panel_w - 10))
+            cy = max(10, min(py, screen_h - panel_h - 10))
+            if fallback is None:
+                fallback = (cx, cy)
+            if not any(Rect(cx, cy, panel_w, panel_h).colliderect(a) for a in avoid):
+                return (cx, cy)
+        if fallback is None:
+            # No candidates at all: stay at the clamp floor.
+            return (10, 10)
+        return fallback
+
     def reposition_near_node(self):
         node = self.editor.node_manager.get_active_node()
         if node is None:
@@ -73,21 +127,40 @@ class NodeEditor:
             (sx, sy + sh + pad),
             (sx, sy - panel_h - pad),
         ]
-        best = None
-        for px, py in positions:
-            px = max(10, min(px, screen_w - panel_w - 10))
-            py = max(10, min(py, screen_h - panel_h - 10))
-            pr = Rect(px, py, panel_w, panel_h)
-            if not pr.colliderect(node_rect):
-                best = (px, py)
-                break
-        if best is None:
-            px = max(10, min(sx + sw + pad, screen_w - panel_w - 10))
-            py = max(10, min(sy, screen_h - panel_h - 10))
-            self.rect.x = px
-            self.rect.y = py
+        avoid = [node_rect] + self._sidebar_avoid_rects(screen_w)
+        best = self._pick_position(
+            positions, panel_w, panel_h, screen_w, screen_h, avoid
+        )
+        # Dock fallback: if even the clamped first candidate overlaps the
+        # sidebar (tiny screen), stay docked instead of covering the list.
+        dock = Rect(self._dock_x, self._dock_y, panel_w, panel_h)
+        probe = Rect(best[0], best[1], panel_w, panel_h)
+        if any(probe.colliderect(a) for a in avoid[1:]) and not any(
+            dock.colliderect(a) for a in avoid[1:]
+        ):
+            best = (self._dock_x, self._dock_y)
+        self.rect.x, self.rect.y = best
+
+    def _nudge_out_of_sidebar(self):
+        """After a manual drag, shift out of the node list if overlapping."""
+        selector = getattr(self.editor, "node_selector", None)
+        if selector is None or not getattr(selector, "visible", False):
+            return
+        try:
+            sel_rect = selector.rect
+        except Exception:
+            return
+        if not self.rect.colliderect(sel_rect):
+            return
+        try:
+            screen_w = self.editor.screen.get_width()
+        except Exception:
+            screen_w = 800
+        cand_x = sel_rect.right + 10
+        if cand_x + self.rect.width <= screen_w - 10:
+            self.rect.x = cand_x
         else:
-            self.rect.x, self.rect.y = best
+            self.rect.x, self.rect.y = self._dock_x, self._dock_y
 
     @property
     def editing_field(self) -> bool:
@@ -117,15 +190,20 @@ class NodeEditor:
         ]
 
     def _get_field_rects(self) -> list[tuple[str, Rect, Rect]]:
-        x = self.rect.x + 8
-        y = self.rect.y + 24
+        x = self.rect.x + self.SIDE_PAD
+        y = self.rect.y + self.FIELDS_TOP
         results = []
         for key, _label, _ in self._fields():
-            label_w = 40
-            label_rect = Rect(x, y, label_w, 18)
-            input_rect = Rect(x + label_w + 2, y, self.rect.width - label_w - 16, 18)
+            label_w = 44
+            label_rect = Rect(x, y, label_w, self.FIELD_H)
+            input_rect = Rect(
+                x + label_w + 4,
+                y,
+                self.rect.width - label_w - 2 * self.SIDE_PAD - 4,
+                self.FIELD_H,
+            )
             results.append((key, label_rect, input_rect))
-            y += 22
+            y += self.FIELD_PITCH
         return results
 
     def _get_input_at(self, pos) -> str | None:
@@ -134,12 +212,25 @@ class NodeEditor:
                 return key
         return None
 
+    def _fields_end_y(self) -> int:
+        return self.rect.y + self.FIELDS_TOP + len(self._fields()) * self.FIELD_PITCH
+
+    def _active_node_is_particle(self) -> bool:
+        node = self.editor.node_manager.get_active_node()
+        return node is not None and node.node_type == "particle_emitter"
+
     def _preset_rect(self) -> Rect | None:
-        if not self._is_particle:
+        if not self._active_node_is_particle():
             return None
-        y = self.rect.y + 24 + len(self._fields()) * 22 + 4
-        w = self.rect.width - 74
-        return Rect(self.rect.x + 64, y, w, 22)
+        y = self._fields_end_y() + self.SECTION_GAP
+        w = self.rect.width - 76
+        return Rect(self.rect.x + 64, y, w, self.PRESET_H)
+
+    def _buttons_top(self) -> int:
+        y = self._fields_end_y() + self.SECTION_GAP
+        if self._active_node_is_particle():
+            y += self.PRESET_H + self.SECTION_GAP
+        return y
 
     def _buttons(self):
         if not self.visible or self.editor.node_manager.active_group_name is not None:
@@ -147,21 +238,36 @@ class NodeEditor:
         node = self.editor.node_manager.get_active_node()
         if not node:
             return []
-        rows = len(self._fields())
-        if node.node_type == "particle_emitter":
-            rows += 1
-        y_base = self.rect.y + 24 + rows * 22 + 4
+        y_base = self._buttons_top()
         buttons = []
         self._is_particle = node.node_type == "particle_emitter"
         if self._is_particle:
-            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
+            r = Rect(self.rect.x + self.SIDE_PAD, y_base,
+                     self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
             buttons.append((r, "particle"))
-            r2 = Rect(self.rect.x + 8, y_base + 26, self.rect.width - 16, 22)
+            r2 = Rect(
+                self.rect.x + self.SIDE_PAD,
+                y_base + self.BUTTON_H + self.BUTTON_GAP,
+                self.rect.width - 2 * self.SIDE_PAD,
+                self.BUTTON_H,
+            )
             buttons.append((r2, "props"))
         else:
-            r = Rect(self.rect.x + 8, y_base, self.rect.width - 16, 22)
+            r = Rect(self.rect.x + self.SIDE_PAD, y_base,
+                     self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
             buttons.append((r, "props"))
         return buttons
+
+    def _content_height(self) -> int:
+        """Full panel height for current content + bottom padding."""
+        bottom = self._fields_end_y()
+        buttons = self._buttons()
+        if buttons:
+            bottom = buttons[-1][0].bottom
+        return bottom - self.rect.y + self.BOTTOM_PAD
+
+    def _fit_height_to_content(self):
+        self.rect.height = max(80, self._content_height())
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         if not self.visible:
@@ -175,7 +281,7 @@ class NodeEditor:
 
         mouse_pos = pygame.mouse.get_pos()
 
-        if self._is_particle and self._preset_dd is not None:
+        if self._active_node_is_particle() and self._preset_dd is not None:
             result = self._preset_dd.handle_event(event)
             if result is not None:
                 if result != "Custom":
@@ -244,6 +350,7 @@ class NodeEditor:
         if event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self._is_dragging:
                 self._is_dragging = False
+                self._nudge_out_of_sidebar()
                 return True
 
         if event.type == pygame.MOUSEMOTION and self._is_dragging:
@@ -383,6 +490,8 @@ class NodeEditor:
         if not self.visible:
             return
 
+        self._fit_height_to_content()
+
         mgr = self.editor.node_manager
         active_id = mgr.active_node_id
         if active_id != self._last_node_id:
@@ -399,7 +508,7 @@ class NodeEditor:
 
         title = "Group Editor" if mgr.active_group_name is not None else "Node Editor"
         header = self.font_bold.render(title, True, COLORS.text)
-        screen.blit(header, (self.rect.x + 8, self.rect.y + 6))
+        screen.blit(header, (self.rect.x + self.SIDE_PAD, self.rect.y + 7))
 
         fields = self._fields()
         field_data = self._get_field_rects()
@@ -408,7 +517,7 @@ class NodeEditor:
             field_data, fields, strict=False
         ):
             lbl = self.font.render(flabel, True, COLORS.text_dim)
-            screen.blit(lbl, (label_rect.x, label_rect.y + 2))
+            screen.blit(lbl, (label_rect.x, label_rect.y + 4))
 
             pygame.draw.rect(
                 screen, COLORS.panel_alt, input_rect, border_radius=SHAPE.radius_sm
@@ -425,7 +534,7 @@ class NodeEditor:
                     txt_w = base_txt.get_width()
                     txt_h = base_txt.get_height()
                     highlight_rect = Rect(
-                        input_rect.x + 3, input_rect.y + 2, max(4, txt_w), txt_h
+                        input_rect.x + 4, input_rect.y + 3, max(4, txt_w), txt_h
                     )
                     pygame.draw.rect(screen, (50, 100, 200), highlight_rect)
                     txt = self.font_input.render(
@@ -439,7 +548,7 @@ class NodeEditor:
             else:
                 txt = self.font_input.render(fvalue, True, COLORS.text_muted)
 
-            screen.blit(txt, (input_rect.x + 3, input_rect.y + 2))
+            screen.blit(txt, (input_rect.x + 4, input_rect.y + 5))
 
         node = mgr.get_active_node()
         is_particle = node is not None and node.node_type == "particle_emitter"
@@ -449,7 +558,7 @@ class NodeEditor:
             pr = self._preset_rect()
             if pr:
                 lbl = self.font.render("Preset", True, COLORS.text_dim)
-                screen.blit(lbl, (pr.x - 58, pr.y + 2))
+                screen.blit(lbl, (pr.x - 58, pr.y + 6))
 
                 owner = node.node_id if node else None
                 if (

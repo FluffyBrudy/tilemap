@@ -313,31 +313,7 @@ class TileGrid:
 
             if event.key == pygame.K_f:
                 if is_hovering and self.hover_cell:
-                    res = self.get_selected_brush()
-                    if res:
-                        self.editor.tilemap.capture_history("Flood Fill")
-                        tileset_index, tileset_data, src_rect = res
-                        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
-                        assert tileset_data is not None
-                        assert src_rect is not None
-
-                        if active_layer and active_layer.layer_type == "tile":
-                            tile_w, tile_h = self.tile_size
-                            sheet_cols = tileset_data.surface.get_width() // tile_w
-                            variant_id = (src_rect[1] // tile_h * sheet_cols) + (src_rect[0] // tile_w)
-
-                            assert tileset_index is not None
-                            new_data: TypeTile = {
-                                "ttype": tileset_index,
-                                "variant": variant_id,
-                                "pos": (0, 0),
-                            }
-                            active_layer.flood_fill(
-                                self.hover_cell,
-                                new_data,
-                                self.editor.tilemap.map_size,
-                                offset=self.editor.tilemap.offset,
-                            )
+                    self.flood_fill_at_hover()
                 return True
 
             if event.key == pygame.K_g:
@@ -440,6 +416,11 @@ class TileGrid:
                         self.remove_tile()
                     return True
 
+                if self.editor.tool_manager.is_active(ToolKind.FILL):
+                    if is_hovering and self.hover_cell:
+                        self.flood_fill_at_hover()
+                    return True
+
                 if is_hovering and not self.is_panning:
                     self.editor.tilemap.capture_history("Place Tile")
                     self.place_tile()
@@ -517,6 +498,7 @@ class TileGrid:
         if (
             not self.editor.tool_manager.is_active(ToolKind.PAN)
             and not self.editor.tool_manager.is_active(ToolKind.SELECT)
+            and not self.editor.tool_manager.is_active(ToolKind.FILL)
             and not self.is_panning
         ) and buttons[0] and is_hovering:
             if self.editor.tool_manager.is_active(ToolKind.ERASER):
@@ -526,6 +508,13 @@ class TileGrid:
             return True
 
         return False
+
+    def _tileset_map(self) -> dict:
+        """Tileset index -> data map, empty when no tileset widget is live."""
+        ts_widget = getattr(self.editor, "tileset_widget", None)
+        if ts_widget is None:
+            return {}
+        return getattr(ts_widget, "tileset_map", {})
 
     def get_selected_brush(self):
         ts_widget = self.editor.tileset_widget
@@ -635,11 +624,17 @@ class TileGrid:
 
             active_layer.add_object((pixel_x, pixel_y), obj_data)
         else:
-            vg_map: dict = {}
             autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
+            vg_map: dict = {}
+            selected_group: str | None = None
             if autotile_ok:
                 vg_map = self.editor.autotiler.variant_to_group
+                groups = getattr(self.editor.autotiler, "groups", [])
+                gidx = getattr(self.editor.autotiler, "selected_group_idx", -1)
+                if 0 <= gidx < len(groups):
+                    selected_group = groups[gidx].name
 
+            reassigned: dict[str, int] = {}
             for y_off in range(sel_h_tiles):
                 for x_off in range(sel_w_tiles):
                     curr_sx = start_sx + x_off
@@ -666,13 +661,16 @@ class TileGrid:
                         tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
 
                     if autotile_ok:
-                        auto_group = vg_map.get((tileset_index, variant_id))
-                        if auto_group:
-                            tile_data["autotile_group"] = auto_group
-                        elif self.editor.autotiler.groups:
-                            gidx = self.editor.autotiler.selected_group_idx
-                            if 0 <= gidx < len(self.editor.autotiler.groups):
-                                tile_data["autotile_group"] = self.editor.autotiler.groups[gidx].name
+                        # Prefer the selected group so a second ruleset reusing
+                        # the same tiles can actually be painted; fall back to
+                        # the first-group-wins owner map when nothing selected.
+                        owner = vg_map.get((tileset_index, variant_id))
+                        if selected_group:
+                            tile_data["autotile_group"] = selected_group
+                            if owner and owner != selected_group:
+                                reassigned[owner] = reassigned.get(owner, 0) + 1
+                        elif owner:
+                            tile_data["autotile_group"] = owner
 
                     active_layer.set_tile(target_pos, tile_data)
 
@@ -680,6 +678,19 @@ class TileGrid:
                         rules = self.editor.autotiler.rules
                         if rules:
                             active_layer.autotile_at_pos(target_pos, rules)
+
+            if autotile_ok and reassigned:
+                total = sum(reassigned.values())
+                detail = ", ".join(
+                    f"{n} from '{o}'" for o, n in sorted(reassigned.items()))
+                notifications = getattr(self.editor, "notifications", None)
+                if notifications is not None:
+                    try:
+                        notifications.notify(
+                            f"Reassigned {total} tile(s) to "
+                            f"'{selected_group}' ({detail})")
+                    except Exception:
+                        pass
 
     def _place_object_free(
         self,
@@ -742,6 +753,57 @@ class TileGrid:
         }
 
         active_layer.add_object((world_pos[0], world_pos[1]), obj_data)
+
+    def flood_fill_at_hover(self) -> bool:
+        """Flood fill at the hover cell with the selected brush.
+
+        Shared by the F key and the Fill tool. Returns True if a fill ran.
+        """
+        if not self.hover_cell:
+            return False
+        res = self.get_selected_brush()
+        if not res:
+            return False
+        tileset_index, tileset_data, src_rect = res
+        if tileset_index is None or not tileset_data or not src_rect:
+            # No brush selected (e.g. Fill clicked before picking a tile):
+            # no-op instead of crashing on the asserts below.
+            return False
+        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+        if not active_layer or active_layer.layer_type != "tile":
+            return False
+        self.editor.tilemap.capture_history("Flood Fill")
+        tile_w, tile_h = self.tile_size
+        sheet_cols = tileset_data.surface.get_width() // tile_w
+        variant_id = (src_rect[1] // tile_h * sheet_cols) + (src_rect[0] // tile_w)
+
+        new_data: TypeTile = {
+            "ttype": tileset_index,
+            "variant": variant_id,
+            "pos": (0, 0),
+        }
+        if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
+            autotiler = self.editor.autotiler
+            stamp: str | None = None
+            groups = getattr(autotiler, "groups", [])
+            gidx = getattr(autotiler, "selected_group_idx", -1)
+            if 0 <= gidx < len(groups):
+                stamp = groups[gidx].name
+            if stamp is None:
+                try:
+                    stamp = autotiler.variant_to_group.get(
+                        (tileset_index, variant_id))
+                except Exception:
+                    stamp = None
+            if stamp:
+                new_data["autotile_group"] = stamp
+        active_layer.flood_fill(
+            self.hover_cell,
+            new_data,
+            self.editor.tilemap.map_size,
+            offset=self.editor.tilemap.offset,
+        )
+        return True
 
     def remove_tile(self):
         """Remove tile or object at hover position."""
@@ -1522,6 +1584,8 @@ class TileGrid:
                 parts.append("Tool: Select")
         elif self.editor.tool_manager.is_active(ToolKind.ERASER):
             parts.append("Tool: Eraser")
+        elif self.editor.tool_manager.is_active(ToolKind.FILL):
+            parts.append("Tool: Fill")
         elif self.editor.tool_manager.is_active(ToolKind.PAN):
             parts.append("Tool: Pan")
         else:
@@ -1561,8 +1625,7 @@ class TileGrid:
         start_row = int(self.scroll_y // eff_h)
         end_row = int((self.scroll_y + visible_world_h) // eff_h) + 1
 
-        assert self.editor.tileset_widget is not None
-        tileset_map = self.editor.tileset_widget.tileset_map
+        tileset_map = self._tileset_map()
 
         rendered_layers = tilemap.layer_manager.get_rendered_layers()
 
@@ -2025,6 +2088,9 @@ class TileGrid:
         }
 
         visible = editing or showing
+        if not visible:
+            # Viewer closed: no ghost rects on the canvas.
+            return
         active = nm.get_active_node() if visible else None
         for node in nm.nodes.values():
             sx, sy = self._node_to_screen(node.area.x, node.area.y)
@@ -2421,8 +2487,7 @@ class TileGrid:
 
         preview_surf = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
 
-        assert self.editor.tileset_widget is not None
-        tileset_map = self.editor.tileset_widget.tileset_map
+        tileset_map = self._tileset_map()
 
         if active_layer.layer_type == "tile":
             for gy in range(oy1, oy2 + 1):

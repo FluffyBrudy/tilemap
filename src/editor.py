@@ -860,6 +860,13 @@ class Editor:
         self.notifications.notify(f"Autotile Mode {status}")
         self.menubar._layout_menus()
 
+    def toggle_node_editing(self):
+        """Enter/exit node manager (shared by shortcut + toolbar)."""
+        self.node_editing_mode = not self.node_editing_mode
+        if self.node_editing_mode:
+            self.show_nodes = False
+            self.tool_manager.deactivate()
+
     def open_map_setup(self):
         if self.map_setup_widget is None:
             logger.warning({"msg": "map_setup_widget is not initialized"})
@@ -1263,7 +1270,11 @@ class Editor:
 
     def flood_fill_active(self):
 
-        print("Flood Fill: Press 'F' while hovering over the target cell in the grid.")
+        from widgets.ui.tool_manager import ToolKind
+
+        self.tool_manager.toggle(ToolKind.FILL)
+        if self.tool_manager.is_active(ToolKind.FILL):
+            self.notifications.notify("Fill Tool: click a cell (F also works)")
 
     def exit_editor(self):
         """Clean up and exit the editor."""
@@ -1387,10 +1398,7 @@ class Editor:
                     self.tilemap.redo()
                     continue
                 if event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
-                    self.node_editing_mode = not self.node_editing_mode
-                    if self.node_editing_mode:
-                        self.show_nodes = False
-                        self.tool_manager.deactivate()
+                    self.toggle_node_editing()
                     continue
                 if event.key == pygame.K_n and (ctrl_held or meta_held):
                     self.open_map_setup()
@@ -1435,9 +1443,12 @@ class Editor:
                             self.tilemap.layer_manager.set_active_layer(idx)
                         continue
 
-            if self.node_selector and self.node_selector.handle_event(event):
-                continue
+            # Node editor is drawn on top of the selector, so it gets
+            # first pick on mouse events; it returns False outside its
+            # rect, leaving the selector unaffected elsewhere.
             if self.node_editor and self.node_editor.handle_event(event):
+                continue
+            if self.node_selector and self.node_selector.handle_event(event):
                 continue
 
             if self.toolbar and self.toolbar.handle_event(event):

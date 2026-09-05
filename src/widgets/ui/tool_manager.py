@@ -5,6 +5,7 @@ class ToolKind(Enum):
     PAINT = "paint"
     SELECT = "select"
     ERASER = "eraser"
+    FILL = "fill"
     PAN = "pan"
 
 
