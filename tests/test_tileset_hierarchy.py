@@ -416,6 +416,9 @@ class TestLayerRenameCharset:
         def __init__(self, lm):
             self.layer_manager = lm
 
+        def capture_history(self, description=""):
+            pass
+
     class FakeEd:
         def __init__(self, lm):
             self.tilemap = TestLayerRenameCharset.FakeTM(lm)

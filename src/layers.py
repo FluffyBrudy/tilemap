@@ -60,6 +60,7 @@ class Layer:
             "variant_to_group": {},
             "rules_by_group": {},
             "significant_offsets": set(),
+            "offsets_by_group": {},
         }
 
     def set_tile(self, pos: tuple[int, int], tile: TypeTile) -> None:
@@ -110,23 +111,42 @@ class Layer:
         if not rules or not positions:
             return 0
 
-        rules_hash = hash(tuple((r.group_id, r.tileset_index, tuple(sorted(r.variant_ids))) for r in rules))
+        rules_hash = hash(
+            tuple(
+                (
+                    r.group_id,
+                    r.tileset_index,
+                    tuple(sorted(r.variant_ids)),
+                    tuple(sorted(r.neighbors)),
+                )
+                for r in rules
+            )
+        )
 
         if self._autotile_cache["rules_hash"] != rules_hash:
             variant_to_group: dict[tuple[int, int], str] = {}
             rules_by_group: dict[str, list[AutotileRule]] = {}
             significant_offsets: set[tuple[int, int]] = set()
+            offsets_by_group: dict[str, set[tuple[int, int]]] = {}
 
             for rule in rules:
                 gid = rule.group_id
                 if gid not in rules_by_group:
                     rules_by_group[gid] = []
+                    offsets_by_group[gid] = set()
                 rules_by_group[gid].append(rule)
 
                 ts_idx = rule.tileset_index
                 for vid in rule.variant_ids:
-                    variant_to_group[(ts_idx, vid)] = gid
+                    # First-group-wins: matches
+                    # AutotileRuleDesigner.variant_to_group, paint-time
+                    # stamping and tile inspect, so overlapping variants
+                    # resolve deterministically everywhere.
+                    key = (ts_idx, vid)
+                    if key not in variant_to_group:
+                        variant_to_group[key] = gid
 
+                offsets_by_group[gid].update(rule.neighbors)
                 significant_offsets.update(rule.neighbors)
 
             for gid in rules_by_group:
@@ -138,12 +158,14 @@ class Layer:
                     "variant_to_group": variant_to_group,
                     "rules_by_group": rules_by_group,
                     "significant_offsets": significant_offsets,
+                    "offsets_by_group": offsets_by_group,
                 }
             )
         else:
             variant_to_group = self._autotile_cache["variant_to_group"]
             rules_by_group = self._autotile_cache["rules_by_group"]
             significant_offsets = self._autotile_cache["significant_offsets"]
+            offsets_by_group = self._autotile_cache.get("offsets_by_group", {})
 
         changes_count = 0
 
@@ -188,7 +210,14 @@ class Layer:
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
+            # Per-group significance: a tile only considers neighbor
+            # offsets its own group cares about, so adding a group with
+            # new offsets (e.g. diagonals) can't break matching of groups
+            # that ignore them. Falls back to the global union for groups
+            # missing from the cache (defensive).
+            group_offsets = offsets_by_group.get(
+                target_group_id, significant_offsets)
+            neighbor_offsets_set = {n for n in actual_neighbors if n in group_offsets}
 
             matched_rule: AutotileRule | None = None
             new_variant: int | None = None

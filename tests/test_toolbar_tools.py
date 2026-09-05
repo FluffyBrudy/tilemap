@@ -47,12 +47,20 @@ class FakeEditor:
         self.autotile_mode = False
         self.tile_grid_widget = None
         self.tooltip = FakeTooltip()
+        self.show_nodes = False
+        self.node_editing_mode = False
 
     def toggle_grid(self):
         pass
 
     def toggle_auto_autotile(self):
         pass
+
+    def toggle_node_editing(self):
+        self.node_editing_mode = not self.node_editing_mode
+        if self.node_editing_mode:
+            self.show_nodes = False
+            self.tool_manager.deactivate()
 
 
 def make_toolbar(x=0, y=0, w=800, h=35) -> "Toolbar":
@@ -212,3 +220,94 @@ class TestButtonLayout:
         assert not pan_r.colliderect(sel_r)
         assert not pan_r.colliderect(ers_r)
         assert not sel_r.colliderect(ers_r)
+
+
+class TestEditNodesButton:
+    def test_edit_nodes_button_registered(self):
+        tb = make_toolbar()
+        assert _find_button(tb, "edit_nodes") is not None
+
+    def test_click_edit_nodes_enters_editing(self):
+        tb = make_toolbar()
+        click_button(tb, "edit_nodes")
+        assert tb.editor.node_editing_mode is True
+        assert tb.editor.show_nodes is False
+
+    def test_click_edit_nodes_twice_exits_editing(self):
+        tb = make_toolbar()
+        click_button(tb, "edit_nodes")
+        click_button(tb, "edit_nodes")
+        assert tb.editor.node_editing_mode is False
+
+    def test_edit_nodes_active_state_follows_mode(self):
+        tb = make_toolbar()
+        tb._update_active_states()
+        assert _find_button(tb, "edit_nodes").active is False
+        click_button(tb, "edit_nodes")
+        tb._update_active_states()
+        assert _find_button(tb, "edit_nodes").active is True
+
+    def test_edit_nodes_tooltip_mentions_shortcut(self):
+        tb = make_toolbar()
+        btn = _find_button(tb, "edit_nodes")
+        assert "Ctrl+Shift+N" in btn.tooltip_text
+
+    def test_nodes_overlay_tooltip_no_longer_claims_shortcut(self):
+        tb = make_toolbar()
+        btn = _find_button(tb, "nodes")
+        assert "Ctrl+Shift+N" not in btn.tooltip_text
+
+    def test_overlay_button_disables_editing(self):
+        tb = make_toolbar()
+        click_button(tb, "edit_nodes")
+        click_button(tb, "nodes")
+        assert tb.editor.show_nodes is True
+        assert tb.editor.node_editing_mode is False
+
+    def test_edit_nodes_does_not_overlap_neighbors(self):
+        tb = make_toolbar()
+        edit_r = _find_button(tb, "edit_nodes").rect
+        nodes_r = _find_button(tb, "nodes").rect
+        zoom_out_r = _find_button(tb, "zoom_out").rect
+        assert not edit_r.colliderect(nodes_r)
+        assert not edit_r.colliderect(zoom_out_r)
+
+
+class TestFillButton:
+    def test_fill_button_registered(self):
+        tb = make_toolbar()
+        assert _find_button(tb, "fill") is not None
+
+    def test_click_fill_activates_fill_tool(self):
+        tb = make_toolbar()
+        click_button(tb, "fill")
+        assert tb.editor.tool_manager.is_active(ToolKind.FILL)
+
+    def test_click_fill_twice_deactivates(self):
+        tb = make_toolbar()
+        click_button(tb, "fill")
+        click_button(tb, "fill")
+        assert not tb.editor.tool_manager.is_active(ToolKind.FILL)
+
+    def test_fill_active_state_follows_tool(self):
+        tb = make_toolbar()
+        tb._update_active_states()
+        assert _find_button(tb, "fill").active is False
+        click_button(tb, "fill")
+        tb._update_active_states()
+        assert _find_button(tb, "fill").active is True
+
+    def test_fill_deactivates_when_eraser_picked(self):
+        tb = make_toolbar()
+        click_button(tb, "fill")
+        click_button(tb, "eraser")
+        assert tb.editor.tool_manager.is_active(ToolKind.ERASER)
+        assert not tb.editor.tool_manager.is_active(ToolKind.FILL)
+
+    def test_fill_does_not_overlap_neighbors(self):
+        tb = make_toolbar()
+        fill_r = _find_button(tb, "fill").rect
+        ers_r = _find_button(tb, "eraser").rect
+        grid_r = _find_button(tb, "grid").rect
+        assert not fill_r.colliderect(ers_r)
+        assert not fill_r.colliderect(grid_r)

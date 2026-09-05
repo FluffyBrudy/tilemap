@@ -130,6 +130,9 @@ class LayerSelector:
                                 layer_idx
                             )
                             if layer:
+                                self.editor.tilemap.capture_history(
+                                    "Toggle Layer Visibility"
+                                )
                                 layer.visible = not layer.visible
                                 return True
 
@@ -139,6 +142,7 @@ class LayerSelector:
                                 layer_idx
                             )
                             if layer:
+                                self.editor.tilemap.capture_history("Toggle Layer Lock")
                                 layer.locked = not layer.locked
                                 return True
 
@@ -148,6 +152,9 @@ class LayerSelector:
                                 layer_idx
                             )
                             if layer:
+                                self.editor.tilemap.capture_history(
+                                    "Toggle Layer Y-Sort"
+                                )
                                 layer.y_sort = not layer.y_sort
                                 return True
 
@@ -157,6 +164,10 @@ class LayerSelector:
                                 layer_idx
                             )
                             if layer:
+                                # Capture once at drag start; motion updates follow.
+                                self.editor.tilemap.capture_history(
+                                    "Adjust Layer Opacity"
+                                )
                                 self._adjusting_opacity_idx = layer_idx
                                 rel_x = mouse_pos[0] - opacity_rect.x
                                 layer.opacity = max(
@@ -204,6 +215,7 @@ class LayerSelector:
             if event.button == 1 and self.dragging_layer_idx is not None:
                 layer_idx = self._get_layer_at_pos(mouse_pos)
                 if layer_idx is not None and layer_idx != self.dragging_layer_idx:
+                    self.editor.tilemap.capture_history("Reorder Layers")
                     self.editor.tilemap.layer_manager.reorder_layer(
                         self.dragging_layer_idx, layer_idx
                     )
@@ -392,7 +404,10 @@ class LayerSelector:
             return
         count = self.editor.tilemap.layer_manager.get_layer_count()
         name = f"Layer {count + 1}"
+        self.editor.tilemap.capture_history("Add Layer")
         self.editor.tilemap.layer_manager.create_layer(name, layer_type=layer_type)
+        # Focus the new layer immediately instead of staying on the old one.
+        self.editor.tilemap.layer_manager.set_active_layer(count)
 
     def _initial_image_rect(self) -> dict[str, int]:
         """Return the image rectangle that covers the current map in pixels."""
@@ -468,8 +483,12 @@ class LayerSelector:
 
     def _remove_layer(self) -> None:
         """Remove the currently active layer."""
-        active_idx = self.editor.tilemap.layer_manager.active_layer_idx
-        if self.editor.tilemap.layer_manager.delete_layer(active_idx):
+        mgr = self.editor.tilemap.layer_manager
+        if len(mgr.layers) <= 1:
+            self.editor.notifications.notify("Cannot delete the last layer")
+            return
+        self.editor.tilemap.capture_history("Delete Layer")
+        if mgr.delete_layer(mgr.active_layer_idx):
             if hasattr(self.editor, 'tile_grid_widget') and self.editor.tile_grid_widget:
                 self.editor.tile_grid_widget.invalidate_image_cache()
 
@@ -495,7 +514,8 @@ class LayerSelector:
             self._cancel_rename()
             return
         layer = layers[self.renaming_layer_idx]
-        if new_name and layer:
+        if new_name and layer and new_name != layer.name:
+            self.editor.tilemap.capture_history("Rename Layer")
             layer.name = new_name
         self._cancel_rename()
 
@@ -518,6 +538,7 @@ class LayerSelector:
 
     def _save_layer_properties(self, ctx: PropertyContext, props: dict):
         layer = ctx.target
+        self.editor.tilemap.capture_history("Edit Layer Properties")
         layer.properties = props
         self.editor.suggestion_registry.refresh(self.editor)
         print(f"Saved properties for layer: {layer.name}")
