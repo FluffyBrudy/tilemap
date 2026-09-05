@@ -195,3 +195,33 @@ class TestPropsHistory:
         assert layer.properties == {"tag": "x"}
         ed.tilemap.undo()
         assert ed.tilemap.layer_manager.get_layer(0).properties == {}
+
+
+def key_event(key):
+    return pygame.event.Event(pygame.KEYDOWN, {"key": key, "unicode": ""})
+
+
+class TestListKeys:
+    def test_delete_key_removes_active(self, monkeypatch):
+        ed = FakeEditor()
+        s = make_selector(ed)
+        ed.tilemap.layer_manager.set_active_layer(1)
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
+        assert s.handle_event(key_event(pygame.K_DELETE)) is True
+        assert ed.tilemap.layer_manager.get_layer_count() == 1
+
+    def test_up_down_move_active(self, monkeypatch):
+        ed = FakeEditor()
+        s = make_selector(ed)
+        mgr = ed.tilemap.layer_manager
+        mgr.create_layer("Extra", layer_type="tile")
+        mgr.set_active_layer(1)
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
+        s.handle_event(key_event(pygame.K_DOWN))
+        assert mgr.active_layer_idx == 2
+        s.handle_event(key_event(pygame.K_UP))
+        s.handle_event(key_event(pygame.K_UP))
+        assert mgr.active_layer_idx == 0
+        # clamps at bounds
+        s.handle_event(key_event(pygame.K_UP))
+        assert mgr.active_layer_idx == 0

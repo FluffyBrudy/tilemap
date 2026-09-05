@@ -136,11 +136,8 @@ class StandaloneFileManager:
                     )
 
                     continue
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self._on_cancel()
-                        break
-
+                # NOTE: ESC is local-cancel only (handled by the widget);
+                # close via Cancel button, selection, or window.
                 self.file_manager.handle_event(event)
 
             self.screen.fill(COLORS.bg)

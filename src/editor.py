@@ -107,7 +107,7 @@ def _load_project_config() -> tuple[Path, Path, dict]:
 
     defaults = {
         "theme": "dark",
-        "themes_list": ["dark", "molokai", "light", "semi_light"],
+        "themes_list": ["dark", "midnight", "nord", "molokai", "light", "semi_light"],
         "nodes_path": "nodes",
         "collision_paths": {"tileset": "collision", "character": "character_collision"},
     }
@@ -867,6 +867,12 @@ class Editor:
             self.show_nodes = False
             self.tool_manager.deactivate()
 
+    def toggle_show_nodes(self):
+        """Toggle the passive node overlay (shared by toolbar + View menu)."""
+        self.show_nodes = not self.show_nodes
+        if self.show_nodes:
+            self.node_editing_mode = False
+
     def open_map_setup(self):
         if self.map_setup_widget is None:
             logger.warning({"msg": "map_setup_widget is not initialized"})
@@ -906,6 +912,30 @@ class Editor:
         self.tilemap.redo()
         if self.tile_grid_widget:
             self.tile_grid_widget.invalidate_bounds_cache()
+
+    def edit_copy(self):
+        grid = self.tile_grid_widget
+        if grid and grid.selection_rect:
+            grid.copy_selection()
+
+    def edit_cut(self):
+        grid = self.tile_grid_widget
+        if grid and grid.selection_rect:
+            grid.copy_selection()
+            self.tilemap.capture_history("Cut Selection")
+            grid.delete_selection()
+
+    def edit_paste(self):
+        grid = self.tile_grid_widget
+        if grid and grid.clipboard and grid.hover_cell:
+            self.tilemap.capture_history("Paste")
+            grid.paste_clipboard(grid.hover_cell)
+
+    def edit_delete(self):
+        grid = self.tile_grid_widget
+        if grid and grid.selection_rect:
+            self.tilemap.capture_history("Delete Selection")
+            grid.delete_selection()
 
     def toggle_grid(self):
         if self.tile_grid_widget:

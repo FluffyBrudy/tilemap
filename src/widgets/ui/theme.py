@@ -12,26 +12,26 @@ Color = tuple[int, int, int]
 
 @dataclass(frozen=True)
 class UIColorSet:
-    bg: Color = (28, 30, 35)
-    panel: Color = (34, 38, 44)
-    panel_alt: Color = (30, 34, 40)
-    header: Color = (42, 46, 52)
-    border: Color = (68, 72, 82)
-    border_soft: Color = (55, 60, 70)
-    text: Color = (230, 230, 230)
-    text_dim: Color = (150, 150, 150)
-    text_muted: Color = (120, 120, 120)
+    bg: Color = (16, 18, 24)
+    panel: Color = (24, 27, 35)
+    panel_alt: Color = (19, 22, 29)
+    header: Color = (33, 37, 48)
+    border: Color = (54, 60, 76)
+    border_soft: Color = (36, 41, 54)
+    text: Color = (232, 234, 240)
+    text_dim: Color = (158, 164, 178)
+    text_muted: Color = (118, 124, 140)
     text_on_accent: Color = (255, 255, 255)
     text_on_selected: Color = (255, 255, 255)
-    accent: Color = (80, 120, 200)
-    accent_hover: Color = (100, 140, 220)
-    accent_active: Color = (70, 110, 190)
-    success: Color = (80, 180, 120)
-    danger: Color = (200, 80, 80)
-    danger_hover: Color = (160, 60, 60)
-    warning: Color = (220, 180, 80)
-    hover: Color = (55, 60, 70)
-    selected: Color = (50, 70, 110)
+    accent: Color = (82, 132, 250)
+    accent_hover: Color = (110, 155, 255)
+    accent_active: Color = (62, 108, 220)
+    success: Color = (74, 184, 124)
+    danger: Color = (224, 92, 96)
+    danger_hover: Color = (180, 70, 76)
+    warning: Color = (232, 184, 84)
+    hover: Color = (36, 41, 56)
+    selected: Color = (44, 66, 128)
     overlay: Color = (0, 0, 0)
     shadow: Color = (0, 0, 0)
     scrollbar_thumb: Color = (85, 90, 100)
@@ -64,38 +64,38 @@ class UIColorSet:
 
 
 DARK_COLORS = UIColorSet(
-    bg=(28, 30, 35),
-    panel=(34, 38, 44),
-    panel_alt=(30, 34, 40),
-    header=(42, 46, 52),
-    border=(68, 72, 82),
-    border_soft=(55, 60, 70),
-    text=(230, 230, 230),
-    text_dim=(155, 160, 170),
-    text_muted=(120, 125, 135),
-    accent=(80, 120, 200),
-    accent_hover=(100, 140, 220),
-    accent_active=(70, 110, 190),
-    success=(80, 180, 120),
-    danger=(200, 80, 80),
-    danger_hover=(160, 60, 60),
-    warning=(220, 180, 80),
-    hover=(58, 64, 78),
-    selected=(50, 70, 110),
+    bg=(16, 18, 24),
+    panel=(24, 27, 35),
+    panel_alt=(19, 22, 29),
+    header=(33, 37, 48),
+    border=(54, 60, 76),
+    border_soft=(36, 41, 54),
+    text=(232, 234, 240),
+    text_dim=(158, 164, 178),
+    text_muted=(118, 124, 140),
+    accent=(82, 132, 250),
+    accent_hover=(110, 155, 255),
+    accent_active=(62, 108, 220),
+    success=(74, 184, 124),
+    danger=(224, 92, 96),
+    danger_hover=(180, 70, 76),
+    warning=(232, 184, 84),
+    hover=(36, 41, 56),
+    selected=(44, 66, 128),
     overlay=(0, 0, 0),
     shadow=(0, 0, 0),
-    scrollbar_thumb=(85, 90, 100),
-    scrollbar_thumb_hover=(105, 110, 120),
+    scrollbar_thumb=(78, 86, 104),
+    scrollbar_thumb_hover=(100, 110, 130),
 )
 MOLOKAI_COLORS = UIColorSet(
-    # Base
-    bg=(32, 35, 42),
-    panel=(40, 43, 51),
-    panel_alt=(35, 38, 46),
-    header=(46, 49, 58),
+    # Base - stepped elevation
+    bg=(26, 29, 36),
+    panel=(36, 39, 48),
+    panel_alt=(30, 33, 41),
+    header=(44, 47, 57),
     # Borders
-    border=(68, 72, 82),
-    border_soft=(56, 60, 70),
+    border=(62, 66, 78),
+    border_soft=(46, 50, 62),
     # Text
     text=(235, 238, 242),
     text_dim=(170, 176, 185),
@@ -110,7 +110,7 @@ MOLOKAI_COLORS = UIColorSet(
     danger_hover=(235, 105, 110),
     warning=(235, 175, 70),
     # Interaction
-    hover=(58, 64, 75),
+    hover=(50, 56, 68),
     selected=(48, 91, 145),
 )
 
@@ -136,15 +136,15 @@ LIGHT_COLORS = UIColorSet(
 )
 
 SEMI_LIGHT_COLORS = UIColorSet(
-    bg=(60, 63, 68),
-    panel=(55, 58, 63),
-    panel_alt=(50, 52, 57),
-    header=(65, 68, 73),
-    border=(80, 82, 87),
-    border_soft=(70, 72, 77),
-    text=(220, 220, 220),
-    text_dim=(140, 140, 140),
-    text_muted=(110, 110, 110),
+    bg=(52, 55, 61),
+    panel=(64, 67, 73),
+    panel_alt=(57, 60, 66),
+    header=(72, 75, 81),
+    border=(92, 94, 99),
+    border_soft=(78, 80, 85),
+    text=(228, 228, 228),
+    text_dim=(150, 150, 150),
+    text_muted=(118, 118, 118),
     accent=(90, 130, 210),
     accent_hover=(110, 150, 230),
     accent_active=(80, 120, 200),
@@ -152,7 +152,7 @@ SEMI_LIGHT_COLORS = UIColorSet(
     danger=(210, 90, 90),
     danger_hover=(190, 80, 80),
     warning=(230, 180, 90),
-    hover=(75, 80, 85),
+    hover=(80, 84, 90),
     selected=(60, 100, 160),
 )
 
@@ -179,6 +179,58 @@ MONOKAI_COLORS = UIColorSet(
     text_on_selected=(248, 248, 242),
 )
 
+MIDNIGHT_COLORS = UIColorSet(
+    # Deep-navy modern dark: strong elevation steps, teal accent
+    bg=(10, 13, 22),
+    panel=(17, 21, 33),
+    panel_alt=(13, 16, 26),
+    header=(25, 30, 46),
+    border=(48, 56, 82),
+    border_soft=(32, 38, 58),
+    text=(231, 236, 245),
+    text_dim=(152, 162, 184),
+    text_muted=(112, 121, 144),
+    text_on_accent=(255, 255, 255),
+    accent=(45, 190, 205),
+    accent_hover=(80, 210, 222),
+    accent_active=(32, 158, 172),
+    success=(70, 200, 150),
+    danger=(235, 95, 110),
+    danger_hover=(195, 75, 90),
+    warning=(240, 190, 90),
+    hover=(28, 34, 52),
+    selected=(26, 84, 102),
+    text_on_selected=(235, 248, 250),
+    scrollbar_thumb=(64, 74, 102),
+    scrollbar_thumb_hover=(86, 98, 128),
+)
+
+NORD_COLORS = UIColorSet(
+    # Frosted nord dark: cool slate surfaces, icy blue accent
+    bg=(32, 36, 47),
+    panel=(43, 48, 62),
+    panel_alt=(37, 42, 54),
+    header=(52, 57, 73),
+    border=(70, 78, 98),
+    border_soft=(54, 61, 78),
+    text=(229, 233, 240),
+    text_dim=(160, 171, 189),
+    text_muted=(122, 132, 152),
+    text_on_accent=(30, 34, 44),
+    accent=(136, 192, 208),
+    accent_hover=(158, 206, 220),
+    accent_active=(110, 168, 186),
+    success=(163, 190, 140),
+    danger=(191, 97, 106),
+    danger_hover=(210, 120, 128),
+    warning=(235, 203, 139),
+    hover=(55, 62, 79),
+    selected=(67, 76, 94),
+    text_on_selected=(236, 239, 244),
+    scrollbar_thumb=(88, 98, 120),
+    scrollbar_thumb_hover=(110, 121, 144),
+)
+
 
 THEMES: dict[str, UIColorSet] = {
     "dark": DARK_COLORS,
@@ -186,6 +238,8 @@ THEMES: dict[str, UIColorSet] = {
     "light": LIGHT_COLORS,
     "semi_light": SEMI_LIGHT_COLORS,
     "monokai": MONOKAI_COLORS,
+    "midnight": MIDNIGHT_COLORS,
+    "nord": NORD_COLORS,
 }
 
 

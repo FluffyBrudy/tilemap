@@ -320,6 +320,23 @@ class TileGrid:
                 self.show_grid = not self.show_grid
                 return True
 
+            # Tool shortcuts (E is owned by tileset PNG export; R = eRaser).
+            if event.key == pygame.K_v:
+                self.editor.tool_manager.toggle(ToolKind.SELECT)
+                return True
+
+            if event.key == pygame.K_b:
+                self.editor.tool_manager.deactivate()
+                return True
+
+            if event.key == pygame.K_r:
+                self.editor.tool_manager.toggle(ToolKind.ERASER)
+                return True
+
+            if event.key == pygame.K_i:
+                self.editor.tool_manager.toggle(ToolKind.PICK)
+                return True
+
             if event.key == pygame.K_q:
                 if is_hovering and self.hover_cell:
                     active_layer = self.editor.tilemap.layer_manager.get_active_layer()
@@ -421,6 +438,11 @@ class TileGrid:
                         self.flood_fill_at_hover()
                     return True
 
+                if self.editor.tool_manager.is_active(ToolKind.PICK):
+                    if is_hovering and self.hover_cell:
+                        self.pick_tile_at(self.hover_cell)
+                    return True
+
                 if is_hovering and not self.is_panning:
                     self.editor.tilemap.capture_history("Place Tile")
                     self.place_tile()
@@ -499,6 +521,7 @@ class TileGrid:
             not self.editor.tool_manager.is_active(ToolKind.PAN)
             and not self.editor.tool_manager.is_active(ToolKind.SELECT)
             and not self.editor.tool_manager.is_active(ToolKind.FILL)
+            and not self.editor.tool_manager.is_active(ToolKind.PICK)
             and not self.is_panning
         ) and buttons[0] and is_hovering:
             if self.editor.tool_manager.is_active(ToolKind.ERASER):
@@ -1586,6 +1609,8 @@ class TileGrid:
             parts.append("Tool: Eraser")
         elif self.editor.tool_manager.is_active(ToolKind.FILL):
             parts.append("Tool: Fill")
+        elif self.editor.tool_manager.is_active(ToolKind.PICK):
+            parts.append("Tool: Pick")
         elif self.editor.tool_manager.is_active(ToolKind.PAN):
             parts.append("Tool: Pan")
         else:
