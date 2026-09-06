@@ -380,6 +380,10 @@ class TileGrid:
                         self.editor.notifications.notify("No tile at cursor")
                 return True
 
+            if event.key == pygame.K_TAB and plain:
+                if self.cycle_active_layer():
+                    return True
+
             if event.key == pygame.K_c and (ctrl_held or meta_held):
                 if self.selection_rect:
                     self.copy_selection()
@@ -2990,6 +2994,34 @@ class TileGrid:
             return
 
         screen.blit(preview_surf, self.rect.topleft)
+
+    def cycle_active_layer(self, delta: int = 1) -> bool:
+        """Cycle the active layer (Tab forward, Shift+Tab back) with notice."""
+        manager = getattr(getattr(self.editor, "tilemap", None), "layer_manager", None)
+        if manager is None:
+            return False
+        try:
+            count = manager.get_layer_count()
+        except Exception:
+            return False
+        if count < 1:
+            return False
+        mods = pygame.key.get_mods()
+        if mods & pygame.KMOD_SHIFT:
+            delta = -delta
+        try:
+            current = manager.active_layer_idx
+        except Exception:
+            current = 0
+        nxt = (current + delta) % count
+        try:
+            manager.set_active_layer(nxt)
+        except Exception:
+            return False
+        layer = manager.get_layer(nxt)
+        name = getattr(layer, "name", f"Layer {nxt}")
+        self.editor.notifications.notify(f"Layer: {name} ({nxt + 1}/{count})")
+        return True
 
     def _get_group_for_tile(self, tile: TypeTile) -> str | None:
         if not hasattr(self.editor, "autotiler"):

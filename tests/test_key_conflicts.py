@@ -144,3 +144,47 @@ class TestOtherCombosPassThrough:
                             lambda: pygame.KMOD_LCTRL)
         assert g.handle_event(key_event(pygame.K_f)) is False
         assert layer.tiles == {}
+
+
+class FakeLayerEntry:
+    def __init__(self, name):
+        self.name = name
+
+
+class TestTabCyclesLayers:
+    def _grid(self, monkeypatch, count=3, active=0):
+        g, ed, _ = make_grid(monkeypatch)
+        layers = [FakeLayerEntry(f"L{i}") for i in range(count)]
+        mgr = type("M", (), {})()
+        mgr.active_layer_idx = active
+        mgr.get_layer_count = lambda: count
+        mgr.set_active_layer = lambda i: setattr(mgr, "active_layer_idx", i)
+        mgr.get_layer = lambda i: layers[i]
+        mgr.get_active_layer = lambda: None
+        ed.tilemap.layer_manager = mgr
+        return g, ed, mgr
+
+    def test_tab_advances_and_notifies(self, monkeypatch):
+        g, ed, mgr = self._grid(monkeypatch)
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: 0)
+        assert g.handle_event(key_event(pygame.K_TAB)) is True
+        assert mgr.active_layer_idx == 1
+        assert any("L1" in m and "2/3" in m for m in ed.notifications.messages)
+
+    def test_tab_wraps_around(self, monkeypatch):
+        g, ed, mgr = self._grid(monkeypatch, active=2)
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: 0)
+        g.handle_event(key_event(pygame.K_TAB))
+        assert mgr.active_layer_idx == 0
+
+    def test_shift_tab_goes_back(self, monkeypatch):
+        g, ed, mgr = self._grid(monkeypatch, active=1)
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: pygame.KMOD_LSHIFT)
+        assert g.handle_event(key_event(pygame.K_TAB)) is True
+        assert mgr.active_layer_idx == 0
+
+    def test_ctrl_tab_ignored(self, monkeypatch):
+        g, ed, mgr = self._grid(monkeypatch)
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: pygame.KMOD_LCTRL)
+        assert g.handle_event(key_event(pygame.K_TAB)) is False
+        assert mgr.active_layer_idx == 0
