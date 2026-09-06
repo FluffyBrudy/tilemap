@@ -136,6 +136,12 @@ class TileGrid:
     def invalidate_bounds_cache(self):
         """Invalidate the cached bounds when tiles, objects, or layers change."""
         self._cached_bounds = None
+        minimap = getattr(getattr(self, "editor", None), "minimap", None)
+        if minimap is not None:
+            try:
+                minimap.mark_dirty()
+            except Exception:
+                pass
 
     def invalidate_image_cache(self, _layer=None) -> None:
         """Drop decoded image surfaces after a layer image is replaced."""

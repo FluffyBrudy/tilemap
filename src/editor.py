@@ -29,6 +29,7 @@ from widgets.autotiler import AutotileRuleDesigner
 from widgets.layer_selector import LayerSelector
 from widgets.map_properties import MapPropertiesDialog
 from widgets.mapsetup import MapSetup
+from widgets.minimap import MinimapWidget
 from widgets.regex_automap_designer import RegexAutomapDesigner
 from widgets.tile_grid import TileGrid
 from widgets.tile_selector import TileSelector
@@ -301,6 +302,7 @@ class Editor:
             self,
             Rect(0, menu_h, self.width - self.selector_w, self.height - menu_h - 25),
         )
+        self.minimap = MinimapWidget(self)
 
         self.post_map_setup()
 
@@ -1517,6 +1519,10 @@ class Editor:
             if self.sidebar and self.sidebar.handle_event(event):
                 consumed = True
 
+            if not consumed and getattr(self, "minimap", None):
+                if self.minimap.handle_event(event):
+                    consumed = True
+
             if not consumed and self.tile_grid_widget:
                 self.tile_grid_widget.handle_event(event)
 
@@ -1559,6 +1565,9 @@ class Editor:
                 pygame.draw.rect(self.screen, COLORS.border, handle_rect)
                 if self._tileset_dragging:
                     pygame.draw.rect(self.screen, COLORS.accent, handle_rect)
+
+            if getattr(self, "minimap", None):
+                self.minimap.draw(self.screen)
 
             if self.autotiler:
                 if self.autotiler.visible:
