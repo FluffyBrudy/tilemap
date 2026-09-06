@@ -48,6 +48,7 @@ class Toolbar:
         add("eraser", "eraser", "Eraser Tool (R; size Ctrl+=/-)")
         add("fill", "fill", "Flood Fill (click a cell; F fills at cursor)")
         add("pick", "pick", "Pick Tile (I; click a tile)")
+        add("dice", "dice", "Dice Brush: random tiles from selection (T)")
         sep()
         add("grid", "grid", "Toggle Grid (G)")
         add("auto", "auto", "Auto-Autotile")
@@ -72,6 +73,8 @@ class Toolbar:
             e.tool_manager.toggle(ToolKind.FILL)
         elif key == "pick":
             e.tool_manager.toggle(ToolKind.PICK)
+        elif key == "dice":
+            e.toggle_dice_brush()
         elif key == "grid":
             e.toggle_grid()
         elif key == "auto":
@@ -101,6 +104,8 @@ class Toolbar:
                 btn.active = e.tool_manager.is_active(ToolKind.FILL)
             elif k == "pick":
                 btn.active = e.tool_manager.is_active(ToolKind.PICK)
+            elif k == "dice":
+                btn.active = bool(getattr(e, "dice_brush", False))
             elif k == "grid":
                 btn.active = bool(e.tile_grid_widget and e.tile_grid_widget.show_grid)
             elif k == "auto":

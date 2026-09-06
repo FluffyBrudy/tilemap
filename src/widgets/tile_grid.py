@@ -1,3 +1,4 @@
+import random
 from typing import TYPE_CHECKING
 
 import pygame
@@ -80,6 +81,9 @@ class TileGrid:
         self._particle_previews: dict[str, ParticlePreview] = {}
         self._last_preview_time: float = 0.0
         self._last_active_node_id: str | None = None
+
+        self._dice_preview_variant: int | None = None
+        self._dice_preview_at: int = 0
 
         self._cached_bounds: tuple[int, int, int, int] | None = None
 
@@ -299,6 +303,9 @@ class TileGrid:
 
             ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
             meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+            # Bare tool keys must not fire with Ctrl/Cmd held, or they
+            # swallow combos like Cmd+V (paste) before those branches run.
+            plain = not (ctrl_held or meta_held)
 
             if event.key == pygame.K_a and (ctrl_held or meta_held):
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
@@ -311,33 +318,37 @@ class TileGrid:
                         self.editor.notifications.notify("No tiles updated (Already matched or no groups found)")
                 return True
 
-            if event.key == pygame.K_f:
+            if event.key == pygame.K_f and plain:
                 if is_hovering and self.hover_cell:
                     self.flood_fill_at_hover()
                 return True
 
-            if event.key == pygame.K_g:
+            if event.key == pygame.K_g and plain:
                 self.show_grid = not self.show_grid
                 return True
 
             # Tool shortcuts (E is owned by tileset PNG export; R = eRaser).
-            if event.key == pygame.K_v:
+            if event.key == pygame.K_v and plain:
                 self.editor.tool_manager.toggle(ToolKind.SELECT)
                 return True
 
-            if event.key == pygame.K_b:
+            if event.key == pygame.K_b and plain:
                 self.editor.tool_manager.deactivate()
                 return True
 
-            if event.key == pygame.K_r:
+            if event.key == pygame.K_r and plain:
                 self.editor.tool_manager.toggle(ToolKind.ERASER)
                 return True
 
-            if event.key == pygame.K_i:
+            if event.key == pygame.K_i and plain:
                 self.editor.tool_manager.toggle(ToolKind.PICK)
                 return True
 
-            if event.key == pygame.K_q:
+            if event.key == pygame.K_t and plain:
+                self.editor.toggle_dice_brush()
+                return True
+
+            if event.key == pygame.K_q and plain:
                 if is_hovering and self.hover_cell:
                     active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                     if active_layer and self.hover_cell in active_layer.tiles:
@@ -602,6 +613,27 @@ class TileGrid:
 
         self.invalidate_bounds_cache()
 
+    def _dice_pool(self, src_rect, tile_w: int, tile_h: int,
+                   sheet_cols: int) -> list[int] | None:
+        """Variant pool for the dice brush, or None when dice is inactive.
+
+        Active only when dice is toggled on and the selection holds more
+        than one tile; single-tile selections paint positionally.
+        """
+        if not getattr(self.editor, "dice_brush", False):
+            return None
+        sel_w = src_rect[2] // tile_w
+        sel_h = src_rect[3] // tile_h
+        if sel_w * sel_h <= 1:
+            return None
+        start_sx = src_rect[0] // tile_w
+        start_sy = src_rect[1] // tile_h
+        return [
+            (start_sy + y) * sheet_cols + start_sx + x
+            for y in range(sel_h)
+            for x in range(sel_w)
+        ]
+
     def _place_tile_grid(
         self,
         active_layer,
@@ -658,11 +690,19 @@ class TileGrid:
                     selected_group = groups[gidx].name
 
             reassigned: dict[str, int] = {}
-            for y_off in range(sel_h_tiles):
-                for x_off in range(sel_w_tiles):
+            # Dice brush: collapse to a single plot -- one random variant
+            # from the whole selection rect at the hover cell. Brush shape
+            # stamping is unchanged when dice is off.
+            dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
+            paint_w, paint_h = (1, 1) if dice_pool is not None else (sel_w_tiles, sel_h_tiles)
+            for y_off in range(paint_h):
+                for x_off in range(paint_w):
                     curr_sx = start_sx + x_off
                     curr_sy = start_sy + y_off
-                    variant_id = (curr_sy * sheet_cols) + curr_sx
+                    if dice_pool is not None:
+                        variant_id = random.choice(dice_pool)
+                    else:
+                        variant_id = (curr_sy * sheet_cols) + curr_sx
 
                     map_x = self.hover_cell[0] + x_off
                     map_y = self.hover_cell[1] + y_off
@@ -1356,6 +1396,24 @@ class TileGrid:
         if self.is_moving and self.hover_cell:
             return
 
+        # Tiled-standard tool gating: the paint ghost only belongs to
+        # paint-capable tools. Select/Pan show nothing, Pick shows nothing,
+        # Fill shows a single-cell outline.
+        tool_manager = self.editor.tool_manager
+        if tool_manager.is_active(ToolKind.SELECT) or tool_manager.is_active(ToolKind.PAN):
+            return
+        if tool_manager.is_active(ToolKind.PICK):
+            return
+        if tool_manager.is_active(ToolKind.FILL):
+            if self.hover_cell:
+                eff_w, eff_h = self.effective_tile_size
+                screen_x = (self.hover_cell[0] * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+                screen_y = (self.hover_cell[1] * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+                dest_rect = Rect(screen_x, screen_y,
+                                 int(eff_w * self.zoom_level), int(eff_h * self.zoom_level))
+                pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
+            return
+
         res = self.get_selected_brush()
         if not res:
             return
@@ -1421,6 +1479,13 @@ class TileGrid:
             sel_w_tiles = src_rect[2] // tile_w
             sel_h_tiles = src_rect[3] // tile_h
 
+            sheet_cols = max(1, tileset_data.surface.get_width() // tile_w) if tile_w > 0 else 1
+            dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
+            if dice_pool is not None:
+                self._draw_dice_preview(screen, tileset_data, tile_w, tile_h,
+                                        eff_w, eff_h, dice_pool, sheet_cols)
+                return
+
             for y_off in range(sel_h_tiles):
                 for x_off in range(sel_w_tiles):
                     col = self.hover_cell[0] + x_off
@@ -1448,6 +1513,43 @@ class TileGrid:
                         screen.blit(tile_surf, dest_rect)
                     except ValueError:
                         pass
+
+    def _draw_dice_preview(self, screen, tileset_data, tile_w: int, tile_h: int,
+                           eff_w: float, eff_h: float, dice_pool: list[int],
+                           sheet_cols: int):
+        """Single-cell dice ghost: outline on hover, cycling tile while pressed."""
+        col, row = self.hover_cell
+        screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+        screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+        dest_w = int(eff_w * self.zoom_level)
+        dest_h = int(eff_h * self.zoom_level)
+        dest_rect = Rect(screen_x, screen_y, dest_w, dest_h)
+        pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
+
+        try:
+            pressed = pygame.mouse.get_pressed()[0]
+        except pygame.error:
+            pressed = False
+        if not pressed or not self.rect.collidepoint(pygame.mouse.get_pos()):
+            return
+
+        now = pygame.time.get_ticks()
+        current = getattr(self, "_dice_preview_variant", None)
+        if current not in dice_pool or now - getattr(self, "_dice_preview_at", 0) > 150:
+            current = random.choice(dice_pool)
+            self._dice_preview_variant = current
+            self._dice_preview_at = now
+        try:
+            tex_x = (current % sheet_cols) * tile_w
+            tex_y = (current // sheet_cols) * tile_h
+            sub_r = Rect(tex_x, tex_y, tile_w, tile_h)
+            tile_surf = tileset_data.surface.subsurface(sub_r)
+            if self.zoom_level != 1.0:
+                tile_surf = pygame.transform.scale(tile_surf, (dest_w, dest_h))
+            tile_surf.set_alpha(128)
+            screen.blit(tile_surf, dest_rect)
+        except ValueError:
+            pass
 
     def _draw_grid(self, screen):
         eff_w, eff_h = self.effective_tile_size
