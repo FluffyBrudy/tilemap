@@ -27,6 +27,22 @@ class TemplateDefinition:
         self.mappings = mappings
 
 
+_CARDINAL_4 = (L, R, U, D)
+
+
+def motif_dist2(motif_cells: set[tuple[int, int]], col: int, row: int) -> frozenset:
+    """Distance-2 presence signature of a motif cell.
+
+    The motif bounds act as the mass (outside = absent), mirroring off-map
+    semantics at classify time, so motif-derived and map-derived
+    signatures agree on motif-shaped masses.
+    """
+    return frozenset(
+        d for d in _CARDINAL_4
+        if (col + 2 * d[0], row + 2 * d[1]) in motif_cells
+    )
+
+
 def _cardinal_grid_mappings(w: int, h: int):
     """Position-based cardinal neighbor sets, same border rule as 3x3.
 
@@ -286,6 +302,12 @@ class AutotileTemplateApplier:
                 before = len(rule.variant_ids)
                 rule.variant_ids = [v for v in rule.variant_ids if v not in vids]
                 moved += before - len(rule.variant_ids)
+                for key in list(rule.subcases):
+                    leaf = [v for v in rule.subcases[key] if v not in vids]
+                    if leaf:
+                        rule.subcases[key] = leaf
+                    else:
+                        del rule.subcases[key]
             group.rules = [r for r in group.rules if r.variant_ids]
         return moved
 
@@ -374,6 +396,21 @@ class AutotileTemplateApplier:
             return True
         return False
 
+    def _selection_origin(self):
+        """(start_col, start_row, sheet_cols) of the tileset selection, or None."""
+        tile_selector = getattr(self.designer.editor, "tileset_widget", None)
+        if not tile_selector or not tile_selector.selected_tile:
+            return None
+        ts = tile_selector.get_active_tile()
+        if not ts:
+            return None
+        rx, ry, _rw, _rh = tile_selector.selected_tile
+        tile_w, tile_h = self.designer.editor.tilemap.tile_size
+        sheet_cols = ts.surface.get_width() // tile_w
+        if not sheet_cols:
+            return None
+        return rx // tile_w, ry // tile_h, sheet_cols
+
     def apply_template(self, template: TemplateDefinition, collision_choice: str = "merge"):
         from .autotiler import AutotileRule
 
@@ -399,6 +436,19 @@ class AutotileTemplateApplier:
         ts_index = tile_selector.active_idx if tile_selector else None
         target_group = self.designer.groups[self.designer.selected_group_idx]
 
+        # Motif-relative coords per applied vid (clipped to the selection):
+        # the applied cells are the mass for distance-2 signatures.
+        motif_rel: dict[int, tuple[int, int]] = {}
+        origin = self._selection_origin()
+        if origin is not None:
+            start_col, start_row, sheet_cols = origin
+            applied = {vid for vid, _ in items}
+            for rel_col, rel_row, _ in template.mappings:
+                vid = ((start_row + rel_row) * sheet_cols) + (start_col + rel_col)
+                if vid in applied:
+                    motif_rel[vid] = (rel_col, rel_row)
+        motif_cells = set(motif_rel.values())
+
         moved_count = 0
         if collisions and collision_choice == "move":
             moved_count = self._steal_vids(
@@ -418,6 +468,12 @@ class AutotileTemplateApplier:
                 if vid not in matched_rule.variant_ids:
                     matched_rule.variant_ids.append(vid)
                     updated_count += 1
+                rel = motif_rel.get(vid)
+                if rel is not None:
+                    key = motif_dist2(motif_cells, *rel)
+                    leaf = matched_rule.subcases.setdefault(key, [])
+                    if vid not in leaf:
+                        leaf.append(vid)
             else:
                 rule_num = len(target_group.rules) + 1
                 rule_name = f"Rule {rule_num}"
@@ -435,6 +491,9 @@ class AutotileTemplateApplier:
                     tileset_index=ts_index,
                     group_id=target_group.name,
                 )
+                rel = motif_rel.get(vid)
+                if rel is not None:
+                    new_rule.subcases[motif_dist2(motif_cells, *rel)] = [vid]
                 target_group.rules.append(new_rule)
                 added_count += 1
 

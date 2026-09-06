@@ -102,8 +102,10 @@ class Layer:
         1. The tile's ``autotile_group`` field (if present)
         2. Legacy fallback: (tileset_index, variant_id) lookup in variant_to_group
 
-        When a rule matches, the tile's variant is re-rolled from the rule's
-        variant_ids (removing the early-out that prevented re-autotile).
+        When a rule matches, the tile resolves through the rule's subcase
+        leaves (exact variant for its distance-2 signature) with
+        random-among-variants as the backoff for unseen shapes or
+        subcase-less rules.
         """
         if self.locked or self.layer_type != "tile":
             return 0
@@ -118,6 +120,10 @@ class Layer:
                     r.tileset_index,
                     tuple(sorted(r.variant_ids)),
                     tuple(sorted(r.neighbors)),
+                    tuple(sorted(
+                        (tuple(sorted(k)), tuple(v))
+                        for k, v in r.subcases.items()
+                    )) if getattr(r, "subcases", None) else (),
                 )
                 for r in rules
             )
@@ -128,12 +134,14 @@ class Layer:
             rules_by_group: dict[str, list[AutotileRule]] = {}
             significant_offsets: set[tuple[int, int]] = set()
             offsets_by_group: dict[str, set[tuple[int, int]]] = {}
+            extended_by_group: dict[str, set[tuple[int, int]]] = {}
 
             for rule in rules:
                 gid = rule.group_id
                 if gid not in rules_by_group:
                     rules_by_group[gid] = []
                     offsets_by_group[gid] = set()
+                    extended_by_group[gid] = set()
                 rules_by_group[gid].append(rule)
 
                 ts_idx = rule.tileset_index
@@ -148,6 +156,8 @@ class Layer:
 
                 offsets_by_group[gid].update(rule.neighbors)
                 significant_offsets.update(rule.neighbors)
+                for key in getattr(rule, "subcases", {}) or {}:
+                    extended_by_group[gid].update(key)
 
             for gid in rules_by_group:
                 rules_by_group[gid].sort(key=lambda r: len(r.neighbors), reverse=True)
@@ -159,6 +169,7 @@ class Layer:
                     "rules_by_group": rules_by_group,
                     "significant_offsets": significant_offsets,
                     "offsets_by_group": offsets_by_group,
+                    "extended_by_group": extended_by_group,
                 }
             )
         else:
@@ -166,6 +177,7 @@ class Layer:
             rules_by_group = self._autotile_cache["rules_by_group"]
             significant_offsets = self._autotile_cache["significant_offsets"]
             offsets_by_group = self._autotile_cache.get("offsets_by_group", {})
+            extended_by_group = self._autotile_cache.get("extended_by_group", {})
 
         changes_count = 0
 
@@ -227,11 +239,26 @@ class Layer:
                     break
 
             if matched_rule and matched_rule.variant_ids:
+                # Hierarchical classifier: exact subcase leaf first,
+                # legacy random-among-variants as the backoff.
+                leaf = None
+                subcases = getattr(matched_rule, "subcases", None) or {}
+                if subcases:
+                    wanted = extended_by_group.get(target_group_id, set())
+                    dist2 = set()
+                    for dx, dy in wanted:
+                        npos = (pos[0] + 2 * dx, pos[1] + 2 * dy)
+                        if npos in self.tiles:
+                            n_tile = self.tiles[npos]
+                            if _get_group(n_tile) == target_group_id:
+                                dist2.add((dx, dy))
+                    leaf = matched_rule.leaf_for(dist2)
+                pool = leaf if leaf else matched_rule.variant_ids
                 # only reroll if current variant isnt already
-                # in the matched rule's set to prevents re-randomization
+                # in the matched pool to prevents re-randomization
                 # of neighbors whose pattern hasnt actually changed.
-                if current_variant not in matched_rule.variant_ids:
-                    new_variant = random.choice(matched_rule.variant_ids)
+                if current_variant not in pool:
+                    new_variant = pool[0] if leaf and len(leaf) == 1 else random.choice(pool)
                 else:
                     new_variant = current_variant
 

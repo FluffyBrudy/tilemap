@@ -33,6 +33,30 @@ _NEIGHBOR_ORDER = (
 )
 
 
+def _normalize_subcases(subcases) -> dict[frozenset, list[int]]:
+    """Normalize persisted subcase tables to {frozenset(dist2): [vids]}."""
+    if not subcases:
+        return {}
+    normalized: dict[frozenset, list[int]] = {}
+    items = subcases.items() if isinstance(subcases, dict) else subcases
+    for entry in items:
+        if isinstance(entry, tuple) and len(entry) == 2:
+            raw_key, vids = entry
+            key = frozenset(tuple(d) for d in raw_key)
+        elif isinstance(entry, dict):
+            key = frozenset(tuple(d) for d in entry.get("dist2", []))
+            vids = entry.get("variant_ids", [])
+        else:
+            continue
+        if key in normalized:
+            for v in vids:
+                if v not in normalized[key]:
+                    normalized[key].append(v)
+        else:
+            normalized[key] = list(vids)
+    return normalized
+
+
 class AutotileRule:
     def __init__(
         self,
@@ -43,6 +67,7 @@ class AutotileRule:
         surface_subsurface: Surface | None = None,
         tileset_index: int | None = None,
         group_id: str | None = None,
+        subcases: dict | None = None,
     ):
         self.name = name
         self.neighbors = neighbors
@@ -53,6 +78,9 @@ class AutotileRule:
         self.variant_ids = variant_ids or []
         self.preview_surf: Surface | None = surface_subsurface
         self.group_id = group_id or name
+        # Hierarchical classifier leaves: distance-2 neighbor signature
+        # -> exact variant ids. Empty = legacy random-among-variants.
+        self.subcases: dict[frozenset, list[int]] = _normalize_subcases(subcases)
 
     @staticmethod
     def from_dict(data: dict):
@@ -71,6 +99,7 @@ class AutotileRule:
             surface_subsurface=None,
             tileset_index=data.get("tileset_index"),
             group_id=data.get("group_id"),
+            subcases=data.get("subcases"),
         )
 
     def to_dict(self):
@@ -81,7 +110,20 @@ class AutotileRule:
             "tileset_index": self.tileset_index,
             "variant_ids": self.variant_ids,
             "group_id": self.group_id,
+            "subcases": [
+                {"dist2": [list(d) for d in sorted(key)],
+                 "variant_ids": list(vids)}
+                for key, vids in self.subcases.items()
+            ],
         }
+
+    def leaf_for(self, dist2) -> list[int] | None:
+        """Exact variant ids for a distance-2 signature, or None (no leaf)."""
+        try:
+            key = frozenset(tuple(d) for d in dist2)
+        except TypeError:
+            return None
+        return self.subcases.get(key)
 
 
 class AutotileGroup:
@@ -1209,8 +1251,17 @@ class AutotileRuleDesigner:
             screen.blit(scaled, (center_x - 32, self.edit_area.y + 40))
 
             if len(self.current_preview_surfs) > 1:
+                count_label = f"x{len(self.current_preview_surfs)}"
+                try:
+                    group = self.groups[self.selected_group_idx]
+                    rule = group.rules[self.selected_rule_index]
+                    subs = getattr(rule, "subcases", None) or {}
+                    if subs and all(len(v) == 1 for v in subs.values()):
+                        count_label = f"{len(subs)} exact"
+                except (IndexError, AttributeError):
+                    pass
                 count_txt = self.font.render(
-                    f"x{len(self.current_preview_surfs)}", True, (255, 255, 0)
+                    count_label, True, (255, 255, 0)
                 )
                 screen.blit(count_txt, (center_x + 35, self.edit_area.y + 85))
 
