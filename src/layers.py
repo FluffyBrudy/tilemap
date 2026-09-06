@@ -44,11 +44,7 @@ class Layer:
         self.properties: dict[str, Any] = {}
 
         self.image_path = image_path if layer_type == "image" else None
-        self.image_rect = (
-            dict(image_rect)
-            if layer_type == "image" and image_rect is not None
-            else None
-        )
+        self.image_rect = dict(image_rect) if layer_type == "image" and image_rect is not None else None
 
         self.tiles: dict[tuple[int, int], TypeTile] = {}
 
@@ -120,10 +116,9 @@ class Layer:
                     r.tileset_index,
                     tuple(sorted(r.variant_ids)),
                     tuple(sorted(r.neighbors)),
-                    tuple(sorted(
-                        (tuple(sorted(k)), tuple(v))
-                        for k, v in r.subcases.items()
-                    )) if getattr(r, "subcases", None) else (),
+                    tuple(sorted((tuple(sorted(k)), tuple(v)) for k, v in r.subcases.items()))
+                    if getattr(r, "subcases", None)
+                    else (),
                 )
                 for r in rules
             )
@@ -146,10 +141,6 @@ class Layer:
 
                 ts_idx = rule.tileset_index
                 for vid in rule.variant_ids:
-                    # First-group-wins: matches
-                    # AutotileRuleDesigner.variant_to_group, paint-time
-                    # stamping and tile inspect, so overlapping variants
-                    # resolve deterministically everywhere.
                     key = (ts_idx, vid)
                     if key not in variant_to_group:
                         variant_to_group[key] = gid
@@ -222,13 +213,12 @@ class Layer:
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            # Per-group significance: a tile only considers neighbor
-            # offsets its own group cares about, so adding a group with
+            # Per group significance: a tile only considers neighbor
+            # offsets its own group cares about. so adding a group with
             # new offsets (e.g. diagonals) can't break matching of groups
             # that ignore them. Falls back to the global union for groups
             # missing from the cache (defensive).
-            group_offsets = offsets_by_group.get(
-                target_group_id, significant_offsets)
+            group_offsets = offsets_by_group.get(target_group_id, significant_offsets)
             neighbor_offsets_set = {n for n in actual_neighbors if n in group_offsets}
 
             matched_rule: AutotileRule | None = None
@@ -240,7 +230,7 @@ class Layer:
 
             if matched_rule and matched_rule.variant_ids:
                 # Hierarchical classifier: exact subcase leaf first,
-                # legacy random-among-variants as the backoff.
+                # legacy random-among-variants as the fallback.
                 leaf = None
                 subcases = getattr(matched_rule, "subcases", None) or {}
                 if subcases:
@@ -254,9 +244,7 @@ class Layer:
                                 dist2.add((dx, dy))
                     leaf = matched_rule.leaf_for(dist2)
                 pool = leaf if leaf else matched_rule.variant_ids
-                # only reroll if current variant isnt already
-                # in the matched pool to prevents re-randomization
-                # of neighbors whose pattern hasnt actually changed.
+
                 if current_variant not in pool:
                     new_variant = pool[0] if leaf and len(leaf) == 1 else random.choice(pool)
                 else:
@@ -306,12 +294,7 @@ class Layer:
             curr = queue.pop(0)
 
             ox, oy = offset
-            if (
-                curr[0] < ox
-                or curr[0] >= ox + map_size[0]
-                or curr[1] < oy
-                or curr[1] >= oy + map_size[1]
-            ):
+            if curr[0] < ox or curr[0] >= ox + map_size[0] or curr[1] < oy or curr[1] >= oy + map_size[1]:
                 continue
 
             curr_tile = self.tiles.get(curr)

@@ -1,3 +1,4 @@
+import copy
 import json
 import uuid
 from pathlib import Path
@@ -177,7 +178,7 @@ class NodeManager:
             node_type=src.node_type,
             area=NodeRect(src.area.x + 16, src.area.y + 16, src.area.w, src.area.h),
             layer_name=src.layer_name,
-            properties=dict(src.properties),
+            properties=copy.deepcopy(src.properties),
             group=src.group,
         )
         keys = list(self.nodes.keys())

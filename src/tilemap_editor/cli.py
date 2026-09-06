@@ -9,7 +9,7 @@ from editor import Editor
 from utils import error_context, error_handler
 from utils.project_paths import resolve_project_path
 
-from .settings import init_settings, update_settings
+from .settings import BUILTIN_THEMES, init_settings, update_settings
 
 
 def _parse_size(text: str) -> tuple[int, int]:
@@ -26,16 +26,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Tilemap Editor")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    init_parser = subparsers.add_parser(
-        "init", help="Initialize a new Tilemap Editor project"
-    )
-    init_parser.add_argument(
-        "--with-main", action="store_true", help="Also create src/main.py boilerplate"
-    )
+    init_parser = subparsers.add_parser("init", help="Initialize a new Tilemap Editor project")
+    init_parser.add_argument("--with-main", action="store_true", help="Also create src/main.py boilerplate")
 
-    update_parser = subparsers.add_parser(
-        "update", help="Update settings.json base_path for current device"
-    )
+    update_parser = subparsers.add_parser("update", help="Update settings.json base_path for current device")
     update_parser.add_argument(
         "--path",
         default=None,
@@ -43,14 +37,13 @@ def main() -> None:
     )
 
     run_parser = subparsers.add_parser("run", help="Run the tilemap editor")
-    run_parser.add_argument(
-        "--size", default="1500x900", help="Window size as WIDTHxHEIGHT"
-    )
+    run_parser.add_argument("--size", default="1500x900", help="Window size as WIDTHxHEIGHT")
     run_parser.add_argument("--fps", type=int, default=60, help="Editor FPS")
     run_parser.add_argument(
         "--theme",
         default=None,
-        help='Theme name or path to .json theme file (built-in: dark, molokai, monokai, light, semi_light; or "path/to/custom.json")',
+        help=f"Theme name or path to .json theme file (built-in: "
+        f"{', '.join(BUILTIN_THEMES)}; or \"path/to/custom.json\")",
     )
     run_parser.add_argument(
         "--sandbox",
@@ -61,6 +54,21 @@ def main() -> None:
         help="Run in sandbox mode: load map.json + assets/ from PATH (default: ./sandbox). "
         "Directory-only; throws away project isolation for experiment maps.",
     )
+
+    markers_parser = subparsers.add_parser("markers", help="Generate a placeholder marker palette PNG")
+    markers_parser.add_argument(
+        "palette_args",
+        nargs="*",
+        help="Arguments forwarded to the marker generator (see: tilemap-editor markers -- --help)",
+    )
+
+    if sys.argv[1:2] == ["markers"]:
+        from standalone_marker_palette import main as markers_main
+
+        palette_args = sys.argv[2:]
+        if palette_args[:1] == ["--"]:
+            palette_args = palette_args[1:]
+        sys.exit(markers_main(palette_args))
 
     args = parser.parse_args()
 

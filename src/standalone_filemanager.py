@@ -131,13 +131,10 @@ class StandaloneFileManager:
                     self.file_manager.rect.width = event.w
                     self.file_manager.rect.height = event.h
 
-                    self.file_manager.resize_handler.widget_rect = (
-                        self.file_manager.rect
-                    )
+                    self.file_manager.resize_handler.widget_rect = self.file_manager.rect
 
                     continue
-                # NOTE: ESC is local-cancel only (handled by the widget);
-                # close via Cancel button, selection, or window.
+
                 self.file_manager.handle_event(event)
 
             self.screen.fill(COLORS.bg)
@@ -148,9 +145,7 @@ class StandaloneFileManager:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
-        description="Standalone File Manager for selecting/saving files"
-    )
+    parser = argparse.ArgumentParser(description="Standalone File Manager for selecting/saving files")
     parser.add_argument(
         "--mode",
         type=str,
@@ -202,10 +197,7 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError:
         window_size = (800, 600)
 
-    allowed_exts = [
-        ext.strip() if ext.startswith(".") else f".{ext.strip()}"
-        for ext in args.allowed_exts.split(",")
-    ]
+    allowed_exts = [ext.strip() if ext.startswith(".") else f".{ext.strip()}" for ext in args.allowed_exts.split(",")]
 
     initial_dir = None
     if args.initial_dir:

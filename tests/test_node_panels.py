@@ -187,6 +187,25 @@ class TestDuplicateNode:
         mgr = NodeManager(object())
         assert mgr.duplicate_node("nope") is None
 
+    def test_nested_properties_deep_copied(self):
+        from nodes import Node, NodeRect
+
+        mgr = NodeManager(object())
+        node = Node(
+            node_id="id-nested",
+            name="Fx",
+            node_type="area",
+            area=NodeRect(x=0, y=0, w=64, h=64),
+            layer_name="Terrain",
+            properties={"particle": {"rate": 5, "tags": ["a"]}},
+        )
+        mgr.nodes[node.node_id] = node
+        new_id = mgr.duplicate_node(node.node_id)
+        clone = mgr.nodes[new_id]
+        clone.properties["particle"]["rate"] = 9
+        clone.properties["particle"]["tags"].append("b")
+        assert node.properties == {"particle": {"rate": 5, "tags": ["a"]}}
+
 
 def make_selector(manager):
     ed = FakeEditor(manager)

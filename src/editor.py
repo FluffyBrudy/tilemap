@@ -202,9 +202,7 @@ class Editor:
             tm.set_theme("dark")
 
         pygame.init()
-        pygame.display.set_caption(
-            "Tilemap Editor - SANDBOX" if self.is_sandbox else "Pure Pygame Editor"
-        )
+        pygame.display.set_caption("Tilemap Editor - SANDBOX" if self.is_sandbox else "Pure Pygame Editor")
 
         self.fps = fps
         self.running = False
@@ -212,6 +210,7 @@ class Editor:
         self.node_editing_mode = False
         self.show_nodes = False
         self.dice_brush = False
+        self.last_picked: tuple[int, int] | None = None
         self.tool_manager = ToolManager()
         self._prev_tool = None
 
@@ -533,9 +532,7 @@ class Editor:
         # Snapshot staged outputs before any writes
         map_existed = path.exists()
         try:
-            proj_nodes_dir = self._project_data_root / self.config.get(
-                "nodes_path", "nodes"
-            )
+            proj_nodes_dir = self._project_data_root / self.config.get("nodes_path", "nodes")
             sidecar_path = proj_nodes_dir / f"{path.stem}.nodes.json"
             sidecar_existed = sidecar_path.exists()
         except Exception:
@@ -572,14 +569,8 @@ class Editor:
             # state is reinstated if the save fails.
             prev_data_root = self.data_root
             prev_is_sandbox = self.is_sandbox
-            prev_nodes_dir = (
-                getattr(self.node_manager, "_nodes_dir", None)
-                if hasattr(self, "node_manager")
-                else None
-            )
-            prev_active_sidecar = getattr(
-                self.node_manager, "_active_sidecar", None
-            )
+            prev_nodes_dir = getattr(self.node_manager, "_nodes_dir", None) if hasattr(self, "node_manager") else None
+            prev_active_sidecar = getattr(self.node_manager, "_active_sidecar", None)
             prev_project_path = self.tilemap.active_project_path
             self.data_root = self._project_data_root
             self.is_sandbox = False
@@ -785,9 +776,7 @@ class Editor:
             self.handle_resize(self.width, self.height)
             self.tilemap.apply_map_payload(path, payload_or_error)
             if getattr(self, "is_sandbox", False):
-                self.notifications.notify(
-                    f"SANDBOX map loaded: {path.name}", duration=4.0
-                )
+                self.notifications.notify(f"SANDBOX map loaded: {path.name}", duration=4.0)
         except Exception as e:
             error_handler.capture(e, context="load_map_apply")
             import traceback
@@ -944,9 +933,7 @@ class Editor:
 
     def toggle_map_boundary(self):
         if self.tile_grid_widget:
-            self.tile_grid_widget.show_map_boundary = (
-                not self.tile_grid_widget.show_map_boundary
-            )
+            self.tile_grid_widget.show_map_boundary = not self.tile_grid_widget.show_map_boundary
 
     def cycle_theme(self):
         """Cycle through available themes."""
@@ -1300,12 +1287,26 @@ class Editor:
             print(f"Autotiling layer: {active_layer.name}")
 
     def flood_fill_active(self):
-
-        from widgets.ui.tool_manager import ToolKind
-
         self.tool_manager.toggle(ToolKind.FILL)
         if self.tool_manager.is_active(ToolKind.FILL):
             self.notifications.notify("Fill Tool: click a cell (F also works)")
+
+    def rect_fill_active(self):
+        self.tool_manager.toggle(ToolKind.RECT_FILL)
+        if self.tool_manager.is_active(ToolKind.RECT_FILL):
+            self.notifications.notify("Rect Fill: drag a region (R)")
+
+    def line_tool_active(self):
+        self.tool_manager.toggle(ToolKind.LINE)
+        if self.tool_manager.is_active(ToolKind.LINE):
+            self.notifications.notify("Line: drag a line (L)")
+
+    def replace_variant_active(self):
+        grid = getattr(self, "tile_grid_widget", None)
+        if grid is None:
+            self.notifications.notify("No canvas open")
+            return
+        grid.replace_variant()
 
     def toggle_dice_brush(self):
         """Toggle the dice brush: paint plots random tiles from the selection."""
@@ -1480,9 +1481,6 @@ class Editor:
                             self.tilemap.layer_manager.set_active_layer(idx)
                         continue
 
-            # Node editor is drawn on top of the selector, so it gets
-            # first pick on mouse events; it returns False outside its
-            # rect, leaving the selector unaffected elsewhere.
             if self.node_editor and self.node_editor.handle_event(event):
                 continue
             if self.node_selector and self.node_selector.handle_event(event):

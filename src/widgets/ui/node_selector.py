@@ -149,6 +149,13 @@ class NodeSelector:
         top = self._add_button_rect().bottom + 6
         return Rect(self.rect.x + 6, top, self.rect.width - 12, self.input_h)
 
+    @staticmethod
+    def _row_action_rects(item_rect: Rect) -> tuple[Rect, Rect]:
+        """Duplicate/delete hit rects for a row (shared by hover/click/draw)."""
+        dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
+        del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
+        return dup_rect, del_rect
+
     def _list_rect(self) -> Rect:
         top = self._search_rect().bottom + 6
         return Rect(
@@ -315,10 +322,8 @@ class NodeSelector:
                     y_pos = list_rect.y - self.scroll_offset + idx * self.item_h
                     item_rect = Rect(list_rect.x, y_pos, list_rect.width, self.item_h)
 
-                    del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
+                    dup_rect, del_rect = self._row_action_rects(item_rect)
                     self.delete_hover = del_rect.collidepoint(mouse_pos)
-
-                    dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
                     self.dup_hover = dup_rect.collidepoint(mouse_pos)
 
                     if rows[idx]["type"] == "group":
@@ -381,8 +386,7 @@ class NodeSelector:
                         item_rect = Rect(
                             list_rect.x, y_pos, list_rect.width, self.item_h
                         )
-                        del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
-                        dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
+                        dup_rect, del_rect = self._row_action_rects(item_rect)
 
                         if dup_rect.collidepoint(mouse_pos):
                             if row["type"] == "node":
@@ -645,7 +649,7 @@ class NodeSelector:
                 screen.blit(lbl, (item_rect.x + indent_offset + 20, item_rect.y + 6))
 
             if is_hover:
-                dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
+                dup_rect, _ = self._row_action_rects(item_rect)
                 dup_color = COLORS.text if self.dup_hover else COLORS.text_dim
                 bx = dup_rect.centerx - 4
                 by = dup_rect.centery - 4
@@ -656,7 +660,7 @@ class NodeSelector:
                 pygame.draw.rect(screen, COLORS.panel, front)
                 pygame.draw.rect(screen, dup_color, front, 1)
 
-                del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
+                _, del_rect = self._row_action_rects(item_rect)
                 del_color = COLORS.danger if self.delete_hover else COLORS.text_dim
                 del_txt = self.font_bold.render("×", True, del_color)
                 screen.blit(del_txt, del_txt.get_rect(center=del_rect.center))

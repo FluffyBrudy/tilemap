@@ -8,6 +8,8 @@ class ToolKind(Enum):
     FILL = "fill"
     PICK = "pick"
     PAN = "pan"
+    RECT_FILL = "rect_fill"
+    LINE = "line"
 
 
 class ToolManager:

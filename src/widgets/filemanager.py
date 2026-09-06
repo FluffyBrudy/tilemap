@@ -1001,6 +1001,7 @@ class FileManager:
             and event.key == pygame.K_F5
             and not self.search_input.is_focused
             and not self.save_input.is_focused
+            and self.renaming_item_idx is None
         ):
             self.refresh_items()
             return True

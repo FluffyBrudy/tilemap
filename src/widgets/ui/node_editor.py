@@ -16,7 +16,6 @@ from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class NodeEditor:
-    # Roomy layout metrics (single source of truth for event + draw code).
     HEADER_H = 24
     FIELDS_TOP = 32
     FIELD_H = 22
@@ -31,15 +30,12 @@ class NodeEditor:
     def __init__(self, editor: "Editor", x: int, y: int, w: int = 260, h: int = 180):
         self.editor = editor
         self.rect = Rect(x, y, w, h)
-        # Dock slot: constructor position. Auto-reposition falls back here
-        # when no floating candidate clears the node + sidebar panels.
+
         self._dock_x = x
         self._dock_y = y
 
         self.font = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
-        self.font_bold = font_manager.get_font(
-            FONTS.name, FONTS.size_sm, FontWeight.BOLD
-        )
+        self.font_bold = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.BOLD)
         self.font_input = font_manager.get_font(FONTS.name, 11, FontWeight.REGULAR)
 
         self._editing_field: str | None = None
@@ -128,16 +124,11 @@ class NodeEditor:
             (sx, sy - panel_h - pad),
         ]
         avoid = [node_rect] + self._sidebar_avoid_rects(screen_w)
-        best = self._pick_position(
-            positions, panel_w, panel_h, screen_w, screen_h, avoid
-        )
-        # Dock fallback: if even the clamped first candidate overlaps the
-        # sidebar (tiny screen), stay docked instead of covering the list.
+        best = self._pick_position(positions, panel_w, panel_h, screen_w, screen_h, avoid)
+
         dock = Rect(self._dock_x, self._dock_y, panel_w, panel_h)
         probe = Rect(best[0], best[1], panel_w, panel_h)
-        if any(probe.colliderect(a) for a in avoid[1:]) and not any(
-            dock.colliderect(a) for a in avoid[1:]
-        ):
+        if any(probe.colliderect(a) for a in avoid[1:]) and not any(dock.colliderect(a) for a in avoid[1:]):
             best = (self._dock_x, self._dock_y)
         self.rect.x, self.rect.y = best
 
@@ -242,8 +233,7 @@ class NodeEditor:
         buttons = []
         self._is_particle = node.node_type == "particle_emitter"
         if self._is_particle:
-            r = Rect(self.rect.x + self.SIDE_PAD, y_base,
-                     self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
+            r = Rect(self.rect.x + self.SIDE_PAD, y_base, self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
             buttons.append((r, "particle"))
             r2 = Rect(
                 self.rect.x + self.SIDE_PAD,
@@ -253,8 +243,7 @@ class NodeEditor:
             )
             buttons.append((r2, "props"))
         else:
-            r = Rect(self.rect.x + self.SIDE_PAD, y_base,
-                     self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
+            r = Rect(self.rect.x + self.SIDE_PAD, y_base, self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
             buttons.append((r, "props"))
         return buttons
 
@@ -288,9 +277,7 @@ class NodeEditor:
                     cfg = get_preset_config(result)
                     node.properties.clear()
                     node.properties.update(cfg)
-                    self.editor.tile_grid_widget.reset_particle_preview(
-                        node.node_id, cfg
-                    )
+                    self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
                 self._preset_dd.selected = result
                 return True
 
@@ -327,21 +314,15 @@ class NodeEditor:
                         if action == "props":
                             node = mgr.get_active_node()
                             if node:
-                                self.editor.context_dispatch.open(
-                                    PropertyContext(ContextKind.NODE, node)
-                                )
+                                self.editor.context_dispatch.open(PropertyContext(ContextKind.NODE, node))
                         elif action == "particle":
                             node = mgr.get_active_node()
                             if node:
-                                self.editor.particle_config_dialog = (
-                                    ParticleConfigDialog(
-                                        self.editor,
-                                        dict(node.properties),
-                                        node.node_id,
-                                        on_save=lambda cfg: self._save_particle_config(
-                                            cfg
-                                        ),
-                                    )
+                                self.editor.particle_config_dialog = ParticleConfigDialog(
+                                    self.editor,
+                                    dict(node.properties),
+                                    node.node_id,
+                                    on_save=lambda cfg: self._save_particle_config(cfg),
                                 )
                         return True
 
@@ -513,37 +494,23 @@ class NodeEditor:
         fields = self._fields()
         field_data = self._get_field_rects()
 
-        for (key, label_rect, input_rect), (_fkey, flabel, fvalue) in zip(
-            field_data, fields, strict=False
-        ):
+        for (key, label_rect, input_rect), (_fkey, flabel, fvalue) in zip(field_data, fields, strict=False):
             lbl = self.font.render(flabel, True, COLORS.text_dim)
             screen.blit(lbl, (label_rect.x, label_rect.y + 4))
 
-            pygame.draw.rect(
-                screen, COLORS.panel_alt, input_rect, border_radius=SHAPE.radius_sm
-            )
-            pygame.draw.rect(
-                screen, COLORS.border_soft, input_rect, 1, border_radius=SHAPE.radius_sm
-            )
+            pygame.draw.rect(screen, COLORS.panel_alt, input_rect, border_radius=SHAPE.radius_sm)
+            pygame.draw.rect(screen, COLORS.border_soft, input_rect, 1, border_radius=SHAPE.radius_sm)
 
             if self._editing_field == key:
                 if self.text_selected:
-                    base_txt = self.font_input.render(
-                        self._input_text, True, COLORS.text
-                    )
+                    base_txt = self.font_input.render(self._input_text, True, COLORS.text)
                     txt_w = base_txt.get_width()
                     txt_h = base_txt.get_height()
-                    highlight_rect = Rect(
-                        input_rect.x + 4, input_rect.y + 3, max(4, txt_w), txt_h
-                    )
+                    highlight_rect = Rect(input_rect.x + 4, input_rect.y + 3, max(4, txt_w), txt_h)
                     pygame.draw.rect(screen, (50, 100, 200), highlight_rect)
-                    txt = self.font_input.render(
-                        self._input_text, True, (255, 255, 255)
-                    )
+                    txt = self.font_input.render(self._input_text, True, (255, 255, 255))
                 else:
-                    display = self._input_text + (
-                        "|" if pygame.time.get_ticks() % 1000 < 500 else ""
-                    )
+                    display = self._input_text + ("|" if pygame.time.get_ticks() % 1000 < 500 else "")
                     txt = self.font_input.render(display, True, COLORS.text)
             else:
                 txt = self.font_input.render(fvalue, True, COLORS.text_muted)
@@ -561,11 +528,7 @@ class NodeEditor:
                 screen.blit(lbl, (pr.x - 58, pr.y + 6))
 
                 owner = node.node_id if node else None
-                if (
-                    self._preset_dd is None
-                    or self._preset_dd.rect != pr
-                    or self._preset_owner != owner
-                ):
+                if self._preset_dd is None or self._preset_dd.rect != pr or self._preset_owner != owner:
                     current = "Custom"
                     if node and node.properties:
                         for p in PRESETS:
@@ -588,9 +551,7 @@ class NodeEditor:
                 )
                 txt = self.font.render("Particle Config...", True, COLORS.text)
             else:
-                pygame.draw.rect(
-                    screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm
-                )
+                pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
                 txt = self.font.render("Properties...", True, COLORS.text)
             screen.blit(txt, txt.get_rect(center=rect.center))
 

@@ -384,7 +384,11 @@ class TestToolTooltips:
 
     def test_eraser_shows_key_and_size_hint(self):
         tip = _find_button(make_toolbar(), "eraser").tooltip_text
-        assert "(R" in tip and "Ctrl" in tip
+        assert "(E" in tip and "Ctrl" in tip
+
+    def test_rect_fill_button_present(self):
+        tip = _find_button(make_toolbar(), "rect_fill").tooltip_text
+        assert "(R" in tip or "; R" in tip
 
     def test_pick_shows_key(self):
         assert "(I" in _find_button(make_toolbar(), "pick").tooltip_text

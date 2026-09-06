@@ -244,3 +244,14 @@ class TestOverlapGuard:
         assert out.get("cancelled")
         assert ap.pending_collision is None
         assert d.groups[1].rules == []
+
+    def test_pending_collision_swallows_wheel(self):
+        import pygame
+
+        d, ap = self._fill_a()
+        ap.request_apply_template(template("Standard 4x4 (Cardinal)"))
+        assert ap.pending_collision is not None
+        wheel = pygame.event.Event(pygame.MOUSEWHEEL, {"x": 0, "y": 1})
+        assert ap.handle_event(wheel) is True
+        ap.resolve_pending_collision("cancel")
+        assert ap.handle_event(wheel) is False
