@@ -320,3 +320,51 @@ class TestLeafLookup:
         assert r.leaf_for([(1, 0)]) == [2]
         assert r.leaf_for(set()) is None
         assert r.leaf_for(None) is None
+
+
+# ===================================================================
+class TestDuplicateKeepsSubcases:
+    FULL = frozenset({(-1, 0), (1, 0), (0, -1), (0, 1)})
+
+    def _designer_with_5x5(self):
+        d, ap = make_designer((0, 0, 5 * 32, 5 * 32))
+        ap.apply_template(template("Standard 5x5 (Cardinal)"))
+        # preview/sync loading needs real surfaces; disarm both so the
+        # duplicate path short-circuits instead.
+        d.editor.tileset_widget.tilesets = []
+        d.editor.tileset_widget.selected_tile = None
+        idx = next(i for i, r in enumerate(d.groups[0].rules)
+                   if r.neighbors == self.FULL)
+        d.selected_rule_index = idx
+        return d, idx
+
+    def test_duplicate_copies_leaves(self):
+        d, idx = self._designer_with_5x5()
+        src = d.groups[0].rules[idx]
+        assert len(src.subcases) == 9
+        assert d._duplicate_current_rule() is True
+        clone = d.groups[0].rules[idx + 1]
+        assert clone.variant_ids == src.variant_ids
+        assert clone.subcases == src.subcases
+        assert all(len(v) == 1 for v in clone.subcases.values())
+
+    def test_duplicate_leaves_are_independent(self):
+        d, idx = self._designer_with_5x5()
+        src = d.groups[0].rules[idx]
+        d._duplicate_current_rule()
+        clone = d.groups[0].rules[idx + 1]
+        key = next(iter(clone.subcases))
+        clone.subcases[key].append(999)
+        assert 999 not in src.subcases[key]
+
+    def test_duplicate_round_trips_exact(self):
+        d, idx = self._designer_with_5x5()
+        d._duplicate_current_rule()
+        # retire the original: only the clone serves group A now
+        del d.groups[0].rules[idx]
+        rules = d.groups[0].rules
+        layer = motif_layer(5, 5)
+        layer.autotile_layer(rules)
+        for y in range(5):
+            for x in range(5):
+                assert layer.tiles[(x, y)]["variant"] == vid(x, y), (x, y)

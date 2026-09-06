@@ -826,6 +826,7 @@ class AutotileRuleDesigner:
             surface_subsurface=src.preview_surf,
             tileset_index=src.tileset_index,
             group_id=group.name,
+            subcases={k: list(v) for k, v in src.subcases.items()},
         )
         group.rules.insert(self.selected_rule_index + 1, clone)
         self.selected_rule_index += 1
