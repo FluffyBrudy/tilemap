@@ -216,7 +216,9 @@ class TestListKeys:
         mgr = ed.tilemap.layer_manager
         mgr.create_layer("Extra", layer_type="tile")
         mgr.set_active_layer(1)
-        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
+        # Up/Down step layers only when hovering the list; off-list the
+        # keys yield to the grid.
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (100, 100))
         s.handle_event(key_event(pygame.K_DOWN))
         assert mgr.active_layer_idx == 2
         s.handle_event(key_event(pygame.K_UP))
@@ -224,4 +226,7 @@ class TestListKeys:
         assert mgr.active_layer_idx == 0
         # clamps at bounds
         s.handle_event(key_event(pygame.K_UP))
+        assert mgr.active_layer_idx == 0
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
+        assert s.handle_event(key_event(pygame.K_DOWN)) is False
         assert mgr.active_layer_idx == 0

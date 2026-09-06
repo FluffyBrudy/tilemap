@@ -272,13 +272,24 @@ class LayerSelector:
                 return True
 
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                # A canvas selection belongs to the grid: yield so TileGrid
+                # deletes the selection instead of removing the layer.
+                grid_selection = getattr(
+                    getattr(self.editor, "tile_grid_widget", None),
+                    "selection_rect", None)
+                if grid_selection:
+                    return False
                 self._remove_layer()
                 return True
 
             if event.key == pygame.K_UP:
+                if not self.list_rect.collidepoint(mouse_pos):
+                    return False
                 self._step_active_layer(-1)
                 return True
             if event.key == pygame.K_DOWN:
+                if not self.list_rect.collidepoint(mouse_pos):
+                    return False
                 self._step_active_layer(1)
                 return True
 
