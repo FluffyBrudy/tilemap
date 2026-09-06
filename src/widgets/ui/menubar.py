@@ -106,6 +106,26 @@ class MenuBar:
                         ),
                     ),
                     MenuAction(
+                        "Rectangle Fill Tool",
+                        self.editor.rect_fill_active,
+                        "R",
+                        is_checked=lambda: self.editor.tool_manager.is_active(
+                            ToolKind.RECT_FILL
+                        ),
+                    ),
+                    MenuAction(
+                        "Line Tool",
+                        self.editor.line_tool_active,
+                        "L",
+                        is_checked=lambda: self.editor.tool_manager.is_active(
+                            ToolKind.LINE
+                        ),
+                    ),
+                    MenuAction(
+                        "Replace Variant",
+                        self.editor.replace_variant_active,
+                    ),
+                    MenuAction(
                         "Export Selection as PNG",
                         self.editor.export_selection_as_png,
                         "Ctrl+Shift+E",

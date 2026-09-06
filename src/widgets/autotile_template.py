@@ -20,9 +20,7 @@ DR = (1, 1)
 
 
 class TemplateDefinition:
-    def __init__(
-        self, name: str, mappings: list[tuple[int, int, set[tuple[int, int]]]]
-    ):
+    def __init__(self, name: str, mappings: list[tuple[int, int, set[tuple[int, int]]]]):
         self.name = name
         self.mappings = mappings
 
@@ -37,10 +35,7 @@ def motif_dist2(motif_cells: set[tuple[int, int]], col: int, row: int) -> frozen
     semantics at classify time, so motif-derived and map-derived
     signatures agree on motif-shaped masses.
     """
-    return frozenset(
-        d for d in _CARDINAL_4
-        if (col + 2 * d[0], row + 2 * d[1]) in motif_cells
-    )
+    return frozenset(d for d in _CARDINAL_4 if (col + 2 * d[0], row + 2 * d[1]) in motif_cells)
 
 
 def _cardinal_grid_mappings(w: int, h: int):
@@ -127,8 +122,7 @@ class AutotileTemplateApplier:
         self.active_templates: list[TemplateDefinition] = []
         self.rect = Rect(0, 0, 200, 10)
         self.font = FONTS.get_font(12)
-        # Pending 3-way collision choice: None or dict with
-        # template/items/collisions/target_idx/ts_index.
+
         self.pending_collision: dict | None = None
         self.collision_rect = Rect(0, 0, 260, 10)
         self._collision_options = ("Merge", "Move", "Cancel")
@@ -166,15 +160,11 @@ class AutotileTemplateApplier:
             if ts_idx == ts_widget.active_idx:
                 continue
 
-            all_templates.append(
-                self._create_template_from_rules(f"Ruleset: {ts_name}", rules)
-            )
+            all_templates.append(self._create_template_from_rules(f"Ruleset: {ts_name}", rules))
 
         return all_templates
 
-    def _create_template_from_rules(
-        self, name: str, rules: list["AutotileRule"]
-    ) -> TemplateDefinition:
+    def _create_template_from_rules(self, name: str, rules: list["AutotileRule"]) -> TemplateDefinition:
         if not rules:
             return TemplateDefinition(name, [])
 
@@ -213,7 +203,8 @@ class AutotileTemplateApplier:
             if self._handle_collision_event(event):
                 return True
             # Pending choice takes over input until resolved.
-            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN,
+                              pygame.MOUSEWHEEL):
                 return True
         if not self.visible:
             return False
@@ -324,9 +315,7 @@ class AutotileTemplateApplier:
             self.pending_collision = {
                 "template": template,
                 "target_idx": self.designer.selected_group_idx,
-                "ts_index": getattr(
-                    self.designer.editor.tileset_widget, "active_idx", None
-                ),
+                "ts_index": getattr(self.designer.editor.tileset_widget, "active_idx", None),
                 "collisions": collisions,
             }
             self._layout_collision_popup()
@@ -334,8 +323,7 @@ class AutotileTemplateApplier:
                 f"Template overlaps {len(collisions)} tile(s) owned by "
                 f"{', '.join(owners)}. Choose Merge / Move / Cancel."
             )
-            return {"added": 0, "updated": 0, "moved": 0, "pending": True,
-                    "collisions": collisions}
+            return {"added": 0, "updated": 0, "moved": 0, "pending": True, "collisions": collisions}
         return self.apply_template(template, collision_choice="merge")
 
     def resolve_pending_collision(self, choice: str):
@@ -349,8 +337,7 @@ class AutotileTemplateApplier:
             print("Template cancelled (collision kept).")
             return {"added": 0, "updated": 0, "moved": 0, "cancelled": True}
         if choice == "move":
-            return self.apply_template(
-                pending["template"], collision_choice="move")
+            return self.apply_template(pending["template"], collision_choice="move")
         return self.apply_template(pending["template"], collision_choice="merge")
 
     def _notify(self, text: str, error: bool = False):
@@ -424,12 +411,8 @@ class AutotileTemplateApplier:
             return {"added": 0, "updated": 0, "moved": 0, "error": "no-group"}
 
         if collisions and collision_choice == "cancel":
-            print(
-                f"Template cancelled: {len(collisions)} tile(s) already owned "
-                f"by another group."
-            )
-            return {"added": 0, "updated": 0, "moved": 0, "cancelled": True,
-                    "collisions": collisions}
+            print(f"Template cancelled: {len(collisions)} tile(s) already owned by another group.")
+            return {"added": 0, "updated": 0, "moved": 0, "cancelled": True, "collisions": collisions}
 
         tile_selector = getattr(self.designer.editor, "tileset_widget", None)
         ts = tile_selector.get_active_tile() if tile_selector else None
@@ -451,8 +434,7 @@ class AutotileTemplateApplier:
 
         moved_count = 0
         if collisions and collision_choice == "move":
-            moved_count = self._steal_vids(
-                ts_index, set(collisions), self.designer.selected_group_idx)
+            moved_count = self._steal_vids(ts_index, set(collisions), self.designer.selected_group_idx)
 
         added_count = 0
         updated_count = 0
@@ -502,8 +484,7 @@ class AutotileTemplateApplier:
             f"{added_count} rules added, {updated_count} rules updated, "
             f"{moved_count} tiles moved."
         )
-        return {"added": added_count, "updated": updated_count,
-                "moved": moved_count, "collisions": collisions}
+        return {"added": added_count, "updated": updated_count, "moved": moved_count, "collisions": collisions}
 
     def _draw_collision_popup(self, screen: Surface):
         if self.pending_collision is None:
@@ -518,12 +499,10 @@ class AutotileTemplateApplier:
             pass
         pygame.draw.rect(screen, COLORS.panel, self.collision_rect)
         pygame.draw.rect(screen, COLORS.warning, self.collision_rect, 2)
-        title = self.font.render(
-            f"{len(collisions)} tile(s) owned by {', '.join(owners)}", True, COLORS.text)
+        title = self.font.render(f"{len(collisions)} tile(s) owned by {', '.join(owners)}", True, COLORS.text)
         screen.blit(title, (self.collision_rect.x + 10, self.collision_rect.y + 6))
         mouse_pos = pygame.mouse.get_pos()
-        hints = {"Merge": "share tiles", "Move": f"move to {target}",
-                 "Cancel": "abort"}
+        hints = {"Merge": "share tiles", "Move": f"move to {target}", "Cancel": "abort"}
         for i, opt in enumerate(self._collision_options):
             row = Rect(
                 self.collision_rect.x + 8,
@@ -551,9 +530,7 @@ class AutotileTemplateApplier:
         mouse_pos = pygame.mouse.get_pos()
 
         for i, template in enumerate(self.active_templates):
-            item_rect = Rect(
-                self.rect.x + 2, self.rect.y + 5 + i * 25, self.rect.width - 4, 25
-            )
+            item_rect = Rect(self.rect.x + 2, self.rect.y + 5 + i * 25, self.rect.width - 4, 25)
             is_hover = item_rect.collidepoint(mouse_pos)
 
             if is_hover:

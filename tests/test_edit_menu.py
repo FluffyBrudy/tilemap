@@ -151,6 +151,9 @@ class TestEditMenu:
         ed.launch_character_collision_editor = lambda: None
         ed.autotile_active = lambda: None
         ed.flood_fill_active = lambda: None
+        ed.rect_fill_active = lambda: None
+        ed.line_tool_active = lambda: None
+        ed.replace_variant_active = lambda: None
         ed.export_selection_as_png = lambda: None
         ed.launch_external_automap = lambda: None
         ed.show_nodes = False

@@ -55,6 +55,16 @@ class TestBuiltinThemes:
         # light frost accent needs dark foreground for contrast
         assert sum(colors.text_on_accent) / 3 < 100
 
+    def test_settings_catalog_covers_registry(self):
+        from tilemap_editor.settings import BUILTIN_THEMES
+
+        assert set(THEMES) <= set(BUILTIN_THEMES), set(THEMES) - set(BUILTIN_THEMES)
+
+    def test_cli_help_derives_from_catalog(self):
+        cli_path = Path(__file__).parent.parent / "src" / "tilemap_editor" / "cli.py"
+        cli_source = cli_path.read_text(encoding="utf-8")
+        assert "BUILTIN_THEMES" in cli_source
+
     def test_surfaces_have_elevation_depth(self):
         """No more flat same-bg-everywhere: bg/panel/alt/header distinct."""
         for name, colors in THEMES.items():

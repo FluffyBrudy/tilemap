@@ -56,6 +56,9 @@ def make_editor():
         launch_character_collision_editor=lambda: None,
         autotile_active=lambda: None,
         flood_fill_active=lambda: None,
+        rect_fill_active=lambda: None,
+        line_tool_active=lambda: None,
+        replace_variant_active=lambda: None,
         export_selection_as_png=lambda: None,
         launch_external_automap=lambda: None,
     )

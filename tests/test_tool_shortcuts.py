@@ -83,10 +83,16 @@ class TestToolShortcuts:
         assert g.handle_event(key_event(pygame.K_b)) is True
         assert ed.tool_manager.active is None
 
-    def test_r_toggles_eraser(self, monkeypatch):
+    def test_r_toggles_rect_fill(self, monkeypatch):
         g, ed = make_grid()
         monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
         g.handle_event(key_event(pygame.K_r))
+        assert ed.tool_manager.is_active(ToolKind.RECT_FILL)
+
+    def test_e_toggles_eraser(self, monkeypatch):
+        g, ed = make_grid()
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
+        g.handle_event(key_event(pygame.K_e))
         assert ed.tool_manager.is_active(ToolKind.ERASER)
 
     def test_i_toggles_pick(self, monkeypatch):

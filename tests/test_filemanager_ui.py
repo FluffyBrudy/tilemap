@@ -273,3 +273,31 @@ class TestEscapeLocalOnly:
         fm.on_cancel_callback = lambda: closed.append(True)
         assert fm._handle_escape() is False
         assert closed == []
+
+
+class TestF5RenameGuard:
+    def _f5(self, fm):
+        import pygame
+
+        return fm.handle_event(
+            pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_F5, "unicode": ""}))
+
+    def test_f5_refreshes_when_idle(self, tmp_path):
+        fm = make_manager(current_path=tmp_path)
+        calls = []
+        fm.refresh_items = lambda: calls.append(True)
+        assert self._f5(fm) is True
+        assert calls == [True]
+
+    def test_f5_blocked_during_rename(self, tmp_path):
+        fm = make_manager(current_path=tmp_path)
+        calls = []
+        fm.refresh_items = lambda: calls.append(True)
+        fm.renaming_item_idx = 0
+        fm.rename_input.text = "half-typed"
+        fm.rename_input.handle_event = lambda event: False
+        # consumed by the rename path, but no refresh happens mid-rename
+        assert self._f5(fm) is True
+        assert calls == []
+        assert fm.renaming_item_idx == 0
+        assert fm.rename_input.text == "half-typed"

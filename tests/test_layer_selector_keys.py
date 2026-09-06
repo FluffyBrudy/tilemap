@@ -98,3 +98,44 @@ class TestArrowHover:
         s = make_selector(monkeypatch, mouse_pos=(10, 10))
         assert s.handle_event(key_event(pygame.K_DOWN)) is False
         assert s.editor.tilemap.layer_manager.active_layer_idx == 0
+
+
+class FakeFont:
+    def __init__(self, px_per_char=6):
+        self._px = px_per_char
+
+    def size(self, text):
+        return (len(text) * self._px, 12)
+
+
+class TestFitText:
+    def test_short_passthrough(self):
+        from widgets.layer_selector import fit_text
+
+        assert fit_text(FakeFont(), "abc", 100) == "abc"
+
+    def test_truncates_with_ellipsis(self):
+        from widgets.layer_selector import fit_text
+
+        out = fit_text(FakeFont(), "a_very_long_layer_name", 60)
+        assert out.endswith("..")
+        assert len(out) * 6 <= 60
+
+    def test_zero_width_empty(self):
+        from widgets.layer_selector import fit_text
+
+        assert fit_text(FakeFont(), "abc", 0) == ""
+        assert fit_text(FakeFont(), "abc", -5) == ""
+
+    def test_nothing_fits_empty(self):
+        from widgets.layer_selector import fit_text
+
+        assert fit_text(FakeFont(), "abc", 6) == ""
+
+    def test_name_budget_keeps_clear_of_pct(self):
+        item_x, bar_x = 0, 200
+        name_max_w = (bar_x - 36) - (item_x + 22)
+        from widgets.layer_selector import fit_text
+
+        out = fit_text(FakeFont(), "x" * 100, name_max_w)
+        assert len(out) * 6 <= name_max_w

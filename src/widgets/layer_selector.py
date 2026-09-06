@@ -19,6 +19,26 @@ if TYPE_CHECKING:
     from editor import Editor
 
 
+def fit_text(font, text: str, max_w: int) -> str:
+    """Truncate text with an ellipsis to fit max_w pixels (headless-safe).
+
+    Returns "" when nothing (not even "..") fits; short text passes through.
+    """
+    if max_w <= 0:
+        return ""
+    try:
+        if font.size(text)[0] <= max_w:
+            return text
+        ellipsis = ".."
+        if font.size(ellipsis)[0] > max_w:
+            return ""
+        while text and font.size(text + ellipsis)[0] > max_w:
+            text = text[:-1]
+        return text + ellipsis
+    except Exception:
+        return text
+
+
 class LayerSelector:
     """Widget for selecting and managing tile layers."""
 
@@ -31,9 +51,7 @@ class LayerSelector:
         self.footer_h = 35
 
         self.header_rect = Rect(x, y, w, self.header_h)
-        self.list_rect = Rect(
-            x, y + self.header_h, w, h - self.header_h - self.footer_h
-        )
+        self.list_rect = Rect(x, y + self.header_h, w, h - self.header_h - self.footer_h)
         self.footer_rect = Rect(x, y + h - self.footer_h, w, self.footer_h)
 
         self.scroll_offset = 0
@@ -78,9 +96,7 @@ class LayerSelector:
     def resize(self, x: int, y: int, w: int, h: int):
         self.rect = Rect(x, y, w, h)
         self.header_rect = Rect(x, y, w, self.header_h)
-        self.list_rect = Rect(
-            x, y + self.header_h, w, h - self.header_h - self.footer_h
-        )
+        self.list_rect = Rect(x, y + self.header_h, w, h - self.header_h - self.footer_h)
         self.footer_rect = Rect(x, y + h - self.footer_h, w, self.footer_h)
 
         btn_y = self.footer_rect.y + 5
@@ -98,10 +114,7 @@ class LayerSelector:
         # actions can never fire mid-rename and shift indices out from
         # under _confirm_rename.
         if event.type == pygame.MOUSEBUTTONDOWN and self.renaming_layer_idx is not None:
-            if (
-                self.list_rect.collidepoint(mouse_pos)
-                and self._get_layer_at_pos(mouse_pos) == self.renaming_layer_idx
-            ):
+            if self.list_rect.collidepoint(mouse_pos) and self._get_layer_at_pos(mouse_pos) == self.renaming_layer_idx:
                 self._confirm_rename()
             else:
                 self._cancel_rename()
@@ -126,21 +139,15 @@ class LayerSelector:
                     if layer_idx is not None:
                         eye_rect = self._get_eye_icon_rect(layer_idx, mouse_pos)
                         if eye_rect and eye_rect.collidepoint(mouse_pos):
-                            layer = self.editor.tilemap.layer_manager.get_layer(
-                                layer_idx
-                            )
+                            layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
                             if layer:
-                                self.editor.tilemap.capture_history(
-                                    "Toggle Layer Visibility"
-                                )
+                                self.editor.tilemap.capture_history("Toggle Layer Visibility")
                                 layer.visible = not layer.visible
                                 return True
 
                         lock_rect = self._get_lock_icon_rect(layer_idx, mouse_pos)
                         if lock_rect and lock_rect.collidepoint(mouse_pos):
-                            layer = self.editor.tilemap.layer_manager.get_layer(
-                                layer_idx
-                            )
+                            layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
                             if layer:
                                 self.editor.tilemap.capture_history("Toggle Layer Lock")
                                 layer.locked = not layer.locked
@@ -148,40 +155,27 @@ class LayerSelector:
 
                         ysort_rect = self._get_ysort_icon_rect(layer_idx)
                         if ysort_rect and ysort_rect.collidepoint(mouse_pos):
-                            layer = self.editor.tilemap.layer_manager.get_layer(
-                                layer_idx
-                            )
+                            layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
                             if layer:
-                                self.editor.tilemap.capture_history(
-                                    "Toggle Layer Y-Sort"
-                                )
+                                self.editor.tilemap.capture_history("Toggle Layer Y-Sort")
                                 layer.y_sort = not layer.y_sort
                                 return True
 
                         opacity_rect = self._get_opacity_bar_rect(layer_idx)
                         if opacity_rect and opacity_rect.collidepoint(mouse_pos):
-                            layer = self.editor.tilemap.layer_manager.get_layer(
-                                layer_idx
-                            )
+                            layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
                             if layer:
-                                # Capture once at drag start; motion updates follow.
-                                self.editor.tilemap.capture_history(
-                                    "Adjust Layer Opacity"
-                                )
+                                self.editor.tilemap.capture_history("Adjust Layer Opacity")
                                 self._adjusting_opacity_idx = layer_idx
                                 rel_x = mouse_pos[0] - opacity_rect.x
-                                layer.opacity = max(
-                                    0.0, min(1.0, rel_x / opacity_rect.width)
-                                )
+                                layer.opacity = max(0.0, min(1.0, rel_x / opacity_rect.width))
                                 return True
 
                         self.dragging_layer_idx = layer_idx
                         self.drag_start_y = mouse_pos[1]
 
                         self.drag_offset_y = mouse_pos[1] - (
-                            self.list_rect.y
-                            + (layer_idx * self.item_h)
-                            - self.scroll_offset
+                            self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
                         )
 
                         self.editor.tilemap.layer_manager.set_active_layer(layer_idx)
@@ -193,9 +187,7 @@ class LayerSelector:
                     if layer_idx is not None:
                         layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
                         if layer:
-                            self.editor.context_dispatch.open(
-                                PropertyContext(ContextKind.LAYER, layer)
-                            )
+                            self.editor.context_dispatch.open(PropertyContext(ContextKind.LAYER, layer))
                         return True
 
             elif event.button == 4:
@@ -216,26 +208,18 @@ class LayerSelector:
                 layer_idx = self._get_layer_at_pos(mouse_pos)
                 if layer_idx is not None and layer_idx != self.dragging_layer_idx:
                     self.editor.tilemap.capture_history("Reorder Layers")
-                    self.editor.tilemap.layer_manager.reorder_layer(
-                        self.dragging_layer_idx, layer_idx
-                    )
+                    self.editor.tilemap.layer_manager.reorder_layer(self.dragging_layer_idx, layer_idx)
 
                 self.dragging_layer_idx = None
                 return True
 
         elif event.type == pygame.MOUSEMOTION:
             if self._adjusting_opacity_idx is not None:
-                layer = self.editor.tilemap.layer_manager.get_layer(
-                    self._adjusting_opacity_idx
-                )
+                layer = self.editor.tilemap.layer_manager.get_layer(self._adjusting_opacity_idx)
                 if layer:
-                    opacity_rect = self._get_opacity_bar_rect(
-                        self._adjusting_opacity_idx
-                    )
+                    opacity_rect = self._get_opacity_bar_rect(self._adjusting_opacity_idx)
                     if opacity_rect:
-                        rel_x = max(
-                            0, min(opacity_rect.width, mouse_pos[0] - opacity_rect.x)
-                        )
+                        rel_x = max(0, min(opacity_rect.width, mouse_pos[0] - opacity_rect.x))
                         layer.opacity = max(0.0, min(1.0, rel_x / opacity_rect.width))
                 return True
 
@@ -272,11 +256,7 @@ class LayerSelector:
                 return True
 
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
-                # A canvas selection belongs to the grid: yield so TileGrid
-                # deletes the selection instead of removing the layer.
-                grid_selection = getattr(
-                    getattr(self.editor, "tile_grid_widget", None),
-                    "selection_rect", None)
+                grid_selection = getattr(getattr(self.editor, "tile_grid_widget", None), "selection_rect", None)
                 if grid_selection:
                     return False
                 self._remove_layer()
@@ -301,8 +281,7 @@ class LayerSelector:
         count = mgr.get_layer_count()
         if count == 0:
             return
-        mgr.set_active_layer(
-            max(0, min(count - 1, mgr.active_layer_idx + delta)))
+        mgr.set_active_layer(max(0, min(count - 1, mgr.active_layer_idx + delta)))
 
     def _get_layer_at_pos(self, pos) -> int | None:
         """Get layer index at the given mouse position."""
@@ -428,7 +407,6 @@ class LayerSelector:
         name = f"Layer {count + 1}"
         self.editor.tilemap.capture_history("Add Layer")
         self.editor.tilemap.layer_manager.create_layer(name, layer_type=layer_type)
-        # Focus the new layer immediately instead of staying on the old one.
         self.editor.tilemap.layer_manager.set_active_layer(count)
 
     def _initial_image_rect(self) -> dict[str, int]:
@@ -459,9 +437,7 @@ class LayerSelector:
 
         self.editor.tilemap.capture_history("Add Image Layer")
         count = self.editor.tilemap.layer_manager.get_layer_count()
-        layer = self.editor.tilemap.layer_manager.create_layer(
-            f"Image Layer {count + 1}", layer_type="image"
-        )
+        layer = self.editor.tilemap.layer_manager.create_layer(f"Image Layer {count + 1}", layer_type="image")
         layer.image_path = str(path.resolve())
         layer.image_rect = self._initial_image_rect()
         self.editor.tilemap.layer_manager.set_active_layer(count)
@@ -471,8 +447,8 @@ class LayerSelector:
         layer = self._get_active_layer()
         if not layer or getattr(layer, "layer_type", "tile") != "image":
             return
-        initial_dir = Path(layer.image_path).parent if layer.image_path else getattr(
-            self.editor, "data_root", Path.cwd()
+        initial_dir = (
+            Path(layer.image_path).parent if layer.image_path else getattr(self.editor, "data_root", Path.cwd())
         )
         captured_layer = layer
         self.editor.open_file_manager(
@@ -511,7 +487,7 @@ class LayerSelector:
             return
         self.editor.tilemap.capture_history("Delete Layer")
         if mgr.delete_layer(mgr.active_layer_idx):
-            if hasattr(self.editor, 'tile_grid_widget') and self.editor.tile_grid_widget:
+            if hasattr(self.editor, "tile_grid_widget") and self.editor.tile_grid_widget:
                 self.editor.tile_grid_widget.invalidate_image_cache()
 
     def _start_rename(self, layer_idx: int) -> None:
@@ -592,10 +568,7 @@ class LayerSelector:
         for i, layer in enumerate(layer_manager.layers):
             item_y = self.list_rect.y + (i * self.item_h) - self.scroll_offset
 
-            if (
-                item_y + self.item_h < self.list_rect.y
-                or item_y > self.list_rect.bottom
-            ):
+            if item_y + self.item_h < self.list_rect.y or item_y > self.list_rect.bottom:
                 continue
 
             item_rect = Rect(
@@ -629,6 +602,13 @@ class LayerSelector:
                 label = "On" if layer.y_sort else "Off"
                 self.editor.tooltip.show(f"Y-Sort: {label}", (mx + 10, my + 10))
 
+            opacity_bar = self._get_opacity_bar_rect(i)
+
+            display_name = layer.name
+            if opacity_bar:
+                name_max_w = (opacity_bar.x - 36) - (item_rect.x + 22)
+                display_name = fit_text(self.font_layer, layer.name, name_max_w)
+
             if i == self.renaming_layer_idx:
                 pygame.draw.rect(
                     screen,
@@ -636,11 +616,7 @@ class LayerSelector:
                     Rect(item_rect.x + 22, item_rect.y + 4, 120, 20),
                     border_radius=SHAPE.radius_sm,
                 )
-                cursor = (
-                    "|"
-                    if pygame.time.get_ticks() // 500 % 2 == 0
-                    else ""
-                )
+                cursor = "|" if pygame.time.get_ticks() // 500 % 2 == 0 else ""
                 name_txt = self.font_layer.render(
                     self.rename_input.text[: self.rename_input.cursor_pos]
                     + cursor
@@ -651,33 +627,23 @@ class LayerSelector:
             else:
                 on_highlight = i == active_idx or i == self.dragging_layer_idx
                 name_color = COLORS.text_on_selected if on_highlight else COLORS.text
-                name_txt = self.font_layer.render(layer.name, True, name_color)
+                name_txt = self.font_layer.render(display_name, True, name_color)
             screen.blit(name_txt, (item_rect.x + 22, item_rect.y + 5))
 
-            opacity_bar = self._get_opacity_bar_rect(i)
             if opacity_bar:
-                bg_rect = Rect(
-                    opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height
-                )
+                bg_rect = Rect(opacity_bar.x, opacity_bar.y, opacity_bar.width, opacity_bar.height)
                 pygame.draw.rect(screen, COLORS.border, bg_rect, border_radius=2)
                 fill_w = int(opacity_bar.width * layer.opacity)
                 if fill_w > 0:
-                    fill_rect = Rect(
-                        opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height
-                    )
+                    fill_rect = Rect(opacity_bar.x, opacity_bar.y, fill_w, opacity_bar.height)
                     green = int(180 * layer.opacity) + 40
-                    pygame.draw.rect(
-                        screen, (40, green, 40), fill_rect, border_radius=2
-                    )
+                    pygame.draw.rect(screen, (40, green, 40), fill_rect, border_radius=2)
                 pct_col = (
-                    COLORS.text_on_selected
-                    if i == active_idx or i == self.dragging_layer_idx
-                    else COLORS.text_dim
+                    COLORS.text_on_selected if i == active_idx or i == self.dragging_layer_idx else COLORS.text_dim
                 )
-                pct_txt = self.font_layer.render(
-                    f"{int(layer.opacity * 100)}%", True, pct_col
-                )
-                screen.blit(pct_txt, (opacity_bar.x - 32, opacity_bar.y - 2))
+                pct_txt = self.font_layer.render(f"{int(layer.opacity * 100)}%", True, pct_col)
+
+                screen.blit(pct_txt, (opacity_bar.x - 4 - pct_txt.get_width(), opacity_bar.y - 3))
 
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
@@ -701,7 +667,9 @@ class LayerSelector:
             if ysort_rect:
                 ysort_color = COLORS.accent if layer.y_sort else COLORS.text_dim
                 pygame.draw.rect(
-                    screen, ysort_color, ysort_rect,
+                    screen,
+                    ysort_color,
+                    ysort_rect,
                     border_radius=SHAPE.radius_sm,
                 )
                 ysort_txt = self.font_layer.render("Y", True, COLORS.text)
@@ -723,9 +691,7 @@ class LayerSelector:
             drag_surf.set_alpha(200)
             screen.blit(drag_surf, preview_rect)
 
-            name_txt = self.font_layer.render(
-                dragging_layer.name, True, COLORS.text_on_accent
-            )
+            name_txt = self.font_layer.render(dragging_layer.name, True, COLORS.text_on_accent)
             screen.blit(name_txt, (preview_rect.x + 22, preview_rect.y + 5))
 
             pygame.draw.rect(screen, (150, 150, 255), preview_rect, 2)
@@ -734,9 +700,7 @@ class LayerSelector:
         total_h = len(layer_manager.layers) * self.item_h
         if total_h > self.list_rect.height:
             scroll_pct = self.scroll_offset / max(1, (total_h - self.list_rect.height))
-            bar_h = max(
-                18, int(self.list_rect.height * (self.list_rect.height / total_h))
-            )
+            bar_h = max(18, int(self.list_rect.height * (self.list_rect.height / total_h)))
             bar_y = self.list_rect.y + scroll_pct * (self.list_rect.height - bar_h)
             bar_rect = Rect(self.list_rect.right - 5, bar_y, 3, bar_h)
             pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)

@@ -45,8 +45,10 @@ class Toolbar:
         sep()
         add("pan", "pan", "Pan Mode (Ctrl+Space)")
         add("select", "select", "Select/Move Tool (V)")
-        add("eraser", "eraser", "Eraser Tool (R; size Ctrl+=/-)")
+        add("eraser", "eraser", "Eraser Tool (E; size Ctrl+=/-)")
         add("fill", "fill", "Flood Fill (click a cell; F fills at cursor)")
+        add("rect_fill", "rect", "Rectangle Fill (drag a rect; R fills region)")
+        add("line", "line", "Line Tool (drag a line; L)")
         add("pick", "pick", "Pick Tile (I; click a tile)")
         add("dice", "dice", "Dice Brush: random tiles from selection (T)")
         sep()
@@ -71,6 +73,10 @@ class Toolbar:
             e.tool_manager.toggle(ToolKind.ERASER)
         elif key == "fill":
             e.tool_manager.toggle(ToolKind.FILL)
+        elif key == "rect_fill":
+            e.tool_manager.toggle(ToolKind.RECT_FILL)
+        elif key == "line":
+            e.tool_manager.toggle(ToolKind.LINE)
         elif key == "pick":
             e.tool_manager.toggle(ToolKind.PICK)
         elif key == "dice":
@@ -102,6 +108,10 @@ class Toolbar:
                 btn.active = e.tool_manager.is_active(ToolKind.ERASER)
             elif k == "fill":
                 btn.active = e.tool_manager.is_active(ToolKind.FILL)
+            elif k == "rect_fill":
+                btn.active = e.tool_manager.is_active(ToolKind.RECT_FILL)
+            elif k == "line":
+                btn.active = e.tool_manager.is_active(ToolKind.LINE)
             elif k == "pick":
                 btn.active = e.tool_manager.is_active(ToolKind.PICK)
             elif k == "dice":

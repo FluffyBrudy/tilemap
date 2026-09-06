@@ -312,6 +312,75 @@ class TestPersistenceAndMove:
 
 
 # ===================================================================
+class TestDeleteRuleIndex:
+    def _designer(self):
+        from widgets.autotiler import AutotileGroup, AutotileRuleDesigner
+
+        d = AutotileRuleDesigner.__new__(AutotileRuleDesigner)
+        d.groups = [AutotileGroup("A")]
+        d.selected_group_idx = 0
+        d.selected_rule_index = 0
+        d.scroll_offset = 0
+        d.max_visible_rules = 10
+        d.editor = None
+        return d
+
+    def _rule(self, name):
+        from widgets.autotiler import AutotileRule
+
+        return AutotileRule(name, set(), variant_ids=[1])
+
+    def test_stale_index_refuses(self):
+        d = self._designer()
+        d.groups[0].rules = [self._rule("a"), self._rule("b")]
+        assert d._confirm_delete_rule(5) is False
+        assert d._confirm_delete_rule(-1) is False
+        assert [r.name for r in d.groups[0].rules] == ["a", "b"]
+
+    def test_live_selection_deletes(self):
+        d = self._designer()
+        d.groups[0].rules = [self._rule("a"), self._rule("b")]
+        assert d._confirm_delete_rule() is True
+        assert [r.name for r in d.groups[0].rules] == ["b"]
+
+    def test_captured_index_deletes_target(self):
+        d = self._designer()
+        d.groups[0].rules = [self._rule("a"), self._rule("b")]
+        assert d._confirm_delete_rule(1) is True
+        assert [r.name for r in d.groups[0].rules] == ["a"]
+
+
+# ===================================================================
+class TestUniqueGroupNames:
+    def _designer(self, names):
+        from widgets.autotiler import AutotileGroup, AutotileRuleDesigner
+
+        d = AutotileRuleDesigner.__new__(AutotileRuleDesigner)
+        d.groups = [AutotileGroup(n) for n in names]
+        d.rename_input = type("R", (), {"text": "", "cursor_pos": 0,
+                                        "is_focused": False})()
+        return d
+
+    def test_no_duplicate_after_delete(self):
+        # [Default, Group 2, Group 3] minus Group 2 used to re-issue Group 3.
+        d = self._designer(["Default", "Group 3"])
+        d._create_new_group_with_focus()
+        assert d.groups[-1].name == "Group 4"
+
+    def test_sequential_names(self):
+        d = self._designer(["Default"])
+        d._create_new_group_with_focus()
+        assert d.groups[-1].name == "Group 2"
+        d._create_new_group_with_focus()
+        assert d.groups[-1].name == "Group 3"
+
+    def test_skips_taken_numbers(self):
+        d = self._designer(["Default", "Group 2", "Group 3"])
+        d._create_new_group_with_focus()
+        assert d.groups[-1].name == "Group 4"
+
+
+# ===================================================================
 class TestLeafLookup:
     def test_leaf_for_normalizes(self):
         r = make_rule("e", {(1, 0)}, [1, 2],
