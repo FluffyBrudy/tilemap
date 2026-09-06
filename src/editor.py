@@ -211,6 +211,7 @@ class Editor:
         self.autotile_mode = False
         self.node_editing_mode = False
         self.show_nodes = False
+        self.dice_brush = False
         self.tool_manager = ToolManager()
         self._prev_tool = None
 
@@ -1305,6 +1306,12 @@ class Editor:
         self.tool_manager.toggle(ToolKind.FILL)
         if self.tool_manager.is_active(ToolKind.FILL):
             self.notifications.notify("Fill Tool: click a cell (F also works)")
+
+    def toggle_dice_brush(self):
+        """Toggle the dice brush: paint plots random tiles from the selection."""
+        self.dice_brush = not getattr(self, "dice_brush", False)
+        if self.dice_brush:
+            self.notifications.notify("Dice Brush: random tiles from selection (T)")
 
     def exit_editor(self):
         """Clean up and exit the editor."""
