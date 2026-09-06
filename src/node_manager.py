@@ -1,3 +1,4 @@
+import copy
 import json
 import uuid
 from pathlib import Path
@@ -158,6 +159,35 @@ class NodeManager:
             layer_name=layer_name,
             properties=props,
         )
+
+    def duplicate_node(self, node_id: str) -> str | None:
+        """Clone a node (area nudged so the copy is visible)."""
+        src = self.nodes.get(node_id)
+        if src is None:
+            return None
+        existing = {n.name for n in self.nodes.values()}
+        base = f"{src.name} copy"
+        name = base
+        counter = 2
+        while name in existing:
+            name = f"{base} {counter}"
+            counter += 1
+        clone = Node(
+            node_id=create_node_id(),
+            name=name,
+            node_type=src.node_type,
+            area=NodeRect(src.area.x + 16, src.area.y + 16, src.area.w, src.area.h),
+            layer_name=src.layer_name,
+            properties=copy.deepcopy(src.properties),
+            group=src.group,
+        )
+        keys = list(self.nodes.keys())
+        keys.insert(keys.index(node_id) + 1, clone.node_id)
+        self.nodes[clone.node_id] = clone
+        self.nodes = {k: self.nodes[k] for k in keys}
+        self.active_node_id = clone.node_id
+        self.active_group_name = None
+        return clone.node_id
 
     def rename_group(self, old_name: str, new_name: str) -> bool:
         if not new_name or new_name == old_name:

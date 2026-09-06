@@ -142,11 +142,7 @@ class TileSelector(WidgetBase):
     def _frame_aware_object_selected_tile(self, ts) -> tuple[int, int, int, int]:
         """Return frame-sized selected_tile for object tilesets, full surface otherwise."""
         if ts.tileset_type == "object":
-            if (
-                ts.animation
-                and "frame_w" in ts.animation
-                and "frame_h" in ts.animation
-            ):
+            if ts.animation and "frame_w" in ts.animation and "frame_h" in ts.animation:
                 return (0, 0, ts.animation["frame_w"], ts.animation["frame_h"])
             elif (
                 ts.animation
@@ -241,9 +237,7 @@ class TileSelector(WidgetBase):
         anim_editor_map = ctx.extra.get("anim_editor_map")
         if generated_anim_keys is None:
             generated_anim_keys = (
-                {f"anim_{k}" for k in obj.get("animation", {})}
-                if isinstance(obj.get("animation"), dict)
-                else set()
+                {f"anim_{k}" for k in obj.get("animation", {})} if isinstance(obj.get("animation"), dict) else set()
             )
         if anim_editor_map is None:
             anim_editor_map = {k: k[5:] for k in generated_anim_keys}
@@ -307,9 +301,7 @@ class TileSelector(WidgetBase):
         """
         if self._hierarchy is None:
             return {}, []
-        existing = {
-            n.id: n for n in self._walk_all(self._tree.roots) if n.is_folder
-        }
+        existing = {n.id: n for n in self._walk_all(self._tree.roots) if n.is_folder}
         nodes: dict[str, TreeNode] = {}
         new_roots: list[TreeNode] = []
 
@@ -324,9 +316,7 @@ class TileSelector(WidgetBase):
         while pending:
             progressed = False
             for f in list(pending):
-                if f.parent is not None and f.parent not in nodes and any(
-                    p.id == f.parent for p in pending
-                ):
+                if f.parent is not None and f.parent not in nodes and any(p.id == f.parent for p in pending):
                     continue
                 node = existing.get(f.id)
                 if node is None:
@@ -402,17 +392,13 @@ class TileSelector(WidgetBase):
         def walk(nodes: list[TreeNode], parent_id: str | None) -> None:
             for n in nodes:
                 if n.is_folder:
-                    hier.folders.append(
-                        FolderEntry(id=n.id, name=n.label, parent=parent_id)
-                    )
+                    hier.folders.append(FolderEntry(id=n.id, name=n.label, parent=parent_id))
                     walk(n.children, n.id)
                 else:
                     ts = self._ts_node(n.id)
                     if ts is None:
                         continue
-                    hier.items.append(
-                        ItemEntry(path=relative_path(ts.path, data_root), folder=parent_id)
-                    )
+                    hier.items.append(ItemEntry(path=relative_path(ts.path, data_root), folder=parent_id))
 
         walk(self._tree.roots, None)
         save_hierarchy(data_root, hier)
@@ -543,15 +529,18 @@ class TileSelector(WidgetBase):
             if self.view_rect.collidepoint(mouse_pos) and self.active_idx != -1:
                 ts = self.tilesets[self.active_idx]
                 if ts.tileset_type == "object":
-                    self.editor.context_dispatch.open(
-                        PropertyContext(ContextKind.TILESET, ts)
-                    )
+                    self.editor.context_dispatch.open(PropertyContext(ContextKind.TILESET, ts))
                     return True
                 if self.selected_tile:
                     sx, sy, sw, sh = self.selected_tile
                     img_x = self.view_rect.x + ts.offset[0]
                     img_y = self.view_rect.y + ts.offset[1]
-                    sel_rect = Rect(int(img_x + sx * self.zoom), int(img_y + sy * self.zoom), int(sw * self.zoom), int(sh * self.zoom))
+                    sel_rect = Rect(
+                        int(img_x + sx * self.zoom),
+                        int(img_y + sy * self.zoom),
+                        int(sw * self.zoom),
+                        int(sh * self.zoom),
+                    )
 
                     if sel_rect.collidepoint(mouse_pos):
                         variant_ids = self._get_selected_variant_ids(ts)
@@ -608,10 +597,7 @@ class TileSelector(WidgetBase):
                 rel_x = (mouse_pos[0] - img_x) / self.zoom
                 rel_y = (mouse_pos[1] - img_y) / self.zoom
                 if ts.tileset_type == "object":
-                    if (
-                        0 <= rel_x < ts.surface.get_width()
-                        and 0 <= rel_y < ts.surface.get_height()
-                    ):
+                    if 0 <= rel_x < ts.surface.get_width() and 0 <= rel_y < ts.surface.get_height():
                         self.hover_pos = (0, 0)
                     else:
                         self.hover_pos = None
@@ -629,11 +615,6 @@ class TileSelector(WidgetBase):
                         self.update_selection_rect(self.hover_pos)
                 else:
                     self.hover_pos = None
-
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
-            if self.selected_tile and self.active_idx != -1:
-                self._export_selected_as_png_dialog()
-                return True
 
         return False
 
@@ -787,9 +768,7 @@ class TileSelector(WidgetBase):
                     animation["frame_h"] = surf.get_height() // frame_count
                 else:
                     animation["frame_w"] = (
-                        surf.get_width() // frame_count
-                        if surf.get_width() >= frame_count
-                        else surf.get_width()
+                        surf.get_width() // frame_count if surf.get_width() >= frame_count else surf.get_width()
                     )
                     animation["frame_h"] = surf.get_height()
             else:
@@ -936,9 +915,7 @@ class TileSelector(WidgetBase):
         self._sync_tree()
 
         self.editor.suggestion_registry.refresh(self.editor)
-        self.editor.notifications.notify(
-            f"Removed tileset '{removed_ts.name}'", duration=2.5
-        )
+        self.editor.notifications.notify(f"Removed tileset '{removed_ts.name}'", duration=2.5)
 
         # The deprecated regex automap designer keeps raw tileset indices in
         # its saved rules and is intentionally not remapped (slated for
@@ -946,8 +923,7 @@ class TileSelector(WidgetBase):
         designer = getattr(self.editor, "regex_automap_designer", None)
         if designer is not None and getattr(designer, "pattern_rules", None):
             self.editor.notifications.notify(
-                "Regex Automap is deprecated: saved rules reference the "
-                "removed tileset and are now stale",
+                "Regex Automap is deprecated: saved rules reference the removed tileset and are now stale",
                 color=(255, 165, 0),
                 duration=6.0,
             )

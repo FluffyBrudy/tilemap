@@ -67,6 +67,14 @@ class TileCollisionData:
             properties=data.get("properties", {}),
         )
 
+    @staticmethod
+    def apply_flip(point: tuple[float, float], tile_size: tuple[int, int],
+                   flip_x: bool, flip_y: bool) -> tuple[float, float]:
+        """Mirror a tile-local point across the tile center (own inverse)."""
+        tw, th = tile_size
+        x, y = point
+        return ((tw - x) if flip_x else x, (th - y) if flip_y else y)
+
 
 @dataclass
 class TilesetCollisionLibrary:

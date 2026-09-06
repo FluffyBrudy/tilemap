@@ -1,3 +1,4 @@
+import random
 from typing import TYPE_CHECKING
 
 import pygame
@@ -81,6 +82,15 @@ class TileGrid:
         self._last_preview_time: float = 0.0
         self._last_active_node_id: str | None = None
 
+        self._dice_preview_variant: int | None = None
+        self._dice_preview_at: int = 0
+
+        self.rect_fill_start: tuple[int, int] | None = None
+        self.rect_fill_rect: tuple[int, int, int, int] | None = None
+
+        self.line_start: tuple[int, int] | None = None
+        self.line_end: tuple[int, int] | None = None
+
         self._cached_bounds: tuple[int, int, int, int] | None = None
 
     @property
@@ -126,6 +136,12 @@ class TileGrid:
     def invalidate_bounds_cache(self):
         """Invalidate the cached bounds when tiles, objects, or layers change."""
         self._cached_bounds = None
+        minimap = getattr(getattr(self, "editor", None), "minimap", None)
+        if minimap is not None:
+            try:
+                minimap.mark_dirty()
+            except Exception:
+                pass
 
     def invalidate_image_cache(self, _layer=None) -> None:
         """Drop decoded image surfaces after a layer image is replaced."""
@@ -300,6 +316,8 @@ class TileGrid:
             ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
             meta_held = mods & (pygame.KMOD_LMETA | pygame.KMOD_RMETA)
 
+            plain = not (ctrl_held or meta_held)
+
             if event.key == pygame.K_a and (ctrl_held or meta_held):
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                 if active_layer and hasattr(self.editor, "autotiler"):
@@ -311,40 +329,44 @@ class TileGrid:
                         self.editor.notifications.notify("No tiles updated (Already matched or no groups found)")
                 return True
 
-            if event.key == pygame.K_f:
+            if event.key == pygame.K_f and plain:
                 if is_hovering and self.hover_cell:
-                    res = self.get_selected_brush()
-                    if res:
-                        self.editor.tilemap.capture_history("Flood Fill")
-                        tileset_index, tileset_data, src_rect = res
-                        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
-                        assert tileset_data is not None
-                        assert src_rect is not None
-
-                        if active_layer and active_layer.layer_type == "tile":
-                            tile_w, tile_h = self.tile_size
-                            sheet_cols = tileset_data.surface.get_width() // tile_w
-                            variant_id = (src_rect[1] // tile_h * sheet_cols) + (src_rect[0] // tile_w)
-
-                            assert tileset_index is not None
-                            new_data: TypeTile = {
-                                "ttype": tileset_index,
-                                "variant": variant_id,
-                                "pos": (0, 0),
-                            }
-                            active_layer.flood_fill(
-                                self.hover_cell,
-                                new_data,
-                                self.editor.tilemap.map_size,
-                                offset=self.editor.tilemap.offset,
-                            )
+                    self.flood_fill_at_hover()
                 return True
 
-            if event.key == pygame.K_g:
+            if event.key == pygame.K_g and plain:
                 self.show_grid = not self.show_grid
                 return True
 
-            if event.key == pygame.K_q:
+            if event.key == pygame.K_v and plain:
+                self.editor.tool_manager.toggle(ToolKind.SELECT)
+                return True
+
+            if event.key == pygame.K_b and plain:
+                self.editor.tool_manager.deactivate()
+                return True
+
+            if event.key == pygame.K_r and plain:
+                self.editor.tool_manager.toggle(ToolKind.RECT_FILL)
+                return True
+
+            if event.key == pygame.K_e and plain:
+                self.editor.tool_manager.toggle(ToolKind.ERASER)
+                return True
+
+            if event.key == pygame.K_i and plain:
+                self.editor.tool_manager.toggle(ToolKind.PICK)
+                return True
+
+            if event.key == pygame.K_t and plain:
+                self.editor.toggle_dice_brush()
+                return True
+
+            if event.key == pygame.K_l and plain:
+                self.editor.tool_manager.toggle(ToolKind.LINE)
+                return True
+
+            if event.key == pygame.K_q and plain:
                 if is_hovering and self.hover_cell:
                     active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                     if active_layer and self.hover_cell in active_layer.tiles:
@@ -357,6 +379,10 @@ class TileGrid:
                     else:
                         self.editor.notifications.notify("No tile at cursor")
                 return True
+
+            if event.key == pygame.K_TAB and plain:
+                if self.cycle_active_layer():
+                    return True
 
             if event.key == pygame.K_c and (ctrl_held or meta_held):
                 if self.selection_rect:
@@ -440,6 +466,29 @@ class TileGrid:
                         self.remove_tile()
                     return True
 
+                if self.editor.tool_manager.is_active(ToolKind.FILL):
+                    if is_hovering and self.hover_cell:
+                        self.flood_fill_at_hover()
+                    return True
+
+                if self.editor.tool_manager.is_active(ToolKind.PICK):
+                    if is_hovering and self.hover_cell:
+                        self.pick_tile_at(self.hover_cell)
+                    return True
+
+                if self.editor.tool_manager.is_active(ToolKind.RECT_FILL):
+                    if is_hovering and self.hover_cell:
+                        self.rect_fill_start = self.hover_cell
+                        x, y = self.hover_cell
+                        self.rect_fill_rect = (x, y, x, y)
+                    return True
+
+                if self.editor.tool_manager.is_active(ToolKind.LINE):
+                    if is_hovering and self.hover_cell:
+                        self.line_start = self.hover_cell
+                        self.line_end = self.hover_cell
+                    return True
+
                 if is_hovering and not self.is_panning:
                     self.editor.tilemap.capture_history("Place Tile")
                     self.place_tile()
@@ -458,6 +507,12 @@ class TileGrid:
             if event.button == 1:
                 if self._node_drag_state is not None:
                     self._clear_node_drag()
+                    return True
+                if self.rect_fill_start is not None:
+                    self._commit_rect_fill()
+                    return True
+                if self.line_start is not None:
+                    self._commit_line()
                     return True
                 if self.is_selecting:
                     self.is_selecting = False
@@ -492,6 +547,16 @@ class TileGrid:
                 y2 = max(self.selection_start[1], self.hover_cell[1])
                 self.selection_rect = (x1, y1, x2, y2)
 
+            if getattr(self, "rect_fill_start", None) and self.hover_cell:
+                x1 = min(self.rect_fill_start[0], self.hover_cell[0])
+                y1 = min(self.rect_fill_start[1], self.hover_cell[1])
+                x2 = max(self.rect_fill_start[0], self.hover_cell[0])
+                y2 = max(self.rect_fill_start[1], self.hover_cell[1])
+                self.rect_fill_rect = (x1, y1, x2, y2)
+
+            if getattr(self, "line_start", None) and self.hover_cell:
+                self.line_end = self.hover_cell
+
             if self.is_moving and self.move_start_mouse:
                 self._update_move_delta(mouse_pos)
 
@@ -515,10 +580,18 @@ class TileGrid:
 
         buttons = pygame.mouse.get_pressed()
         if (
-            not self.editor.tool_manager.is_active(ToolKind.PAN)
-            and not self.editor.tool_manager.is_active(ToolKind.SELECT)
-            and not self.is_panning
-        ) and buttons[0] and is_hovering:
+            (
+                not self.editor.tool_manager.is_active(ToolKind.PAN)
+                and not self.editor.tool_manager.is_active(ToolKind.SELECT)
+                and not self.editor.tool_manager.is_active(ToolKind.FILL)
+                and not self.editor.tool_manager.is_active(ToolKind.PICK)
+                and not self.editor.tool_manager.is_active(ToolKind.RECT_FILL)
+                and not self.editor.tool_manager.is_active(ToolKind.LINE)
+                and not self.is_panning
+            )
+            and buttons[0]
+            and is_hovering
+        ):
             if self.editor.tool_manager.is_active(ToolKind.ERASER):
                 self.remove_tile()
             else:
@@ -526,6 +599,13 @@ class TileGrid:
             return True
 
         return False
+
+    def _tileset_map(self) -> dict:
+        """Tileset index -> data map, empty when no tileset widget is live."""
+        ts_widget = getattr(self.editor, "tileset_widget", None)
+        if ts_widget is None:
+            return {}
+        return getattr(ts_widget, "tileset_map", {})
 
     def get_selected_brush(self):
         ts_widget = self.editor.tileset_widget
@@ -590,6 +670,22 @@ class TileGrid:
 
         self.invalidate_bounds_cache()
 
+    def _dice_pool(self, src_rect, tile_w: int, tile_h: int, sheet_cols: int) -> list[int] | None:
+        """Variant pool for the dice brush, or None when dice is inactive.
+
+        Active only when dice is toggled on and the selection holds more
+        than one tile; single-tile selections paint positionally.
+        """
+        if not getattr(self.editor, "dice_brush", False):
+            return None
+        sel_w = src_rect[2] // tile_w
+        sel_h = src_rect[3] // tile_h
+        if sel_w * sel_h <= 1:
+            return None
+        start_sx = src_rect[0] // tile_w
+        start_sy = src_rect[1] // tile_h
+        return [(start_sy + y) * sheet_cols + start_sx + x for y in range(sel_h) for x in range(sel_w)]
+
     def _place_tile_grid(
         self,
         active_layer,
@@ -635,16 +731,28 @@ class TileGrid:
 
             active_layer.add_object((pixel_x, pixel_y), obj_data)
         else:
-            vg_map: dict = {}
             autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
+            vg_map: dict = {}
+            selected_group: str | None = None
             if autotile_ok:
                 vg_map = self.editor.autotiler.variant_to_group
+                groups = getattr(self.editor.autotiler, "groups", [])
+                gidx = getattr(self.editor.autotiler, "selected_group_idx", -1)
+                if 0 <= gidx < len(groups):
+                    selected_group = groups[gidx].name
 
-            for y_off in range(sel_h_tiles):
-                for x_off in range(sel_w_tiles):
+            reassigned: dict[str, int] = {}
+
+            dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
+            paint_w, paint_h = (1, 1) if dice_pool is not None else (sel_w_tiles, sel_h_tiles)
+            for y_off in range(paint_h):
+                for x_off in range(paint_w):
                     curr_sx = start_sx + x_off
                     curr_sy = start_sy + y_off
-                    variant_id = (curr_sy * sheet_cols) + curr_sx
+                    if dice_pool is not None:
+                        variant_id = random.choice(dice_pool)
+                    else:
+                        variant_id = (curr_sy * sheet_cols) + curr_sx
 
                     map_x = self.hover_cell[0] + x_off
                     map_y = self.hover_cell[1] + y_off
@@ -666,13 +774,16 @@ class TileGrid:
                         tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
 
                     if autotile_ok:
-                        auto_group = vg_map.get((tileset_index, variant_id))
-                        if auto_group:
-                            tile_data["autotile_group"] = auto_group
-                        elif self.editor.autotiler.groups:
-                            gidx = self.editor.autotiler.selected_group_idx
-                            if 0 <= gidx < len(self.editor.autotiler.groups):
-                                tile_data["autotile_group"] = self.editor.autotiler.groups[gidx].name
+                        # Prefer the selected group so a second ruleset reusing
+                        # the same tiles can actually be painted; fall back to
+                        # the first-group-wins owner map when nothing selected.
+                        owner = vg_map.get((tileset_index, variant_id))
+                        if selected_group:
+                            tile_data["autotile_group"] = selected_group
+                            if owner and owner != selected_group:
+                                reassigned[owner] = reassigned.get(owner, 0) + 1
+                        elif owner:
+                            tile_data["autotile_group"] = owner
 
                     active_layer.set_tile(target_pos, tile_data)
 
@@ -680,6 +791,254 @@ class TileGrid:
                         rules = self.editor.autotiler.rules
                         if rules:
                             active_layer.autotile_at_pos(target_pos, rules)
+
+            if autotile_ok and reassigned:
+                total = sum(reassigned.values())
+                detail = ", ".join(f"{n} from '{o}'" for o, n in sorted(reassigned.items()))
+                notifications = getattr(self.editor, "notifications", None)
+                if notifications is not None:
+                    try:
+                        notifications.notify(f"Reassigned {total} tile(s) to '{selected_group}' ({detail})")
+                    except Exception:
+                        pass
+
+    def _commit_rect_fill(self):
+        """Fill the dragged rect with the tiled brush (one history entry)."""
+        start, rect = self.rect_fill_start, self.rect_fill_rect
+        self.rect_fill_start = None
+        self.rect_fill_rect = None
+        if start is None or rect is None:
+            return
+        res = self.get_selected_brush()
+        if not res:
+            return
+        tileset_index, tileset_data, src_rect = res
+        if tileset_index is None or not tileset_data or not src_rect:
+            return
+        manager = self.editor.tilemap.layer_manager
+        active_layer = manager.get_active_layer() if manager else None
+        if active_layer is None or active_layer.layer_type != "tile":
+            return
+
+        tile_w, tile_h = self.tile_size
+        sheet_cols = tileset_data.surface.get_width() // tile_w
+        sel_w = max(1, src_rect[2] // tile_w)
+        sel_h = max(1, src_rect[3] // tile_h)
+        start_sx = src_rect[0] // tile_w
+        start_sy = src_rect[1] // tile_h
+        dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
+
+        autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
+        selected_group = None
+        vg_map: dict = {}
+        if autotile_ok:
+            groups = getattr(self.editor.autotiler, "groups", [])
+            gidx = getattr(self.editor.autotiler, "selected_group_idx", -1)
+            if 0 <= gidx < len(groups):
+                selected_group = groups[gidx].name
+            vg_map = getattr(self.editor.autotiler, "variant_to_group", {})
+
+        tm = self.editor.tilemap
+        ox, oy = tm.offset
+        mw, mh = tm.map_size
+        x1, y1, x2, y2 = rect
+        filled = 0
+        self.editor.tilemap.capture_history("Rect Fill")
+        for map_y in range(y1, y2 + 1):
+            for map_x in range(x1, x2 + 1):
+                if not (ox <= map_x < ox + mw and oy <= map_y < oy + mh):
+                    continue
+                if dice_pool is not None:
+                    variant_id = random.choice(dice_pool)
+                else:
+                    bx = (map_x - x1) % sel_w
+                    by = (map_y - y1) % sel_h
+                    variant_id = (start_sy + by) * sheet_cols + (start_sx + bx)
+                tile_data: TypeTile = {
+                    "pos": (map_x, map_y),
+                    "ttype": tileset_index,
+                    "variant": variant_id,
+                }
+                if variant_id in tileset_data.tile_properties:
+                    tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
+                if selected_group:
+                    tile_data["autotile_group"] = selected_group
+                elif autotile_ok:
+                    owner = vg_map.get((tileset_index, variant_id))
+                    if owner:
+                        tile_data["autotile_group"] = owner
+                active_layer.set_tile((map_x, map_y), tile_data)
+                filled += 1
+        self.invalidate_bounds_cache()
+        if filled:
+            self.editor.notifications.success(f"Rect Fill: {filled} tiles filled")
+
+    @staticmethod
+    def bresenham_line(x0: int, y0: int, x1: int, y1: int) -> list[tuple[int, int]]:
+        """Grid cells along the line (inclusive both ends)."""
+        cells = []
+        dx, dy = abs(x1 - x0), -abs(y1 - y0)
+        sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
+        err = dx + dy
+        x, y = x0, y0
+        while True:
+            cells.append((x, y))
+            if x == x1 and y == y1:
+                break
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                x += sx
+            if e2 <= dx:
+                err += dx
+                y += sy
+        return cells
+
+    def _commit_line(self):
+        """Paint the dragged line with the brush (one history entry)."""
+        start, end = self.line_start, self.line_end
+        self.line_start = None
+        self.line_end = None
+        if start is None or end is None:
+            return
+        res = self.get_selected_brush()
+        if not res:
+            return
+        tileset_index, tileset_data, src_rect = res
+        if tileset_index is None or not tileset_data or not src_rect:
+            return
+        manager = self.editor.tilemap.layer_manager
+        active_layer = manager.get_active_layer() if manager else None
+        if active_layer is None or active_layer.layer_type != "tile":
+            return
+
+        tile_w, tile_h = self.tile_size
+        sheet_cols = tileset_data.surface.get_width() // tile_w
+        sel_w = max(1, src_rect[2] // tile_w)
+        sel_h = max(1, src_rect[3] // tile_h)
+        brush_vids = [
+            (src_rect[1] // tile_h + y) * sheet_cols + (src_rect[0] // tile_w + x)
+            for y in range(sel_h)
+            for x in range(sel_w)
+        ]
+        dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
+
+        autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
+        selected_group = None
+        vg_map: dict = {}
+        if autotile_ok:
+            groups = getattr(self.editor.autotiler, "groups", [])
+            gidx = getattr(self.editor.autotiler, "selected_group_idx", -1)
+            if 0 <= gidx < len(groups):
+                selected_group = groups[gidx].name
+            vg_map = getattr(self.editor.autotiler, "variant_to_group", {})
+
+        tm = self.editor.tilemap
+        ox, oy = tm.offset
+        mw, mh = tm.map_size
+        cells = self.bresenham_line(start[0], start[1], end[0], end[1])
+        painted = 0
+        self.editor.tilemap.capture_history("Line")
+        for i, (map_x, map_y) in enumerate(cells):
+            if not (ox <= map_x < ox + mw and oy <= map_y < oy + mh):
+                continue
+            if dice_pool is not None:
+                variant_id = random.choice(dice_pool)
+            else:
+                variant_id = brush_vids[i % len(brush_vids)]
+            tile_data: TypeTile = {
+                "pos": (map_x, map_y),
+                "ttype": tileset_index,
+                "variant": variant_id,
+            }
+            if variant_id in tileset_data.tile_properties:
+                tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
+            if selected_group:
+                tile_data["autotile_group"] = selected_group
+            elif autotile_ok:
+                owner = vg_map.get((tileset_index, variant_id))
+                if owner:
+                    tile_data["autotile_group"] = owner
+            active_layer.set_tile((map_x, map_y), tile_data)
+            painted += 1
+        self.invalidate_bounds_cache()
+        if painted:
+            self.editor.notifications.success(f"Line: {painted} tiles painted")
+
+    def replace_variant(self) -> int:
+        """Swap the last-picked variant for the brush variant, layer-wide.
+
+        Source = last `I`-picked tile; target = brush top-left. Same
+        tileset only, active tile layer only, one history entry. Group
+        stamps follow paint rules (selected group wins, else the new
+        variant's owner, else the tile keeps its group).
+        """
+        src = getattr(self.editor, "last_picked", None)
+        if src is None:
+            self.editor.notifications.notify("Pick a source tile first (I)")
+            return 0
+        res = self.get_selected_brush()
+        if not res:
+            self.editor.notifications.notify("Select a replacement tile")
+            return 0
+        tileset_index, tileset_data, src_rect = res
+        if tileset_index is None or not tileset_data or not src_rect:
+            self.editor.notifications.notify("Select a replacement tile")
+            return 0
+        tile_w, tile_h = self.tile_size
+        sheet_cols = tileset_data.surface.get_width() // tile_w
+        new_variant = (src_rect[1] // tile_h) * sheet_cols + (src_rect[0] // tile_w)
+        if int(tileset_index) != int(src[0]):
+            self.editor.notifications.notify("Replace needs one tileset (pick + brush)")
+            return 0
+        if int(new_variant) == int(src[1]):
+            self.editor.notifications.notify("Source and replacement match")
+            return 0
+        manager = self.editor.tilemap.layer_manager
+        active_layer = manager.get_active_layer() if manager else None
+        if active_layer is None or active_layer.layer_type != "tile":
+            self.editor.notifications.notify("Replace needs an active tile layer")
+            return 0
+
+        autotiler = getattr(self.editor, "autotiler", None)
+        groups = getattr(autotiler, "groups", []) if autotiler else []
+        gidx = getattr(autotiler, "selected_group_idx", -1) if autotiler else -1
+        selected_group = groups[gidx].name if 0 <= gidx < len(groups) else None
+        vg_map = getattr(autotiler, "variant_to_group", {}) if autotiler else {}
+
+        self.editor.tilemap.capture_history("Replace Variant")
+        swapped = 0
+        reassigned: dict[str, int] = {}
+        for pos, tile in list(active_layer.tiles.items()):
+            if int(tile["ttype"]) != int(src[0]) or int(tile["variant"]) != int(src[1]):
+                continue
+            new_tile = dict(tile)
+            new_tile["variant"] = int(new_variant)
+            if variant_props := tileset_data.tile_properties.get(int(new_variant)):
+                new_tile["properties"] = dict(variant_props)
+            elif "properties" in new_tile:
+                del new_tile["properties"]
+            owner = vg_map.get((int(tileset_index), int(new_variant)))
+            if selected_group:
+                if tile.get("autotile_group") != selected_group:
+                    reassigned[tile.get("autotile_group") or "legacy"] = (
+                        reassigned.get(tile.get("autotile_group") or "legacy", 0) + 1
+                    )
+                new_tile["autotile_group"] = selected_group
+            elif owner:
+                new_tile["autotile_group"] = owner
+            active_layer.set_tile(pos, new_tile)
+            swapped += 1
+        self.invalidate_bounds_cache()
+        if swapped:
+            detail = ""
+            if selected_group and reassigned:
+                detail = ", ".join(f"{n} from '{o}'" for o, n in sorted(reassigned.items()))
+                detail = f" ({detail})"
+            self.editor.notifications.success(f"Replace: {swapped} tiles {src[1]} -> {new_variant}{detail}")
+        else:
+            self.editor.notifications.notify("Replace: no matching tiles on layer")
+        return swapped
 
     def _place_object_free(
         self,
@@ -703,11 +1062,7 @@ class TileGrid:
         rs = self.editor.tilemap.render_scale
 
         if tileset_type == "object":
-            if (
-                tileset_data.animation
-                and "frame_w" in tileset_data.animation
-                and "frame_h" in tileset_data.animation
-            ):
+            if tileset_data.animation and "frame_w" in tileset_data.animation and "frame_h" in tileset_data.animation:
                 sel_width = tileset_data.animation["frame_w"]
                 sel_height = tileset_data.animation["frame_h"]
             elif (
@@ -742,6 +1097,54 @@ class TileGrid:
         }
 
         active_layer.add_object((world_pos[0], world_pos[1]), obj_data)
+
+    def flood_fill_at_hover(self) -> bool:
+        """Flood fill at the hover cell with the selected brush.
+
+        Shared by the F key and the Fill tool. Returns True if a fill ran.
+        """
+        if not self.hover_cell:
+            return False
+        res = self.get_selected_brush()
+        if not res:
+            return False
+        tileset_index, tileset_data, src_rect = res
+        if tileset_index is None or not tileset_data or not src_rect:
+            return False
+        active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+        if not active_layer or active_layer.layer_type != "tile":
+            return False
+        self.editor.tilemap.capture_history("Flood Fill")
+        tile_w, tile_h = self.tile_size
+        sheet_cols = tileset_data.surface.get_width() // tile_w
+        variant_id = (src_rect[1] // tile_h * sheet_cols) + (src_rect[0] // tile_w)
+
+        new_data: TypeTile = {
+            "ttype": tileset_index,
+            "variant": variant_id,
+            "pos": (0, 0),
+        }
+        if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
+            autotiler = self.editor.autotiler
+            stamp: str | None = None
+            groups = getattr(autotiler, "groups", [])
+            gidx = getattr(autotiler, "selected_group_idx", -1)
+            if 0 <= gidx < len(groups):
+                stamp = groups[gidx].name
+            if stamp is None:
+                try:
+                    stamp = autotiler.variant_to_group.get((tileset_index, variant_id))
+                except Exception:
+                    stamp = None
+            if stamp:
+                new_data["autotile_group"] = stamp
+        active_layer.flood_fill(
+            self.hover_cell,
+            new_data,
+            self.editor.tilemap.map_size,
+            offset=self.editor.tilemap.offset,
+        )
+        return True
 
     def remove_tile(self):
         """Remove tile or object at hover position."""
@@ -811,6 +1214,7 @@ class TileGrid:
             ttype = int(tile["ttype"])
             variant = tile["variant"]
             ts_widget.select_tile_by_variant(ttype, variant)
+            self.editor.last_picked = (ttype, variant)
         elif active_layer.layer_type == "object":
             mouse_pos = pygame.mouse.get_pos()
             world_pos = self.screen_to_world(mouse_pos)
@@ -1271,6 +1675,59 @@ class TileGrid:
         if self.is_moving and self.hover_cell:
             return
 
+        tool_manager = self.editor.tool_manager
+        if tool_manager.is_active(ToolKind.SELECT) or tool_manager.is_active(ToolKind.PAN):
+            return
+        if tool_manager.is_active(ToolKind.PICK):
+            return
+        if tool_manager.is_active(ToolKind.FILL):
+            if self.hover_cell:
+                eff_w, eff_h = self.effective_tile_size
+                screen_x = (self.hover_cell[0] * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+                screen_y = (self.hover_cell[1] * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+                dest_rect = Rect(screen_x, screen_y, int(eff_w * self.zoom_level), int(eff_h * self.zoom_level))
+                pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
+            return
+        if tool_manager.is_active(ToolKind.RECT_FILL):
+            eff_w, eff_h = self.effective_tile_size
+            rect = self.rect_fill_rect
+            if rect is None and self.hover_cell:
+                x, y = self.hover_cell
+                rect = (x, y, x, y)
+            if rect is not None:
+                x1, y1, x2, y2 = rect
+                screen_x = (x1 * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+                screen_y = (y1 * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+                w = int((x2 - x1 + 1) * eff_w * self.zoom_level)
+                h = int((y2 - y1 + 1) * eff_h * self.zoom_level)
+                pygame.draw.rect(screen, (255, 255, 255), Rect(screen_x, screen_y, w, h), 1)
+            return
+        if tool_manager.is_active(ToolKind.LINE):
+            eff_w, eff_h = self.effective_tile_size
+            start = getattr(self, "line_start", None)
+            end = getattr(self, "line_end", None) or self.hover_cell
+            if start is not None and end is not None:
+                for col, row in self.bresenham_line(start[0], start[1], end[0], end[1]):
+                    screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+                    screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+                    pygame.draw.rect(
+                        screen,
+                        (255, 255, 255),
+                        Rect(screen_x, screen_y, int(eff_w * self.zoom_level), int(eff_h * self.zoom_level)),
+                        1,
+                    )
+            elif self.hover_cell:
+                col, row = self.hover_cell
+                screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+                screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+                pygame.draw.rect(
+                    screen,
+                    (255, 255, 255),
+                    Rect(screen_x, screen_y, int(eff_w * self.zoom_level), int(eff_h * self.zoom_level)),
+                    1,
+                )
+            return
+
         res = self.get_selected_brush()
         if not res:
             return
@@ -1336,6 +1793,12 @@ class TileGrid:
             sel_w_tiles = src_rect[2] // tile_w
             sel_h_tiles = src_rect[3] // tile_h
 
+            sheet_cols = max(1, tileset_data.surface.get_width() // tile_w) if tile_w > 0 else 1
+            dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
+            if dice_pool is not None:
+                self._draw_dice_preview(screen, tileset_data, tile_w, tile_h, eff_w, eff_h, dice_pool, sheet_cols)
+                return
+
             for y_off in range(sel_h_tiles):
                 for x_off in range(sel_w_tiles):
                     col = self.hover_cell[0] + x_off
@@ -1363,6 +1826,51 @@ class TileGrid:
                         screen.blit(tile_surf, dest_rect)
                     except ValueError:
                         pass
+
+    def _draw_dice_preview(
+        self,
+        screen,
+        tileset_data,
+        tile_w: int,
+        tile_h: int,
+        eff_w: float,
+        eff_h: float,
+        dice_pool: list[int],
+        sheet_cols: int,
+    ):
+        """Single-cell dice ghost: outline on hover, cycling tile while pressed."""
+        col, row = self.hover_cell
+        screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+        screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+        dest_w = int(eff_w * self.zoom_level)
+        dest_h = int(eff_h * self.zoom_level)
+        dest_rect = Rect(screen_x, screen_y, dest_w, dest_h)
+        pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
+
+        try:
+            pressed = pygame.mouse.get_pressed()[0]
+        except pygame.error:
+            pressed = False
+        if not pressed or not self.rect.collidepoint(pygame.mouse.get_pos()):
+            return
+
+        now = pygame.time.get_ticks()
+        current = getattr(self, "_dice_preview_variant", None)
+        if current not in dice_pool or now - getattr(self, "_dice_preview_at", 0) > 150:
+            current = random.choice(dice_pool)
+            self._dice_preview_variant = current
+            self._dice_preview_at = now
+        try:
+            tex_x = (current % sheet_cols) * tile_w
+            tex_y = (current // sheet_cols) * tile_h
+            sub_r = Rect(tex_x, tex_y, tile_w, tile_h)
+            tile_surf = tileset_data.surface.subsurface(sub_r)
+            if self.zoom_level != 1.0:
+                tile_surf = pygame.transform.scale(tile_surf, (dest_w, dest_h))
+            tile_surf.set_alpha(128)
+            screen.blit(tile_surf, dest_rect)
+        except ValueError:
+            pass
 
     def _draw_grid(self, screen):
         eff_w, eff_h = self.effective_tile_size
@@ -1486,7 +1994,6 @@ class TileGrid:
                 screen.blit(bg_surf, text_pos)
                 screen.blit(text_surf, (text_pos[0] + 2, text_pos[1] + 1))
 
-
     def _draw_status_bar(self, screen):
         bar_h = 25
         bar_rect = Rect(0, self.editor.height - bar_h, self.editor.width, bar_h)
@@ -1522,6 +2029,22 @@ class TileGrid:
                 parts.append("Tool: Select")
         elif self.editor.tool_manager.is_active(ToolKind.ERASER):
             parts.append("Tool: Eraser")
+        elif self.editor.tool_manager.is_active(ToolKind.FILL):
+            parts.append("Tool: Fill")
+        elif self.editor.tool_manager.is_active(ToolKind.RECT_FILL):
+            if self.rect_fill_rect:
+                x1, y1, x2, y2 = self.rect_fill_rect
+                parts.append(f"Tool: Rect {x2 - x1 + 1}x{y2 - y1 + 1}")
+            else:
+                parts.append("Tool: Rect")
+        elif self.editor.tool_manager.is_active(ToolKind.LINE):
+            if getattr(self, "line_start", None) and getattr(self, "line_end", None):
+                n = len(self.bresenham_line(self.line_start[0], self.line_start[1], self.line_end[0], self.line_end[1]))
+                parts.append(f"Tool: Line {n}")
+            else:
+                parts.append("Tool: Line")
+        elif self.editor.tool_manager.is_active(ToolKind.PICK):
+            parts.append("Tool: Pick")
         elif self.editor.tool_manager.is_active(ToolKind.PAN):
             parts.append("Tool: Pan")
         else:
@@ -1561,8 +2084,7 @@ class TileGrid:
         start_row = int(self.scroll_y // eff_h)
         end_row = int((self.scroll_y + visible_world_h) // eff_h) + 1
 
-        assert self.editor.tileset_widget is not None
-        tileset_map = self.editor.tileset_widget.tileset_map
+        tileset_map = self._tileset_map()
 
         rendered_layers = tilemap.layer_manager.get_rendered_layers()
 
@@ -1786,9 +2308,13 @@ class TileGrid:
     @staticmethod
     def _image_handle_points(rect: Rect) -> list[tuple[int, int]]:
         return [
-            (rect.left, rect.top), (rect.centerx, rect.top), (rect.right, rect.top),
-            (rect.left, rect.centery), (rect.right, rect.centery),
-            (rect.left, rect.bottom), (rect.centerx, rect.bottom),
+            (rect.left, rect.top),
+            (rect.centerx, rect.top),
+            (rect.right, rect.top),
+            (rect.left, rect.centery),
+            (rect.right, rect.centery),
+            (rect.left, rect.bottom),
+            (rect.centerx, rect.bottom),
             (rect.right, rect.bottom),
         ]
 
@@ -2025,6 +2551,8 @@ class TileGrid:
         }
 
         visible = editing or showing
+        if not visible:
+            return
         active = nm.get_active_node() if visible else None
         for node in nm.nodes.values():
             sx, sy = self._node_to_screen(node.area.x, node.area.y)
@@ -2421,8 +2949,7 @@ class TileGrid:
 
         preview_surf = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
 
-        assert self.editor.tileset_widget is not None
-        tileset_map = self.editor.tileset_widget.tileset_map
+        tileset_map = self._tileset_map()
 
         if active_layer.layer_type == "tile":
             for gy in range(oy1, oy2 + 1):
@@ -2467,6 +2994,34 @@ class TileGrid:
             return
 
         screen.blit(preview_surf, self.rect.topleft)
+
+    def cycle_active_layer(self, delta: int = 1) -> bool:
+        """Cycle the active layer (Tab forward, Shift+Tab back) with notice."""
+        manager = getattr(getattr(self.editor, "tilemap", None), "layer_manager", None)
+        if manager is None:
+            return False
+        try:
+            count = manager.get_layer_count()
+        except Exception:
+            return False
+        if count < 1:
+            return False
+        mods = pygame.key.get_mods()
+        if mods & pygame.KMOD_SHIFT:
+            delta = -delta
+        try:
+            current = manager.active_layer_idx
+        except Exception:
+            current = 0
+        nxt = (current + delta) % count
+        try:
+            manager.set_active_layer(nxt)
+        except Exception:
+            return False
+        layer = manager.get_layer(nxt)
+        name = getattr(layer, "name", f"Layer {nxt}")
+        self.editor.notifications.notify(f"Layer: {name} ({nxt + 1}/{count})")
+        return True
 
     def _get_group_for_tile(self, tile: TypeTile) -> str | None:
         if not hasattr(self.editor, "autotiler"):

@@ -91,6 +91,17 @@ def _add_object_tileset(selector, surface) -> int:
 
 
 class TestSelectTileByVariantBoundsChecks:
+    def test_bare_e_never_exports(self):
+        # Bare E belongs to the grid eraser; the sheet export shortcut
+        # was removed (export remains via the Tilesets tab button).
+        sel = _make_selector()
+        _add_tile_tileset(sel, _make_surface(128, 64))
+        sel.selected_tile = (0, 0, 32, 32)
+        sel.active_idx = 0
+        sel.hover_pos = (0, 0)
+        ev = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_e, "unicode": ""})
+        assert sel.handle_event(ev) is False
+
     def test_returns_false_for_negative_index(self):
         sel = _make_selector()
         _add_tile_tileset(sel, _make_surface(128, 64))

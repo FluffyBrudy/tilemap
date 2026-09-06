@@ -146,6 +146,8 @@ class TilesetCollisionEditor:
             ("Copy", self._copy_collision),
             ("Paste", self._paste_collision),
             ("Clear", self._clear_current),
+            ("Mirror X", lambda: self._mirror_selection("x")),
+            ("Mirror Y", lambda: self._mirror_selection("y")),
         ]
 
         for label, action in buttons_config:
@@ -283,6 +285,31 @@ class TilesetCollisionEditor:
         else:
             self._chk_one_way.checked = False
             self._chk_one_way.disabled = True
+
+    def _mirror_selection(self, axis: str) -> None:
+        """Mirror all shapes of the selected tiles in place (baked)."""
+        if not self._selected_tiles:
+            self._show_toast("Select a tile first")
+            return
+        flip_x, flip_y = (axis == "x"), (axis == "y")
+        size = self._tile_size
+        mirrored = 0
+        for tile_id in sorted(self._selected_tiles):
+            entry = self.library.tiles.get(tile_id)
+            if entry is None or not entry.shapes:
+                continue
+            for shape in entry.shapes:
+                shape.vertices = [
+                    TileCollisionData.apply_flip(v, size, flip_x, flip_y)
+                    for v in shape.vertices
+                ]
+            mirrored += 1
+        self._load_tile_collision_for_selection()
+        if mirrored:
+            self._save_tile_collision_for_selection()
+            self._show_toast(f"Mirrored {axis.upper()} on {mirrored} tile(s)")
+        else:
+            self._show_toast("Nothing to mirror (no shapes)")
 
     def _handle_widget_button_clicks(self, events: list[pygame.event.Event]) -> None:
         """Handle widget panel button clicks"""

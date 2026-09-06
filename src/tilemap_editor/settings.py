@@ -2,6 +2,11 @@ import json
 import sys
 from pathlib import Path
 
+# Single source for the user-facing theme catalog (mirrors the THEMES
+# registry in widgets/ui/theme.py; kept literal so --help stays fast
+# without importing pygame).
+BUILTIN_THEMES = ["dark", "midnight", "nord", "molokai", "monokai", "light", "semi_light"]
+
 
 def init_settings(generate_main: bool = False) -> None:
     print("Initialize Tilemap Editor Project")
@@ -22,7 +27,7 @@ def init_settings(generate_main: bool = False) -> None:
         "collision_paths": {"tileset": "collision", "character": "character_collision"},
         "nodes_path": "nodes",
         "theme": "dark",
-        "themes_list": ["dark", "molokai", "light", "semi_light"],
+        "themes_list": list(BUILTIN_THEMES),
         "error_handler": {
             "log_path": "errors.log",
             "max_recent_errors": 50,

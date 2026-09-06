@@ -29,6 +29,7 @@ from widgets.autotiler import AutotileRuleDesigner
 from widgets.layer_selector import LayerSelector
 from widgets.map_properties import MapPropertiesDialog
 from widgets.mapsetup import MapSetup
+from widgets.minimap import MinimapWidget
 from widgets.regex_automap_designer import RegexAutomapDesigner
 from widgets.tile_grid import TileGrid
 from widgets.tile_selector import TileSelector
@@ -107,7 +108,7 @@ def _load_project_config() -> tuple[Path, Path, dict]:
 
     defaults = {
         "theme": "dark",
-        "themes_list": ["dark", "molokai", "light", "semi_light"],
+        "themes_list": ["dark", "midnight", "nord", "molokai", "light", "semi_light"],
         "nodes_path": "nodes",
         "collision_paths": {"tileset": "collision", "character": "character_collision"},
     }
@@ -202,15 +203,15 @@ class Editor:
             tm.set_theme("dark")
 
         pygame.init()
-        pygame.display.set_caption(
-            "Tilemap Editor - SANDBOX" if self.is_sandbox else "Pure Pygame Editor"
-        )
+        pygame.display.set_caption("Tilemap Editor - SANDBOX" if self.is_sandbox else "Pure Pygame Editor")
 
         self.fps = fps
         self.running = False
         self.autotile_mode = False
         self.node_editing_mode = False
         self.show_nodes = False
+        self.dice_brush = False
+        self.last_picked: tuple[int, int] | None = None
         self.tool_manager = ToolManager()
         self._prev_tool = None
 
@@ -288,7 +289,7 @@ class Editor:
             ToolbarAction(
                 "E",
                 self.tileset_widget._export_selected_as_png_dialog,
-                "E: Export selection as PNG",
+                "Export selection as PNG",
             ),
             ToolbarAction("C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"),
             ToolbarAction("+", self.tileset_widget.request_add_tileset, "Add Tileset"),
@@ -301,6 +302,7 @@ class Editor:
             self,
             Rect(0, menu_h, self.width - self.selector_w, self.height - menu_h - 25),
         )
+        self.minimap = MinimapWidget(self)
 
         self.post_map_setup()
 
@@ -532,9 +534,7 @@ class Editor:
         # Snapshot staged outputs before any writes
         map_existed = path.exists()
         try:
-            proj_nodes_dir = self._project_data_root / self.config.get(
-                "nodes_path", "nodes"
-            )
+            proj_nodes_dir = self._project_data_root / self.config.get("nodes_path", "nodes")
             sidecar_path = proj_nodes_dir / f"{path.stem}.nodes.json"
             sidecar_existed = sidecar_path.exists()
         except Exception:
@@ -571,14 +571,8 @@ class Editor:
             # state is reinstated if the save fails.
             prev_data_root = self.data_root
             prev_is_sandbox = self.is_sandbox
-            prev_nodes_dir = (
-                getattr(self.node_manager, "_nodes_dir", None)
-                if hasattr(self, "node_manager")
-                else None
-            )
-            prev_active_sidecar = getattr(
-                self.node_manager, "_active_sidecar", None
-            )
+            prev_nodes_dir = getattr(self.node_manager, "_nodes_dir", None) if hasattr(self, "node_manager") else None
+            prev_active_sidecar = getattr(self.node_manager, "_active_sidecar", None)
             prev_project_path = self.tilemap.active_project_path
             self.data_root = self._project_data_root
             self.is_sandbox = False
@@ -784,9 +778,7 @@ class Editor:
             self.handle_resize(self.width, self.height)
             self.tilemap.apply_map_payload(path, payload_or_error)
             if getattr(self, "is_sandbox", False):
-                self.notifications.notify(
-                    f"SANDBOX map loaded: {path.name}", duration=4.0
-                )
+                self.notifications.notify(f"SANDBOX map loaded: {path.name}", duration=4.0)
         except Exception as e:
             error_handler.capture(e, context="load_map_apply")
             import traceback
@@ -860,6 +852,19 @@ class Editor:
         self.notifications.notify(f"Autotile Mode {status}")
         self.menubar._layout_menus()
 
+    def toggle_node_editing(self):
+        """Enter/exit node manager (shared by shortcut + toolbar)."""
+        self.node_editing_mode = not self.node_editing_mode
+        if self.node_editing_mode:
+            self.show_nodes = False
+            self.tool_manager.deactivate()
+
+    def toggle_show_nodes(self):
+        """Toggle the passive node overlay (shared by toolbar + View menu)."""
+        self.show_nodes = not self.show_nodes
+        if self.show_nodes:
+            self.node_editing_mode = False
+
     def open_map_setup(self):
         if self.map_setup_widget is None:
             logger.warning({"msg": "map_setup_widget is not initialized"})
@@ -900,15 +905,37 @@ class Editor:
         if self.tile_grid_widget:
             self.tile_grid_widget.invalidate_bounds_cache()
 
+    def edit_copy(self):
+        grid = self.tile_grid_widget
+        if grid and grid.selection_rect:
+            grid.copy_selection()
+
+    def edit_cut(self):
+        grid = self.tile_grid_widget
+        if grid and grid.selection_rect:
+            grid.copy_selection()
+            self.tilemap.capture_history("Cut Selection")
+            grid.delete_selection()
+
+    def edit_paste(self):
+        grid = self.tile_grid_widget
+        if grid and grid.clipboard and grid.hover_cell:
+            self.tilemap.capture_history("Paste")
+            grid.paste_clipboard(grid.hover_cell)
+
+    def edit_delete(self):
+        grid = self.tile_grid_widget
+        if grid and grid.selection_rect:
+            self.tilemap.capture_history("Delete Selection")
+            grid.delete_selection()
+
     def toggle_grid(self):
         if self.tile_grid_widget:
             self.tile_grid_widget.show_grid = not self.tile_grid_widget.show_grid
 
     def toggle_map_boundary(self):
         if self.tile_grid_widget:
-            self.tile_grid_widget.show_map_boundary = (
-                not self.tile_grid_widget.show_map_boundary
-            )
+            self.tile_grid_widget.show_map_boundary = not self.tile_grid_widget.show_map_boundary
 
     def cycle_theme(self):
         """Cycle through available themes."""
@@ -1262,8 +1289,32 @@ class Editor:
             print(f"Autotiling layer: {active_layer.name}")
 
     def flood_fill_active(self):
+        self.tool_manager.toggle(ToolKind.FILL)
+        if self.tool_manager.is_active(ToolKind.FILL):
+            self.notifications.notify("Fill Tool: click a cell (F also works)")
 
-        print("Flood Fill: Press 'F' while hovering over the target cell in the grid.")
+    def rect_fill_active(self):
+        self.tool_manager.toggle(ToolKind.RECT_FILL)
+        if self.tool_manager.is_active(ToolKind.RECT_FILL):
+            self.notifications.notify("Rect Fill: drag a region (R)")
+
+    def line_tool_active(self):
+        self.tool_manager.toggle(ToolKind.LINE)
+        if self.tool_manager.is_active(ToolKind.LINE):
+            self.notifications.notify("Line: drag a line (L)")
+
+    def replace_variant_active(self):
+        grid = getattr(self, "tile_grid_widget", None)
+        if grid is None:
+            self.notifications.notify("No canvas open")
+            return
+        grid.replace_variant()
+
+    def toggle_dice_brush(self):
+        """Toggle the dice brush: paint plots random tiles from the selection."""
+        self.dice_brush = not getattr(self, "dice_brush", False)
+        if self.dice_brush:
+            self.notifications.notify("Dice Brush: random tiles from selection (T)")
 
     def exit_editor(self):
         """Clean up and exit the editor."""
@@ -1387,10 +1438,7 @@ class Editor:
                     self.tilemap.redo()
                     continue
                 if event.key == pygame.K_n and (ctrl_held or meta_held) and shift_held:
-                    self.node_editing_mode = not self.node_editing_mode
-                    if self.node_editing_mode:
-                        self.show_nodes = False
-                        self.tool_manager.deactivate()
+                    self.toggle_node_editing()
                     continue
                 if event.key == pygame.K_n and (ctrl_held or meta_held):
                     self.open_map_setup()
@@ -1435,9 +1483,9 @@ class Editor:
                             self.tilemap.layer_manager.set_active_layer(idx)
                         continue
 
-            if self.node_selector and self.node_selector.handle_event(event):
-                continue
             if self.node_editor and self.node_editor.handle_event(event):
+                continue
+            if self.node_selector and self.node_selector.handle_event(event):
                 continue
 
             if self.toolbar and self.toolbar.handle_event(event):
@@ -1470,6 +1518,10 @@ class Editor:
             consumed = False
             if self.sidebar and self.sidebar.handle_event(event):
                 consumed = True
+
+            if not consumed and getattr(self, "minimap", None):
+                if self.minimap.handle_event(event):
+                    consumed = True
 
             if not consumed and self.tile_grid_widget:
                 self.tile_grid_widget.handle_event(event)
@@ -1513,6 +1565,9 @@ class Editor:
                 pygame.draw.rect(self.screen, COLORS.border, handle_rect)
                 if self._tileset_dragging:
                     pygame.draw.rect(self.screen, COLORS.accent, handle_rect)
+
+            if getattr(self, "minimap", None):
+                self.minimap.draw(self.screen)
 
             if self.autotiler:
                 if self.autotiler.visible:

@@ -84,6 +84,7 @@ class Tilemap:
         state = {
             "layers": [L.to_dict() for L in self.layer_manager.layers],
             "groups": groups_data,
+            "node_state": self._capture_node_state(),
             "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
@@ -102,6 +103,7 @@ class Tilemap:
         current_state = {
             "layers": [L.to_dict() for L in self.layer_manager.layers],
             "groups": groups_data,
+            "node_state": self._capture_node_state(),
             "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
@@ -122,6 +124,7 @@ class Tilemap:
         current_state = {
             "layers": [L.to_dict() for L in self.layer_manager.layers],
             "groups": groups_data,
+            "node_state": self._capture_node_state(),
             "selected_group_idx": designer.selected_group_idx if designer else 0,
             "active_layer_idx": self.layer_manager.active_layer_idx,
             "tile_size": self.tile_size,
@@ -132,6 +135,56 @@ class Tilemap:
         next_state = self.history.redo(current_state)
         if next_state:
             self._apply_history_state(next_state)
+
+    def _capture_node_state(self) -> dict | None:
+        """Snapshot node manager state for history (None when unavailable)."""
+        mgr = getattr(getattr(self, "editor", None), "node_manager", None)
+        if mgr is None:
+            return None
+        try:
+            return {
+                "nodes": {
+                    nid: node.to_dict() for nid, node in mgr.nodes.items()
+                },
+                "groups": list(mgr.groups),
+                "active_node_id": mgr.active_node_id,
+                "active_group_name": mgr.active_group_name,
+            }
+        except Exception as e:
+            error_handler.capture(e, context="capture_node_state", severity="warning")
+            return None
+
+    def _apply_node_state(self, state) -> None:
+        """Restore node manager state from history (no-op when absent)."""
+        data = (state or {}).get("node_state")
+        mgr = getattr(getattr(self, "editor", None), "node_manager", None)
+        if mgr is None or not isinstance(data, dict):
+            return
+        try:
+            from nodes import Node
+
+            mgr.nodes = {
+                nid: Node.from_dict(nd)
+                for nid, nd in data.get("nodes", {}).items()
+            }
+            mgr.groups = list(data.get("groups", []))
+            active_id = data.get("active_node_id")
+            mgr.active_node_id = active_id if active_id in mgr.nodes else None
+            active_group = data.get("active_group_name")
+            mgr.active_group_name = (
+                active_group if active_group in mgr.groups else None
+            )
+        except Exception as e:
+            error_handler.capture(e, context="apply_node_state", severity="warning")
+            return
+        selector = getattr(self.editor, "node_selector", None)
+        if selector is not None and hasattr(selector, "_rebuild_filter"):
+            try:
+                selector._rebuild_filter()
+            except Exception as e:
+                error_handler.capture(
+                    e, context="apply_node_state_filter", severity="warning"
+                )
 
     def update_map_size(self):
         """Deprecated compatibility hook retained as no-op."""
@@ -177,10 +230,13 @@ class Tilemap:
                 designer.selected_group_idx = 0
             designer.selected_rule_index = -1
 
+        self._apply_node_state(state)
+
     def get_nearest_tiles(self, tile_location: "TCoor") -> tuple["TCoor", ...]:
         """Get empty neighboring tile positions for the given location."""
-        assert len(tile_location) == 2
         tiles_around = []
+        if len(tile_location) != 2:
+            return tuple(tiles_around)
 
         active_layer = self.layer_manager.get_active_layer()
         if not active_layer or tile_location not in active_layer.tiles:
@@ -591,16 +647,18 @@ class Tilemap:
             designer = self.editor.autotiler
             designer.groups.clear()
 
-            ts_widget = self.editor.tileset_widget
-            assert ts_widget is not None
+            # Resource resolution (previews) needs the widget; rules load
+            # fine without it.
+            ts_widget = getattr(self.editor, "tileset_widget", None)
 
             if "project_state" in payload:
                 if "groups" in payload["project_state"]:
                     for group_dict in payload["project_state"]["groups"]:
                         group = AutotileGroup.from_dict(group_dict)
 
-                        for rule in group.rules:
-                            self._resolve_rule_resources(rule, ts_widget)
+                        if ts_widget is not None:
+                            for rule in group.rules:
+                                self._resolve_rule_resources(rule, ts_widget)
                         designer.groups.append(group)
 
                 elif "rules" in payload["project_state"]:
@@ -608,7 +666,8 @@ class Tilemap:
                     for rule_dict in payload["project_state"]["rules"]:
                         try:
                             rule = AutotileRule.from_dict(rule_dict)
-                            self._resolve_rule_resources(rule, ts_widget)
+                            if ts_widget is not None:
+                                self._resolve_rule_resources(rule, ts_widget)
                             default_group.rules.append(rule)
                         except Exception as e:
                             error_handler.capture(e, context="load_automap_rule", severity="warning")
@@ -660,10 +719,12 @@ class Tilemap:
                     if active_layer:
                         active_layer.tiles[pos] = tile_data
 
-        if hasattr(self.editor, "node_manager"):
-            self.editor.node_manager.load(path)
-            if hasattr(self.editor, "node_selector"):
-                self.editor.node_selector._rebuild_filter()
+        node_manager = getattr(self.editor, "node_manager", None)
+        if node_manager is not None:
+            node_manager.load(path)
+            node_selector = getattr(self.editor, "node_selector", None)
+            if node_selector is not None:
+                node_selector._rebuild_filter()
 
         if hasattr(self.editor, "suggestion_registry"):
             self.editor.suggestion_registry.refresh(self.editor)

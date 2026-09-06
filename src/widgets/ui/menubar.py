@@ -4,6 +4,7 @@ import pygame
 from pygame import Rect
 
 from widgets.ui.theme import COLORS, FONTS, SHAPE
+from widgets.ui.tool_manager import ToolKind
 
 
 class MenuAction:
@@ -69,6 +70,11 @@ class MenuBar:
                 [
                     MenuAction("Undo", self.editor.undo, "Ctrl+Z"),
                     MenuAction("Redo", self.editor.redo, "Ctrl+Y"),
+                    MenuSeparator(),
+                    MenuAction("Copy", self.editor.edit_copy, "Ctrl+C"),
+                    MenuAction("Cut", self.editor.edit_cut, "Ctrl+X"),
+                    MenuAction("Paste", self.editor.edit_paste, "Ctrl+V"),
+                    MenuAction("Delete Selection", self.editor.edit_delete, "Del"),
                 ],
             ),
             Menu(
@@ -91,9 +97,33 @@ class MenuBar:
                     MenuAction(
                         "Autotile Active Layer", self.editor.autotile_active, "Ctrl+A"
                     ),
-                    MenuAction("Flood Fill Tool", self.editor.flood_fill_active, "F"),
                     MenuAction(
-                        "Toggle Auto-Autotile", self.editor.toggle_auto_autotile
+                        "Flood Fill Tool",
+                        self.editor.flood_fill_active,
+                        "F",
+                        is_checked=lambda: self.editor.tool_manager.is_active(
+                            ToolKind.FILL
+                        ),
+                    ),
+                    MenuAction(
+                        "Rectangle Fill Tool",
+                        self.editor.rect_fill_active,
+                        "R",
+                        is_checked=lambda: self.editor.tool_manager.is_active(
+                            ToolKind.RECT_FILL
+                        ),
+                    ),
+                    MenuAction(
+                        "Line Tool",
+                        self.editor.line_tool_active,
+                        "L",
+                        is_checked=lambda: self.editor.tool_manager.is_active(
+                            ToolKind.LINE
+                        ),
+                    ),
+                    MenuAction(
+                        "Replace Variant",
+                        self.editor.replace_variant_active,
                     ),
                     MenuAction(
                         "Export Selection as PNG",
@@ -123,6 +153,22 @@ class MenuBar:
                         is_checked=lambda: editor.tile_grid_widget.show_map_boundary
                         if editor.tile_grid_widget
                         else True,
+                    ),
+                    MenuAction(
+                        "Node Overlay",
+                        self.editor.toggle_show_nodes,
+                        is_checked=lambda: bool(self.editor.show_nodes),
+                    ),
+                    MenuAction(
+                        "Node Editing",
+                        self.editor.toggle_node_editing,
+                        "Ctrl+Shift+N",
+                        is_checked=lambda: bool(self.editor.node_editing_mode),
+                    ),
+                    MenuAction(
+                        "Auto-Autotile",
+                        self.editor.toggle_auto_autotile,
+                        is_checked=lambda: bool(self.editor.autotile_mode),
                     ),
                 ],
             ),

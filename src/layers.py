@@ -44,11 +44,7 @@ class Layer:
         self.properties: dict[str, Any] = {}
 
         self.image_path = image_path if layer_type == "image" else None
-        self.image_rect = (
-            dict(image_rect)
-            if layer_type == "image" and image_rect is not None
-            else None
-        )
+        self.image_rect = dict(image_rect) if layer_type == "image" and image_rect is not None else None
 
         self.tiles: dict[tuple[int, int], TypeTile] = {}
 
@@ -60,6 +56,7 @@ class Layer:
             "variant_to_group": {},
             "rules_by_group": {},
             "significant_offsets": set(),
+            "offsets_by_group": {},
         }
 
     def set_tile(self, pos: tuple[int, int], tile: TypeTile) -> None:
@@ -101,8 +98,10 @@ class Layer:
         1. The tile's ``autotile_group`` field (if present)
         2. Legacy fallback: (tileset_index, variant_id) lookup in variant_to_group
 
-        When a rule matches, the tile's variant is re-rolled from the rule's
-        variant_ids (removing the early-out that prevented re-autotile).
+        When a rule matches, the tile resolves through the rule's subcase
+        leaves (exact variant for its distance-2 signature) with
+        random-among-variants as the backoff for unseen shapes or
+        subcase-less rules.
         """
         if self.locked or self.layer_type != "tile":
             return 0
@@ -110,24 +109,46 @@ class Layer:
         if not rules or not positions:
             return 0
 
-        rules_hash = hash(tuple((r.group_id, r.tileset_index, tuple(sorted(r.variant_ids))) for r in rules))
+        rules_hash = hash(
+            tuple(
+                (
+                    r.group_id,
+                    r.tileset_index,
+                    tuple(sorted(r.variant_ids)),
+                    tuple(sorted(r.neighbors)),
+                    tuple(sorted((tuple(sorted(k)), tuple(v)) for k, v in r.subcases.items()))
+                    if getattr(r, "subcases", None)
+                    else (),
+                )
+                for r in rules
+            )
+        )
 
         if self._autotile_cache["rules_hash"] != rules_hash:
             variant_to_group: dict[tuple[int, int], str] = {}
             rules_by_group: dict[str, list[AutotileRule]] = {}
             significant_offsets: set[tuple[int, int]] = set()
+            offsets_by_group: dict[str, set[tuple[int, int]]] = {}
+            extended_by_group: dict[str, set[tuple[int, int]]] = {}
 
             for rule in rules:
                 gid = rule.group_id
                 if gid not in rules_by_group:
                     rules_by_group[gid] = []
+                    offsets_by_group[gid] = set()
+                    extended_by_group[gid] = set()
                 rules_by_group[gid].append(rule)
 
                 ts_idx = rule.tileset_index
                 for vid in rule.variant_ids:
-                    variant_to_group[(ts_idx, vid)] = gid
+                    key = (ts_idx, vid)
+                    if key not in variant_to_group:
+                        variant_to_group[key] = gid
 
+                offsets_by_group[gid].update(rule.neighbors)
                 significant_offsets.update(rule.neighbors)
+                for key in getattr(rule, "subcases", {}) or {}:
+                    extended_by_group[gid].update(key)
 
             for gid in rules_by_group:
                 rules_by_group[gid].sort(key=lambda r: len(r.neighbors), reverse=True)
@@ -138,12 +159,16 @@ class Layer:
                     "variant_to_group": variant_to_group,
                     "rules_by_group": rules_by_group,
                     "significant_offsets": significant_offsets,
+                    "offsets_by_group": offsets_by_group,
+                    "extended_by_group": extended_by_group,
                 }
             )
         else:
             variant_to_group = self._autotile_cache["variant_to_group"]
             rules_by_group = self._autotile_cache["rules_by_group"]
             significant_offsets = self._autotile_cache["significant_offsets"]
+            offsets_by_group = self._autotile_cache.get("offsets_by_group", {})
+            extended_by_group = self._autotile_cache.get("extended_by_group", {})
 
         changes_count = 0
 
@@ -188,7 +213,13 @@ class Layer:
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            neighbor_offsets_set = {n for n in actual_neighbors if n in significant_offsets}
+            # Per group significance: a tile only considers neighbor
+            # offsets its own group cares about. so adding a group with
+            # new offsets (e.g. diagonals) can't break matching of groups
+            # that ignore them. Falls back to the global union for groups
+            # missing from the cache (defensive).
+            group_offsets = offsets_by_group.get(target_group_id, significant_offsets)
+            neighbor_offsets_set = {n for n in actual_neighbors if n in group_offsets}
 
             matched_rule: AutotileRule | None = None
             new_variant: int | None = None
@@ -198,11 +229,24 @@ class Layer:
                     break
 
             if matched_rule and matched_rule.variant_ids:
-                # only reroll if current variant isnt already
-                # in the matched rule's set to prevents re-randomization
-                # of neighbors whose pattern hasnt actually changed.
-                if current_variant not in matched_rule.variant_ids:
-                    new_variant = random.choice(matched_rule.variant_ids)
+                # Hierarchical classifier: exact subcase leaf first,
+                # legacy random-among-variants as the fallback.
+                leaf = None
+                subcases = getattr(matched_rule, "subcases", None) or {}
+                if subcases:
+                    wanted = extended_by_group.get(target_group_id, set())
+                    dist2 = set()
+                    for dx, dy in wanted:
+                        npos = (pos[0] + 2 * dx, pos[1] + 2 * dy)
+                        if npos in self.tiles:
+                            n_tile = self.tiles[npos]
+                            if _get_group(n_tile) == target_group_id:
+                                dist2.add((dx, dy))
+                    leaf = matched_rule.leaf_for(dist2)
+                pool = leaf if leaf else matched_rule.variant_ids
+
+                if current_variant not in pool:
+                    new_variant = pool[0] if leaf and len(leaf) == 1 else random.choice(pool)
                 else:
                     new_variant = current_variant
 
@@ -250,12 +294,7 @@ class Layer:
             curr = queue.pop(0)
 
             ox, oy = offset
-            if (
-                curr[0] < ox
-                or curr[0] >= ox + map_size[0]
-                or curr[1] < oy
-                or curr[1] >= oy + map_size[1]
-            ):
+            if curr[0] < ox or curr[0] >= ox + map_size[0] or curr[1] < oy or curr[1] >= oy + map_size[1]:
                 continue
 
             curr_tile = self.tiles.get(curr)

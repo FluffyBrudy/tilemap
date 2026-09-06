@@ -1,0 +1,2 @@
+<!-- Original design for the line-tool toolbar icon. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><line x1="3" y1="13" x2="13" y2="3" stroke="#e0e0e0" stroke-width="1.8" stroke-linecap="round"/><circle cx="3" cy="13" r="1.6" fill="#e0e0e0"/><circle cx="13" cy="3" r="1.6" fill="#e0e0e0"/></svg>

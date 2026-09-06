@@ -96,6 +96,7 @@ python -m plugins.tileset_collision.standalone path/to/tileset.png --window-size
 - **Escape**: Cancel current polygon
 - **Click polygon**: Select polygon
 - **Drag vertex**: Move vertex
+- **Drag inside polygon**: Move the whole shape (Esc restores)
 - **Delete/Backspace**: Remove selected polygon
 - **Shift+Delete**: Clear collision for selected tiles
 - **O**: Toggle one-way collision (selected polygon)
@@ -199,6 +200,8 @@ Press O to make it one-way
 **Slope**:
 ```
 Draw triangle following the slope angle
+Mirror it to the other side with the Mirror X / Mirror Y toolbar buttons
+(bakes mirrored vertices into the tile; stored as plain vertices)
 ```
 
 **Complex Terrain**:

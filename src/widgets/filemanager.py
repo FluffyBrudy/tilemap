@@ -22,6 +22,30 @@ class FileItem:
         self.name = path.name
         self.is_dir = path.is_dir()
         self.ext = path.suffix.lower()
+        self.is_hidden = self.name.startswith(".")
+        self.size: int | None = None
+        self.mtime: float | None = None
+        try:
+            stat = path.stat()
+            self.mtime = stat.st_mtime
+            if not self.is_dir:
+                self.size = stat.st_size
+        except OSError:
+            pass
+
+
+def format_file_size(size: int | None) -> str:
+    """Human-readable file size ('' when unknown / directories)."""
+    if size is None:
+        return ""
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            if unit == "B":
+                return f"{int(value)} B"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"
 
 
 class DimensionPersistence:
@@ -332,8 +356,10 @@ class ImagePreview:
             rect: pygame.Rect defining the preview panel area
         """
 
-        pygame.draw.rect(surface, COLORS.panel, rect)
-        pygame.draw.rect(surface, COLORS.border, rect, SHAPE.border)
+        pygame.draw.rect(surface, COLORS.panel, rect, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(
+            surface, COLORS.border, rect, SHAPE.border, border_radius=SHAPE.radius_sm
+        )
 
         close_button_size = 24
         close_button_margin = 8
@@ -466,15 +492,19 @@ class FileManager:
         self.double_click_timer = 0
         self.clicked_item_index = -1
 
-        self.sidebar_width = 140
+        self.sidebar_width = 156
         self.header_height = 40
-        self.footer_height = 50
-        self.item_height = 30
-        self._item_icon_size = 20
-        self._item_text_left = 35
-        self._item_text_right = 10
-        self._rename_vpad = 2
-        self._text_offset_y = 7
+        self.footer_height = 52
+        self.item_height = 34
+        self._item_icon_size = 22
+        self._item_text_left = 42
+        self._item_text_right = 12
+        self._item_meta_right = 12
+        self._rename_vpad = 4
+        self._text_offset_y = 9
+        self._sidebar_btn_h = 32
+        self._sidebar_pitch = 38
+        self._sidebar_caption_h = 26
 
         self.font_main = FONTS.get_medium_font()
         self.font_bold = FONTS.get_bold_font()
@@ -486,7 +516,7 @@ class FileManager:
             self.rect.x + self.sidebar_width + 10,
             self.rect.y + self.header_height + 5,
             self.rect.width - self.sidebar_width - 20,
-            25,
+            28,
         )
         self.search_header_height = 35
         self.is_searching = False
@@ -515,7 +545,42 @@ class FileManager:
         self.is_dragging_window = False
         self.drag_offset_x = 0
         self.drag_offset_y = 0
+        self._crumb_rects: list[tuple[pygame.Rect | None, Path | None]] = []
+        # Inline user-facing error (standalone has no toast channel).
+        self.last_error: str | None = None
+        self._error_until_ms: int = 0
+        self._error_rect: pygame.Rect | None = None
 
+        self._restore_saved_dimensions()
+
+    ERROR_DURATION_MS = 4500
+
+    def _set_error(self, message: str) -> None:
+        """Show an inline error pill (also keeps the console print)."""
+        print(message)
+        self.last_error = message
+        try:
+            now = pygame.time.get_ticks()
+        except Exception:
+            now = 0
+        self._error_until_ms = now + self.ERROR_DURATION_MS
+
+    def _error_live(self, now: int | None = None) -> bool:
+        if not self.last_error:
+            return False
+        if now is None:
+            try:
+                now = pygame.time.get_ticks()
+            except Exception:
+                return True
+        return now < self._error_until_ms
+
+    def _clear_error(self) -> None:
+        self.last_error = None
+        self._error_until_ms = 0
+        self._error_rect = None
+
+    def _restore_saved_dimensions(self) -> None:
         if self.enable_resize_handles:
             saved_dims = self.dimension_persistence.load_dimensions()
             if saved_dims:
@@ -656,6 +721,29 @@ class FileManager:
             self.current_path = self.current_path.parent
             self.refresh_items()
 
+    @staticmethod
+    def breadcrumb_segments(path: Path, max_parts: int = 4) -> list[tuple[str, Path | None]]:
+        """Breadcrumb labels with resolved targets (None = collapsed '…').
+
+        Pure helper: no pygame needed, covered by unit tests.
+        """
+        parts = list(path.parts)
+        if len(parts) <= max_parts:
+            return [(p if p else "/", Path(*parts[: i + 1])) for i, p in enumerate(parts)]
+        head = [(parts[0] if parts[0] else "/", Path(parts[0] or "/"))]
+        tail_parts = parts[-(max_parts - 2) :]
+        base = Path(*parts[: len(parts) - len(tail_parts)])
+        crumbs = head + [("…", None)]
+        for p in tail_parts:
+            base = base / p
+            crumbs.append((p, base))
+        return crumbs
+
+    def _count_summary(self) -> str:
+        n_dirs = sum(1 for item in self.items if item.is_dir)
+        n_files = len(self.items) - n_dirs
+        return f"{len(self.items)} items · {n_files} files · {n_dirs} folders"
+
     def navigate_to(self, path: Path, record_recent: bool = False):
         self.view_mode = "files"
         if path.is_dir():
@@ -665,7 +753,11 @@ class FileManager:
             self.refresh_items()
 
     def _create_folder(self):
-        if self.view_mode != "files" or not self.current_path.exists():
+        if self.view_mode != "files":
+            self._set_error("Recents is read-only — open a folder first")
+            return
+        if not self.current_path.exists():
+            self._set_error("Current folder is gone — navigate somewhere first")
             return
 
         base_name = "New Folder"
@@ -688,9 +780,10 @@ class FileManager:
                     self._start_rename(i)
                     break
         except ValueError as e:
-            print(f"Security error: {e}")
+            self._set_error(f"Outside project folder — cannot create here: {e}")
             error_handler.capture(e, context="filemanager_create_folder_security")
         except Exception as e:
+            self._set_error(f"Could not create folder: {e}")
             error_handler.capture(e, context="filemanager_create_folder")
 
     def _start_rename(self, item_idx: int) -> None:
@@ -726,7 +819,7 @@ class FileManager:
 
         invalid_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|"]
         if any(char in new_name for char in invalid_chars):
-            print(f"Invalid characters in filename: {new_name}")
+            self._set_error(f"Invalid characters in name: {new_name}")
             self._cancel_rename()
             return
 
@@ -737,7 +830,7 @@ class FileManager:
         new_path = old_path.parent / new_name
 
         if new_path.exists():
-            print(f"File or folder already exists: {new_name}")
+            self._set_error(f"Already exists: {new_name}")
             self._cancel_rename()
             return
 
@@ -761,11 +854,11 @@ class FileManager:
                     break
 
         except ValueError as e:
-            print(f"Security error: {e}")
+            self._set_error(f"Outside project folder — cannot rename here: {e}")
             error_handler.capture(e, context="filemanager_rename_security")
         except Exception as e:
             error_handler.capture(e, context="filemanager_rename")
-            print(f"Failed to rename: {e}")
+            self._set_error(f"Failed to rename: {e}")
 
         self.renaming_item_idx = None
         self.rename_input.is_focused = False
@@ -796,20 +889,7 @@ class FileManager:
         self._update_save_name_rect(footer_rect)
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if not self.search_input.is_focused and not self.save_input.is_focused:
-                if self.renaming_item_idx is not None:
-                    self._cancel_rename()
-                    return True
-
-                self.on_cancel_callback()
-                return True
-
-            if self.search_input.is_focused:
-                self.search_input.is_focused = False
-                return True
-            if self.save_input.is_focused:
-                self.save_input.is_focused = False
-                return True
+            return self._handle_escape()
 
         if event.type == pygame.MOUSEMOTION:
             if self.enable_window_drag and self.is_dragging_window:
@@ -916,6 +996,16 @@ class FileManager:
                     self._start_rename(self.selected_index)
                     return True
 
+        if (
+            event.type == pygame.KEYDOWN
+            and event.key == pygame.K_F5
+            and not self.search_input.is_focused
+            and not self.save_input.is_focused
+            and self.renaming_item_idx is None
+        ):
+            self.refresh_items()
+            return True
+
         if event.type == pygame.KEYDOWN and self.search_input.is_focused:
             if event.key == pygame.K_ESCAPE:
                 self.search_input.is_focused = False
@@ -927,6 +1017,14 @@ class FileManager:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
+                if (
+                    self._error_rect is not None
+                    and self._error_live()
+                    and self._error_rect.collidepoint(mouse_pos)
+                ):
+                    self._clear_error()
+                    return True
+
                 if self.image_preview.is_visible and hasattr(self.image_preview, "close_button_rect"):
                     if self.image_preview.close_button_rect and self.image_preview.close_button_rect.collidepoint(
                         mouse_pos
@@ -958,10 +1056,25 @@ class FileManager:
                 self.save_input.is_focused = False
 
                 if ly < self.header_height:
-                    if lx < self.sidebar_width + 40:
+                    header_rect = pygame.Rect(
+                        self.rect.x + self.sidebar_width,
+                        self.rect.y,
+                        self.rect.width - self.sidebar_width,
+                        self.header_height,
+                    )
+                    if self._up_button_rect(header_rect).collidepoint(mouse_pos):
                         self.go_up()
                     elif self.new_folder_button_rect.collidepoint(mouse_pos):
                         self._create_folder()
+                    else:
+                        for crumb_rect, target in self._crumb_rects:
+                            if (
+                                target is not None
+                                and crumb_rect is not None
+                                and crumb_rect.collidepoint(mouse_pos)
+                            ):
+                                self.navigate_to(target)
+                                break
                     return True
 
                 if ly > self.rect.height - self.footer_height:
@@ -1041,8 +1154,26 @@ class FileManager:
 
         return True
 
-    def _handle_sidebar_click(self, ly):
-        shortcuts = [
+    def _handle_escape(self) -> bool:
+        """ESC performs local cancel only — it never closes the manager.
+
+        Priority: cancel rename > unfocus search > unfocus save name.
+        Close via the Cancel button or the window instead.
+        """
+        if self.renaming_item_idx is not None:
+            self._cancel_rename()
+            return True
+
+        if self.search_input.is_focused:
+            self.search_input.is_focused = False
+            return True
+        if self.save_input.is_focused:
+            self.save_input.is_focused = False
+            return True
+        return False
+
+    def _sidebar_shortcuts(self) -> list[tuple[str, Path | None]]:
+        return [
             ("Home", Path.home()),
             ("Documents", Path.home() / "Documents"),
             ("Desktop", Path.home() / "Desktop"),
@@ -1051,12 +1182,16 @@ class FileManager:
             ("Root", Path(os.path.abspath(os.sep))),
         ]
 
-        start_y = 10
-        gap = 40
+    def _sidebar_button_rect(self, rect, index: int) -> pygame.Rect:
+        y = rect.y + self._sidebar_caption_h + index * self._sidebar_pitch
+        return pygame.Rect(rect.x + 8, y, rect.width - 16, self._sidebar_btn_h)
+
+    def _handle_sidebar_click(self, ly):
+        shortcuts = self._sidebar_shortcuts()
 
         for i, (name, path) in enumerate(shortcuts):
-            btn_y = start_y + (i * gap)
-            if btn_y <= ly <= btn_y + 30:
+            btn_top = self._sidebar_caption_h + (i * self._sidebar_pitch)
+            if btn_top <= ly <= btn_top + self._sidebar_btn_h:
                 if name == "Recents":
                     self.view_mode = "recents"
                     self.refresh_items()
@@ -1127,12 +1262,12 @@ class FileManager:
             candidate = Path(name)
 
         if candidate.suffix and self.allowed_exts and candidate.suffix.lower() not in self.allowed_exts:
-            print(f"Invalid extension: {candidate.suffix}")
+            self._set_error(f"Invalid extension: {candidate.suffix}")
             return None
 
         target = self.current_path / candidate
         if target.exists() and target.is_dir():
-            print("Cannot save: selected name is a directory")
+            self._set_error("Cannot save: selected name is a directory")
             return None
         return target
 
@@ -1293,6 +1428,7 @@ class FileManager:
 
         file_list_rect = self._get_file_list_rect()
         self._draw_file_list(screen, file_list_rect)
+        self._draw_error_pill(screen, file_list_rect)
 
         # Footer always spans full content width (stable hit-test vs. input)
         footer_rect = pygame.Rect(
@@ -1323,44 +1459,71 @@ class FileManager:
             self.resize_handler.draw_handles(screen)
 
     def _draw_sidebar_items(self, screen, rect):
-        shortcuts = ["Home", "Documents", "Desktop", "Downloads", "Recents", "Root"]
-        start_y = rect.y + 10
-        gap = 40
+        names = [name for name, _ in self._sidebar_shortcuts()]
 
-        for i, name in enumerate(shortcuts):
-            y = start_y + (i * gap)
+        caption = self.font_small.render("PLACES", True, COLORS.text_muted)
+        screen.blit(caption, (rect.x + 12, rect.y + 6))
+
+        for i, name in enumerate(names):
+            btn_rect = self._sidebar_button_rect(rect, i)
 
             mx, my = pygame.mouse.get_pos()
-            btn_rect = pygame.Rect(rect.x + 5, y, rect.width - 10, 30)
 
             is_active = False
             if name == "Recents" and self.view_mode == "recents":
                 is_active = True
 
-            col = (
-                COLORS.selected if is_active else (COLORS.hover if btn_rect.collidepoint(mx, my) else COLORS.panel_alt)
-            )
+            if is_active:
+                col = COLORS.selected
+            elif btn_rect.collidepoint(mx, my):
+                col = COLORS.hover
+            else:
+                col = COLORS.panel
             pygame.draw.rect(screen, col, btn_rect, border_radius=SHAPE.radius_sm)
+
+            if is_active:
+                pygame.draw.rect(
+                    screen, COLORS.accent, btn_rect, 1, border_radius=SHAPE.radius_sm
+                )
+
+            if name == "Recents":
+                icon = icon_manager.get_icon("skip-back", 16, COLORS.text_dim)
+            else:
+                icon = icon_manager.get_icon("folder", 16, COLORS.accent)
+            screen.blit(
+                icon,
+                icon.get_rect(
+                    midleft=(btn_rect.x + 8, btn_rect.centery),
+                ),
+            )
 
             txt_col = COLORS.text_on_selected if is_active else COLORS.text
             txt = self.font_bold.render(name, True, txt_col)
-            screen.blit(txt, (rect.x + 15, y + 7))
+            screen.blit(
+                txt,
+                txt.get_rect(
+                    midleft=(btn_rect.x + 30, btn_rect.centery),
+                ),
+            )
+
+    def _up_button_rect(self, rect) -> pygame.Rect:
+        return pygame.Rect(rect.x + 8, rect.y + 6, 28, 28)
 
     def _draw_header(self, screen, rect):
-        up_btn = pygame.Rect(rect.x + 5, rect.y + 5, 30, 30)
-
-        up_icon = icon_manager.get_icon("arrow-down", 16, COLORS.text)
-
-        up_icon = pygame.transform.rotate(up_icon, 180)
-        screen.blit(up_icon, up_icon.get_rect(center=up_btn.center))
-        parts = self.current_path.parts
-        display_parts = ["..."] + list(parts[-3:]) if len(parts) > 4 else list(parts)
-        path_str = " / ".join(display_parts)
-        self.new_folder_button_rect = pygame.Rect(rect.right - 110, rect.y + 6, 100, 28)
+        self._crumb_rects = []
         mx, my = pygame.mouse.get_pos()
+
+        up_btn = self._up_button_rect(rect)
+        up_bg = COLORS.hover if up_btn.collidepoint(mx, my) else COLORS.panel_alt
+        pygame.draw.rect(screen, up_bg, up_btn, border_radius=SHAPE.radius_sm)
+        self._draw_icon_arrow_up(
+            screen, up_btn.centerx, up_btn.centery + 1, COLORS.text
+        )
+
+        self.new_folder_button_rect = pygame.Rect(rect.right - 110, rect.y + 6, 100, 28)
         folder_bg = COLORS.selected if self.new_folder_button_rect.collidepoint(mx, my) else COLORS.hover
         pygame.draw.rect(screen, folder_bg, self.new_folder_button_rect, border_radius=SHAPE.radius_sm)
-        folder_icon = icon_manager.get_icon("folder", 16, COLORS.warning)
+        folder_icon = icon_manager.get_icon("folder", 16, COLORS.accent)
         screen.blit(
             folder_icon,
             folder_icon.get_rect(
@@ -1385,15 +1548,54 @@ class FileManager:
             ),
         )
 
-        path_max_w = max(30, self.new_folder_button_rect.x - (rect.x + 45) - 10)
-        while path_str and self.font_main.size(path_str)[0] > path_max_w:
-            path_str = "..." + path_str[4:]
-        txt = self.font_main.render(path_str, True, COLORS.text_dim)
-        screen.blit(txt, (rect.x + 45, rect.y + 12))
+        crumbs = self.breadcrumb_segments(self.current_path)
+        avail_w = max(30, self.new_folder_button_rect.x - (rect.x + 48) - 8)
+        while len(crumbs) > 1 and self._crumbs_width(crumbs) > avail_w:
+            if crumbs[0][0] == "…":
+                crumbs.pop(1)
+            else:
+                crumbs = [("…", None)] + crumbs[1:]
+
+        x = rect.x + 48
+        sep_col = COLORS.text_muted
+        prev_label = ""
+        for idx, (label, target) in enumerate(crumbs):
+            if idx > 0 and prev_label != "/":
+                sep = self.font_main.render("/", True, sep_col)
+                screen.blit(sep, (x, rect.y + 12))
+                x += sep.get_width() + 8
+            prev_label = label
+            txt_col = COLORS.text if target is not None else COLORS.text_muted
+            if target is not None and idx == len(crumbs) - 1:
+                txt_col = COLORS.accent_hover
+            txt = self.font_main.render(label, True, txt_col)
+            r = pygame.Rect(x - 4, rect.y + 6, txt.get_width() + 8, 28)
+            if target is not None and r.collidepoint(mx, my):
+                pygame.draw.rect(screen, COLORS.hover, r, border_radius=SHAPE.radius_sm)
+            screen.blit(txt, (x, rect.y + 12))
+            self._crumb_rects.append((r if target is not None else None, target))
+            x = r.right + 2
+
+    def _crumbs_width(self, crumbs) -> int:
+        w = 0
+        prev_label = ""
+        for idx, (label, _target) in enumerate(crumbs):
+            if idx > 0 and prev_label != "/":
+                w += self.font_main.size("/")[0] + 8
+            prev_label = label
+            w += self.font_main.size(label)[0] + 8
+        return w
 
     def _draw_file_list(self, screen, rect):
         clip = screen.get_clip()
         screen.set_clip(rect)
+
+        if not self.items:
+            hint = "Folder is empty" if not self.is_searching else "No matches found"
+            txt = self.font_main.render(hint, True, COLORS.text_muted)
+            screen.blit(txt, txt.get_rect(center=rect.center))
+            screen.set_clip(clip)
+            return
 
         start_y = rect.y - self.scroll_y
 
@@ -1405,33 +1607,37 @@ class FileManager:
             if y > rect.bottom:
                 break
 
-            row_rect = pygame.Rect(rect.x, y, rect.width, self.item_height)
+            row_rect = pygame.Rect(
+                rect.x + 4, y + 2, rect.width - 8, self.item_height - 4
+            )
 
             if i == self.selected_index or (self.multi_select and i in self.selected_indices):
-                pygame.draw.rect(screen, COLORS.selected, row_rect)
+                pygame.draw.rect(screen, COLORS.selected, row_rect, border_radius=SHAPE.radius_sm)
             elif i == self.hover_index:
-                pygame.draw.rect(screen, COLORS.hover, row_rect)
+                pygame.draw.rect(screen, COLORS.hover, row_rect, border_radius=SHAPE.radius_sm)
 
             if i == self.renaming_item_idx:
-                pygame.draw.rect(screen, COLORS.selected, row_rect)
+                pygame.draw.rect(
+                    screen, COLORS.selected, row_rect, border_radius=SHAPE.radius_sm
+                )
 
-            icon_size = (20, 20)
-            icon_x = rect.x + 10
+            icon_size = (self._item_icon_size, self._item_icon_size)
+            icon_x = row_rect.x + 10
             icon_y = y + (self.item_height - icon_size[1]) // 2
 
             if item.is_dir:
-                icon = icon_manager.get_icon("folder", 20, COLORS.warning)
+                icon = icon_manager.get_icon("folder", 22, COLORS.accent)
             elif item.ext in [".png", ".jpg", ".jpeg"]:
-                icon = icon_manager.get_icon("image", 20, COLORS.success)
+                icon = icon_manager.get_icon("image", 22, COLORS.success)
             else:
-                icon = icon_manager.get_icon("file", 20, COLORS.text_dim)
+                icon = icon_manager.get_icon("file", 22, COLORS.text_dim)
 
             screen.blit(icon, (icon_x, icon_y))
 
             if i == self.renaming_item_idx:
-                text_x = rect.x + self._item_text_left
+                text_x = row_rect.x + self._item_text_left
                 text_y = y + self._rename_vpad
-                text_w = rect.width - self._item_text_left - self._item_text_right
+                text_w = row_rect.width - self._item_text_left - self._item_text_right
                 text_h = self.item_height - self._rename_vpad * 2
                 self.rename_input.resize(text_x, text_y, text_w, text_h)
                 self.rename_input.draw(screen)
@@ -1445,18 +1651,66 @@ class FileManager:
                     else COLORS.text
                 )
                 txt = self.font_main.render(item.name, True, col)
-                screen.blit(txt, (rect.x + self._item_text_left, y + self._text_offset_y))
+                screen.blit(txt, (row_rect.x + self._item_text_left, y + self._text_offset_y))
+
+                meta = "Folder" if item.is_dir else format_file_size(item.size)
+                if meta:
+                    meta_col = (
+                        COLORS.text_on_selected
+                        if i == self.selected_index or multi
+                        else COLORS.text_muted
+                    )
+                    meta_txt = self.font_small.render(meta, True, meta_col)
+                    screen.blit(
+                        meta_txt,
+                        meta_txt.get_rect(
+                            right=row_rect.right - self._item_meta_right,
+                            centery=row_rect.centery,
+                        ),
+                    )
 
         screen.set_clip(clip)
 
         total_h = len(self.items) * self.item_height
         if total_h > rect.height:
             scroll_pct = self.scroll_y / (total_h - rect.height)
-            bar_h = max(20, rect.height * (rect.height / total_h))
+            bar_h = max(24, rect.height * (rect.height / total_h))
             bar_y = rect.y + scroll_pct * (rect.height - bar_h)
 
-            bar_rect = pygame.Rect(rect.right - 6, bar_y, 4, bar_h)
-            pygame.draw.rect(screen, COLORS.border, bar_rect, border_radius=SHAPE.radius_sm)
+            bar_rect = pygame.Rect(rect.right - 8, bar_y, 6, bar_h)
+            mx, my = pygame.mouse.get_pos()
+            thumb_col = (
+                COLORS.scrollbar_thumb_hover
+                if bar_rect.collidepoint(mx, my)
+                else COLORS.scrollbar_thumb
+            )
+            pygame.draw.rect(screen, thumb_col, bar_rect, border_radius=3)
+
+    def _draw_error_pill(self, screen, list_rect):
+        """Floating dismissible error above the list bottom (auto-expires)."""
+        if not self._error_live():
+            self._error_rect = None
+            return
+        msg = self.last_error or ""
+        pad_x, pad_y = 14, 9
+        icon_gap = 22
+        max_text_w = max(40, list_rect.width - 24 - pad_x * 2 - icon_gap)
+        while msg and self.font_main.size(msg)[0] > max_text_w:
+            msg = msg[:-1]
+        if msg != (self.last_error or ""):
+            msg = msg[:-1] + "…"
+        txt = self.font_main.render(msg, True, COLORS.text)
+        w = txt.get_width() + pad_x * 2 + icon_gap
+        h = txt.get_height() + pad_y * 2
+        x = list_rect.x + (list_rect.width - w) // 2
+        y = list_rect.bottom - h - 12
+        pill = pygame.Rect(x, y, w, h)
+        pygame.draw.rect(screen, COLORS.panel, pill, border_radius=SHAPE.radius)
+        pygame.draw.rect(screen, COLORS.danger, pill, 2, border_radius=SHAPE.radius)
+        warn = icon_manager.get_icon("warning", 16, COLORS.danger)
+        screen.blit(warn, warn.get_rect(midleft=(x + pad_x, pill.centery)))
+        screen.blit(txt, (x + pad_x + 22, y + pad_y))
+        self._error_rect = pill
 
     def _draw_footer(self, screen, rect):
         sel_txt: str
@@ -1469,11 +1723,16 @@ class FileManager:
 
         if self.mode == "open":
             txt_surf = self.font_main.render(sel_txt, True, COLORS.text_dim)
-            screen.blit(txt_surf, (rect.x + 10, rect.y + 12))
+            screen.blit(txt_surf, (rect.x + 10, rect.y + 10))
             if self.multi_select:
                 hint = "[Ctrl+Click] toggle  [Shift+Click] range  [Open] confirm"
                 hint_surf = self.font_small.render(hint, True, COLORS.text_dim)
                 screen.blit(hint_surf, (rect.x + 10, rect.y + 28))
+            else:
+                count_surf = self.font_small.render(
+                    self._count_summary(), True, COLORS.text_muted
+                )
+                screen.blit(count_surf, (rect.x + 10, rect.y + 28))
 
         btn_w, btn_h = 80, 30
         margin = 10

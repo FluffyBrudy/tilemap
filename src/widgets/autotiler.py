@@ -33,6 +33,30 @@ _NEIGHBOR_ORDER = (
 )
 
 
+def _normalize_subcases(subcases) -> dict[frozenset, list[int]]:
+    """Normalize persisted subcase tables to {frozenset(dist2): [vids]}."""
+    if not subcases:
+        return {}
+    normalized: dict[frozenset, list[int]] = {}
+    items = subcases.items() if isinstance(subcases, dict) else subcases
+    for entry in items:
+        if isinstance(entry, tuple) and len(entry) == 2:
+            raw_key, vids = entry
+            key = frozenset(tuple(d) for d in raw_key)
+        elif isinstance(entry, dict):
+            key = frozenset(tuple(d) for d in entry.get("dist2", []))
+            vids = entry.get("variant_ids", [])
+        else:
+            continue
+        if key in normalized:
+            for v in vids:
+                if v not in normalized[key]:
+                    normalized[key].append(v)
+        else:
+            normalized[key] = list(vids)
+    return normalized
+
+
 class AutotileRule:
     def __init__(
         self,
@@ -43,6 +67,7 @@ class AutotileRule:
         surface_subsurface: Surface | None = None,
         tileset_index: int | None = None,
         group_id: str | None = None,
+        subcases: dict | None = None,
     ):
         self.name = name
         self.neighbors = neighbors
@@ -53,6 +78,8 @@ class AutotileRule:
         self.variant_ids = variant_ids or []
         self.preview_surf: Surface | None = surface_subsurface
         self.group_id = group_id or name
+
+        self.subcases: dict[frozenset, list[int]] = _normalize_subcases(subcases)
 
     @staticmethod
     def from_dict(data: dict):
@@ -71,6 +98,7 @@ class AutotileRule:
             surface_subsurface=None,
             tileset_index=data.get("tileset_index"),
             group_id=data.get("group_id"),
+            subcases=data.get("subcases"),
         )
 
     def to_dict(self):
@@ -81,7 +109,19 @@ class AutotileRule:
             "tileset_index": self.tileset_index,
             "variant_ids": self.variant_ids,
             "group_id": self.group_id,
+            "subcases": [
+                {"dist2": [list(d) for d in sorted(key)], "variant_ids": list(vids)}
+                for key, vids in self.subcases.items()
+            ],
         }
+
+    def leaf_for(self, dist2) -> list[int] | None:
+        """Exact variant ids for a distance-2 signature, or None (no leaf)."""
+        try:
+            key = frozenset(tuple(d) for d in dist2)
+        except TypeError:
+            return None
+        return self.subcases.get(key)
 
 
 class AutotileGroup:
@@ -120,6 +160,13 @@ class AutotileRuleDesigner:
         self.renaming_group_idx: int | None = None
         self.rename_input = InlineTextInput("group_rename", "")
 
+        self.group_menu_visible: bool = False
+        self.group_menu_rect: Rect = Rect(0, 0, 170, 60)
+        self.group_menu_idx: int | None = None
+        self.group_menu_options = ("Rename (F2)", "Delete group")
+        self.del_group_btn_rect: Rect = Rect(0, 0, 0, 0)
+        self.dup_btn_rect: Rect = Rect(0, 0, 0, 0)
+
         self.scroll_offset: int = 0
         self.max_visible_rules: int = 6
         self.scroll_bar_rect: Rect | None = None
@@ -151,9 +198,7 @@ class AutotileRuleDesigner:
         self._update_layout()
 
     def _update_layout(self):
-        self.close_btn_rect = Rect(
-            self.rect.right - 30, self.rect.y, 30, self.header_height
-        )
+        self.close_btn_rect = Rect(self.rect.right - 30, self.rect.y, 30, self.header_height)
         body_y = self.rect.y + self.header_height
         body_h = self.rect.height - self.header_height
         sidebar_w = 200
@@ -164,24 +209,28 @@ class AutotileRuleDesigner:
         rule_content_h = (body_h // 2) - button_h
 
         self.group_list_area = Rect(self.rect.x, body_y, sidebar_w, group_content_h)
-        self.rule_list_area = Rect(
-            self.rect.x, body_y + body_h // 2, sidebar_w, rule_content_h
-        )
+        self.rule_list_area = Rect(self.rect.x, body_y + body_h // 2, sidebar_w, rule_content_h)
 
-        self.edit_area = Rect(
-            self.rect.x + sidebar_w, body_y, self.rect.width - sidebar_w, body_h
-        )
+        self.edit_area = Rect(self.rect.x + sidebar_w, body_y, self.rect.width - sidebar_w, body_h)
 
         btn_y = self.edit_area.bottom - 40
         btn_w = 80
         cx = self.edit_area.centerx
-        self.save_btn_rect = Rect(cx - btn_w - 5, btn_y, btn_w, 30)
-        self.delete_btn_rect = Rect(cx + 5, btn_y, btn_w, 30)
+        x0 = cx - (btn_w * 3 + 10) // 2
+        self.save_btn_rect = Rect(x0, btn_y, btn_w, 30)
+        self.dup_btn_rect = Rect(x0 + btn_w + 5, btn_y, btn_w, 30)
+        self.delete_btn_rect = Rect(x0 + 2 * (btn_w + 5), btn_y, btn_w, 30)
 
         self.new_group_btn_rect = Rect(
             self.group_list_area.x + 10,
             self.group_list_area.bottom + 5,
-            self.group_list_area.width - 20,
+            (self.group_list_area.width - 25) // 2,
+            25,
+        )
+        self.del_group_btn_rect = Rect(
+            self.new_group_btn_rect.right + 5,
+            self.group_list_area.bottom + 5,
+            (self.group_list_area.width - 25) // 2,
             25,
         )
         self.new_rule_btn_rect = Rect(
@@ -222,9 +271,9 @@ class AutotileRuleDesigner:
         self.visible = False
         self.is_dragging = False
 
-        if hasattr(self.editor, "tileset_widget"):
-            assert self.editor.tileset_widget is not None
-            self.editor.tileset_widget.set_rule_hints(set())
+        selector = getattr(self.editor, "tileset_widget", None)
+        if selector is not None:
+            selector.set_rule_hints(set())
 
     def _push_hints_to_selector(self):
         selector = getattr(self.editor, "tileset_widget", None)
@@ -281,6 +330,9 @@ class AutotileRuleDesigner:
         if self.template_manager.handle_event(event):
             return True
 
+        if self._handle_group_menu_event(event):
+            return True
+
         if self._handle_scroll_event(event):
             return True
 
@@ -295,11 +347,26 @@ class AutotileRuleDesigner:
             self.hide()
             return True
 
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_DELETE and self.renaming_group_idx is None:
+            group, rule = self._selected_rule()
+            if rule is not None:
+                self._request_delete_rule()
+                return True
+            if group is not None and self.selected_rule_index == -1:
+                self._request_delete_group(self.selected_group_idx)
+                return True
+
         if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 3:
+                if self.group_list_area.collidepoint(mouse_pos):
+                    idx = self._group_index_at_pos(mouse_pos)
+                    if idx is not None:
+                        self.selected_group_idx = idx
+                        self.selected_rule_index = -1
+                        self._open_group_menu(idx, mouse_pos)
+                        return True
             if event.button == 1:
-                header_rect = Rect(
-                    self.rect.x, self.rect.y, self.rect.width, self.header_height
-                )
+                header_rect = Rect(self.rect.x, self.rect.y, self.rect.width, self.header_height)
                 if self.close_btn_rect.collidepoint(mouse_pos):
                     self.hide()
                     return True
@@ -313,6 +380,11 @@ class AutotileRuleDesigner:
 
                 if self.new_group_btn_rect.collidepoint(mouse_pos):
                     self._create_new_group_with_focus()
+                    return True
+
+                if self.del_group_btn_rect.collidepoint(mouse_pos):
+                    if 0 <= self.selected_group_idx < len(self.groups):
+                        self._request_delete_group(self.selected_group_idx)
                     return True
 
                 if self.new_rule_btn_rect.collidepoint(mouse_pos):
@@ -330,6 +402,8 @@ class AutotileRuleDesigner:
                 if self.edit_area.collidepoint(mouse_pos):
                     if self.save_btn_rect.collidepoint(mouse_pos):
                         self._save_current_rule()
+                    elif self.dup_btn_rect.collidepoint(mouse_pos):
+                        self._duplicate_current_rule()
                     elif self.delete_btn_rect.collidepoint(mouse_pos):
                         self._delete_current_rule()
                     elif self.external_btn_rect.collidepoint(mouse_pos):
@@ -373,9 +447,7 @@ class AutotileRuleDesigner:
 
                 current_state = (current_path, current_rect)
                 if current_state != self._last_editor_selection:
-                    print(
-                        f"DEBUG: Preview updated - path={current_path}, active_idx={tile_selector.active_idx}"
-                    )
+                    print(f"DEBUG: Preview updated - path={current_path}, active_idx={tile_selector.active_idx}")
                     self._last_editor_selection = current_state
 
                     self.current_tileset_path = current_path
@@ -401,9 +473,7 @@ class AutotileRuleDesigner:
                             vid = (abs_r * sheet_cols) + abs_c
                             self.current_variant_ids.append(vid)
 
-                            sub_rect = Rect(
-                                abs_c * tile_w, abs_r * tile_h, tile_w, tile_h
-                            )
+                            sub_rect = Rect(abs_c * tile_w, abs_r * tile_h, tile_w, tile_h)
                             try:
                                 sub = ts.surface.subsurface(sub_rect).copy()
                                 self.current_preview_surfs.append(sub)
@@ -546,9 +616,7 @@ class AutotileRuleDesigner:
         print("\nDEBUG: _save_current_rule called")
 
         tile_selector = getattr(self.editor, "tileset_widget", None)
-        if (
-            not self.current_tileset_path or self.current_tileset_index is None
-        ) and tile_selector:
+        if (not self.current_tileset_path or self.current_tileset_index is None) and tile_selector:
             ts = tile_selector.get_active_tile()
             if ts:
                 self.current_tileset_path = str(ts.path)
@@ -598,22 +666,193 @@ class AutotileRuleDesigner:
         for r in self.rules:
             print(f"  - {r.name}: neighbors={r.neighbors}, variants={r.variant_ids}")
 
-    def _delete_current_rule(self):
-        if self.selected_group_idx != -1 and 0 <= self.selected_rule_index < len(
-            self.groups[self.selected_group_idx].rules
-        ):
-            self.groups[self.selected_group_idx].rules.pop(self.selected_rule_index)
-            self._reset_selection()
+    def _group_index_at_pos(self, mouse_pos) -> int | None:
+        start_y = self.group_list_area.y + 25
+        item_h = 25
+        for i in range(len(self.groups)):
+            item_rect = Rect(
+                self.group_list_area.x + 5,
+                start_y + i * item_h,
+                self.group_list_area.width - 10,
+                item_h,
+            )
+            if item_rect.collidepoint(mouse_pos):
+                return i
+        return None
 
-            group = self.groups[self.selected_group_idx]
-            max_scroll = max(0, len(group.rules) - self.max_visible_rules)
-            self.scroll_offset = min(self.scroll_offset, max_scroll)
+    def _open_group_menu(self, idx: int, mouse_pos):
+        self.group_menu_idx = idx
+        w = 170
+        h = 10 + len(self.group_menu_options) * 26
+        ed = self.editor
+        ex = getattr(ed, "width", 800)
+        ey = getattr(ed, "height", 600)
+        x = min(max(0, mouse_pos[0]), max(0, ex - w))
+        y = min(max(0, mouse_pos[1]), max(0, ey - h))
+        self.group_menu_rect = Rect(x, y, w, h)
+        self.group_menu_visible = True
+
+    def _close_group_menu(self):
+        self.group_menu_visible = False
+        self.group_menu_idx = None
+
+    def _handle_group_menu_event(self, event) -> bool:
+        if not self.group_menu_visible:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = getattr(event, "pos", None) or pygame.mouse.get_pos()
+            for i, opt in enumerate(self.group_menu_options):
+                row = Rect(
+                    self.group_menu_rect.x + 4,
+                    self.group_menu_rect.y + 5 + i * 26,
+                    self.group_menu_rect.width - 8,
+                    24,
+                )
+                if row.collidepoint(pos):
+                    idx = self.group_menu_idx
+                    self._close_group_menu()
+                    if opt.startswith("Rename"):
+                        if idx is not None and 0 <= idx < len(self.groups):
+                            self.selected_group_idx = idx
+                            self.renaming_group_idx = idx
+                            self.rename_input.text = self.groups[idx].name
+                            self.rename_input.cursor_pos = len(self.rename_input.text)
+                            self.rename_input.is_focused = True
+                    else:
+                        if idx is not None:
+                            self._request_delete_group(idx)
+                    return True
+            if not self.group_menu_rect.collidepoint(pos):
+                self._close_group_menu()
+                return True
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._close_group_menu()
+            return True
+        return False
+
+    def _notify(self, text: str, color=(200, 200, 200)):
+        notifications = getattr(self.editor, "notifications", None)
+        if notifications is not None:
+            try:
+                notifications.notify(text, color=color)
+            except TypeError:
+                notifications.notify(text)
+            except Exception:
+                pass
+
+    def _request_delete_group(self, idx: int):
+        if not (0 <= idx < len(self.groups)):
+            return
+        if len(self.groups) <= 1:
+            self._notify("Cannot delete the last group", color=(255, 180, 100))
+            return
+        name = self.groups[idx].name
+        n_rules = len(self.groups[idx].rules)
+        confirm = getattr(getattr(self.editor, "confirm_dialog", None), "show", None)
+        if callable(confirm):
+            try:
+                self.editor.confirm_dialog.show(
+                    "Delete autotile group",
+                    f"Delete group '{name}' with {n_rules} rule(s)? Tiles stamped with it stay but stop autotiling.",
+                    on_confirm=lambda i=idx: self._confirm_delete_group(i),
+                    on_cancel=lambda: None,
+                )
+                return
+            except Exception:
+                pass
+        self._confirm_delete_group(idx)
+
+    def _confirm_delete_group(self, idx: int) -> bool:
+        if not (0 <= idx < len(self.groups)):
+            return False
+        if len(self.groups) <= 1:
+            return False
+        name = self.groups[idx].name
+        self.groups.pop(idx)
+        self.selected_group_idx = min(max(0, idx - 1), len(self.groups) - 1)
+        self.selected_rule_index = -1
+        self.scroll_offset = 0
+        self._close_group_menu()
+        print(f"Group deleted: {name}")
+        return True
+
+    def _unique_rule_name(self, group, base: str) -> str:
+        existing = {r.name for r in group.rules}
+        name = base
+        while name in existing:
+            name = self._get_next_rule_name(name)
+        return name
+
+    def _selected_rule(self):
+        if not (0 <= self.selected_group_idx < len(self.groups)):
+            return None, None
+        group = self.groups[self.selected_group_idx]
+        if not (0 <= self.selected_rule_index < len(group.rules)):
+            return group, None
+        return group, group.rules[self.selected_rule_index]
+
+    def _duplicate_current_rule(self) -> bool:
+        group, src = self._selected_rule()
+        if group is None or src is None:
+            return False
+        clone = AutotileRule(
+            name=self._unique_rule_name(group, f"{src.name} copy"),
+            neighbors=set(src.neighbors),
+            tileset_path=src.tileset_path,
+            variant_ids=list(src.variant_ids),
+            surface_subsurface=src.preview_surf,
+            tileset_index=src.tileset_index,
+            group_id=group.name,
+            subcases={k: list(v) for k, v in src.subcases.items()},
+        )
+        group.rules.insert(self.selected_rule_index + 1, clone)
+        self.selected_rule_index += 1
+        self._load_rule_to_editor(clone)
+        print(f"Rule duplicated: {src.name} -> {clone.name}")
+        return True
+
+    def _request_delete_rule(self):
+        group, rule = self._selected_rule()
+        if group is None or rule is None:
+            return
+        idx = self.selected_rule_index
+        confirm = getattr(getattr(self.editor, "confirm_dialog", None), "show", None)
+        if callable(confirm):
+            try:
+                self.editor.confirm_dialog.show(
+                    "Delete autotile rule",
+                    f"Delete rule '{rule.name}' from group '{group.name}'?",
+                    on_confirm=lambda i=idx: self._confirm_delete_rule(i),
+                    on_cancel=lambda: None,
+                )
+                return
+            except Exception:
+                pass
+        self._confirm_delete_rule(idx)
+
+    def _confirm_delete_rule(self, idx: int | None = None) -> bool:
+        group, _rule = self._selected_rule()
+        if group is None:
+            return False
+        if idx is None:
+            idx = self.selected_rule_index
+        if not (0 <= idx < len(group.rules)):
+            return False
+        group.rules.pop(idx)
+        self._reset_selection()
+
+        max_scroll = max(0, len(group.rules) - self.max_visible_rules)
+        self.scroll_offset = min(self.scroll_offset, max_scroll)
+        print(f"Rule deleted from group '{group.name}'")
+        return True
+
+    def _delete_current_rule(self):
+        group, rule = self._selected_rule()
+        if group is not None and rule is not None:
+            self._request_delete_rule()
         elif self.selected_group_idx != -1 and self.selected_rule_index == -1:
-            if len(self.groups) > 1:
-                self.groups.pop(self.selected_group_idx)
-                self.selected_group_idx = 0
-                self.selected_rule_index = -1
-                self.scroll_offset = 0
+            self._request_delete_group(self.selected_group_idx)
 
     def _launch_external_viewer(self):
         import tempfile
@@ -671,18 +910,36 @@ class AutotileRuleDesigner:
         self._draw_grid_editor(screen)
 
         self.template_manager.draw(screen)
+        self._draw_group_menu(screen)
+
+    def _draw_group_menu(self, screen):
+        if not self.group_menu_visible:
+            return
+        pygame.draw.rect(screen, COLORS.panel, self.group_menu_rect)
+        pygame.draw.rect(screen, COLORS.border, self.group_menu_rect, 1)
+        mouse_pos = pygame.mouse.get_pos()
+        for i, opt in enumerate(self.group_menu_options):
+            row = Rect(
+                self.group_menu_rect.x + 4,
+                self.group_menu_rect.y + 5 + i * 26,
+                self.group_menu_rect.width - 8,
+                24,
+            )
+            hover = row.collidepoint(mouse_pos)
+            if hover:
+                pygame.draw.rect(screen, COLORS.accent, row, border_radius=4)
+                color = COLORS.text_on_accent
+            else:
+                color = COLORS.text_dim
+            screen.blit(self.font.render(opt, True, color), (row.x + 10, row.y + 4))
 
     def _draw_rule_list(self, screen):
 
         pygame.draw.rect(screen, COLORS.header, self.group_list_area)
         pygame.draw.rect(screen, COLORS.border, self.group_list_area, 1)
 
-        lbl_groups = self.title_font.render(
-            "Groups (F2: Rename)", True, COLORS.accent_hover
-        )
-        screen.blit(
-            lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5)
-        )
+        lbl_groups = self.title_font.render("Groups (F2/R-click)", True, COLORS.accent_hover)
+        screen.blit(lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5))
 
         start_y = self.group_list_area.y + 25
         item_h = 25
@@ -722,13 +979,13 @@ class AutotileRuleDesigner:
             )
             screen.blit(self.font.render(d_name, True, g_color), (r.x + 5, r.y + 5))
 
-        pygame.draw.rect(
-            screen, COLORS.success, self.new_group_btn_rect, border_radius=4
-        )
-        gntxt = self.font.render("+ New Group", True, COLORS.text)
-        screen.blit(
-            gntxt, (self.new_group_btn_rect.x + 10, self.new_group_btn_rect.y + 5)
-        )
+        pygame.draw.rect(screen, COLORS.success, self.new_group_btn_rect, border_radius=4)
+        gntxt = self.font.render("+ Group", True, COLORS.text)
+        screen.blit(gntxt, (self.new_group_btn_rect.x + 8, self.new_group_btn_rect.y + 5))
+
+        pygame.draw.rect(screen, (150, 80, 80), self.del_group_btn_rect, border_radius=4)
+        dgntxt = self.font.render("Del Group", True, COLORS.text)
+        screen.blit(dgntxt, (self.del_group_btn_rect.x + 8, self.del_group_btn_rect.y + 5))
 
         pygame.draw.rect(screen, COLORS.panel, self.rule_list_area)
         pygame.draw.rect(screen, COLORS.border, self.rule_list_area, 1)
@@ -738,13 +995,9 @@ class AutotileRuleDesigner:
 
         self._draw_scrollable_rule_list(screen)
 
-        pygame.draw.rect(
-            screen, COLORS.accent, self.new_rule_btn_rect, border_radius=4
-        )
+        pygame.draw.rect(screen, COLORS.accent, self.new_rule_btn_rect, border_radius=4)
         rntxt = self.font.render("+ New Rule", True, COLORS.text)
-        screen.blit(
-            rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5)
-        )
+        screen.blit(rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5))
 
     def _draw_scrollable_rule_list(self, screen: Surface) -> None:
         """Draw rules with scroll indicators and scrollbar - with clipping to prevent overflow"""
@@ -778,9 +1031,7 @@ class AutotileRuleDesigner:
             display_index = i - visible_start
             y_pos = start_y_r + display_index * item_h
 
-            r = Rect(
-                self.rule_list_area.x + 5, y_pos, self.rule_list_area.width - 10, item_h
-            )
+            r = Rect(self.rule_list_area.x + 5, y_pos, self.rule_list_area.width - 10, item_h)
 
             if i == self.selected_rule_index:
                 pygame.draw.rect(screen, COLORS.hover, r, border_radius=3)
@@ -810,19 +1061,11 @@ class AutotileRuleDesigner:
             track_height = self.rule_list_area.height - 50
             scroll_ratio = self.scroll_offset / max_scroll if max_scroll > 0 else 0
 
-            scrollbar_y = (
-                self.rule_list_area.y
-                + 25
-                + int(scroll_ratio * (track_height - scrollbar_height))
-            )
+            scrollbar_y = self.rule_list_area.y + 25 + int(scroll_ratio * (track_height - scrollbar_height))
 
-            self.scroll_bar_rect = Rect(
-                self.rule_list_area.right - 15, scrollbar_y, 10, scrollbar_height
-            )
+            self.scroll_bar_rect = Rect(self.rule_list_area.right - 15, scrollbar_y, 10, scrollbar_height)
 
-            pygame.draw.rect(
-                screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5
-            )
+            pygame.draw.rect(screen, (100, 100, 120), self.scroll_bar_rect, border_radius=5)
         else:
             self.scroll_bar_rect = None
 
@@ -839,16 +1082,12 @@ class AutotileRuleDesigner:
             if self.rule_list_area.collidepoint(pygame.mouse.get_pos()):
                 scroll_delta = -event.y
                 old_offset = self.scroll_offset
-                self.scroll_offset = max(
-                    0, min(self.scroll_offset + scroll_delta, max_scroll)
-                )
+                self.scroll_offset = max(0, min(self.scroll_offset + scroll_delta, max_scroll))
                 return old_offset != self.scroll_offset
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(
-                    event.pos
-                ):
+                if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(event.pos):
                     self.is_scrollbar_dragging = True
                     return True
 
@@ -887,11 +1126,7 @@ class AutotileRuleDesigner:
                     new_name = self.rename_input.text.strip()
 
                     if new_name and new_name != old_name:
-                        existing_names = {
-                            g.name
-                            for i, g in enumerate(self.groups)
-                            if i != self.renaming_group_idx
-                        }
+                        existing_names = {g.name for i, g in enumerate(self.groups) if i != self.renaming_group_idx}
                         if new_name in existing_names:
                             counter = 2
                             base_name = new_name
@@ -903,6 +1138,8 @@ class AutotileRuleDesigner:
 
                         for rule in group.rules:
                             rule.group_id = new_name
+
+                        self._migrate_tile_stamps(old_name, new_name)
 
                     self.renaming_group_idx = None
                     self.rename_input.is_focused = False
@@ -918,10 +1155,32 @@ class AutotileRuleDesigner:
 
         return False
 
+    def _migrate_tile_stamps(self, old_name: str, new_name: str) -> int:
+        """Rename tile ``autotile_group`` stamps so renamed groups keep working."""
+        migrated = 0
+        try:
+            manager = self.editor.tilemap.layer_manager
+        except Exception:
+            return 0
+        for layer in getattr(manager, "layers", []):
+            for tile in getattr(layer, "tiles", {}).values():
+                try:
+                    if tile.get("autotile_group") == old_name:
+                        tile["autotile_group"] = new_name
+                        migrated += 1
+                except Exception:
+                    continue
+        return migrated
+
     def _create_new_group_with_focus(self) -> None:
         """Create new group and immediately enter rename mode"""
 
-        new_group_name = f"Group {len(self.groups) + 1}"
+        existing = {g.name for g in self.groups}
+        counter = len(self.groups) + 1
+        new_group_name = f"Group {counter}"
+        while new_group_name in existing:
+            counter += 1
+            new_group_name = f"Group {counter}"
 
         new_group = AutotileGroup(new_group_name)
         self.groups.append(new_group)
@@ -947,9 +1206,16 @@ class AutotileRuleDesigner:
             screen.blit(scaled, (center_x - 32, self.edit_area.y + 40))
 
             if len(self.current_preview_surfs) > 1:
-                count_txt = self.font.render(
-                    f"x{len(self.current_preview_surfs)}", True, (255, 255, 0)
-                )
+                count_label = f"x{len(self.current_preview_surfs)}"
+                try:
+                    group = self.groups[self.selected_group_idx]
+                    rule = group.rules[self.selected_rule_index]
+                    subs = getattr(rule, "subcases", None) or {}
+                    if subs and all(len(v) == 1 for v in subs.values()):
+                        count_label = f"{len(subs)} exact"
+                except (IndexError, AttributeError):
+                    pass
+                count_txt = self.font.render(count_label, True, (255, 255, 0))
                 screen.blit(count_txt, (center_x + 35, self.edit_area.y + 85))
 
         start_x, start_y = self._get_grid_start_pos()
@@ -979,27 +1245,18 @@ class AutotileRuleDesigner:
         screen.blit(s_lbl, (self.save_btn_rect.x + 25, self.save_btn_rect.y + 8))
 
         if self.selected_rule_index != -1:
-            pygame.draw.rect(
-                screen, (180, 70, 70), self.delete_btn_rect, border_radius=4
-            )
+            pygame.draw.rect(screen, (90, 110, 150), self.dup_btn_rect, border_radius=4)
+            dup_lbl = self.font.render("Dup", True, COLORS.text)
+            screen.blit(dup_lbl, (self.dup_btn_rect.x + 25, self.dup_btn_rect.y + 8))
+            pygame.draw.rect(screen, (180, 70, 70), self.delete_btn_rect, border_radius=4)
             d_lbl = self.font.render("Del", True, COLORS.text)
-            screen.blit(
-                d_lbl, (self.delete_btn_rect.x + 25, self.delete_btn_rect.y + 8)
-            )
+            screen.blit(d_lbl, (self.delete_btn_rect.x + 25, self.delete_btn_rect.y + 8))
 
-        pygame.draw.rect(
-            screen, (100, 100, 150), self.external_btn_rect, border_radius=4
-        )
+        pygame.draw.rect(screen, (100, 100, 150), self.external_btn_rect, border_radius=4)
         ext_lbl = self.font.render("External View", True, COLORS.text)
-        screen.blit(
-            ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5)
-        )
+        screen.blit(ext_lbl, (self.external_btn_rect.x + 8, self.external_btn_rect.y + 5))
 
         if self.current_variant_ids:
-            pygame.draw.rect(
-                screen, (60, 120, 120), self.template_btn_rect, border_radius=4
-            )
+            pygame.draw.rect(screen, (60, 120, 120), self.template_btn_rect, border_radius=4)
             tmpl_lbl = self.font.render("Templates", True, COLORS.text)
-            screen.blit(
-                tmpl_lbl, (self.template_btn_rect.x + 18, self.template_btn_rect.y + 5)
-            )
+            screen.blit(tmpl_lbl, (self.template_btn_rect.x + 18, self.template_btn_rect.y + 5))

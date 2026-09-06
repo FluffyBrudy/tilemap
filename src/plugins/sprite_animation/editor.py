@@ -267,14 +267,10 @@ class SpriteAnimationEditor:
                             self._info_tooltip_pinned = False
                             continue
 
-                        # an armed click-click move is cancelled first —
-                        # Escape must not double as editor exit here
                         if self.timeline.has_pending_move():
                             self.timeline.cancel_pending_move()
                             continue
 
-                        if self._file_manager is None:
-                            running = False
                         continue
                 self.handle_event(event)
 
@@ -1179,14 +1175,10 @@ class SpriteAnimationEditor:
 
         except ValueError:
             self._frame_width_input = (
-                str(sw // max(1, self._tile_size[0]))
-                if self._frame_size_mode == "cells"
-                else str(self._tile_size[0])
+                str(sw // max(1, self._tile_size[0])) if self._frame_size_mode == "cells" else str(self._tile_size[0])
             )
             self._frame_height_input = (
-                str(sh // max(1, self._tile_size[1]))
-                if self._frame_size_mode == "cells"
-                else str(self._tile_size[1])
+                str(sh // max(1, self._tile_size[1])) if self._frame_size_mode == "cells" else str(self._tile_size[1])
             )
 
     def _toggle_frame_size_mode(self) -> None:

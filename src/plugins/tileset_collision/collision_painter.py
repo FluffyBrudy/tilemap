@@ -109,6 +109,10 @@ class CollisionPainter:
         self._pan_start = (0, 0)
         self._pan_start_offset = (0.0, 0.0)
         self._dragging_vertex = False
+        self._body_drag_idx: int | None = None
+        self._body_drag_orig: list[tuple[float, float]] | None = None
+        self._body_drag_grab: tuple[float, float] | None = None
+        self._body_drag_moved = False
 
         self.snap_to_grid = False
         self.grid_size = 8
@@ -347,6 +351,15 @@ class CollisionPainter:
             if self.show_help:
                 self.show_help = False
                 return True
+            if self._body_drag_idx is not None and self._body_drag_orig is not None:
+                self.polygons[self._body_drag_idx] = list(self._body_drag_orig)
+                if self.on_polygon_modified:
+                    self.on_polygon_modified(self._body_drag_idx)
+                self._body_drag_idx = None
+                self._body_drag_orig = None
+                self._body_drag_grab = None
+                self._body_drag_moved = False
+                return True
             return False
 
         if self.show_help:
@@ -475,6 +488,30 @@ class CollisionPainter:
                         self.on_polygon_modified(poly_idx)
                     return True
 
+                if (self._body_drag_idx is not None
+                        and self._body_drag_grab is not None
+                        and self._body_drag_orig is not None):
+                    tile_pos = self._screen_to_tile(mouse)
+                    dx = tile_pos[0] - self._body_drag_grab[0]
+                    dy = tile_pos[1] - self._body_drag_grab[1]
+                    if self.snap_to_grid:
+                        dx = round(dx / self.grid_size) * self.grid_size
+                        dy = round(dy / self.grid_size) * self.grid_size
+                    if abs(dx) >= 3 / max(self.zoom, 0.01) or abs(dy) >= 3 / max(self.zoom, 0.01):
+                        self._body_drag_moved = True
+                    if self._body_drag_moved:
+                        tw, th = self.tile_size
+                        xs = [p[0] for p in self._body_drag_orig]
+                        ys = [p[1] for p in self._body_drag_orig]
+                        dx = max(-min(xs), min(dx, tw - max(xs)))
+                        dy = max(-min(ys), min(dy, th - max(ys)))
+                        self.polygons[self._body_drag_idx] = [
+                            (x + dx, y + dy) for x, y in self._body_drag_orig
+                        ]
+                        if self.on_polygon_modified:
+                            self.on_polygon_modified(self._body_drag_idx)
+                    return True
+
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
             mods = pygame.key.get_mods()
             if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
@@ -505,6 +542,11 @@ class CollisionPainter:
                 if poly_hit is not None:
                     self.selected_polygon_idx = poly_hit
                     self.selected_vertex_idx = None
+                    # Arm a body drag; release without motion stays a select.
+                    self._body_drag_idx = poly_hit
+                    self._body_drag_orig = list(self.polygons[poly_hit])
+                    self._body_drag_grab = self._screen_to_tile(mouse)
+                    self._body_drag_moved = False
                     return True
 
                 if self.mode == PaintMode.DRAW:
@@ -551,6 +593,12 @@ class CollisionPainter:
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._dragging_vertex:
                 self._dragging_vertex = False
+                return True
+            if self._body_drag_idx is not None:
+                self._body_drag_idx = None
+                self._body_drag_orig = None
+                self._body_drag_grab = None
+                self._body_drag_moved = False
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
