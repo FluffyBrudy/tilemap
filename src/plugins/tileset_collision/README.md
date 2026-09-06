@@ -200,8 +200,8 @@ Press O to make it one-way
 **Slope**:
 ```
 Draw triangle following the slope angle
-Mirror it to the other side with the Flip X / Flip Y checkboxes
-(previewed in the painter; stored per tile as flip_x/flip_y)
+Mirror it to the other side with the Mirror X / Mirror Y toolbar buttons
+(bakes mirrored vertices into the tile; stored as plain vertices)
 ```
 
 **Complex Terrain**:
