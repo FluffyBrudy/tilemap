@@ -117,15 +117,16 @@ class TestFlipModel:
     def test_round_trip(self):
         from plugins.tileset_collision.models import TileCollisionData
 
-        d = TileCollisionData(tile_id=7, flip_x=True)
+        d = TileCollisionData(tile_id=7)
         d2 = TileCollisionData.from_dict(d.to_dict())
-        assert (d2.flip_x, d2.flip_y) == (True, False)
+        assert (d2.tile_id, d2.shapes) == (7, [])
 
-    def test_legacy_dict_defaults_off(self):
+    def test_no_flag_keys_in_json(self):
         from plugins.tileset_collision.models import TileCollisionData
 
-        d = TileCollisionData.from_dict({"tile_id": 3, "shapes": []})
-        assert (d.flip_x, d.flip_y) == (False, False)
+        d = TileCollisionData(tile_id=7)
+        assert "flip_x" not in d.to_dict()
+        assert "flip_y" not in d.to_dict()
 
     def test_mirror_math_and_identity(self):
         from plugins.tileset_collision.models import TileCollisionData as T
@@ -149,7 +150,7 @@ class TestFlipModel:
         assert mirrored[2] == (4.0, 28.0)
 
 
-class TestFlipEditorPaths:
+class TestMirrorAction:
     def _editor(self):
         from plugins.tileset_collision import editor as ed_mod
         from plugins.tileset_collision.models import TilesetCollisionLibrary
@@ -157,32 +158,58 @@ class TestFlipEditorPaths:
         ed = ed_mod.TilesetCollisionEditor.__new__(ed_mod.TilesetCollisionEditor)
         ed._selected_tiles = {5}
         ed._user_cleared_tiles = set()
+        ed._tile_size = (32, 32)
         ed.library = TilesetCollisionLibrary(tileset_name="t", tile_size=(32, 32))
-        ed.painter = type("P", (), {"flip_x": False, "flip_y": False})()
+        ed.toasts = []
+        ed._show_toast = lambda msg, duration=2.5: ed.toasts.append(msg)
+        ed.consumer = None
+        ed._get_tile_surface = lambda tid: pygame.Surface((32, 32))
+        ed.painter = type("P", (), {
+            "set_polygons": lambda self, polys, flags=None: setattr(
+                self, "polys", [list(p) for p in polys]),
+            "get_polygons": lambda self: [list(p) for p in getattr(self, "polys", [])],
+            "get_one_way_flags": lambda self: [False] * len(getattr(self, "polys", [])),
+        })()
         return ed
 
-    def test_set_flip_creates_and_applies(self):
-        ed = self._editor()
-        ed._set_flip("x", True)
-        assert ed.library.tiles[5].flip_x is True
-        assert ed.library.tiles[5].flip_y is False
-        assert ed.painter.flip_x is True
+    def _tile_with(self, ed, verts):
+        from plugins.tileset_collision.models import CollisionPolygon, TileCollisionData
 
-    def test_selection_flags_default_off(self):
+        ed.library.tiles[5] = TileCollisionData(
+            tile_id=5, shapes=[CollisionPolygon(vertices=list(verts))])
+
+    def test_mirror_x_rewrites_vertices(self):
         ed = self._editor()
-        assert ed._selection_flip_flags() == (False, False)
+        self._tile_with(ed, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)])
+        ed._mirror_selection("x")
+        got = ed.library.tiles[5].shapes[0].vertices
+        assert got == [(28.0, 4.0), (4.0, 4.0), (4.0, 28.0)]
+        assert any("Mirrored X" in m for m in ed.toasts)
+
+    def test_double_mirror_restores(self):
+        ed = self._editor()
+        self._tile_with(ed, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)])
+        ed._mirror_selection("x")
+        ed._mirror_selection("x")
+        got = ed.library.tiles[5].shapes[0].vertices
+        for (gx, gy), (ex, ey) in zip(got, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)]):
+            assert abs(gx - ex) < 1e-9 and abs(gy - ey) < 1e-9
+
+    def test_mirror_y(self):
+        ed = self._editor()
+        self._tile_with(ed, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)])
+        ed._mirror_selection("y")
+        got = ed.library.tiles[5].shapes[0].vertices
+        assert got == [(4.0, 28.0), (28.0, 28.0), (28.0, 4.0)]
+
+    def test_mirror_no_shapes_notifies(self):
+        ed = self._editor()
+        ed._mirror_selection("x")
+        assert any("Nothing to mirror" in m for m in ed.toasts)
+        assert 5 not in ed.library.tiles
+
+    def test_mirror_no_selection_notifies(self):
+        ed = self._editor()
         ed._selected_tiles = set()
-        assert ed._selection_flip_flags() == (False, False)
-
-    def test_save_carries_flags(self):
-        from plugins.tileset_collision.models import TileCollisionData
-
-        ed = self._editor()
-        ed.library.tiles[5] = TileCollisionData(tile_id=5, flip_x=True)
-        ed.painter = type("P", (), {
-            "get_polygons": lambda self: [[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
-            "get_one_way_flags": lambda self: [False],
-        })()
-        ed.consumer = None
-        ed._save_tile_collision_for_selection()
-        assert ed.library.tiles[5].flip_x is True
+        ed._mirror_selection("x")
+        assert any("Select a tile" in m for m in ed.toasts)

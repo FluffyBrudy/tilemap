@@ -49,8 +49,6 @@ class TileCollisionData:
     tile_id: int
     shapes: list[CollisionPolygon] = field(default_factory=list)
     properties: dict[str, Any] = field(default_factory=dict)
-    flip_x: bool = False
-    flip_y: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""
@@ -58,8 +56,6 @@ class TileCollisionData:
             "tile_id": self.tile_id,
             "shapes": [s.to_dict() for s in self.shapes],
             "properties": self.properties,
-            "flip_x": self.flip_x,
-            "flip_y": self.flip_y,
         }
 
     @classmethod
@@ -69,14 +65,12 @@ class TileCollisionData:
             tile_id=data["tile_id"],
             shapes=[CollisionPolygon.from_dict(s) for s in data.get("shapes", [])],
             properties=data.get("properties", {}),
-            flip_x=data.get("flip_x", False),
-            flip_y=data.get("flip_y", False),
         )
 
     @staticmethod
     def apply_flip(point: tuple[float, float], tile_size: tuple[int, int],
                    flip_x: bool, flip_y: bool) -> tuple[float, float]:
-        """Mirror a tile-local point (flip-flip is identity)."""
+        """Mirror a tile-local point across the tile center (own inverse)."""
         tw, th = tile_size
         x, y = point
         return ((tw - x) if flip_x else x, (th - y) if flip_y else y)

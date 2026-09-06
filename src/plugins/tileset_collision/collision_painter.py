@@ -121,8 +121,6 @@ class CollisionPainter:
         self.edge_draw_mode = False
         self._edge_start: tuple[int, int] | None = None
         self._shift_held = False
-        self.flip_x = False
-        self.flip_y = False
 
         self.show_help = False
         self._help_rect = Rect(
@@ -180,12 +178,6 @@ class CollisionPainter:
         y = int(self.rect.y + self.offset_y + tile_pos[1] * self.zoom)
         return (x, y)
 
-    def _flip_point(self, tile_pos: tuple[float, float]) -> tuple[float, float]:
-        """Mirror a tile-local point (also its own inverse)."""
-        tw, th = self.tile_size
-        x, y = tile_pos
-        return ((tw - x) if self.flip_x else x, (th - y) if self.flip_y else y)
-
     def _snap_to_grid(self, pos: tuple[float, float]) -> tuple[float, float]:
         """Snap position to grid if enabled"""
         if not self.snap_to_grid:
@@ -198,7 +190,7 @@ class CollisionPainter:
         """Find vertex at screen position, returns (polygon_idx, vertex_idx) or None"""
         for poly_idx, polygon in enumerate(self.polygons):
             for vert_idx, vertex in enumerate(polygon):
-                screen_vert = self._tile_to_screen(self._flip_point(vertex))
+                screen_vert = self._tile_to_screen(vertex)
                 dist = math.hypot(
                     screen_pos[0] - screen_vert[0], screen_pos[1] - screen_vert[1]
                 )
@@ -208,7 +200,7 @@ class CollisionPainter:
 
     def _find_polygon_at(self, screen_pos: tuple[int, int]) -> int | None:
         """Find polygon containing the screen position"""
-        tile_pos = self._flip_point(self._screen_to_tile(screen_pos))
+        tile_pos = self._screen_to_tile(screen_pos)
 
         for poly_idx, polygon in enumerate(self.polygons):
             if len(polygon) < 3:
@@ -483,7 +475,7 @@ class CollisionPainter:
 
                 if self._dragging_vertex and self.selected_vertex_idx is not None:
                     poly_idx, vert_idx = self.selected_vertex_idx
-                    tile_pos = self._flip_point(self._screen_to_tile(mouse))
+                    tile_pos = self._screen_to_tile(mouse)
                     tile_pos = self._snap_to_grid(tile_pos)
 
                     tw, th = self.tile_size
@@ -499,7 +491,7 @@ class CollisionPainter:
                 if (self._body_drag_idx is not None
                         and self._body_drag_grab is not None
                         and self._body_drag_orig is not None):
-                    tile_pos = self._flip_point(self._screen_to_tile(mouse))
+                    tile_pos = self._screen_to_tile(mouse)
                     dx = tile_pos[0] - self._body_drag_grab[0]
                     dy = tile_pos[1] - self._body_drag_grab[1]
                     if self.snap_to_grid:
@@ -553,12 +545,12 @@ class CollisionPainter:
                     # Arm a body drag; release without motion stays a select.
                     self._body_drag_idx = poly_hit
                     self._body_drag_orig = list(self.polygons[poly_hit])
-                    self._body_drag_grab = self._flip_point(self._screen_to_tile(mouse))
+                    self._body_drag_grab = self._screen_to_tile(mouse)
                     self._body_drag_moved = False
                     return True
 
                 if self.mode == PaintMode.DRAW:
-                    tile_pos = self._flip_point(self._screen_to_tile(mouse))
+                    tile_pos = self._screen_to_tile(mouse)
 
                     if (
                         self.edge_draw_mode
@@ -583,8 +575,7 @@ class CollisionPainter:
                     )
 
                     if len(self.current_polygon) >= 3:
-                        first_screen = self._tile_to_screen(
-                            self._flip_point(self.current_polygon[0]))
+                        first_screen = self._tile_to_screen(self.current_polygon[0])
                         dist = math.hypot(
                             mouse[0] - first_screen[0], mouse[1] - first_screen[1]
                         )
@@ -979,7 +970,7 @@ class CollisionPainter:
         if len(polygon) < 3:
             return
 
-        screen_points = [self._tile_to_screen(self._flip_point(p)) for p in polygon]
+        screen_points = [self._tile_to_screen(p) for p in polygon]
 
         fill_color = (
             _COLORS["polygon_selected"] if selected else _COLORS["polygon_fill"]
@@ -1045,8 +1036,7 @@ class CollisionPainter:
         if not self.current_polygon:
             return
 
-        screen_points = [self._tile_to_screen(self._flip_point(p))
-                         for p in self.current_polygon]
+        screen_points = [self._tile_to_screen(p) for p in self.current_polygon]
 
         if len(screen_points) > 1:
             pygame.draw.lines(screen, _COLORS["preview_line"], False, screen_points, 2)

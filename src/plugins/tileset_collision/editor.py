@@ -146,6 +146,8 @@ class TilesetCollisionEditor:
             ("Copy", self._copy_collision),
             ("Paste", self._paste_collision),
             ("Clear", self._clear_current),
+            ("Mirror X", lambda: self._mirror_selection("x")),
+            ("Mirror Y", lambda: self._mirror_selection("y")),
         ]
 
         for label, action in buttons_config:
@@ -181,24 +183,11 @@ class TilesetCollisionEditor:
             "Snap to Grid",
             on_changed=lambda v: setattr(self.painter, "snap_to_grid", v),
         )
-        self._chk_flip_x = Checkbox(
-            Rect(0, 0, 0, 0),
-            "Flip X",
-            on_changed=lambda v: self._set_flip("x", v),
-        )
-        self._chk_flip_y = Checkbox(
-            Rect(0, 0, 0, 0),
-            "Flip Y",
-            on_changed=lambda v: self._set_flip("y", v),
-        )
 
         self._widget_items: list[tuple] = [
             ("section", "POLYGON"),
             ("checkbox", self._chk_one_way),
             ("checkbox", self._chk_angle),
-            ("section", "TILE"),
-            ("checkbox", self._chk_flip_x),
-            ("checkbox", self._chk_flip_y),
             ("section", "DISPLAY"),
             ("checkbox", self._chk_grid),
             ("section", "GRID SNAP"),
@@ -289,8 +278,6 @@ class TilesetCollisionEditor:
         self._chk_grid.checked = p.show_grid
         self._chk_snap.checked = p.snap_to_grid
         self._chk_angle.checked = p.show_angle_hints
-        self._chk_flip_x.checked = p.flip_x
-        self._chk_flip_y.checked = p.flip_y
         sel = p.selected_polygon_idx
         if sel is not None and 0 <= sel < len(p.polygon_one_way):
             self._chk_one_way.checked = p.polygon_one_way[sel]
@@ -299,32 +286,30 @@ class TilesetCollisionEditor:
             self._chk_one_way.checked = False
             self._chk_one_way.disabled = True
 
-    def _selection_flip_flags(self) -> tuple[bool, bool]:
-        """Flip flags of the first selected tile (defaults off)."""
+    def _mirror_selection(self, axis: str) -> None:
+        """Mirror all shapes of the selected tiles in place (baked)."""
         if not self._selected_tiles:
-            return False, False
-        entry = self.library.tiles.get(min(self._selected_tiles))
-        if entry is None:
-            return False, False
-        return entry.flip_x, entry.flip_y
-
-    def _set_flip(self, axis: str, value: bool) -> None:
-        """Apply a flip flag to all selected tiles (creates entries)."""
-        if not self._selected_tiles:
+            self._show_toast("Select a tile first")
             return
-        for tile_id in self._selected_tiles:
+        flip_x, flip_y = (axis == "x"), (axis == "y")
+        size = self._tile_size
+        mirrored = 0
+        for tile_id in sorted(self._selected_tiles):
             entry = self.library.tiles.get(tile_id)
-            if entry is None:
-                entry = TileCollisionData(tile_id=tile_id)
-                self.library.tiles[tile_id] = entry
-            if axis == "x":
-                entry.flip_x = value
-            else:
-                entry.flip_y = value
-        if axis == "x":
-            self.painter.flip_x = value
+            if entry is None or not entry.shapes:
+                continue
+            for shape in entry.shapes:
+                shape.vertices = [
+                    TileCollisionData.apply_flip(v, size, flip_x, flip_y)
+                    for v in shape.vertices
+                ]
+            mirrored += 1
+        self._load_tile_collision_for_selection()
+        if mirrored:
+            self._save_tile_collision_for_selection()
+            self._show_toast(f"Mirrored {axis.upper()} on {mirrored} tile(s)")
         else:
-            self.painter.flip_y = value
+            self._show_toast("Nothing to mirror (no shapes)")
 
     def _handle_widget_button_clicks(self, events: list[pygame.event.Event]) -> None:
         """Handle widget panel button clicks"""
@@ -339,10 +324,6 @@ class TilesetCollisionEditor:
                 if self._chk_one_way.handle_event(event):
                     continue
                 if self._chk_angle.handle_event(event):
-                    continue
-                if self._chk_flip_x.handle_event(event):
-                    continue
-                if self._chk_flip_y.handle_event(event):
                     continue
                 if self._chk_grid.handle_event(event):
                     continue
@@ -525,12 +506,8 @@ class TilesetCollisionEditor:
             polygons = [shape.vertices for shape in tile_data.shapes]
             one_way_flags = [shape.one_way for shape in tile_data.shapes]
             self.painter.set_polygons(polygons, one_way_flags)
-            self.painter.flip_x = tile_data.flip_x
-            self.painter.flip_y = tile_data.flip_y
         else:
             self.painter.set_polygons([], [])
-            self.painter.flip_x = False
-            self.painter.flip_y = False
 
         self.painter.tile_surface = self._get_tile_surface(first_tile)
 
@@ -555,13 +532,7 @@ class TilesetCollisionEditor:
                     for poly, one_way in zip(polygons, one_way_flags, strict=False)
                 ]
 
-                prev = self.library.tiles.get(tile_id)
-                tile_data = TileCollisionData(
-                    tile_id=tile_id,
-                    shapes=shapes,
-                    flip_x=prev.flip_x if prev else False,
-                    flip_y=prev.flip_y if prev else False,
-                )
+                tile_data = TileCollisionData(tile_id=tile_id, shapes=shapes)
                 self.library.tiles[tile_id] = tile_data
 
                 if self.consumer:
