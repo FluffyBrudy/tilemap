@@ -78,6 +78,77 @@ class TestGuards:
         assert proc.returncode == 2
 
 
+class TestSlopePolygon:
+    def test_45_is_half_triangle(self):
+        from standalone_marker_palette import slope_polygon
+
+        poly = slope_polygon(32, 45)
+        assert len(poly) == 3
+        for x, y in poly:
+            assert 0 <= x <= 32 and 0 <= y <= 32
+
+    def test_steep_and_shallow_valid(self):
+        from standalone_marker_palette import slope_polygon
+
+        for angle in (10, 30, 60, 80, -10, -45, -80):
+            poly = slope_polygon(32, angle)
+            assert len(poly) >= 3
+            for x, y in poly:
+                assert -1e-6 <= x <= 33 and -1e-6 <= y <= 33
+
+    def test_descending_mirrors_ascending(self):
+        from standalone_marker_palette import slope_polygon
+
+        up = slope_polygon(32, 40)
+        down = slope_polygon(32, -40)
+
+        def key(p):
+            return (round(p[0], 6), round(p[1], 6))
+
+        assert sorted(key((32 - x, y)) for x, y in up) == sorted(map(key, down))
+
+
+class TestSlopeRow:
+    def test_slope_appends_row(self, tmp_path):
+        proc = run("--rows", "4", "--cols", "4", "--slope", "45",
+                   "--output-dir", str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+        out = tmp_path / "markers_4x4_c32_s45.png"
+        assert out.is_file()
+
+        import pygame
+
+        pygame.init()
+        try:
+            surf = pygame.image.load(str(out))
+            assert surf.get_size() == (128, 160)
+            oy = 4 * 32
+            assert surf.get_at((30, oy + 2))[3] == 0
+            assert surf.get_at((2, oy + 29))[3] == 255
+        finally:
+            pygame.quit()
+
+    def test_slope_matches_column_color(self, tmp_path):
+        proc = run("--rows", "2", "--cols", "2", "--slope", "45",
+                   "--output-dir", str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+
+        import pygame
+
+        pygame.init()
+        try:
+            surf = pygame.image.load(str(tmp_path / "markers_2x2_c32_s45.png"))
+            assert surf.get_at((4, 2 * 32 + 28))[:3] == surf.get_at((16, 48))[:3]
+        finally:
+            pygame.quit()
+
+    def test_bad_angles_rejected(self, tmp_path):
+        for angle in ("0", "90", "-90", "120"):
+            proc = run("--slope", angle, "--output-dir", str(tmp_path))
+            assert proc.returncode == 2, angle
+            assert "--slope" in proc.stderr
+
+
 class TestEditorCliWiring:
     def _cli(self, *args):
         import os

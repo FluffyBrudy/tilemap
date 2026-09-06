@@ -289,7 +289,7 @@ class Editor:
             ToolbarAction(
                 "E",
                 self.tileset_widget._export_selected_as_png_dialog,
-                "E: Export selection as PNG",
+                "Export selection as PNG",
             ),
             ToolbarAction("C", self.tileset_widget.open_collision_editor, "Edit Collision Shapes"),
             ToolbarAction("+", self.tileset_widget.request_add_tileset, "Add Tileset"),

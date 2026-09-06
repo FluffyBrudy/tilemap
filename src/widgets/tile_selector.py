@@ -616,13 +616,6 @@ class TileSelector(WidgetBase):
                 else:
                     self.hover_pos = None
 
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_e:
-            if self.hover_pos is None:
-                return False
-            if self.selected_tile and self.active_idx != -1:
-                self._export_selected_as_png_dialog()
-                return True
-
         return False
 
     def update_selection_rect(self, current_grid: tuple[int, int]):
