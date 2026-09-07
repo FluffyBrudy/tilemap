@@ -93,6 +93,9 @@ class ClearCommand(Command):
 
     def _do(self, doc: Document, selection: Selection) -> None:
         doc.clear_tiles(self.cells)
+        # auto-trim: cleared-away edges collapse so no empty gap remains.
+        # write_tile/paste paths re-expand on demand; undo restores via snapshot.
+        doc.trim_to_content()
         selection.replace([], anchor=None)
 
 

@@ -218,6 +218,55 @@ class Document:
             self.surface.fill((0, 0, 0, 0), self.tile_rect(col, row))
         self._bump()
 
+    def trim_to_content(self) -> bool:
+        """Shrink the canvas to the non-transparent content, snapped out to
+        whole tiles. Returns True if the canvas changed.
+
+        Empty canvas resets to a single blank tile (never 0x0). Regions are
+        shifted with the content; regions fully outside are dropped.
+        """
+        if not self.surface:
+            return False
+        # threshold=1: any non-fully-transparent pixel counts as content,
+        # so faint-but-visible pixels are never cropped away.
+        mask = pygame.mask.from_surface(self.surface, threshold=1)
+        rects = mask.get_bounding_rects()
+        if not rects:
+            tw, th = max(1, self.tw), max(1, self.th)
+            if self.surface.get_size() == (tw, th):
+                return False
+            self.surface = Surface((tw, th), pygame.SRCALPHA)
+            self.surface.fill((0, 0, 0, 0))
+            self.regions = []
+            self._bump()
+            return True
+        min_x = min(r.x for r in rects)
+        min_y = min(r.y for r in rects)
+        max_x = max(r.right for r in rects)
+        max_y = max(r.bottom for r in rects)
+        tw, th = max(1, self.tw), max(1, self.th)
+        left = (min_x // tw) * tw
+        top = (min_y // th) * th
+        right = ((max_x + tw - 1) // tw) * tw
+        bottom = ((max_y + th - 1) // th) * th
+        old_w, old_h = self.surface.get_size()
+        if (left, top, right - left, bottom - top) == (0, 0, old_w, old_h):
+            return False
+        self.surface = self.surface.subsurface(Rect(left, top, right - left, bottom - top)).copy()
+        self.origin_col += left // tw
+        self.origin_row += top // th
+        new_w, new_h = self.surface.get_size()
+        kept = []
+        for region in self.regions:
+            x, y, w, h = region.rect
+            nx, ny = x - left, y - top
+            if nx < new_w and ny < new_h and nx + w > 0 and ny + h > 0:
+                region.rect = [nx, ny, w, h]
+                kept.append(region)
+        self.regions = kept
+        self._bump()
+        return True
+
     def flip_tiles(self, cells: list[tuple[int, int]], flip_x: bool, flip_y: bool) -> None:
         if not self.surface or not cells:
             return
