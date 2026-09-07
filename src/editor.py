@@ -33,6 +33,7 @@ from widgets.minimap import MinimapWidget
 from widgets.regex_automap_designer import RegexAutomapDesigner
 from widgets.tile_grid import TileGrid
 from widgets.tile_selector import TileSelector
+from widgets.ui.alias_palette import AliasPalette
 from widgets.ui.confirm_dialog import ConfirmDialog
 from widgets.ui.fileinput import FilenameInput
 from widgets.ui.layer_type_dialog import LayerTypeDialog
@@ -110,6 +111,8 @@ def _load_project_config() -> tuple[Path, Path, dict]:
         "theme": "dark",
         "themes_list": ["dark", "midnight", "nord", "molokai", "light", "semi_light"],
         "nodes_path": "nodes",
+        "aliases_path": "aliases",
+        "alias_scopes": {},
         "collision_paths": {"tileset": "collision", "character": "character_collision"},
     }
     changed = False
@@ -298,6 +301,13 @@ class Editor:
         self.sidebar = SidebarContainer(self, Rect(sidebar_x, menu_h + toolbar_h, self.selector_w, sidebar_h))
         self.sidebar.add_tab("Tilesets", self.tileset_widget, tileset_actions)
         self.sidebar.add_tab("Layers", self.layer_widget)
+        self.brush_mode = "tileset"
+        self.active_alias = None
+        self.alias_palette = AliasPalette(self, 0, 0, self.selector_w, 100)
+        self.sidebar.add_tab("Aliases", self.alias_palette, [
+            ToolbarAction("C", self.launch_alias_composer, "Open Alias Composer"),
+            ToolbarAction("R", self.alias_palette.refresh_items, "Reload alias files"),
+        ])
         self.tile_grid_widget = TileGrid(
             self,
             Rect(0, menu_h, self.width - self.selector_w, self.height - menu_h - 25),
@@ -929,6 +939,11 @@ class Editor:
             self.tilemap.capture_history("Delete Selection")
             grid.delete_selection()
 
+    def edit_create_alias(self):
+        grid = self.tile_grid_widget
+        if grid:
+            grid.create_alias_from_selection()
+
     def toggle_grid(self):
         if self.tile_grid_widget:
             self.tile_grid_widget.show_grid = not self.tile_grid_widget.show_grid
@@ -1153,6 +1168,69 @@ class Editor:
         print(msg)
         if logger:
             logger.info(msg)
+
+    def register_alias_source(self, stem: str) -> None:
+        """Add an alias-file stem to the palette's current scope + persist.
+
+        Keeps a freshly created alias (e.g. from selection) immediately
+        visible in the palette. No-op when scopes are unconfigured (the
+        "All" fallback picks up every file on disk).
+        """
+        palette = getattr(self, "alias_palette", None)
+        scope_name = getattr(palette, "scope_name", None)
+        scopes = self.config.get("alias_scopes") or {}
+        if not scopes or scope_name not in scopes:
+            if palette is not None and hasattr(palette, "reload_scope_list"):
+                palette.reload_scope_list()
+            return
+        if stem in scopes[scope_name]:
+            return
+        scopes[scope_name] = [*scopes[scope_name], stem]
+        self.config["alias_scopes"] = scopes
+        try:
+            settings_file = Path.cwd() / "settings.json"
+            with open(settings_file, encoding="utf-8") as f:
+                disk = json.load(f)
+            disk["alias_scopes"] = scopes
+            if "aliases_path" not in disk:
+                disk["aliases_path"] = self.config.get("aliases_path", "aliases")
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(disk, f, indent=4)
+        except (OSError, ValueError) as e:
+            error_handler.capture(e, context="register_alias_source")
+        if palette is not None:
+            palette.reload_scope_list()
+
+    def launch_alias_composer(self):
+        """Launch the standalone alias composer for the active tileset."""
+        sheet = self._active_tileset_image_path()
+        if sheet is None:
+            self.notifications.notify("No tileset loaded. Please load a tileset first.")
+            return
+        try:
+            tile_size = "32x32"
+            if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
+                tw, th = self.tilemap.tile_size
+                tile_size = f"{tw}x{th}"
+            args = [str(sheet), "--tile-size", tile_size,
+                    "--data-root", str(self.data_root)]
+            try:
+                from utils.project_paths import to_project_path
+                base = getattr(self, "base_path", None)
+                tileset_ref = to_project_path(sheet, Path(base)) if base else sheet.name
+            except Exception:
+                tileset_ref = sheet.name
+            args.extend(["--tileset-ref", str(tileset_ref)])
+            aliases_dir = self.data_root / self.config.get("aliases_path", "aliases")
+            alias_path = aliases_dir / f"{sheet.stem}.alias.json"
+            if alias_path.exists():
+                args.extend(["--load", str(alias_path)])
+            process = launch_standalone(
+                "plugins.tile_alias.standalone", args, cwd=self.base_path, text=True)
+            self.child_processes.append(process)
+            print(f"[ALIAS] Launched alias composer for: {sheet.name} | Save path: {alias_path}")
+        except Exception as e:
+            error_handler.capture(e, context="launch_alias_composer")
 
     def _write_propagation_groups(self, tileset_path: Path) -> Path | None:
         """Collect auto-tile variant groups for a tileset and write to temp JSON.

@@ -42,8 +42,12 @@ def make_selector(monkeypatch, grid_selection=None, mouse_pos=(0, 0)):
         def handle_event(self, event):
             return False
 
+        def draw(self, screen):
+            return None
+
     s.btn_add = NoButton()
     s.btn_remove = NoButton()
+    s.btn_duplicate = NoButton()
     s.btn_replace_image = NoButton()
     monkeypatch.setattr(pygame.mouse, "get_pos", lambda: mouse_pos)
     return s

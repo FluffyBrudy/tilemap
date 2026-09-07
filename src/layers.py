@@ -3,6 +3,7 @@ Layer management system for tilemap editor.
 Supports multiple layers with independent tile and object data.
 """
 
+import copy
 import random
 from typing import TYPE_CHECKING, Any
 
@@ -480,6 +481,49 @@ class LayerManager:
             self.active_layer_idx = len(self.layers) - 1
 
         return True
+
+    def duplicate_layer(self, index: int) -> Layer | None:
+        """Deep-copy the layer at index and insert the copy below it.
+
+        Tile/object data, properties, metadata and image references are
+        fully independent from the source. The source stays active.
+        Returns the new layer, or None for a bad index.
+        """
+        src = self.get_layer(index)
+        if src is None:
+            return None
+        clone = Layer(
+            self._unique_copy_name(src.name),
+            src.layer_type,
+            0,
+            src.visible,
+            src.locked,
+            src.opacity,
+            src.y_sort,
+            src.y_sort_origin,
+            src.image_path,
+            copy.deepcopy(src.image_rect),
+        )
+        clone.properties = copy.deepcopy(src.properties)
+        if hasattr(src, "metadata"):
+            clone.metadata = copy.deepcopy(src.metadata)
+        clone.tiles = copy.deepcopy(src.tiles)
+        clone.objects = copy.deepcopy(src.objects)
+        clone.next_object_id = src.next_object_id
+        self.layers.insert(index + 1, clone)
+        self._update_z_indices()
+        if self.active_layer_idx > index:
+            self.active_layer_idx += 1
+        return clone
+
+    def _unique_copy_name(self, name: str) -> str:
+        taken = {layer.name for layer in self.layers}
+        candidate = f"{name} copy"
+        n = 2
+        while candidate in taken:
+            candidate = f"{name} copy {n}"
+            n += 1
+        return candidate
 
     def get_layer(self, index: int) -> Layer | None:
         """Get a layer by index."""

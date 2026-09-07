@@ -47,7 +47,7 @@ class LayerSelector:
         self.rect = Rect(x, y, w, h)
 
         self.header_h = 30
-        self.item_h = 28
+        self.item_h = 32
         self.footer_h = 35
 
         self.header_rect = Rect(x, y, w, self.header_h)
@@ -80,8 +80,15 @@ class LayerSelector:
             "-",
             on_click=self._remove_layer,
         )
+        self.btn_duplicate = Button(
+            Rect(x + 65, btn_y, btn_w, btn_h),
+            "",
+            icon_key="duplicate",
+            tooltip_text="Duplicate layer (Ctrl+D)",
+            on_click=self._duplicate_layer,
+        )
         self.btn_replace_image = Button(
-            Rect(x + 65, btn_y, 115, btn_h),
+            Rect(x + 95, btn_y, 85, btn_h),
             "Replace Image…",
             on_click=self._replace_image,
         )
@@ -102,7 +109,8 @@ class LayerSelector:
         btn_y = self.footer_rect.y + 5
         self.btn_add.resize(x + 5, btn_y, 25, 25)
         self.btn_remove.resize(x + 35, btn_y, 25, 25)
-        self.btn_replace_image.resize(x + 65, btn_y, 115, 25)
+        self.btn_duplicate.resize(x + 65, btn_y, 25, 25)
+        self.btn_replace_image.resize(x + 95, btn_y, 85, 25)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle pygame events. Returns True if event was consumed."""
@@ -123,6 +131,8 @@ class LayerSelector:
         if self.btn_add.handle_event(event):
             return True
         if self.btn_remove.handle_event(event):
+            return True
+        if self.btn_duplicate.handle_event(event):
             return True
         active_layer = self._get_active_layer()
         if (
@@ -260,6 +270,10 @@ class LayerSelector:
                 if grid_selection:
                     return False
                 self._remove_layer()
+                return True
+
+            if event.key == pygame.K_d and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
+                self._duplicate_layer()
                 return True
 
             if event.key == pygame.K_UP:
@@ -490,6 +504,20 @@ class LayerSelector:
             if hasattr(self.editor, "tile_grid_widget") and self.editor.tile_grid_widget:
                 self.editor.tile_grid_widget.invalidate_image_cache()
 
+    def _duplicate_layer(self) -> None:
+        """Deep-copy the active layer and insert the copy below it."""
+        mgr = self.editor.tilemap.layer_manager
+        idx = mgr.active_layer_idx
+        if mgr.get_layer(idx) is None:
+            return
+        self.editor.tilemap.capture_history("Duplicate Layer")
+        clone = mgr.duplicate_layer(idx)
+        if clone is None:
+            return
+        if hasattr(self.editor, "tile_grid_widget") and self.editor.tile_grid_widget:
+            self.editor.tile_grid_widget.invalidate_image_cache()
+        self.editor.notifications.success(f"Duplicated layer '{clone.name}'")
+
     def _start_rename(self, layer_idx: int) -> None:
         """Start renaming a layer."""
         layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
@@ -643,7 +671,8 @@ class LayerSelector:
                 )
                 pct_txt = self.font_layer.render(f"{int(layer.opacity * 100)}%", True, pct_col)
 
-                screen.blit(pct_txt, (opacity_bar.x - 4 - pct_txt.get_width(), opacity_bar.y - 3))
+                pct_y = item_rect.y + self.item_h - pct_txt.get_height() - 2
+                screen.blit(pct_txt, (opacity_bar.x - 4 - pct_txt.get_width(), pct_y))
 
             eye_x = item_rect.right - 25
             eye_y = item_rect.y + 7
@@ -717,6 +746,7 @@ class LayerSelector:
         )
         self.btn_add.draw(screen)
         self.btn_remove.draw(screen)
+        self.btn_duplicate.draw(screen)
 
         active_layer = self._get_active_layer()
         if active_layer and getattr(active_layer, "layer_type", "tile") == "image":
@@ -727,7 +757,7 @@ class LayerSelector:
         info_x = (
             self.btn_replace_image.rect.right + 8
             if active_layer and getattr(active_layer, "layer_type", "tile") == "image"
-            else self.btn_remove.rect.right + 10
+            else self.btn_duplicate.rect.right + 10
         )
         screen.blit(info_txt, (info_x, self.footer_rect.y + 8))
         mx, my = pygame.mouse.get_pos()
@@ -735,3 +765,5 @@ class LayerSelector:
             self.editor.tooltip.show("Add Layer", (mx + 10, my + 10))
         elif self.btn_remove.rect.collidepoint(mx, my):
             self.editor.tooltip.show("Remove Layer", (mx + 10, my + 10))
+        elif self.btn_duplicate.rect.collidepoint(mx, my):
+            self.editor.tooltip.show("Duplicate Layer (Ctrl+D)", (mx + 10, my + 10))

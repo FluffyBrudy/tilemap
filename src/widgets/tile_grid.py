@@ -1,4 +1,5 @@
 import random
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pygame
@@ -319,6 +320,9 @@ class TileGrid:
             plain = not (ctrl_held or meta_held)
 
             if event.key == pygame.K_a and (ctrl_held or meta_held):
+                if mods & pygame.KMOD_SHIFT:
+                    self.create_alias_from_selection()
+                    return True
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                 if active_layer and hasattr(self.editor, "autotiler"):
                     rules = getattr(self.editor.autotiler, "rules", [])
@@ -621,8 +625,87 @@ class TileGrid:
         tile_rect = ts_widget.selected_tile
         return tileset_index, tileset_data, tile_rect
 
+    def _active_alias(self):
+        """(tileset_index, tileset_data, pattern) when alias brush is armed."""
+        if getattr(self.editor, "brush_mode", "tileset") != "alias":
+            return None
+        active = getattr(self.editor, "active_alias", None)
+        if not active:
+            return None
+        _stem, tileset_ref, pattern = active
+        ts_widget = getattr(self.editor, "tileset_widget", None)
+        if ts_widget is None:
+            return None
+        ref = tileset_ref or ""
+        for idx, ts in enumerate(getattr(ts_widget, "tilesets", []) or []):
+            p = Path(getattr(ts, "path", "") or "")
+            if p.name and (p.name == Path(ref).name or p.stem == Path(ref).stem):
+                return idx, ts, pattern
+        return None
+
+    def _place_alias(self, active_layer, tileset_index, tileset_data, pattern) -> int:
+        """Plot the armed alias anchored at the hover cell. Returns cell count."""
+        if self.hover_cell is None:
+            return 0
+        tile_w, tile_h = self.tile_size
+        autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
+        vg_map: dict = {}
+        selected_group: str | None = None
+        if autotile_ok:
+            vg_map = self.editor.autotiler.variant_to_group
+            groups = getattr(self.editor.autotiler, "groups", [])
+            gidx = getattr(self.editor.autotiler, "selected_group_idx", -1)
+            if 0 <= gidx < len(groups):
+                selected_group = groups[gidx].name
+        tm = self.editor.tilemap
+        ox, oy = tm.offset
+        mw, mh = tm.map_size
+        ax, ay = self.hover_cell
+        plotted = 0
+        self.editor.tilemap.capture_history("Paint Alias")
+        for dx, dy, variant_id in pattern.cells:
+            map_x, map_y = ax + dx, ay + dy
+            if not (ox <= map_x < ox + mw and oy <= map_y < oy + mh):
+                continue
+            tile_data: TypeTile = {
+                "pos": (map_x, map_y),
+                "ttype": tileset_index,
+                "variant": variant_id,
+            }
+            if variant_id in tileset_data.tile_properties:
+                tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
+            if autotile_ok:
+                owner = vg_map.get((tileset_index, variant_id))
+                if selected_group:
+                    tile_data["autotile_group"] = selected_group
+                elif owner:
+                    tile_data["autotile_group"] = owner
+            active_layer.set_tile((map_x, map_y), tile_data)
+            if autotile_ok:
+                rules = self.editor.autotiler.rules
+                if rules:
+                    active_layer.autotile_at_pos((map_x, map_y), rules)
+            plotted += 1
+        self.invalidate_bounds_cache()
+        return plotted
+
     def place_tile(self):
         if not self.editor.tilemap.initialized:
+            return
+        if getattr(self.editor, "brush_mode", "tileset") == "alias":
+            alias = self._active_alias()
+            if not alias:
+                self.editor.notifications.notify(
+                    "No alias armed (or its tileset is missing) — pick one in the Aliases tab")
+                return
+            tileset_index, tileset_data, pattern = alias
+            active_layer = self.editor.tilemap.layer_manager.get_active_layer()
+            if not active_layer or active_layer.layer_type != "tile":
+                return
+            plotted = self._place_alias(active_layer, tileset_index, tileset_data, pattern)
+            if plotted:
+                self.editor.notifications.success(
+                    f"Alias '{pattern.name}': {plotted} tiles plotted")
             return
         res = self.get_selected_brush()
         if not res:
@@ -809,6 +892,10 @@ class TileGrid:
         self.rect_fill_rect = None
         if start is None or rect is None:
             return
+        if getattr(self.editor, "brush_mode", "tileset") == "alias":
+            self.editor.notifications.notify(
+                "Alias paints a single plot — switch to Tileset brush for rect fill")
+            return
         res = self.get_selected_brush()
         if not res:
             return
@@ -904,6 +991,10 @@ class TileGrid:
         self.line_start = None
         self.line_end = None
         if start is None or end is None:
+            return
+        if getattr(self.editor, "brush_mode", "tileset") == "alias":
+            self.editor.notifications.notify(
+                "Alias paints a single plot — switch to Tileset brush for lines")
             return
         res = self.get_selected_brush()
         if not res:
@@ -1287,6 +1378,90 @@ class TileGrid:
             x1, y1, x2, y2 = self.selection_rect
             if x1 == x2 and y1 == y2:
                 self.selection_rect = None
+
+    def create_alias_from_selection(self) -> bool:
+        """Save the selected tile region as an alias in its tileset's file.
+
+        Tile-only: every selected cell must resolve to a single tileset,
+        otherwise the request is rejected with a notice. The alias is
+        auto-named, persisted immediately, and registered into the active
+        palette scope so it is paintable at once (rename later in Composer).
+        """
+        from aliases import AliasFile, AliasPattern, alias_path_for
+
+        notify = self.editor.notifications.notify
+        rect = getattr(self, "selection_rect", None)
+        if not rect:
+            notify("Select a tile region first (Select tool)")
+            return False
+        manager = self.editor.tilemap.layer_manager
+        active_layer = manager.get_active_layer() if manager else None
+        if active_layer is None or active_layer.layer_type != "tile":
+            notify("Create Alias needs an active tile layer")
+            return False
+        x1, y1, x2, y2 = rect
+        ts_widget = getattr(self.editor, "tileset_widget", None)
+        tilesets = getattr(ts_widget, "tilesets", []) or []
+        by_tileset: dict[int, list[tuple[int, int, int]]] = {}
+        for y in range(y1, y2 + 1):
+            for x in range(x1, x2 + 1):
+                tile = active_layer.get_tile((x, y))
+                if tile is None:
+                    continue
+                ttype = tile.get("ttype")
+                variant = tile.get("variant")
+                if not isinstance(ttype, int) or not isinstance(variant, int):
+                    continue
+                by_tileset.setdefault(ttype, []).append((x - x1, y - y1, variant))
+        if not by_tileset:
+            notify("Selection is empty — nothing to save")
+            return False
+        if len(by_tileset) > 1:
+            notify("Selection spans multiple tilesets — one alias = one tileset")
+            return False
+        ttype, cells = next(iter(by_tileset.items()))
+        if ttype < 0 or ttype >= len(tilesets):
+            notify("Selection tileset is not loaded")
+            return False
+        ts = tilesets[ttype]
+        ts_path = Path(getattr(ts, "path", "") or "")
+        if not ts_path.name:
+            notify("Selection tileset has no path")
+            return False
+        try:
+            from utils.project_paths import to_project_path
+            base = getattr(self.editor, "base_path", None)
+            tileset_ref = to_project_path(ts_path, Path(base)) if base else ts_path.name
+        except Exception:
+            tileset_ref = ts_path.name
+        aliases_dir = Path(self.editor.data_root) / self.editor.config.get("aliases_path", "aliases")
+        stem = ts_path.stem
+        path = alias_path_for(aliases_dir, stem)
+        alias_file = AliasFile.load(path) if path.exists() else AliasFile(tileset=tileset_ref)
+        if not alias_file.tileset:
+            alias_file.tileset = tileset_ref
+        taken = {a.name for a in alias_file.aliases}
+        n = len(alias_file.aliases) + 1
+        name = f"Alias {n}"
+        while name in taken:
+            n += 1
+            name = f"Alias {n}"
+        alias_file.aliases.append(AliasPattern(
+            name=name, w=x2 - x1 + 1, h=y2 - y1 + 1, cells=sorted(cells)))
+        try:
+            alias_file.save(path)
+        except OSError as e:
+            notify(f"Could not save alias: {e}")
+            return False
+        register = getattr(self.editor, "register_alias_source", None)
+        if callable(register):
+            register(stem)
+        palette = getattr(self.editor, "alias_palette", None)
+        if palette is not None and hasattr(palette, "refresh_items"):
+            palette.refresh_items()
+        self.editor.notifications.success(
+            f"Alias '{name}' saved — rename anytime in Composer (F2)")
+        return True
 
     def copy_selection(self):
         """Copy the current selection to clipboard."""
@@ -1683,6 +1858,11 @@ class TileGrid:
         if self.is_moving and self.hover_cell:
             return
 
+        alias = self._active_alias()
+        if alias and self.hover_cell:
+            self._draw_alias_preview(screen, active_layer, *alias)
+            return
+
         tool_manager = self.editor.tool_manager
         if tool_manager.is_active(ToolKind.SELECT) or tool_manager.is_active(ToolKind.PAN):
             return
@@ -1834,6 +2014,37 @@ class TileGrid:
                         screen.blit(tile_surf, dest_rect)
                     except ValueError:
                         pass
+
+    def _draw_alias_preview(self, screen, active_layer, tileset_index, tileset_data, pattern) -> None:
+        """Ghost the armed alias at the hover cell + mode indicator."""
+        if active_layer is None:
+            return
+        tile_w, tile_h = self.tile_size
+        eff_w, eff_h = self.effective_tile_size
+        sheet_cols = max(1, tileset_data.surface.get_width() // tile_w) if tile_w > 0 else 1
+        ax, ay = self.hover_cell
+        for dx, dy, variant_id in pattern.cells:
+            col, row = ax + dx, ay + dy
+            screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+            screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+            dest_rect = Rect(screen_x, screen_y,
+                             int(eff_w * self.zoom_level), int(eff_h * self.zoom_level))
+            pygame.draw.rect(screen, COLORS.accent, dest_rect, 1)
+            try:
+                sub_r = Rect((variant_id % sheet_cols) * tile_w,
+                             (variant_id // sheet_cols) * tile_h, tile_w, tile_h)
+                if not tileset_data.surface.get_rect().contains(sub_r):
+                    continue
+                tile_surf = tileset_data.surface.subsurface(sub_r)
+                if self.zoom_level != 1.0:
+                    tile_surf = pygame.transform.scale(
+                        tile_surf, (dest_rect.w, dest_rect.h))
+                tile_surf.set_alpha(128)
+                screen.blit(tile_surf, dest_rect)
+            except (ValueError, pygame.error):
+                pass
+        tag = self.font_status.render(f"[Alias: {pattern.name}]", True, COLORS.accent)
+        screen.blit(tag, (self.rect.x + 8, self.rect.y + 8))
 
     def _draw_dice_preview(
         self,

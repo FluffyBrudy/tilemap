@@ -75,6 +75,12 @@ class MenuBar:
                     MenuAction("Cut", self.editor.edit_cut, "Ctrl+X"),
                     MenuAction("Paste", self.editor.edit_paste, "Ctrl+V"),
                     MenuAction("Delete Selection", self.editor.edit_delete, "Del"),
+                    MenuSeparator(),
+                    MenuAction(
+                        "Create Alias From Selection",
+                        self.editor.edit_create_alias,
+                        "Ctrl+Shift+A",
+                    ),
                 ],
             ),
             Menu(
