@@ -1,6 +1,7 @@
 """Tests for layer selector ops: focus, history, delete feedback."""
 
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -33,6 +34,9 @@ class NoBtn:
     def handle_event(self, event):
         return False
 
+    def draw(self, screen):
+        return None
+
 
 class FakeEditor:
     def __init__(self):
@@ -40,6 +44,7 @@ class FakeEditor:
         self.suggestion_registry = FakeRegistry()
         self.tile_grid_widget = None
         self.tilemap = Tilemap(self)
+        self.tooltip = types.SimpleNamespace(show=lambda *a, **k: None)
 
 
 def make_selector(editor=None):
@@ -64,6 +69,7 @@ def make_selector(editor=None):
     s._adjusting_opacity_idx = None
     s.btn_add = NoBtn()
     s.btn_remove = NoBtn()
+    s.btn_duplicate = NoBtn()
     s.btn_replace_image = NoBtn()
     return s
 
@@ -230,3 +236,135 @@ class TestListKeys:
         monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
         assert s.handle_event(key_event(pygame.K_DOWN)) is False
         assert mgr.active_layer_idx == 0
+
+
+class TestDuplicateLayerModel:
+    def _manager(self):
+        from layers import LayerManager
+
+        m = LayerManager()
+        m.create_layer("Terrain", "tile")
+        m.layers[0].set_tile((1, 2), {"pos": (1, 2), "ttype": 0, "variant": 3,
+                                      "properties": {"a": 1}})
+        m.layers[0].properties["p"] = "v"
+        m.create_layer("Props", "object")
+        m.layers[1].objects[1] = {"id": 1, "area": {"x": 0, "y": 0, "w": 8, "h": 8}}
+        m.layers[1].next_object_id = 2
+        img = m.create_layer("BG", "image")
+        img.image_path = "/img/bg.png"
+        img.image_rect = {"x": 0, "y": 0, "w": 64, "h": 64}
+        m.set_active_layer(0)
+        return m
+
+    def test_duplicate_tile_layer_deep(self):
+        m = self._manager()
+        clone = m.duplicate_layer(0)
+        assert clone is not None and clone is not m.layers[0]
+        assert clone.name == "Terrain copy"
+        assert clone.layer_type == "tile"
+        assert clone.tiles == {(1, 2): {"pos": (1, 2), "ttype": 0, "variant": 3,
+                                        "properties": {"a": 1}}}
+        clone.tiles[(1, 2)]["variant"] = 9
+        clone.tiles[(1, 2)]["properties"]["a"] = 2
+        assert m.layers[0].tiles[(1, 2)]["variant"] == 3
+        assert m.layers[0].tiles[(1, 2)]["properties"] == {"a": 1}
+        assert clone.properties == {"p": "v"}
+        # inserted below source, source stays active
+        assert [layer.name for layer in m.layers] == [
+            "Terrain", "Terrain copy", "Props", "BG"]
+        assert m.get_active_layer().name == "Terrain"
+        assert [layer.z_index for layer in m.layers] == [0, 1, 2, 3]
+
+    def test_duplicate_object_layer_carries_ids(self):
+        m = self._manager()
+        clone = m.duplicate_layer(1)
+        assert clone.objects == {1: {"id": 1, "area": {"x": 0, "y": 0, "w": 8, "h": 8}}}
+        assert clone.next_object_id == 2
+        clone.objects[1]["area"]["x"] = 99
+        assert m.layers[1].objects[1]["area"]["x"] == 0
+
+    def test_duplicate_image_layer_is_reference(self):
+        m = self._manager()
+        clone = m.duplicate_layer(2)
+        assert clone.name == "BG copy"
+        assert clone.image_path == "/img/bg.png"
+        assert clone.image_rect == {"x": 0, "y": 0, "w": 64, "h": 64}
+        clone.image_rect["x"] = 5
+        assert m.layers[2].image_rect["x"] == 0
+
+    def test_duplicate_name_uniqueness(self):
+        m = self._manager()
+        m.duplicate_layer(0)
+        clone2 = m.duplicate_layer(0)
+        assert clone2.name == "Terrain copy 2"
+
+    def test_duplicate_bad_index(self):
+        m = self._manager()
+        assert m.duplicate_layer(99) is None
+        assert m.duplicate_layer(-1) is None
+        assert len(m.layers) == 3
+
+    def test_duplicate_keeps_active_pointing_at_same_layer(self):
+        m = self._manager()
+        m.set_active_layer(2)
+        m.duplicate_layer(0)
+        assert m.get_active_layer().name == "BG"
+
+
+class TestDuplicateLayerUi:
+    def test_duplicate_captured_for_undo(self):
+        ed = FakeEditor()
+        s = make_selector(ed)
+        s._duplicate_layer()
+        assert ed.tilemap.history.can_undo
+        assert ed.tilemap.layer_manager.get_layer_count() == 3
+        ed.tilemap.undo()
+        assert ed.tilemap.layer_manager.get_layer_count() == 2
+
+    def test_duplicate_notifies(self):
+        ed = FakeEditor()
+        s = make_selector(ed)
+        s._duplicate_layer()
+        assert any("Duplicated layer" in m for m in ed.notifications.messages)
+
+    def test_ctrl_d_duplicates(self, monkeypatch):
+        import pygame as pg
+
+        ed = FakeEditor()
+        s = make_selector(ed)
+        monkeypatch.setattr(pg.mouse, "get_pos", lambda: (0, 0))
+        ev = pg.event.Event(pg.KEYDOWN, {"key": pg.K_d, "mod": pg.KMOD_CTRL})
+        assert s.handle_event(ev) is True
+        assert ed.tilemap.layer_manager.get_layer_count() == 3
+
+
+class TestDuplicateButtonVisible:
+    def test_footer_draws_duplicate_button(self, monkeypatch):
+        import pygame as pg
+
+        drawn = []
+
+        class RecBtn:
+            def __init__(self, name):
+                from pygame import Rect as _Rect
+
+                self._name = name
+                self.rect = _Rect(0, 0, 25, 25)
+
+            def handle_event(self, event):
+                return False
+
+            def draw(self, screen):
+                drawn.append(self._name)
+
+        ed = FakeEditor()
+        s = make_selector(ed)
+        s.btn_add = RecBtn("add")
+        s.btn_remove = RecBtn("remove")
+        s.btn_duplicate = RecBtn("duplicate")
+        s.btn_replace_image = RecBtn("replace")
+        pg.init()
+        s.font_layer = pg.font.SysFont(None, 12)
+        surf = pg.Surface((200, 300))
+        s._draw_footer(surf)
+        assert drawn == ["add", "remove", "duplicate"]

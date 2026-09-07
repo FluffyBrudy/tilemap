@@ -73,6 +73,7 @@ def make_editor():
     ed.edit_cut = types.MethodType(Editor.edit_cut, ed)
     ed.edit_paste = types.MethodType(Editor.edit_paste, ed)
     ed.edit_delete = types.MethodType(Editor.edit_delete, ed)
+    ed.edit_create_alias = types.MethodType(Editor.edit_create_alias, ed)
     return ed
 
 

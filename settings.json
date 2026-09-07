@@ -23,5 +23,7 @@
         "light",
         "semi_light"
     ],
-    "nodes_path": "nodes"
+    "nodes_path": "nodes",
+    "aliases_path": "aliases",
+    "alias_scopes": {}
 }
