@@ -8,13 +8,13 @@ from pathlib import Path
 import pygame
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 import widgets.ui.menubar as _menubar_mod
 from utils.font_manager import font_manager
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 pygame.init()
 pygame.display.set_mode((1, 1))

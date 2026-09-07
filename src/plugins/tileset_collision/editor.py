@@ -303,10 +303,15 @@ class TilesetCollisionEditor:
                     TileCollisionData.apply_flip(v, size, flip_x, flip_y)
                     for v in shape.vertices
                 ]
+            # persist this tile's own (already-mutated) entry: a
+            # selection-wide save would copy the first tile's painter
+            # geometry across every selected tile
+            if self.consumer:
+                self.consumer.on_collision_saved(tile_id, entry.to_dict())
+            self._user_cleared_tiles.discard(tile_id)
             mirrored += 1
         self._load_tile_collision_for_selection()
         if mirrored:
-            self._save_tile_collision_for_selection()
             self._show_toast(f"Mirrored {axis.upper()} on {mirrored} tile(s)")
         else:
             self._show_toast("Nothing to mirror (no shapes)")

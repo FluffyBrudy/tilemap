@@ -437,3 +437,81 @@ class TestDuplicateKeepsSubcases:
         for y in range(5):
             for x in range(5):
                 assert layer.tiles[(x, y)]["variant"] == vid(x, y), (x, y)
+
+
+class TestSavePrunesSubcases:
+    def _designer_with_rule(self, rule):
+        d, _ap = make_designer((0, 0, 5 * 32, 5 * 32))
+        d.groups[0].rules.append(rule)
+        d.selected_rule_index = 0
+        d.current_tileset_path = "/t/blob.png"
+        d.current_tileset_index = 0
+        d.current_neighbors = set(rule.neighbors)
+        d.current_preview_surfs = []
+        d._update_preview_from_selector = lambda: None
+        d._reset_selection = lambda: None
+        return d
+
+    def test_save_filters_stale_leaf_variants(self):
+        key_keep = frozenset({(0, -2)})
+        key_mixed = frozenset({(2, 0)})
+        rule = make_rule("r", {(0, -1)}, variant_ids=[1, 2, 3],
+                         subcases={key_keep: [1], key_mixed: [2, 3]})
+        d = self._designer_with_rule(rule)
+        d.current_variant_ids = [1, 2]
+        d._save_current_rule()
+        assert rule.variant_ids == [1, 2]
+        assert rule.subcases[key_keep] == [1]
+        assert rule.subcases[key_mixed] == [2]
+
+    def test_save_drops_fully_stale_leaves(self):
+        key_gone = frozenset({(0, -2)})
+        key_ok = frozenset({(2, 0)})
+        rule = make_rule("r", {(0, -1)}, variant_ids=[1, 2, 3],
+                         subcases={key_gone: [3], key_ok: [1, 3]})
+        d = self._designer_with_rule(rule)
+        d.current_variant_ids = [1, 2]
+        d._save_current_rule()
+        assert key_gone not in rule.subcases
+        assert rule.subcases[key_ok] == [1]
+
+
+class TestNormalizeSkipsMalformed:
+    def test_malformed_entries_skipped(self):
+        from widgets.autotiler import _normalize_subcases
+
+        good = {"dist2": [[0, -2]], "variant_ids": [7]}
+        bad = [
+            {"dist2": None, "variant_ids": [1]},
+            {"dist2": [[0, -2]], "variant_ids": None},
+            {"dist2": None, "variant_ids": None},
+            {"dist2": 42, "variant_ids": [1]},
+            {"dist2": [[0, -2]], "variant_ids": 5},
+            {"dist2": [["x", "y"]], "variant_ids": [1]},
+            42,
+            "leaf",
+            ("only-one",),
+        ]
+        out = _normalize_subcases([good, *bad])
+        assert out == {frozenset({(0, -2)}): [7]}
+
+    def test_from_dict_survives_malformed_subcases(self):
+        rule = AutotileRule.from_dict({
+            "name": "r",
+            "neighbors": [[0, -1]],
+            "variant_ids": [1],
+            "subcases": [
+                {"dist2": [[0, -2]], "variant_ids": [1]},
+                {"dist2": None, "variant_ids": [1]},
+                {"dist2": [[0, -2]], "variant_ids": None},
+            ],
+        })
+        assert rule.subcases == {frozenset({(0, -2)}): [1]}
+
+    def test_valid_normalization_unchanged(self):
+        from widgets.autotiler import _normalize_subcases
+
+        out = _normalize_subcases([
+            {"dist2": [[0, -2], [2, 0]], "variant_ids": [3, 4]},
+        ])
+        assert out == {frozenset({(0, -2), (2, 0)}): [3, 4]}

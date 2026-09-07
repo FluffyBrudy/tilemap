@@ -168,8 +168,25 @@ class TestLineCommit:
         ed.autotile_mode = True
         ed.autotiler = type(
             "A", (), {"groups": [],
-                      "selected_group_idx": -1,
+                      "selected_group_idx": -1, "rules": [],
                       "variant_to_group": {(0, 0): "Grass", (0, 1): "Grass"}})()
         stroke(g, 0, 0, 1, 0)
         assert layer.tiles[(0, 0)].get("autotile_group") == "Grass"
         assert layer.tiles[(1, 0)].get("autotile_group") == "Grass"
+
+    def test_resolves_autotile_per_cell(self, monkeypatch):
+        from layers import Layer as LayerCls
+
+        g, ed, layer = make_grid(monkeypatch)
+        ed.autotile_mode = True
+        sentinel = object()
+        ed.autotiler = type(
+            "A", (), {"groups": [], "selected_group_idx": -1,
+                      "rules": [sentinel],
+                      "variant_to_group": {}})()
+        calls = []
+        monkeypatch.setattr(LayerCls, "autotile_at_pos",
+                            lambda self, pos, rules: calls.append((pos, rules)))
+        stroke(g, 0, 0, 1, 0)
+        assert sorted(p for p, _ in calls) == [(0, 0), (1, 0)]
+        assert all(r == [sentinel] for _, r in calls)
