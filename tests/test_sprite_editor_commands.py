@@ -269,3 +269,82 @@ class TestRegionCommands:
                     if method in obj.__dict__:
                         src = inspect.getsource(obj.__dict__[method])
                         assert "event" not in src, f"{name}.{method} references events"
+
+class TestTrimToContent:
+    def test_clear_rightmost_tile_shrinks_canvas(self):
+        doc = make_doc()  # 128x128, 4x4 tiles
+        fill_tile(doc, 0, 0)
+        fill_tile(doc, 3, 0)
+        stack = CommandStack()
+        stack.push(ClearCommand([(3, 0)]), doc, Selection.from_cells([(3, 0)]))
+        assert doc.surface.get_size() == (32, 32)
+        assert pixel_at(doc, 0, 0) == (200, 30, 30, 255)
+
+    def test_clear_all_resets_to_single_blank_tile(self):
+        doc = make_doc()
+        fill_tile(doc, 1, 2)
+        stack = CommandStack()
+        stack.push(ClearCommand([(1, 2)]), doc, Selection.from_cells([(1, 2)]))
+        assert doc.surface.get_size() == (32, 32)
+        assert (doc.cols, doc.rows) == (1, 1)
+
+    def test_clear_middle_tile_keeps_span(self):
+        doc = make_doc()
+        fill_tile(doc, 0, 0)
+        fill_tile(doc, 2, 0)
+        stack = CommandStack()
+        stack.push(ClearCommand([(1, 0)]), doc, Selection())
+        assert doc.surface.get_size() == (96, 32)
+
+    def test_partial_tile_content_snaps_outward(self):
+        doc = make_doc()
+        doc.surface.set_at((70, 5), (9, 9, 9, 255))  # inside tile (2, 0)
+        assert doc.trim_to_content() is True
+        assert doc.surface.get_size() == (32, 32)
+        # content preserved, shifted to trimmed origin
+        assert doc.surface.get_at((6, 5)) == (9, 9, 9, 255)
+        assert doc.origin_col == 2
+
+    def test_no_op_when_content_fills_canvas(self):
+        doc = make_doc(w=64, h=64)
+        fill_tile(doc, 0, 0)
+        fill_tile(doc, 1, 1)
+        assert doc.trim_to_content() is False
+        assert doc.surface.get_size() == (64, 64)
+
+    def test_clear_undo_restores_canvas(self):
+        doc = make_doc()
+        fill_tile(doc, 0, 0)
+        fill_tile(doc, 3, 0)
+        sel = Selection.from_cells([(3, 0)])
+        stack = CommandStack()
+        stack.push(ClearCommand([(3, 0)]), doc, sel)
+        assert doc.surface.get_size() == (32, 32)
+        stack.undo(doc, sel)
+        assert doc.surface.get_size() == (128, 128)
+        assert pixel_at(doc, 3, 0) == (200, 30, 30, 255)
+
+    def test_cut_then_paste_reexpands(self):
+        doc = make_doc()
+        fill_tile(doc, 0, 0, (10, 20, 30, 255))
+        sel = Selection.from_cells([(0, 0)])
+        stack = CommandStack()
+        tiles = [(0, 0, doc.extract_tile(0, 0))]
+        stack.push(ClearCommand([(0, 0)]), doc, sel)  # cut half
+        assert doc.surface.get_size() == (32, 32)  # blank single tile
+        stack.push(PasteCommand(2, 1, tiles), doc, sel)
+        assert pixel_at(doc, 2, 1) == (10, 20, 30, 255)
+
+    def test_faint_pixels_not_cropped(self):
+        doc = make_doc()
+        doc.surface.set_at((100, 100), (1, 2, 3, 40))  # alpha 40 < 127
+        assert doc.trim_to_content() is True
+        assert doc.surface.get_size() == (32, 32)
+        assert doc.surface.get_at((4, 4)) == (1, 2, 3, 40)
+
+    def test_move_leaves_transparent_source_without_trim(self):
+        doc = make_doc()
+        fill_tile(doc, 3, 0)
+        stack = CommandStack()
+        stack.push(MoveCommand([(3, 0)], -3, 0), doc, Selection.from_cells([(3, 0)]))
+        assert pixel_at(doc, 0, 0) == (200, 30, 30, 255)
