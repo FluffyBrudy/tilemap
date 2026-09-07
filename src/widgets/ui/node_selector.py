@@ -324,7 +324,10 @@ class NodeSelector:
 
                     dup_rect, del_rect = self._row_action_rects(item_rect)
                     self.delete_hover = del_rect.collidepoint(mouse_pos)
-                    self.dup_hover = dup_rect.collidepoint(mouse_pos)
+                    self.dup_hover = (
+                        rows[idx]["type"] == "node"
+                        and dup_rect.collidepoint(mouse_pos)
+                    )
 
                     if rows[idx]["type"] == "group":
                         arrow_rect = Rect(item_rect.x + 4, item_rect.y + 8, 12, 12)
@@ -648,7 +651,7 @@ class NodeSelector:
                 lbl = self.font.render(node.name, True, lbl_color)
                 screen.blit(lbl, (item_rect.x + indent_offset + 20, item_rect.y + 6))
 
-            if is_hover:
+            if is_hover and row["type"] == "node":
                 dup_rect, _ = self._row_action_rects(item_rect)
                 dup_color = COLORS.text if self.dup_hover else COLORS.text_dim
                 bx = dup_rect.centerx - 4

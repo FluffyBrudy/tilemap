@@ -697,6 +697,16 @@ class CollisionPainter:
                 self.on_polygon_removed(idx)
             self.selected_polygon_idx = None
             self.selected_vertex_idx = None
+            # a mid-drag delete would leave the drag index pointing at the
+            # wrong polygon (or out of range for Escape-restore)
+            if self._body_drag_idx is not None:
+                if idx == self._body_drag_idx:
+                    self._body_drag_idx = None
+                    self._body_drag_orig = None
+                    self._body_drag_grab = None
+                    self._body_drag_moved = False
+                elif idx < self._body_drag_idx:
+                    self._body_drag_idx -= 1
 
     def draw(self, screen: pygame.Surface) -> None:
         """Draw the collision painter"""

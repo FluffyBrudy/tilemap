@@ -34,26 +34,40 @@ _NEIGHBOR_ORDER = (
 
 
 def _normalize_subcases(subcases) -> dict[frozenset, list[int]]:
-    """Normalize persisted subcase tables to {frozenset(dist2): [vids]}."""
+    """Normalize persisted subcase tables to {frozenset(dist2): [vids]}.
+
+    Malformed entries (null/non-iterable dist2 or variant_ids, non-pair
+    offsets, non-int variant ids) are skipped so one bad leaf cannot
+    abort map loading; valid leaves normalize exactly as before.
+    """
     if not subcases:
         return {}
     normalized: dict[frozenset, list[int]] = {}
     items = subcases.items() if isinstance(subcases, dict) else subcases
-    for entry in items:
-        if isinstance(entry, tuple) and len(entry) == 2:
-            raw_key, vids = entry
-            key = frozenset(tuple(d) for d in raw_key)
-        elif isinstance(entry, dict):
-            key = frozenset(tuple(d) for d in entry.get("dist2", []))
-            vids = entry.get("variant_ids", [])
-        else:
+    try:
+        entries = list(items)
+    except TypeError:
+        return {}
+    for entry in entries:
+        try:
+            if isinstance(entry, tuple) and len(entry) == 2:
+                raw_key, vids = entry
+            elif isinstance(entry, dict):
+                raw_key, vids = entry.get("dist2", []), entry.get("variant_ids", [])
+            else:
+                continue
+            if raw_key is None or vids is None:
+                continue
+            key = frozenset((int(d[0]), int(d[1])) for d in raw_key)
+            clean = [int(v) for v in vids]
+        except (TypeError, ValueError, IndexError):
             continue
         if key in normalized:
-            for v in vids:
+            for v in clean:
                 if v not in normalized[key]:
                     normalized[key].append(v)
         else:
-            normalized[key] = list(vids)
+            normalized[key] = list(clean)
     return normalized
 
 
@@ -637,6 +651,14 @@ class AutotileRuleDesigner:
             rule = current_group.rules[self.selected_rule_index]
             rule.neighbors = set(self.current_neighbors)
             rule.variant_ids = list(self.current_variant_ids)
+            # drop subcase leaves referencing variants no longer in the rule
+            valid = set(rule.variant_ids)
+            for key in list(rule.subcases):
+                leaf = [v for v in rule.subcases[key] if v in valid]
+                if leaf:
+                    rule.subcases[key] = leaf
+                else:
+                    del rule.subcases[key]
             rule.preview_surf = preview
             rule.tileset_path = self.current_tileset_path
             rule.tileset_index = getattr(self, "current_tileset_index", None)

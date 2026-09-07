@@ -868,6 +868,10 @@ class TileGrid:
                     if owner:
                         tile_data["autotile_group"] = owner
                 active_layer.set_tile((map_x, map_y), tile_data)
+                if autotile_ok:
+                    rules = self.editor.autotiler.rules
+                    if rules:
+                        active_layer.autotile_at_pos((map_x, map_y), rules)
                 filled += 1
         self.invalidate_bounds_cache()
         if filled:
@@ -960,6 +964,10 @@ class TileGrid:
                 if owner:
                     tile_data["autotile_group"] = owner
             active_layer.set_tile((map_x, map_y), tile_data)
+            if autotile_ok:
+                rules = self.editor.autotiler.rules
+                if rules:
+                    active_layer.autotile_at_pos((map_x, map_y), rules)
             painted += 1
         self.invalidate_bounds_cache()
         if painted:

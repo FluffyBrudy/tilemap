@@ -148,6 +148,25 @@ class TestSlopeRow:
             assert proc.returncode == 2, angle
             assert "--slope" in proc.stderr
 
+    def test_slope_no_bleed_without_grid_lines(self, tmp_path):
+        # descending slope covers its cell's full right edge; with grid
+        # lines off, the seam pixel of the next column must stay
+        # transparent instead of catching the neighbor's slope color
+        proc = run("--rows", "1", "--cols", "2", "--slope", "-45",
+                   "--no-grid-lines", "--output-dir", str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+
+        import pygame
+
+        pygame.init()
+        try:
+            surf = pygame.image.load(str(tmp_path / "markers_2x1_c32_s-45.png"))
+            oy = 32
+            assert surf.get_at((32, oy + 2))[3] == 0
+            assert surf.get_at((32, oy + 30))[3] == 0
+        finally:
+            pygame.quit()
+
 
 class TestEditorCliWiring:
     def _cli(self, *args):

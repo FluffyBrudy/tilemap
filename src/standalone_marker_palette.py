@@ -107,8 +107,13 @@ def build_palette(rows: int, cols: int, cell: int, saturation: float = 0.9,
             poly = slope_polygon(cell, slope)
             ox, oy = c * cell, rows * cell
             try:
-                pygame.draw.polygon(
-                    surf, color, [(ox + x, oy + y) for x, y in poly])
+                # render on a cell-sized scratch surface: polygon vertices
+                # may sit exactly at x == cell, which would otherwise paint
+                # the seam pixel of the next column when grid lines are off
+                cell_surf = pygame.Surface((cell, cell), pygame.SRCALPHA)
+                cell_surf.fill((0, 0, 0, 0))
+                pygame.draw.polygon(cell_surf, color, [(x, y) for x, y in poly])
+                surf.blit(cell_surf, (ox, oy))
             except (ValueError, pygame.error):
                 pass
     if grid_lines and cell >= 4:

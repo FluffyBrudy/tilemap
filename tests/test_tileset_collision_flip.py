@@ -112,6 +112,31 @@ class TestBodyDrag:
         assert p.selected_vertex_idx == (0, 0)
         assert p._body_drag_idx is None
 
+    def test_delete_mid_drag_clears_drag_state(self, monkeypatch):
+        p = make_painter()
+        p.polygons = [list(TRI)]
+        p.polygon_one_way = [False]
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (20, 8))
+        p.handle_event(down((20, 8)))
+        assert p._body_drag_idx == 0
+        p._delete_polygon(0)
+        assert p.polygons == []
+        assert p._body_drag_idx is None
+        assert p._body_drag_orig is None
+        # Escape after the delete must not touch anything
+        p.handle_event(pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_ESCAPE}))
+        assert p.polygons == []
+
+    def test_delete_below_drag_shifts_index(self):
+        p = make_painter()
+        p.polygons = [list(TRI), [(0.0, 0.0), (8.0, 0.0), (8.0, 8.0)]]
+        p.polygon_one_way = [False, False]
+        p._body_drag_idx = 1
+        p._body_drag_orig = list(p.polygons[1])
+        p._delete_polygon(0)
+        assert p._body_drag_idx == 0
+        assert p._body_drag_orig == [(0.0, 0.0), (8.0, 0.0), (8.0, 8.0)]
+
 
 class TestFlipModel:
     def test_round_trip(self):
@@ -192,7 +217,8 @@ class TestMirrorAction:
         ed._mirror_selection("x")
         ed._mirror_selection("x")
         got = ed.library.tiles[5].shapes[0].vertices
-        for (gx, gy), (ex, ey) in zip(got, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)]):
+        for (gx, gy), (ex, ey) in zip(got, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)],
+                                     strict=True):
             assert abs(gx - ex) < 1e-9 and abs(gy - ey) < 1e-9
 
     def test_mirror_y(self):
@@ -213,3 +239,24 @@ class TestMirrorAction:
         ed._selected_tiles = set()
         ed._mirror_selection("x")
         assert any("Select a tile" in m for m in ed.toasts)
+
+    def test_mirror_multi_selection_keeps_distinct_shapes(self):
+        from plugins.tileset_collision.models import CollisionPolygon, TileCollisionData
+
+        ed = self._editor()
+        self._tile_with(ed, [(4.0, 4.0), (28.0, 4.0), (28.0, 28.0)])
+        ed.library.tiles[6] = TileCollisionData(
+            tile_id=6, shapes=[CollisionPolygon(
+                vertices=[(0.0, 0.0), (16.0, 0.0), (16.0, 16.0), (0.0, 16.0)])])
+        saved = {}
+        ed.consumer = type("C", (), {
+            "on_collision_saved": lambda self, tid, data: saved.setdefault(tid, data),
+        })()
+        ed._selected_tiles = {5, 6}
+        ed._mirror_selection("x")
+        # each tile mirrored in place — tile 6 must NOT gain tile 5's shape
+        assert ed.library.tiles[5].shapes[0].vertices == [
+            (28.0, 4.0), (4.0, 4.0), (4.0, 28.0)]
+        assert ed.library.tiles[6].shapes[0].vertices == [
+            (32.0, 0.0), (16.0, 0.0), (16.0, 16.0), (32.0, 16.0)]
+        assert set(saved) == {5, 6}

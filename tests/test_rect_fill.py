@@ -168,7 +168,7 @@ class TestRectFill:
         ed.autotile_mode = True
         ed.autotiler = type(
             "A", (), {"groups": [AutotileGroup("W")],
-                      "selected_group_idx": 0})()
+                      "selected_group_idx": 0, "rules": []})()
         drag(g, 0, 0, 1, 1)
         assert all(t.get("autotile_group") == "W"
                    for t in layer.tiles.values())
@@ -178,7 +178,7 @@ class TestRectFill:
         ed.autotile_mode = True
         ed.autotiler = type(
             "A", (), {"groups": [],
-                      "selected_group_idx": -1,
+                      "selected_group_idx": -1, "rules": [],
                       "variant_to_group": {(0, 0): "Grass", (0, 1): "Grass"}})()
         drag(g, 0, 0, 1, 0)
         assert layer.tiles[(0, 0)].get("autotile_group") == "Grass"
@@ -199,3 +199,20 @@ class TestRectFillKeys:
         ev = pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_e, "unicode": ""})
         assert g.handle_event(ev) is True
         assert ed.tool_manager.is_active(ToolKind.ERASER)
+
+    def test_resolves_autotile_per_cell(self, monkeypatch):
+        from layers import Layer as LayerCls
+
+        g, ed, layer = make_grid(monkeypatch)
+        ed.autotile_mode = True
+        sentinel = object()
+        ed.autotiler = type(
+            "A", (), {"groups": [], "selected_group_idx": -1,
+                      "rules": [sentinel],
+                      "variant_to_group": {}})()
+        calls = []
+        monkeypatch.setattr(LayerCls, "autotile_at_pos",
+                            lambda self, pos, rules: calls.append((pos, rules)))
+        drag(g, 0, 0, 1, 1)
+        assert sorted(p for p, _ in calls) == [(0, 0), (0, 1), (1, 0), (1, 1)]
+        assert all(r == [sentinel] for _, r in calls)

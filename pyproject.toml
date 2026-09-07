@@ -74,6 +74,7 @@ py-modules = [
   "standalone_image_viewer",
   "standalone_automap",
   "standalone_error_console",
+  "standalone_marker_palette",
 ]
 
 [tool.setuptools.packages.find]

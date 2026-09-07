@@ -120,7 +120,7 @@ class MinimapWidget:
                     continue
 
         self.scale = min(panel.width / bw, panel.height / bh)
-        dw, dh = int(bw * self.scale), int(bh * self.scale)
+        dw, dh = max(1, int(bw * self.scale)), max(1, int(bh * self.scale))
         try:
             self.cache = pygame.transform.smoothscale(full, (dw, dh))
         except (ValueError, pygame.error):
