@@ -15,12 +15,15 @@ from .selection import Selection
 
 
 class Clipboard:
-    __slots__ = ("tiles", "tile_size", "origin_local")
+    __slots__ = ("tiles", "tile_size", "origin_local", "os_snapshot")
 
     def __init__(self) -> None:
         self.tiles: list[tuple[int, int, Surface]] = []
         self.tile_size: tuple[int, int] = (0, 0)
         self.origin_local: tuple[int, int] = (0, 0)
+        # OS clipboard text at the moment of the last in-app copy;
+        # paste compares against it to decide which copy is newer.
+        self.os_snapshot: str = ""
 
     def __len__(self) -> int:
         return len(self.tiles)
@@ -33,6 +36,7 @@ class Clipboard:
         self.tiles = []
         self.tile_size = (0, 0)
         self.origin_local = (0, 0)
+        self.os_snapshot = ""
 
     def copy_from_selection(self, doc: Document, selection: Selection) -> bool:
         """Snapshot the selected cells as (dx, dy, surface) tiles.
