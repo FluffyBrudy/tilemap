@@ -495,3 +495,29 @@ class TestClipboardFallbackRobustness:
         monkeypatch.setattr(pygame.scrap, "get_text", lambda *a, **k: None)
         monkeypatch.setattr(shutil, "which", lambda name: None)
         assert SpriteEditor._clipboard_text() == ""
+
+
+class TestInternalClipboardWins:
+    """Ctrl+V must pixel-paste in-app tiles even when the OS clipboard
+    holds a path (e.g. copied from a file explorer)."""
+
+    def test_tiles_beat_os_path(self, editor, tmp_path):
+        p = make_png(tmp_path / "other.png", (32, 32), (9, 9, 9, 255))
+        editor._clipboard_text = lambda: str(p)
+        # canvas with one red tile, copied internally
+        red = make_png(tmp_path / "red.png", (32, 32), (200, 30, 30, 255))
+        editor._load_surface(pygame.image.load(str(red)).convert_alpha(), ["red.png"])
+        editor.selection.replace([(0, 0)])
+        assert editor.clipboard.copy_from_selection(editor.doc, editor.selection)
+        editor.selection.replace([(1, 0)])
+        editor._on_paste_smart()
+        # paste tool armed with internal tiles; no sheet appended
+        assert editor.doc.sheets == ["red.png"]
+        assert editor._active_tool is editor._paste_tool
+
+    def test_os_path_loads_when_internal_empty(self, editor, tmp_path):
+        p = make_png(tmp_path / "sheet.png", (32, 32), (1, 1, 1, 255))
+        editor._clipboard_text = lambda: str(p)
+        assert editor.clipboard.is_empty
+        editor._on_paste_smart()
+        assert editor.doc.sheets == ["sheet.png"]
