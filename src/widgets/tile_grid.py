@@ -639,12 +639,13 @@ class TileGrid:
         ts_widget = getattr(self.editor, "tileset_widget", None)
         if ts_widget is None:
             return None
-        ref = tileset_ref or ""
-        for idx, ts in enumerate(getattr(ts_widget, "tilesets", []) or []):
-            p = Path(getattr(ts, "path", "") or "")
-            if p.name and (p.name == Path(ref).name or p.stem == Path(ref).stem):
-                return idx, ts, pattern
-        return None
+        from aliases import resolve_tileset
+
+        tilesets = getattr(ts_widget, "tilesets", []) or []
+        idx = resolve_tileset(tilesets, tileset_ref or "")
+        if idx is None:
+            return None
+        return idx, tilesets[idx], pattern
 
     def _place_alias(self, active_layer, tileset_index, tileset_data, pattern) -> int:
         """Plot the armed alias anchored at the hover cell. Returns cell count."""

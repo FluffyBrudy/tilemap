@@ -70,3 +70,33 @@ def test_scope_aggregates_in_order_and_tracks_mtime(tmp_path):
     assert scope.refresh() is True
     assert [a.name for _, _, a in scope.all_aliases()] == ["A", "C"]
     assert alias_path_for(tmp_path, "stone").name == "stone.alias.json"
+
+
+class TestResolveTileset:
+    def _ts(self, path):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(path=path)
+
+    def test_full_path_wins_over_same_stem(self):
+        from aliases import resolve_tileset
+
+        sheets = [self._ts("a/stone.png"), self._ts("b/stone.png")]
+        assert resolve_tileset(sheets, "b/stone.png") == 1
+        assert resolve_tileset(sheets, "a/stone.png") == 0
+
+    def test_ambiguous_stem_resolves_nothing(self):
+        from aliases import resolve_tileset
+
+        sheets = [self._ts("a/stone.png"), self._ts("b/stone.png")]
+        assert resolve_tileset(sheets, "stone") is None
+        assert resolve_tileset(sheets, "c/stone.png") is None
+
+    def test_unique_basename_and_stem(self):
+        from aliases import resolve_tileset
+
+        sheets = [self._ts("a/stone.png"), self._ts("b/grass.png")]
+        assert resolve_tileset(sheets, "b/grass.png") == 1
+        assert resolve_tileset(sheets, "grass") == 1
+        assert resolve_tileset(sheets, "") is None
+        assert resolve_tileset([], "stone.png") is None

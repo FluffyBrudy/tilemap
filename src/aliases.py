@@ -147,6 +147,39 @@ def alias_path_for(aliases_dir: str | Path, stem: str) -> Path:
     return Path(aliases_dir) / f"{stem}{ALIAS_SUFFIX}"
 
 
+def resolve_tileset(matches: list, ref: str) -> int | None:
+    """Index into tileset-likes (each with a ``path`` attr) for an alias ref.
+
+    Full normalized-path equality wins; basename/stem fallbacks only
+    resolve when they identify exactly one loaded tileset, so
+    ``a/stone.png`` vs ``b/stone.png`` never silently picks wrong.
+    """
+    import os
+
+    ref = ref or ""
+    norm_ref = os.path.normpath(ref)
+    base_ref = os.path.basename(norm_ref)
+    stem_ref = os.path.splitext(base_ref)[0]
+    base_hits: list[int] = []
+    stem_hits: list[int] = []
+    for idx, ts in enumerate(matches):
+        p = os.path.normpath(str(getattr(ts, "path", "") or ""))
+        if not p or p == ".":
+            continue
+        if p == norm_ref:
+            return idx
+        base = os.path.basename(p)
+        if base_ref and base == base_ref:
+            base_hits.append(idx)
+        elif stem_ref and os.path.splitext(base)[0] == stem_ref:
+            stem_hits.append(idx)
+    if len(base_hits) == 1:
+        return base_hits[0]
+    if len(stem_hits) == 1:
+        return stem_hits[0]
+    return None
+
+
 class AliasScope:
     """Aggregates one scope (several alias files) with mtime tracking.
 

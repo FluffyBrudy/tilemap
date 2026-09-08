@@ -162,17 +162,17 @@ class AliasPalette:
     # ------------------------------------------------------------------ tileset
     def _tileset_surface(self, tileset_ref: str):
         """Match an alias tileset ref to a loaded tileset (surface, index)."""
+        from aliases import resolve_tileset
+
         tw = getattr(self.editor, "tileset_widget", None)
         if tw is None:
             return None, None
-        ref = Path(tileset_ref)
-        for idx, ts in enumerate(getattr(tw, "tilesets", []) or []):
-            p = Path(getattr(ts, "path", "") or "")
-            if not p.name:
-                continue
-            if p.name == ref.name or p.stem == ref.stem:
-                return getattr(ts, "surface", None), idx
-        return None, None
+        tilesets = getattr(tw, "tilesets", []) or []
+        idx = resolve_tileset(tilesets, tileset_ref or "")
+        if idx is None:
+            return None, None
+        ts = tilesets[idx]
+        return getattr(ts, "surface", None), idx
 
     def _thumbnail(self, stem: str, tileset_ref: str, pattern: AliasPattern):
         key = (stem, pattern.name)
@@ -254,6 +254,9 @@ class AliasPalette:
         if (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
                 and self.show_help):
             self.show_help = False
+            return True
+        if self.show_help:
+            # modal: buttons above still toggle, everything else waits
             return True
         mouse = pygame.mouse.get_pos()
 

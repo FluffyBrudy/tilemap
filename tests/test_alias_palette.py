@@ -450,3 +450,26 @@ class TestWheelAndThrottle:
         monkeypatch.setattr(pg.time, "get_ticks", lambda: base + 600)
         pal.refresh_items()
         assert [a.name for _, _, a in pal.filtered] == ["A", "B"]
+
+
+class TestHelpModal:
+    def test_events_swallowed_while_help_open(self, tmp_path, monkeypatch):
+        import pygame as pg
+
+        ad = tmp_path / "aliases"
+        ad.mkdir()
+        write_alias_file(ad / "stone.alias.json", aliases=[("Wall", 5)])
+        pal, _ = make_palette(ad)
+        pal.toggle_help()
+        assert pal.show_help is True
+        grid = pal._grid_rect()
+        pos = (grid.x + 10, grid.y + 10)
+        monkeypatch.setattr(pg.mouse, "get_pos", lambda: pos)
+        # grid click does not arm while help is up
+        assert pal.handle_event(pg.event.Event(
+            pg.MOUSEBUTTONDOWN, {"button": 1, "pos": pos})) is True
+        assert pal.editor.active_alias is None
+        # ? button still toggles closed (tested via toggle); Esc closes
+        assert pal.handle_event(pg.event.Event(
+            pg.KEYDOWN, {"key": pg.K_ESCAPE})) is True
+        assert pal.show_help is False
