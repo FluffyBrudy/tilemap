@@ -504,16 +504,29 @@ class TestInternalClipboardWins:
     def test_tiles_beat_os_path(self, editor, tmp_path):
         p = make_png(tmp_path / "other.png", (32, 32), (9, 9, 9, 255))
         editor._clipboard_text = lambda: str(p)
-        # canvas with one red tile, copied internally
+        # canvas with one red tile, copied internally (snapshots OS text)
         red = make_png(tmp_path / "red.png", (32, 32), (200, 30, 30, 255))
         editor._load_surface(pygame.image.load(str(red)).convert_alpha(), ["red.png"])
         editor.selection.replace([(0, 0)])
-        assert editor.clipboard.copy_from_selection(editor.doc, editor.selection)
+        editor._on_copy()
         editor.selection.replace([(1, 0)])
         editor._on_paste_smart()
-        # paste tool armed with internal tiles; no sheet appended
+        # OS text unchanged since the copy: tiles win, no sheet appended
         assert editor.doc.sheets == ["red.png"]
         assert editor._active_tool is editor._paste_tool
+
+    def test_newer_os_path_beats_tiles(self, editor, tmp_path):
+        other = make_png(tmp_path / "other.png", (32, 32), (9, 9, 9, 255))
+        editor._clipboard_text = lambda: "in-app copy era"
+        red = make_png(tmp_path / "red.png", (32, 32), (200, 30, 30, 255))
+        editor._load_surface(pygame.image.load(str(red)).convert_alpha(), ["red.png"])
+        editor.selection.replace([(0, 0)])
+        editor._on_copy()
+        # user copies a path in the file explorer afterwards
+        editor._clipboard_text = lambda: str(other)
+        editor.selection.replace([(1, 0)])
+        editor._on_paste_smart()
+        assert editor.doc.sheets == ["red.png", "other.png"]
 
     def test_os_path_loads_when_internal_empty(self, editor, tmp_path):
         p = make_png(tmp_path / "sheet.png", (32, 32), (1, 1, 1, 255))

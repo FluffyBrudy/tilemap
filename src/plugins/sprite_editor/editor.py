@@ -443,17 +443,15 @@ class SpriteEditor:
         self._update_button_states()
 
     def _on_paste_smart(self) -> None:
-        """Pixel-paste internal tiles first; OS clipboard paths load
-        sheets only when the internal tile clipboard is empty.
+        """Paste whichever copy is newer: in-app tiles or OS clipboard paths.
 
-        Otherwise any path lingering in the OS clipboard (e.g. copied
-        from a file explorer) would hijack Ctrl+V after an in-app copy.
+        The OS text is snapshotted at every in-app copy; if it changed
+        since, the OS copy is newer and paths load first (falling back
+        to tiles when the text holds no paths).
         """
-        if not self.clipboard.is_empty:
-            self._on_paste()
-            return
-        if self._paste_paths_from_clipboard():
-            return
+        if self.clipboard.os_snapshot != self._clipboard_text():
+            if self._paste_paths_from_clipboard():
+                return
         self._on_paste()
 
     def _toggle_sort_natural(self) -> None:
@@ -529,6 +527,7 @@ class SpriteEditor:
             return
         if self.clipboard.copy_from_selection(self.doc, self.selection):
             n = len(self.clipboard)
+            self.clipboard.os_snapshot = self._clipboard_text()
             self._status_bar.info(f"Copied {n} tile{'s' if n != 1 else ''}")
             self._toast(f"Copied {n} tile{'s' if n != 1 else ''}")
 
@@ -540,6 +539,7 @@ class SpriteEditor:
             return
         if self.clipboard.copy_from_selection(self.doc, self.selection):
             n = len(self.clipboard)
+            self.clipboard.os_snapshot = self._clipboard_text()
             self.commands.push(ClearCommand(self.selection.sorted_cells()), self.doc, self.selection)
             self._status_bar.info(f"Cut {n} tile{'s' if n != 1 else ''}")
             self._toast(f"Cut {n} tile{'s' if n != 1 else ''}")
