@@ -443,7 +443,15 @@ class SpriteEditor:
         self._update_button_states()
 
     def _on_paste_smart(self) -> None:
-        """Clipboard holding image paths loads sheets; otherwise pixel-paste."""
+        """Pixel-paste internal tiles first; OS clipboard paths load
+        sheets only when the internal tile clipboard is empty.
+
+        Otherwise any path lingering in the OS clipboard (e.g. copied
+        from a file explorer) would hijack Ctrl+V after an in-app copy.
+        """
+        if not self.clipboard.is_empty:
+            self._on_paste()
+            return
         if self._paste_paths_from_clipboard():
             return
         self._on_paste()
