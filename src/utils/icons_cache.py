@@ -26,7 +26,6 @@ _pygame_initialized = False
 
 
 def _ensure_pygame():
-    """Ensure pygame is initialized (lazy initialization)."""
     global _pygame_initialized
     if not _pygame_initialized:
         if not pygame.get_init():
@@ -37,12 +36,10 @@ def _ensure_pygame():
 
 
 def _ensure_cache_dir():
-    """Ensure cache directory exists."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _compute_key(renderer_name: str, params: dict, size: tuple[int, int]) -> str:
-    """Generate stable cache key from parameters."""
     data = {
         "version": SOURCE_VERSION,
         "renderer": renderer_name,
@@ -55,7 +52,6 @@ def _compute_key(renderer_name: str, params: dict, size: tuple[int, int]) -> str
 
 
 def _load_index() -> dict:
-    """Load cache index from disk."""
     if not INDEX_FILE.exists():
         return {"version": SOURCE_VERSION, "entries": {}}
 
@@ -77,7 +73,6 @@ def _load_index() -> dict:
 
 
 def _save_index(index: dict):
-    """Save cache index to disk with atomic write."""
     _ensure_cache_dir()
 
     temp_file = INDEX_FILE.with_suffix(".tmp")
@@ -92,7 +87,6 @@ def _save_index(index: dict):
 
 
 def _read_png_to_surface(path: Path) -> pygame.Surface | None:
-    """Load PNG from disk and convert to Surface."""
     try:
         surface = pygame.image.load(str(path))
         return surface.convert_alpha()
@@ -101,7 +95,6 @@ def _read_png_to_surface(path: Path) -> pygame.Surface | None:
 
 
 def _write_surface_to_png(surface: pygame.Surface, path: Path) -> bool:
-    """Write Surface to PNG file."""
     try:
         _ensure_cache_dir()
 
@@ -120,7 +113,6 @@ def _draw_rounded_rect(
     color: tuple[int, int, int, int],
     radius: int,
 ):
-    """Draw a rounded rectangle with anti-aliasing."""
     pygame.draw.rect(surface, color, rect, border_radius=radius)
 
 
@@ -130,7 +122,6 @@ def _draw_gradient_rect(
     color_top: tuple[int, int, int],
     color_bottom: tuple[int, int, int],
 ):
-    """Draw a vertical gradient rectangle."""
     for y in range(rect.height):
         ratio = y / rect.height
         r = int(color_top[0] * (1 - ratio) + color_bottom[0] * ratio)
@@ -144,7 +135,6 @@ def _draw_gradient_rect(
 def render_folder_icon(
     size: tuple[int, int] = (64, 64), color: tuple[int, int, int] = (220, 180, 80)
 ) -> pygame.Surface:
-    """Render a rich folder icon."""
     _ensure_pygame()
 
     surface = pygame.Surface(size, pygame.SRCALPHA)
@@ -172,7 +162,6 @@ def render_folder_icon(
 def render_file_icon(
     size: tuple[int, int] = (64, 64), color: tuple[int, int, int] = (180, 180, 180)
 ) -> pygame.Surface:
-    """Render a rich file icon."""
     _ensure_pygame()
 
     surface = pygame.Surface(size, pygame.SRCALPHA)
@@ -213,7 +202,6 @@ def render_file_icon(
 def render_image_icon(
     size: tuple[int, int] = (64, 64), color: tuple[int, int, int] = (100, 180, 120)
 ) -> pygame.Surface:
-    """Render a rich image file icon."""
     _ensure_pygame()
 
     surface = pygame.Surface(size, pygame.SRCALPHA)
@@ -341,17 +329,10 @@ def invalidate_cache(key: str | None = None):
 
 
 def purge_cache():
-    """Completely remove cache directory and all cached icons."""
     invalidate_cache(None)
 
 
 def prewarm_common_icons(sizes: list = None):
-    """
-    Pre-render commonly used icons to warm up the cache.
-
-    Args:
-        sizes: List of icon sizes to pre-render
-    """
     if sizes is None:
         sizes = [(32, 32), (64, 64)]
     common_icons = [

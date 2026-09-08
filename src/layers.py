@@ -65,12 +65,10 @@ class Layer:
         }
 
     def set_tile(self, pos: tuple[int, int], tile: TypeTile) -> None:
-        """Set a tile at the given grid position."""
         if not self.locked and self.layer_type != "image":
             self.tiles[pos] = tile
 
     def get_tile(self, pos: tuple[int, int]) -> TypeTile | None:
-        """Get a tile at the given grid position."""
         return self.tiles.get(pos)
 
     def autotile_layer(self, rules: list["AutotileRule"]) -> int:
@@ -178,7 +176,6 @@ class Layer:
         changes_count = 0
 
         def _get_group(t: dict) -> str | None:
-            """Get group_id for a tile: autotile_group field > legacy variant lookup."""
             ag = t.get("autotile_group")
             if ag is not None:
                 return ag
@@ -218,11 +215,7 @@ class Layer:
                     if n_group == target_group_id:
                         actual_neighbors.append((dx, dy))
 
-            # Per group significance: a tile only considers neighbor
-            # offsets its own group cares about. so adding a group with
-            # new offsets (e.g. diagonals) can't break matching of groups
-            # that ignore them. Falls back to the global union for groups
-            # missing from the cache (defensive).
+            # New offsets from another group can't break groups ignoring them.
             group_offsets = offsets_by_group.get(target_group_id, significant_offsets)
             neighbor_offsets_set = {n for n in actual_neighbors if n in group_offsets}
 
@@ -234,8 +227,7 @@ class Layer:
                     break
 
             if matched_rule and matched_rule.variant_ids:
-                # Hierarchical classifier: exact subcase leaf first,
-                # legacy random-among-variants as the fallback.
+                # Random-among-variants fallback for unseen shapes.
                 leaf = None
                 subcases = getattr(matched_rule, "subcases", None) or {}
                 if subcases:
@@ -265,7 +257,6 @@ class Layer:
         return changes_count
 
     def remove_tile(self, pos: tuple[int, int]) -> bool:
-        """Remove a tile at the given grid position. Returns True if tile existed."""
         if not self.locked and self.layer_type != "image" and pos in self.tiles:
             del self.tiles[pos]
             return True
@@ -318,11 +309,9 @@ class Layer:
                         queue.append(next_pos)
 
     def get_all_tiles(self) -> dict[tuple[int, int], TypeTile]:
-        """Return a copy of all tiles in this layer."""
         return dict(self.tiles)
 
     def add_object(self, pos: tuple[int, int], obj: TypeObject) -> int:
-        """Add an object at the given pixel position. Returns the object ID."""
         if not self.locked and self.layer_type != "image":
             obj_id = self.next_object_id
             self.next_object_id += 1
@@ -331,22 +320,18 @@ class Layer:
         return -1
 
     def get_object(self, obj_id: int) -> TypeObject | None:
-        """Get an object by ID."""
         return self.objects.get(obj_id)
 
     def remove_object(self, obj_id: int) -> bool:
-        """Remove an object by ID. Returns True if object existed."""
         if not self.locked and self.layer_type != "image" and obj_id in self.objects:
             del self.objects[obj_id]
             return True
         return False
 
     def get_all_objects(self) -> dict[int, TypeObject]:
-        """Return a copy of all objects in this layer."""
         return dict(self.objects)
 
     def move_object(self, obj_id: int, new_pos: tuple[int, int]) -> bool:
-        """Move an object to a new position. Returns True if successful."""
         if not self.locked and obj_id in self.objects:
             self.objects[obj_id]["area"]["x"] = new_pos[0]
             self.objects[obj_id]["area"]["y"] = new_pos[1]
@@ -354,13 +339,11 @@ class Layer:
         return False
 
     def clear(self) -> None:
-        """Clear all tiles and objects from this layer."""
         if not self.locked:
             self.tiles.clear()
             self.objects.clear()
 
     def to_dict(self) -> dict:
-        """Serialize layer to dictionary."""
         data = {
             "name": self.name,
             "type": self.layer_type,
@@ -400,7 +383,6 @@ class Layer:
 
     @staticmethod
     def from_dict(data: dict) -> "Layer":
-        """Deserialize layer from dictionary."""
         layer = Layer(
             name=data.get("name", "Unnamed"),
             layer_type=data.get("type", "tile"),
@@ -457,7 +439,6 @@ class LayerManager:
         layer_type: str = "tile",
         insert_index: int | None = None,
     ) -> Layer:
-        """Create a new layer and add it to the manager."""
         z_index = len(self.layers)
         layer = Layer(name, layer_type, z_index)
 
@@ -530,24 +511,20 @@ class LayerManager:
         return candidate
 
     def get_layer(self, index: int) -> Layer | None:
-        """Get a layer by index."""
         if 0 <= index < len(self.layers):
             return self.layers[index]
         return None
 
     def get_active_layer(self) -> Layer | None:
-        """Get the currently active layer."""
         return self.get_layer(self.active_layer_idx)
 
     def set_active_layer(self, index: int) -> bool:
-        """Set the active layer by index."""
         if 0 <= index < len(self.layers):
             self.active_layer_idx = index
             return True
         return False
 
     def reorder_layer(self, from_index: int, to_index: int) -> bool:
-        """Move a layer from one position to another."""
         if 0 <= from_index < len(self.layers) and 0 <= to_index < len(self.layers):
             layer = self.layers.pop(from_index)
             self.layers.insert(to_index, layer)
@@ -560,22 +537,18 @@ class LayerManager:
         return False
 
     def get_rendered_layers(self) -> list[Layer]:
-        """Get all visible layers sorted by z_index for rendering."""
         visible = [layer for layer in self.layers if layer.visible]
         return sorted(visible, key=lambda l: l.z_index)
 
     def _update_z_indices(self) -> None:
-        """Update z_index values for all layers based on their position."""
         for i, layer in enumerate(self.layers):
             layer.z_index = i
 
     def clear_all_layers(self) -> None:
-        """Clear all tiles from all layers."""
         for layer in self.layers:
             layer.clear()
 
     def to_dict(self) -> dict:
-        """Serialize all layers to dictionary."""
         return {
             "active_layer_idx": self.active_layer_idx,
             "layers": [layer.to_dict() for layer in self.layers],
@@ -583,7 +556,6 @@ class LayerManager:
 
     @staticmethod
     def from_dict(data: dict) -> "LayerManager":
-        """Deserialize layer manager from dictionary."""
         manager = LayerManager()
         manager.active_layer_idx = data.get("active_layer_idx", 0)
 
@@ -600,16 +572,13 @@ class LayerManager:
         return manager
 
     def get_layer_count(self) -> int:
-        """Get the total number of layers."""
         return len(self.layers)
 
     def has_layers(self) -> bool:
-        """Check if manager has any layers."""
         return len(self.layers) > 0
 
 
 def create_default_layer_manager() -> LayerManager:
-    """Create a default layer manager with Terrain and Objects layers."""
     manager = LayerManager()
     manager.create_layer("Terrain", "tile")
     manager.create_layer("Objects", "object")

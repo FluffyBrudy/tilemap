@@ -9,7 +9,6 @@ THUMB_MIN = 20
 
 
 class Scrollbar:
-    """Interactive scrollbar with drag, track-click, and wheel support."""
 
     def __init__(
         self,

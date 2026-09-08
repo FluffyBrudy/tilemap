@@ -26,7 +26,6 @@ from widgets.ui.theme import COLORS
 
 
 class ResizeHandle(Enum):
-    """Resize handle positions"""
 
     NONE = auto()
     TOP_LEFT = auto()
@@ -41,7 +40,6 @@ class ResizeHandle(Enum):
 
 @dataclass
 class Region:
-    """A rectangular region with ID and optional name"""
 
     id: str
     rect: Rect
@@ -115,7 +113,6 @@ class RegionSelector:
         self.on_selection_changed: Callable[[str | None], None] | None = None
 
     def _get_center_offset(self) -> tuple[int, int]:
-        """Calculate centering offset for image within rect"""
         if not self.image:
             return (0, 0)
 
@@ -126,7 +123,6 @@ class RegionSelector:
         return (center_off_x, center_off_y)
 
     def _image_to_screen(self, x: int, y: int) -> tuple[int, int]:
-        """Convert image coordinates to screen coordinates"""
         center_off_x, center_off_y = self._get_center_offset()
         return (
             self.rect.x + int(x * self.zoom) - self.scroll_x + center_off_x,
@@ -148,7 +144,6 @@ class RegionSelector:
         )
 
     def _clamp_scroll(self) -> None:
-        """Clamp scroll values to keep image visible within viewport"""
         if not self.image:
             self.scroll_x = 0
             self.scroll_y = 0
@@ -170,14 +165,12 @@ class RegionSelector:
             self.scroll_y = max(0, min(self.scroll_y, img_h - vp_h))
 
     def _get_region_screen_rect(self, region: Region) -> Rect:
-        """Get region rect in screen coordinates"""
         x, y = self._image_to_screen(region.rect.x, region.rect.y)
         w = int(region.rect.width * self.zoom)
         h = int(region.rect.height * self.zoom)
         return Rect(x, y, w, h)
 
     def _get_handle_rects(self, region: Region) -> dict[ResizeHandle, Rect]:
-        """Get resize handle rects in screen coordinates"""
         r = self._get_region_screen_rect(region)
         hs = self.HANDLE_SIZE
         hs2 = hs // 2
@@ -210,7 +203,6 @@ class RegionSelector:
     def _get_handle_at(
         self, screen_pos: tuple[int, int], region: Region
     ) -> ResizeHandle:
-        """Get resize handle at screen position"""
         handles = self._get_handle_rects(region)
         for handle, rect in handles.items():
             if rect.collidepoint(screen_pos):
@@ -218,7 +210,6 @@ class RegionSelector:
         return ResizeHandle.NONE
 
     def _find_region_at(self, screen_pos: tuple[int, int]) -> str | None:
-        """Find region ID at screen position (returns topmost)"""
 
         for region in reversed(self.regions):
             r = self._get_region_screen_rect(region)
@@ -227,13 +218,11 @@ class RegionSelector:
         return None
 
     def _generate_id(self) -> str:
-        """Generate unique region ID"""
         import uuid
 
         return f"region_{uuid.uuid4().hex[:8]}"
 
     def _get_unique_name(self, base: str = "Region") -> str:
-        """Generate unique region name"""
         existing = {r.name for r in self.regions}
         if base not in existing:
             return base
@@ -243,7 +232,6 @@ class RegionSelector:
         return f"{base} {counter}"
 
     def add_region(self, rect: Rect, name: str = "") -> Region:
-        """Add a new region"""
         if not name:
             name = self._get_unique_name()
 
@@ -260,7 +248,6 @@ class RegionSelector:
         return region
 
     def remove_region(self, region_id: str) -> bool:
-        """Remove a region by ID"""
         for i, region in enumerate(self.regions):
             if region.id == region_id:
                 self.regions.pop(i)
@@ -274,30 +261,23 @@ class RegionSelector:
         return False
 
     def get_region(self, region_id: str) -> Region | None:
-        """Get region by ID"""
         for region in self.regions:
             if region.id == region_id:
                 return region
         return None
 
     def get_selected_region(self) -> Region | None:
-        """Get currently selected region"""
         if self.selected_id:
             return self.get_region(self.selected_id)
         return None
 
     def select_region(self, region_id: str | None) -> None:
-        """Select a region by ID"""
         if region_id != self.selected_id:
             self.selected_id = region_id
             if self.on_selection_changed:
                 self.on_selection_changed(region_id)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """
-        Handle input events.
-        Returns True if event was handled (should not propagate).
-        """
         mouse = pygame.mouse.get_pos()
         in_bounds = self.rect.collidepoint(mouse)
 
@@ -503,7 +483,6 @@ class RegionSelector:
         return False
 
     def _update_hover(self, mouse: tuple[int, int]) -> None:
-        """Update hover state based on mouse position"""
 
         selected = self.get_selected_region()
         if selected:
@@ -517,7 +496,6 @@ class RegionSelector:
         self._hover_handle = ResizeHandle.NONE
 
     def draw(self, screen: Surface) -> None:
-        """Draw the region selector"""
 
         pygame.draw.rect(screen, COLORS.panel_alt, self.rect)
 
@@ -572,7 +550,6 @@ class RegionSelector:
         screen.blit(zoom_text, (pan_btn_rect.right + 8, self.rect.y + 7))
 
     def _draw_region(self, screen: Surface, region: Region) -> None:
-        """Draw a single region"""
         r = self._get_region_screen_rect(region)
 
         if r.right < self.rect.x or r.x > self.rect.right:
@@ -620,7 +597,6 @@ class RegionSelector:
         screen.blit(dim, (r.x + 4, r.bottom - dim.get_height() - 2))
 
     def _draw_creation_preview(self, screen: Surface) -> None:
-        """Draw preview of region being created"""
         mouse = pygame.mouse.get_pos()
         img_x, img_y = self._screen_to_image(mouse[0], mouse[1])
 
@@ -641,18 +617,14 @@ class RegionSelector:
             pygame.draw.rect(screen, COLORS.success, r, 2)
 
     def resize(self, rect: Rect) -> None:
-        """Resize the component"""
         self.rect = rect
 
     def set_image(self, image: Surface) -> None:
-        """Set the image to select regions from"""
         self.image = image
 
     def set_regions(self, regions: list[Region]) -> None:
-        """Set all regions at once"""
         self.regions = regions
         self.select_region(None)
 
     def get_regions(self) -> list[Region]:
-        """Get all regions"""
         return list(self.regions)

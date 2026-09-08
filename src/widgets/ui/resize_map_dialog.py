@@ -77,7 +77,6 @@ class ResizeMapDialog(DialogBase):
         self.width_input.resize(Rect(content_x, start_y + 90, input_w, input_h))
         self.height_input.resize(Rect(content_x + input_w + 20, start_y + 90, input_w, input_h))
 
-        # Increased spacing from 10px to 30px between buttons
         self.btn_cancel.rect = Rect(
             self.rect.centerx - 135, self.rect.bottom - 46, 120, 36
         )
@@ -132,7 +131,6 @@ class ResizeMapDialog(DialogBase):
     def _check_tiles_outside_bounds(
         self, new_offset: tuple[int, int], new_size: tuple[int, int]
     ) -> bool:
-        """Check if any tiles would be outside the new bounds."""
         tm = self.editor.tilemap
         ox, oy = new_offset
         w, h = new_size
@@ -166,7 +164,6 @@ class ResizeMapDialog(DialogBase):
             if width <= 0 or height <= 0:
                 raise ValueError("Width and height must be greater than 0")
 
-            # Check if resize would make tiles inaccessible
             if self._check_tiles_outside_bounds((offset_x, offset_y), (width, height)):
                 self.editor.confirm_dialog.show(
                     "Confirm Resize",
@@ -183,7 +180,6 @@ class ResizeMapDialog(DialogBase):
             self.error_message = str(exc)
 
     def _do_resize(self, offset_x: int, offset_y: int, width: int, height: int):
-        """Actually perform the resize after confirmation."""
         tm = self.editor.tilemap
         tm.capture_history("Resize Map")
         tm.resize((offset_x, offset_y), (width, height))

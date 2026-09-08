@@ -91,8 +91,7 @@ def slope_polygon(cell: int, angle_deg: float) -> list[tuple[float, float]]:
 
 def build_palette(rows: int, cols: int, cell: int, saturation: float = 0.9,
                   value: float = 0.95, grid_lines: bool = True,
-                  slope: float | None = None) -> pygame.Surface:
-    """Build the marker grid surface (no display needed)."""
+                   slope: float | None = None) -> pygame.Surface:
     total = rows * cols
     extra = 1 if slope is not None else 0
     surf = pygame.Surface((cols * cell, (rows + extra) * cell), pygame.SRCALPHA)

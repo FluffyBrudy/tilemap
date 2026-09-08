@@ -466,7 +466,7 @@ class TileSelector(WidgetBase):
 
         mouse_pos = getattr(event, "pos", None) or pygame.mouse.get_pos()
 
-        # divider drag (must be before tree so it takes precedence)
+        # must be before tree so it takes precedence
         divider = self._divider_rect()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and divider.collidepoint(mouse_pos):
             self._tree_dragging = True
@@ -489,7 +489,7 @@ class TileSelector(WidgetBase):
                     pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
                 except Exception:
                     pass
-            # let tree handle hover internally; don't return
+            # don't return: tree handles hover
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F2:
             folder = self._single_selected_folder()
@@ -1043,7 +1043,6 @@ class TileSelector(WidgetBase):
         div_color = COLORS.accent if self._tree_dragging else COLORS.border
         div_w = 2 if self._tree_dragging else 1
         pygame.draw.line(screen, div_color, (div_x, tree_bg.top), (div_x, tree_bg.bottom), div_w)
-        # hover highlight
         if not self._tree_dragging:
             mx, my = pygame.mouse.get_pos()
             if self._divider_rect().collidepoint((mx, my)):
@@ -1054,7 +1053,6 @@ class TileSelector(WidgetBase):
 
         self.draw_view_area(screen)
 
-        # tooltip for truncated tree names
         truncated = getattr(self._tree, "_hovered_truncated", None)
         if truncated:
             mx, my = pygame.mouse.get_pos()

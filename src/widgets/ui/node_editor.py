@@ -248,7 +248,6 @@ class NodeEditor:
         return buttons
 
     def _content_height(self) -> int:
-        """Full panel height for current content + bottom padding."""
         bottom = self._fields_end_y()
         buttons = self._buttons()
         if buttons:

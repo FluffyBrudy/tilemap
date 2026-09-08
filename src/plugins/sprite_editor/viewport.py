@@ -11,6 +11,8 @@ sheet is never covered by the header.
 
 from __future__ import annotations
 
+import math
+
 import pygame
 from pygame import Rect, Surface
 
@@ -38,7 +40,6 @@ class Viewport:
         self._last_sheet: Surface | None = None
         self._sync_camera()
 
-    # -- geometry ------------------------------------------------------
     def resize(self, rect: Rect) -> None:
         self.rect = Rect(rect)
         self._sync_camera()
@@ -58,7 +59,6 @@ class Viewport:
         self.camera.viewport_x = float(self.rect.x)
         self.camera.viewport_y = float(self.rect.y + HEADER_H)
 
-    # -- coordinate helpers --------------------------------------------
     def world_to_screen(self, x: float, y: float) -> tuple[float, float]:
         return self.camera.world_to_screen(x, y)
 
@@ -84,7 +84,6 @@ class Viewport:
         sx, sy, sw, sh = self.camera.world_to_screen_rect(rect.x, rect.y, rect.w, rect.h)
         return Rect(round(sx), round(sy), round(sw), round(sh))
 
-    # -- rendering -----------------------------------------------------
     def draw(self, screen: Surface, tool) -> None:
         pygame.draw.rect(screen, COLORS.panel, self.rect)
         pygame.draw.rect(screen, COLORS.border, self.rect, 1)
@@ -124,15 +123,44 @@ class Viewport:
         # revision: in-place mutations (move/paste/flip/cut) leave the same
         # surface object + size, so it must be part of the cache key
         key = (id(surface), self.doc.revision, surface.get_size(), zoom_bucket)
+        w, h = surface.get_size()
         if key != self._last_sheet_key or self._last_sheet is None:
-            w, h = surface.get_size()
             sw = min(MAX_CACHE_SIZE, max(1, round(w * zoom_bucket)))
             sh = min(MAX_CACHE_SIZE, max(1, round(h * zoom_bucket)))
             scaled = pygame.transform.smoothscale(surface, (sw, sh))
             self._last_sheet_key = key
             self._last_sheet = scaled
         sx, sy = self.camera.world_to_screen(0, 0)
-        screen.blit(self._last_sheet, (round(sx), round(sy)))
+        true_w, true_h = round(w * zoom_bucket), round(h * zoom_bucket)
+        if (true_w, true_h) != self._last_sheet.get_size():
+            # over the GPU-friendly cap: scale only the visible source
+            # patch to the on-screen destination size, so dimensions past
+            # the cap never allocate a full-size intermediate surface.
+            try:
+                dest_rect = Rect(round(sx), round(sy), max(1, true_w), max(1, true_h))
+                vis = dest_rect.clip(self.content_rect)
+                if vis.w <= 0 or vis.h <= 0:
+                    return
+                scale = zoom_bucket if zoom_bucket > 0 else self.camera.zoom
+                fx0 = (vis.x - sx) / scale
+                fy0 = (vis.y - sy) / scale
+                fx1 = (vis.right - sx) / scale
+                fy1 = (vis.bottom - sy) / scale
+                ix0 = max(0, min(w, math.floor(fx0)))
+                iy0 = max(0, min(h, math.floor(fy0)))
+                ix1 = max(0, min(w, math.ceil(fx1)))
+                iy1 = max(0, min(h, math.ceil(fy1)))
+                src_rect = Rect(ix0, iy0, max(0, ix1 - ix0), max(0, iy1 - iy0))
+                src_rect = src_rect.clip(surface.get_rect())
+                if src_rect.w <= 0 or src_rect.h <= 0:
+                    return
+                patch = surface.subsurface(src_rect).copy()
+                scaled = pygame.transform.smoothscale(patch, (max(1, vis.w), max(1, vis.h)))
+            except (ValueError, pygame.error):
+                return
+            screen.blit(scaled, vis.topleft)
+        else:
+            screen.blit(self._last_sheet, (round(sx), round(sy)))
 
     def _draw_grid(self, screen: Surface) -> None:
         """Full-canvas graph-paper grid, like TileGrid: lines span the whole

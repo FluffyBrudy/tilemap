@@ -23,7 +23,6 @@ from widgets.ui.theme import COLORS, FONTS
 
 
 class StatusType(Enum):
-    """Types of status messages"""
 
     INFO = auto()
     SUCCESS = auto()
@@ -34,7 +33,6 @@ class StatusType(Enum):
 
 @dataclass
 class StatusItem:
-    """A status message with type and optional action"""
 
     message: str
     status_type: StatusType = StatusType.INFO
@@ -81,7 +79,6 @@ class StatusBar:
         self.on_status_changed: Callable[[StatusItem], None] | None = None
 
     def _get_status_color(self, status_type: StatusType) -> tuple[int, int, int]:
-        """Get color for status type"""
         colors = {
             StatusType.INFO: COLORS.accent,
             StatusType.SUCCESS: COLORS.success,
@@ -92,7 +89,6 @@ class StatusBar:
         return colors.get(status_type, COLORS.text)
 
     def _get_status_icon(self, status_type: StatusType) -> str:
-        """Get icon asset name for status type."""
         icons = {
             StatusType.INFO: "info",
             StatusType.SUCCESS: "check",
@@ -138,7 +134,6 @@ class StatusBar:
         status_type: StatusType = StatusType.INFO,
         detail: str = "",
     ) -> None:
-        """Set the current status"""
         old_status = self.current
         self.current = StatusItem(message, status_type, detail)
 
@@ -151,23 +146,18 @@ class StatusBar:
             self.on_status_changed(self.current)
 
     def info(self, message: str, detail: str = "") -> None:
-        """Set info status"""
         self.set_status(message, StatusType.INFO, detail)
 
     def success(self, message: str, detail: str = "") -> None:
-        """Set success status"""
         self.set_status(message, StatusType.SUCCESS, detail)
 
     def warning(self, message: str, detail: str = "") -> None:
-        """Set warning status"""
         self.set_status(message, StatusType.WARNING, detail)
 
     def error(self, message: str, detail: str = "") -> None:
-        """Set error status"""
         self.set_status(message, StatusType.ERROR, detail)
 
     def clear(self) -> None:
-        """Clear current status"""
         self.set_status("Ready", StatusType.NEUTRAL)
 
     def get_validation_summary(
@@ -177,7 +167,6 @@ class StatusBar:
         incomplete: int,
         item_name: str = "item",
     ) -> str:
-        """Generate a validation summary message"""
         parts = []
         if total > 0:
             parts.append(f"{total} {item_name}{'s' if total != 1 else ''}")
@@ -189,7 +178,6 @@ class StatusBar:
         return ", ".join(parts) if parts else f"No {item_name}s"
 
     def draw(self, screen: Surface) -> None:
-        """Draw the status bar"""
 
         pygame.draw.rect(screen, COLORS.panel, self.rect)
         pygame.draw.rect(screen, COLORS.border, self.rect, 1)
@@ -249,13 +237,10 @@ class StatusBar:
             screen.blit(time_surf, (time_x, y - time_surf.get_height() // 2))
 
     def resize(self, rect: Rect) -> None:
-        """Resize the status bar"""
         self.rect = rect
 
     def get_history(self) -> list[StatusItem]:
-        """Get status history"""
         return list(self.history)
 
     def clear_history(self) -> None:
-        """Clear status history"""
         self.history.clear()

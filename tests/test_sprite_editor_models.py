@@ -292,7 +292,9 @@ class TestDocumentOrigin:
         assert doc.origin_col == 0
         # label -1 sits at the canvas top; nothing was clipped
         assert doc.surface.get_at((5, 5))[:3] == (255, 0, 0)
-        assert doc.surface.get_size() == (128, 128)  # no right/down growth
+        # rows -1..3 stay addressable: canvas grows to hold them
+        assert doc.surface.get_size() == (128, 160)
+        assert doc.is_valid_cell(0, 3)
 
     def test_write_negative_both_axes(self):
         doc = self.make_doc()
@@ -317,7 +319,7 @@ class TestDocumentOrigin:
         doc.write_tile(0, -1, pygame.Surface((32, 32), pygame.SRCALPHA))
         doc.write_tile(4, 0, pygame.Surface((32, 32), pygame.SRCALPHA))  # col 4 with origin -1
         assert doc.is_valid_cell(4, 0)
-        assert doc.surface.get_size() == (160, 128)  # 5 cols * 32
+        assert doc.surface.get_size() == (160, 160)  # 5 cols x 5 rows
 
     def test_snapshot_restore_origin(self):
         doc = self.make_doc()
@@ -327,7 +329,7 @@ class TestDocumentOrigin:
         doc.write_tile(3, 3, pygame.Surface((32, 32), pygame.SRCALPHA))
         doc.restore(snap)
         assert (doc.origin_col, doc.origin_row) == (0, -1)
-        assert doc.surface.get_size() == (128, 128)
+        assert doc.surface.get_size() == (128, 160)
 
 
 # ---------------------------------------------------------------------------
@@ -351,12 +353,13 @@ class TestClipboard:
         # offsets relative to top-left of selection
         assert sorted((dx, dy) for dx, dy, _ in cl.tiles) == [(0, 0), (0, 1), (1, 0)]
 
-    def test_copy_empty_selection_clears(self):
+    def test_copy_empty_selection_preserves(self):
         doc = self.make_doc()
         cl = Clipboard()
         cl.tiles = [(0, 0, pygame.Surface((1, 1)))]
         assert not cl.copy_from_selection(doc, Selection())
-        assert cl.is_empty
+        # failed copy must not destroy previously copied tiles
+        assert not cl.is_empty
 
     def test_paste_surfaces_recompute(self):
         doc = self.make_doc()

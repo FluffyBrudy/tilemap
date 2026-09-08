@@ -98,19 +98,16 @@ class StandaloneErrorConsole:
         self.monitor_thread.start()
 
     def _get_text_selection(self) -> tuple[int, int]:
-        """Get normalized selection start and end positions."""
         if self.selection_start <= self.selection_end:
             return self.selection_start, self.selection_end
         return self.selection_end, self.selection_start
 
     def _select_all(self):
-        """Select all text in search box."""
         self.selection_start = 0
         self.selection_end = len(self.search_text)
         self.cursor_pos = self.selection_end
 
     def _delete_selected(self):
-        """Delete selected text."""
         start, end = self._get_text_selection()
         if start != end:
             self.search_text = self.search_text[:start] + self.search_text[end:]
@@ -121,7 +118,6 @@ class StandaloneErrorConsole:
         return False
 
     def _delete_word_left(self):
-        """Delete word to the left of cursor."""
         if self._delete_selected():
             return
 
@@ -138,7 +134,6 @@ class StandaloneErrorConsole:
             self._refresh_entries()
 
     def _move_cursor_word_left(self, shift_held: bool = False):
-        """Move cursor one word left."""
         pos = self.cursor_pos
         while pos > 0 and pos <= len(self.search_text) and self.search_text[pos - 1].isspace():
             pos -= 1
@@ -151,7 +146,6 @@ class StandaloneErrorConsole:
             self.selection_end = self.cursor_pos
 
     def _move_cursor_word_right(self, shift_held: bool = False):
-        """Move cursor one word right."""
         pos = self.cursor_pos
         while pos < len(self.search_text) and self.search_text[pos].isspace():
             pos += 1
@@ -164,8 +158,6 @@ class StandaloneErrorConsole:
             self.selection_end = self.cursor_pos
 
     def _auto_select_font(self):
-        """Returns the best available coding font using centralized font manager."""
-
         candidates = [
             "jetbrainsmono",
             "firacode",
@@ -179,7 +171,6 @@ class StandaloneErrorConsole:
         return "monospace"
 
     def _update_layout(self):
-        """Recalculate UI Rects."""
         w = self.width
 
         self._search_rect = Rect(15, self.TITLEBAR_H + 10, 250, 26)
@@ -222,7 +213,6 @@ class StandaloneErrorConsole:
         self._refresh_entries()
 
     def _purge_logs(self) -> None:
-        """Permanently purge the log file (truncate to empty)."""
         try:
             if self.log_file and self.log_file.exists():
                 with open(self.log_file, "w", encoding="utf-8"):
@@ -258,7 +248,6 @@ class StandaloneErrorConsole:
         ]
 
     def _get_entry_layout(self, entry: dict, width: int) -> dict[str, Any]:
-        """Calculates dynamic height and text wrapping for a specific entry."""
         wrap_w = width - 245
         msg_text = entry.get("message", "No message")
         ctx_text = entry.get("context", "")
@@ -428,8 +417,6 @@ class StandaloneErrorConsole:
                         return
 
     def _draw_entries(self):
-        """Draws entries with dynamic spacing to prevent overlapping."""
-
         content_y = self.content_rect.y
         curr_y = content_y - self._scroll_offset
 

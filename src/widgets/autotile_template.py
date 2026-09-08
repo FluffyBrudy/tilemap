@@ -114,7 +114,6 @@ TEMPLATES = [
 
 
 class AutotileTemplateApplier:
-    """Helper class to apply rule templates to selections."""
 
     def __init__(self, designer):
         self.designer = designer

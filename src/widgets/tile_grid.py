@@ -642,7 +642,8 @@ class TileGrid:
         from aliases import resolve_tileset
 
         tilesets = getattr(ts_widget, "tilesets", []) or []
-        idx = resolve_tileset(tilesets, tileset_ref or "")
+        base = getattr(self.editor, "base_path", None)
+        idx = resolve_tileset(tilesets, tileset_ref or "", base=base)
         if idx is None:
             return None
         return idx, tilesets[idx], pattern
@@ -651,7 +652,6 @@ class TileGrid:
         """Plot the armed alias anchored at the hover cell. Returns cell count."""
         if self.hover_cell is None:
             return 0
-        tile_w, tile_h = self.tile_size
         autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
         vg_map: dict = {}
         selected_group: str | None = None
@@ -1249,7 +1249,6 @@ class TileGrid:
         return True
 
     def remove_tile(self):
-        """Remove tile or object at hover position."""
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
         if not active_layer:
             return
@@ -1369,14 +1368,12 @@ class TileGrid:
         return False
 
     def _point_in_selection(self, grid_pos: tuple[int, int]) -> bool:
-        """Check if a grid position is inside the current selection."""
         if not self.selection_rect:
             return False
         x1, y1, x2, y2 = self.selection_rect
         return x1 <= grid_pos[0] <= x2 and y1 <= grid_pos[1] <= y2
 
     def _finalize_selection(self):
-        """Clean up empty selections after drag."""
         if self.selection_rect:
             x1, y1, x2, y2 = self.selection_rect
             if x1 == x2 and y1 == y2:
@@ -1390,7 +1387,7 @@ class TileGrid:
         auto-named, persisted immediately, and registered into the active
         palette scope so it is paintable at once (rename later in Composer).
         """
-        from aliases import AliasFile, AliasPattern, alias_path_for
+        from aliases import AliasFile, AliasPattern
 
         notify = self.editor.notifications.notify
         rect = getattr(self, "selection_rect", None)
@@ -1437,10 +1434,19 @@ class TileGrid:
             tileset_ref = to_project_path(ts_path, Path(base)) if base else ts_path.name
         except Exception:
             tileset_ref = ts_path.name
+        from aliases import alias_key_for, load_alias_path, resolve_alias_path
         aliases_dir = Path(self.editor.data_root) / self.editor.config.get("aliases_path", "aliases")
-        stem = ts_path.stem
-        path = alias_path_for(aliases_dir, stem)
-        alias_file = AliasFile.load(path) if path.exists() else AliasFile(tileset=tileset_ref)
+        key = alias_key_for(tileset_ref)
+        path = resolve_alias_path(aliases_dir, tileset_ref)
+        existing = load_alias_path(aliases_dir, tileset_ref)
+        if existing is not None:
+            loaded = AliasFile.load(existing)
+            if not loaded.tileset or loaded.tileset == tileset_ref:
+                alias_file = loaded
+            else:
+                alias_file = AliasFile(tileset=tileset_ref)
+        else:
+            alias_file = AliasFile(tileset=tileset_ref)
         if not alias_file.tileset:
             alias_file.tileset = tileset_ref
         taken = {a.name for a in alias_file.aliases}
@@ -1458,7 +1464,7 @@ class TileGrid:
             return False
         register = getattr(self.editor, "register_alias_source", None)
         if callable(register):
-            register(stem)
+            register(key)
         palette = getattr(self.editor, "alias_palette", None)
         if palette is not None and hasattr(palette, "refresh_items"):
             palette.refresh_items(force=True)
@@ -1467,7 +1473,6 @@ class TileGrid:
         return True
 
     def copy_selection(self):
-        """Copy the current selection to clipboard."""
         if not self.selection_rect:
             return
 
@@ -1519,7 +1524,6 @@ class TileGrid:
             self.editor.notifications.notify("Nothing to copy")
 
     def paste_clipboard(self, target_pos: tuple[int, int]):
-        """Paste clipboard contents at the given grid position."""
         if not self.clipboard:
             return
 
@@ -1562,7 +1566,6 @@ class TileGrid:
             self.editor.notifications.notify("Cannot paste: layer type mismatch")
 
     def delete_selection(self):
-        """Delete all tiles/objects within the selection rectangle."""
         if not self.selection_rect:
             return
 
@@ -2177,14 +2180,12 @@ class TileGrid:
             if visible:
                 pygame.draw.line(screen, border_color, start, end, border_width)
 
-        # Draw grid coordinates at corners if zoom is reasonable
         if self.zoom_level >= 0.5:
             font_size = max(10, int(12 * self.zoom_level))
             coord_font = FONTS.get_font(font_size)
             coord_color = (100, 200, 255)
             bg_color = (0, 0, 0, 180)
 
-            # Top-left corner
             if self.rect.collidepoint(boundary.topleft):
                 coord_text = f"({ox}, {oy})"
                 text_surf = coord_font.render(coord_text, True, coord_color)
@@ -2197,7 +2198,6 @@ class TileGrid:
                 screen.blit(bg_surf, text_pos)
                 screen.blit(text_surf, (text_pos[0] + 2, text_pos[1] + 1))
 
-            # Bottom-right corner
             end_x = ox + map_w
             end_y = oy + map_h
             br_point = (boundary.right, boundary.bottom)
@@ -2488,8 +2488,7 @@ class TileGrid:
             scaled = self._scaled_image_cache.get(cache_key)
             if scaled is None or scaled.get_size() != rect.size:
                 scaled = pygame.transform.scale(image, rect.size)
-                # invalidate old sizes for this layer to avoid unbounded growth
-                # keep at most one scaled entry per layer (latest size)
+                # avoid unbounded growth
                 for k in list(self._scaled_image_cache.keys()):
                     if k[0] == id(layer):
                         self._scaled_image_cache.pop(k, None)

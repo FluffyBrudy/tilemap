@@ -44,7 +44,6 @@ class Timeline:
         self.surface = surface
         self.tile_size = tile_size
 
-        # Grid offset for aligning extraction
         self.grid_offset_x: int = 0
         self.grid_offset_y: int = 0
 
@@ -52,7 +51,6 @@ class Timeline:
         self.selected_index: int = -1
         self.scroll_x: float = 0
 
-        # Drag-reorder state
         self._dragging = False
         self._drag_from: int = -1
         self._drag_insert: int = -1
@@ -63,7 +61,6 @@ class Timeline:
         # Click-click move state (-1 = nothing armed)
         self._pending_move: int = -1
 
-        # Duration text editing
         self._editing_dur = False
         self._editing_idx: int = -1
         self._dur_text = ""
@@ -77,21 +74,14 @@ class Timeline:
         self._marker_drag_moved: bool = False
         self._marker_hover_index: int = -1
 
-        # Callbacks
         self.on_frame_selected: Callable[[int], None] | None = None
         self.on_frames_changed: Callable[[], None] | None = None
         self.on_markers_changed: Callable[[], None] | None = None
 
-        # Fonts
         self._font: pygame.font.Font | None = None
         self._font_sm: pygame.font.Font | None = None
 
-        # Cache frame thumbnails
         self._thumb_cache: dict[int, pygame.Surface] = {}
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def has_pending_move(self) -> bool:
         return self._pending_move >= 0
@@ -133,10 +123,6 @@ class Timeline:
     def resize(self, rect: Rect) -> None:
         self.rect = rect
 
-    # ------------------------------------------------------------------
-    # Events
-    # ------------------------------------------------------------------
-
     DRAG_THRESHOLD = 6  # px of horizontal movement before reorder arms
 
     def handle_event(self, event: pygame.event.Event) -> bool:
@@ -170,7 +156,6 @@ class Timeline:
                 self._marker_drag_moved = False
                 return True
 
-        # Duration editing keyboard
         if self._editing_dur:
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -188,7 +173,6 @@ class Timeline:
                     if len(self._dur_text) < 6:
                         self._dur_text += event.unicode
                     return True
-            # Click outside editing area → commit
             if event.type == pygame.MOUSEBUTTONDOWN:
                 self._commit_duration()
 
@@ -198,7 +182,6 @@ class Timeline:
         ):
             return False
 
-        # Keyboard shortcuts (when timeline has focus)
         if event.type == pygame.KEYDOWN and self.rect.collidepoint(mouse):
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
                 if self._marker_hover_index >= 0:
@@ -212,7 +195,6 @@ class Timeline:
                 self._duplicate_selected()
                 return True
 
-        # Delete marker (right-click on marker diamond)
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             if self.rect.collidepoint(mouse):
                 mi = self._marker_at(mouse)
@@ -222,7 +204,6 @@ class Timeline:
                         self.on_markers_changed()
                     return True
 
-        # Left-click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse):
                 mi = self._marker_at(mouse)
@@ -231,7 +212,6 @@ class Timeline:
                     self._marker_drag_moved = False
                     return True
                 idx = self._cell_at(mouse)
-                # Check if clicking on duration label
                 if idx >= 0 and self._is_duration_click(mouse, idx):
                     self._start_dur_edit(idx)
                     return True
@@ -293,20 +273,14 @@ class Timeline:
 
         return False
 
-    # ------------------------------------------------------------------
-    # Drawing
-    # ------------------------------------------------------------------
-
     def draw(self, screen: pygame.Surface) -> None:
         self._ensure_fonts()
         clip = screen.get_clip()
         screen.set_clip(self.rect)
 
-        # Background
         pygame.draw.rect(screen, COLORS.bg, self.rect)
         pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
-        # Header
         hdr = Rect(self.rect.x, self.rect.y, self.rect.w, HEADER_H)
         pygame.draw.rect(screen, COLORS.header, hdr)
         label = f"Timeline  ({len(self.frames)} frames)"
@@ -317,7 +291,6 @@ class Timeline:
         band_top = self.rect.y + HEADER_H
         content_y = band_top + MARKER_BAND_H + 2
 
-        # Marker band background
         band_rect = Rect(self.rect.x, band_top, self.rect.w, MARKER_BAND_H)
         pygame.draw.rect(screen, COLORS.panel_alt, band_rect)
         pygame.draw.line(
@@ -370,7 +343,6 @@ class Timeline:
                 )
                 screen.blit(tag, (tx, band_top + 2))
 
-        # Draw frame cells
         for i, frame in enumerate(self.frames):
             cx = self.rect.x + CELL_PAD + i * (CELL_W + CELL_PAD) - int(self.scroll_x)
             cy = content_y
@@ -378,7 +350,6 @@ class Timeline:
             if cx + CELL_W < self.rect.x or cx > self.rect.right:
                 continue
 
-            # Cell background
             is_selected = i == self.selected_index
             is_hover = self._cell_at(pygame.mouse.get_pos()) == i and not self._dragging
             if is_selected:
@@ -399,20 +370,17 @@ class Timeline:
                     screen, COLORS.border, cell_rect, 1, border_radius=SHAPE.radius
                 )
 
-            # Thumbnail
             thumb = self._get_thumb(frame.variant_id)
             if thumb:
                 tx = cx + (CELL_W - THUMB_SIZE) // 2
                 ty = cy + 4
                 screen.blit(thumb, (tx, ty))
 
-            # Frame index
             idx_label = self._font_sm.render(
                 f"#{frame.variant_id}", True, COLORS.text_dim
             )
             screen.blit(idx_label, (cx + 4, cy + 4))
 
-            # Duration
             dur_y = cy + THUMB_SIZE + 4
             if self._editing_dur and self._editing_idx == i:
                 dur_str = self._dur_text + (
@@ -428,7 +396,6 @@ class Timeline:
             dur_x = cx + (CELL_W - dur_surf.get_width()) // 2
             screen.blit(dur_surf, (dur_x, dur_y))
 
-        # Drag insert indicator
         if self._dragging and self._drag_insert >= 0:
             insert_x = (
                 self.rect.x
@@ -445,7 +412,6 @@ class Timeline:
                 3,
             )
 
-        # Scrubber
         if self.frames and self.scrubber_frac > 0:
             total_w = len(self.frames) * (CELL_W + CELL_PAD)
             sx = (
@@ -463,7 +429,6 @@ class Timeline:
                     2,
                 )
 
-        # Scroll bar
         total_content_w = len(self.frames) * (CELL_W + CELL_PAD) + CELL_PAD
         if total_content_w > self.rect.w:
             bar_w = max(20, int(self.rect.w * (self.rect.w / total_content_w)))
@@ -475,10 +440,6 @@ class Timeline:
             pygame.draw.rect(screen, COLORS.border, bar_rect, border_radius=SHAPE.radius_sm)
 
         screen.set_clip(clip)
-
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
 
     def _band_top(self) -> int:
         return self.rect.y + HEADER_H
@@ -599,12 +560,10 @@ class Timeline:
         if variant_id in self._thumb_cache:
             return self._thumb_cache[variant_id]
         tw, th = self.tile_size
-        # Calculate cols based on available space after offset
         available_w = self.surface.get_width() - self.grid_offset_x
         cols = max(1, available_w // tw)
         col = variant_id % cols
         row = variant_id // cols
-        # Apply grid offset to source rect
         src = Rect(self.grid_offset_x + col * tw, self.grid_offset_y + row * th, tw, th)
         if not self.surface.get_rect().contains(src):
             return None

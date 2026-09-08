@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pygame
 from pygame import Rect, Surface
 
@@ -37,10 +39,11 @@ class ScaleDialog(DialogBase):
     def _apply(self):
         try:
             factor = float(self._input.text)
-            if factor <= 0:
+            if not math.isfinite(factor) or factor < 0.1 or factor > 8.0:
                 return
             if self._on_apply_cb:
-                self._on_apply_cb(factor)
+                if self._on_apply_cb(factor) is False:
+                    return
             self.hide()
         except ValueError:
             pass

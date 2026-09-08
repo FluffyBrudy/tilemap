@@ -459,7 +459,6 @@ class Tilemap:
                     tile_data["gid"] = ttype_to_firstgid[ttype] + variant
                 save_data["data"]["ongrid"][key] = tile_data
 
-        # Atomic write: stage to temp file then replace
         tmp_path = target_path.with_name(f".{target_path.name}.tmp")
         try:
             with open(tmp_path, "w") as f:
@@ -774,7 +773,6 @@ class Tilemap:
             logging.error(error_msg, exc_info=True)
 
     def _load_layer_from_dict(self, layer_data: dict):
-        """Load a layer from dictionary format."""
         from layers import Layer
 
         image_path = layer_data.get("image_path")

@@ -88,28 +88,22 @@ DARK_COLORS = UIColorSet(
     scrollbar_thumb_hover=(100, 110, 130),
 )
 MOLOKAI_COLORS = UIColorSet(
-    # Base - stepped elevation
     bg=(26, 29, 36),
     panel=(36, 39, 48),
     panel_alt=(30, 33, 41),
     header=(44, 47, 57),
-    # Borders
     border=(62, 66, 78),
     border_soft=(46, 50, 62),
-    # Text
     text=(235, 238, 242),
     text_dim=(170, 176, 185),
     text_muted=(125, 132, 142),
-    # Accent - cleaner blue
     accent=(75, 145, 205),
     accent_hover=(95, 165, 220),
     accent_active=(55, 125, 185),
-    # Semantic
     success=(80, 190, 125),
     danger=(220, 85, 90),
     danger_hover=(235, 105, 110),
     warning=(235, 175, 70),
-    # Interaction
     hover=(50, 56, 68),
     selected=(48, 91, 145),
 )
@@ -180,7 +174,6 @@ MONOKAI_COLORS = UIColorSet(
 )
 
 MIDNIGHT_COLORS = UIColorSet(
-    # Deep-navy modern dark: strong elevation steps, teal accent
     bg=(10, 13, 22),
     panel=(17, 21, 33),
     panel_alt=(13, 16, 26),
@@ -206,7 +199,6 @@ MIDNIGHT_COLORS = UIColorSet(
 )
 
 NORD_COLORS = UIColorSet(
-    # Frosted nord dark: cool slate surfaces, icy blue accent
     bg=(32, 36, 47),
     panel=(43, 48, 62),
     panel_alt=(37, 42, 54),
@@ -480,7 +472,6 @@ class UIFonts:
         style: FontStyle = FontStyle.NORMAL,
         family: str | None = None,
     ) -> pygame.font.Font:
-        """Get font with specified properties."""
         if family is None:
             family = self.config.family
         if size is None:
@@ -494,7 +485,6 @@ class UIFonts:
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
     ) -> pygame.font.Font:
-        """Get monospace font."""
         if size is None:
             size = self.config.size_md
         return font_manager.get_font(self.config.mono_family, size, weight, style)
@@ -505,7 +495,6 @@ class UIFonts:
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
     ) -> pygame.font.Font:
-        """Get sans-serif font."""
         if size is None:
             size = self.config.size_md
         return font_manager.get_font(self.config.sans_family, size, weight, style)
@@ -515,7 +504,6 @@ class UIFonts:
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
     ) -> pygame.font.Font:
-        """Get small font."""
         return self.get_font(self.config.size_sm, weight, style)
 
     def get_medium_font(
@@ -523,7 +511,6 @@ class UIFonts:
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
     ) -> pygame.font.Font:
-        """Get medium font."""
         return self.get_font(self.config.size_md, weight, style)
 
     def get_large_font(
@@ -531,25 +518,20 @@ class UIFonts:
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
     ) -> pygame.font.Font:
-        """Get large font."""
         return self.get_font(self.config.size_lg, weight, style)
 
     def get_title_font(
         self, weight: FontWeight = FontWeight.BOLD, style: FontStyle = FontStyle.NORMAL
     ) -> pygame.font.Font:
-        """Get title font."""
         return self.get_font(self.config.size_title, weight, style)
 
     def get_bold_font(self, size: int | None = None) -> pygame.font.Font:
-        """Get bold font."""
         return self.get_font(size, FontWeight.BOLD)
 
     def get_italic_font(self, size: int | None = None) -> pygame.font.Font:
-        """Get italic font."""
         return self.get_font(size, FontWeight.REGULAR, FontStyle.ITALIC)
 
     def get_bold_italic_font(self, size: int | None = None) -> pygame.font.Font:
-        """Get bold italic font."""
         return self.get_font(size, FontWeight.BOLD, FontStyle.ITALIC)
 
 

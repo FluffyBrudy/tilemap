@@ -16,12 +16,6 @@ CHECKMARK_OFFSET_Y = -1
 
 
 class Checkbox:
-    """A toggleable checkbox with label.
-
-    Tracks its own checked and disabled state independently.
-    Fires on_changed(checked: bool) when the user toggles it.
-    Returns True from handle_event when click is consumed.
-    """
 
     def __init__(
         self,

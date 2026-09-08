@@ -45,14 +45,14 @@ class Clipboard:
         """
         cells = selection.sorted_cells()
         if not cells or not doc.surface:
-            self.clear()
             return False
         min_col = min(c for c, _ in cells)
         min_row = min(r for _, r in cells)
-        self.tiles = [
+        tiles = [
             (col - min_col, row - min_row, doc.extract_tile(col, row))
             for col, row in cells
         ]
+        self.tiles = tiles
         self.tile_size = doc.tile_size
         self.origin_local = (min_col * doc.tw, min_row * doc.th)
         return True

@@ -68,14 +68,28 @@ class PasteCommand(Command):
         target_col: int,
         target_row: int,
         tiles: list[tuple[int, int, pygame.Surface]],
+        src_tile_size: tuple[int, int] | None = None,
     ):
         self.target = (int(target_col), int(target_row))
         self.tiles = list(tiles)
+        self.src_tile_size = src_tile_size
 
     def _do(self, doc: Document, selection: Selection) -> None:
+        surfs = self.tiles
+        if (self.src_tile_size and self.src_tile_size != doc.tile_size
+                and self.src_tile_size[0] > 0 and self.src_tile_size[1] > 0):
+            # grid changed since the copy: retile surfaces to the
+            # current cell size instead of overflowing neighbors
+            sx = doc.tw / self.src_tile_size[0]
+            sy = doc.th / self.src_tile_size[1]
+            scaled = []
+            for dx, dy, surf in self.tiles:
+                w, h = max(1, round(surf.get_width() * sx)), max(1, round(surf.get_height() * sy))
+                scaled.append((dx, dy, pygame.transform.scale(surf, (w, h))))
+            surfs = scaled
         placements = [
             (self.target[0] + dx, self.target[1] + dy, surf)
-            for dx, dy, surf in self.tiles
+            for dx, dy, surf in surfs
         ]
         # write_tile auto-grows the canvas / shifts the origin as needed
         for col, row, surf in placements:
@@ -255,12 +269,10 @@ class TextStampCommand(Command):
             return
         surf = self.text_surface
         if abs(self.angle) > 0.01:
-            # rotate around center, keep alpha
             surf = pygame.transform.rotate(surf, self.angle)
         x, y, w, h = self.rect
         # center the (possibly rotated) surface in the original rect
         sw, sh = surf.get_size()
-        # world rect center vs rotated surface center
         cx = x + w / 2.0
         cy = y + h / 2.0
         blit_x = int(round(cx - sw / 2.0))

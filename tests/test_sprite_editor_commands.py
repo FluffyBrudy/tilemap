@@ -366,3 +366,52 @@ class TestTrimRaggedEdge:
         assert doc.trim_to_content() is True
         assert doc.surface.get_size() == (32, 32)
         assert doc.surface.get_at((10, 7)) == (1, 2, 3, 255)
+
+
+class TestNegativeGrowth:
+    def test_write_negative_shifts_pixels(self):
+        doc = make_doc(w=32, h=32)
+        fill_tile(doc, 0, 0, (200, 30, 30, 255))
+        tile = pygame.Surface((32, 32), pygame.SRCALPHA)
+        tile.fill((10, 20, 30, 255))
+        doc.write_tile(-1, 0, tile)
+        assert doc.surface.get_size() == (64, 32)
+        assert (doc.origin_col, doc.origin_row) == (-1, 0)
+        # old content moved right by one tile, new tile at left
+        assert pixel_at(doc, 1, 0) == (200, 30, 30, 255)
+        assert pixel_at(doc, 0, 0) == (10, 20, 30, 255)
+
+    def test_ensure_contains_negative(self):
+        doc = make_doc(w=32, h=32)
+        fill_tile(doc, 0, 0)
+        assert doc.ensure_contains_cells([(-1, -1)]) is True
+        assert doc.surface.get_size() == (64, 64)
+        assert pixel_at(doc, 1, 1) == (200, 30, 30, 255)
+
+
+class TestModelGuards:
+    def test_tile_size_rejects_nonpositive(self):
+        import pytest as _pytest
+
+        doc = make_doc()
+        with _pytest.raises(ValueError):
+            doc.set_tile_size((0, 32))
+        with _pytest.raises(ValueError):
+            doc.set_tile_size((-8, 32))
+        assert doc.tile_size == (32, 32)
+
+    def test_append_sheet_copies(self):
+        sheet = pygame.Surface((32, 32), pygame.SRCALPHA)
+        sheet.fill((1, 2, 3, 255))
+        blank = Document(None, (32, 32))
+        blank.append_sheet(sheet)
+        sheet.fill((9, 9, 9, 255))
+        assert blank.surface.get_at((0, 0)) == (1, 2, 3, 255)
+
+    def test_scale_moves_regions(self):
+        from plugins.sprite_editor.document import Region
+
+        doc = make_doc()
+        doc.add_region(Region(id="r", rect=[0.0, 0.0, 32.0, 32.0], name=""))
+        doc.scale(2.0)
+        assert doc.regions[0].rect == [0.0, 0.0, 64.0, 64.0]

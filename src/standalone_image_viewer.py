@@ -16,15 +16,7 @@ from widgets.ui.theme import COLORS, FONTS  # noqa: E402
 
 
 class ImageViewer:
-    """Standalone image viewer with scrolling and grid support."""
-
     def __init__(self, image_path: Path, window_size: tuple[int, int] = (1000, 700)):
-        """Initialize the image viewer.
-
-        Args:
-            image_path: Path to the image file
-            window_size: Window dimensions (width, height)
-        """
         pygame.init()
 
         self.image_path = image_path
@@ -82,7 +74,6 @@ class ImageViewer:
         self.update_display_image()
 
     def update_display_image(self):
-        """Update the displayed image based on zoom level."""
         if self.zoom_level != 1.0:
             new_size = (
                 int(self.image_size[0] * self.zoom_level),
@@ -95,7 +86,6 @@ class ImageViewer:
             self.display_image = self.original_image
 
     def handle_events(self):
-        """Handle pygame events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -128,7 +118,6 @@ class ImageViewer:
                 self.handle_mouse_click(event.pos)
 
     def handle_general_keydown(self, event):
-        """Handle keyboard input when not in text input mode."""
         if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
             self.running = False
         elif event.key == pygame.K_h:
@@ -150,7 +139,6 @@ class ImageViewer:
             self.update_display_image()
 
     def handle_input_keydown(self, event):
-        """Handle keyboard input for text fields."""
         if event.key == pygame.K_ESCAPE:
             self.rows_input_focused = False
             self.cols_input_focused = False
@@ -177,7 +165,6 @@ class ImageViewer:
                 self.cols_input_text += event.unicode
 
     def apply_grid(self):
-        """Apply grid settings from input fields."""
         try:
             rows = int(self.rows_input_text) if self.rows_input_text else 1
             cols = int(self.cols_input_text) if self.cols_input_text else 1
@@ -191,8 +178,6 @@ class ImageViewer:
             self.cols_input_text = str(self.grid_cols)
 
     def handle_mouse_click(self, pos):
-        """Handle mouse clicks."""
-
         if hasattr(self, "rows_input_rect") and self.rows_input_rect.collidepoint(pos):
             self.rows_input_focused = True
             self.cols_input_focused = False
@@ -214,7 +199,6 @@ class ImageViewer:
             self.cols_input_focused = False
 
     def clamp_scroll(self):
-        """Clamp scroll values to valid range."""
         display_size = self.display_image.get_size()
         max_scroll_x = max(0, display_size[0] - self.window_size[0])
         max_scroll_y = max(0, display_size[1] - self.window_size[1] + 100)
@@ -223,7 +207,6 @@ class ImageViewer:
         self.scroll_y = max(0, min(self.scroll_y, max_scroll_y))
 
     def draw(self):
-        """Draw the viewer."""
         self.screen.fill(self.colors["bg"])
 
         image_rect = self.display_image.get_rect()
@@ -239,7 +222,6 @@ class ImageViewer:
         pygame.display.flip()
 
     def draw_grid_overlay(self, image_rect):
-        """Draw grid lines over the image."""
         cell_width = self.display_image.get_width() / self.grid_cols
         cell_height = self.display_image.get_height() / self.grid_rows
 
@@ -266,7 +248,6 @@ class ImageViewer:
                 )
 
     def draw_controls(self):
-        """Draw control panel at the bottom."""
         panel_height = 90
         panel_rect = pygame.Rect(
             0, self.window_size[1] - panel_height, self.window_size[0], panel_height
@@ -389,7 +370,6 @@ class ImageViewer:
         self.screen.blit(help_surf, (10, y_pos))
 
     def run(self):
-        """Main loop."""
         while self.running:
             self.handle_events()
 
@@ -411,7 +391,6 @@ class ImageViewer:
 
 
 def main():
-    """Entry point for standalone image viewer."""
     if len(sys.argv) < 2:
         print("Usage: python standalone_image_viewer.py <image_path>")
         sys.exit(1)

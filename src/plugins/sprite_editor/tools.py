@@ -75,7 +75,9 @@ class Tool:
         pass
 
     def exit(self) -> None:
-        pass
+        # a switch/focus change between RMB-down and RMB-up must not
+        # leave panning latched on forever
+        self._panning = False
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         return False
@@ -83,7 +85,6 @@ class Tool:
     def draw_overlay(self, screen: Surface) -> None:
         pass
 
-    # -- shared camera gestures ---------------------------------------
     def _handle_view_events(self, event: pygame.event.Event) -> bool:
         camera = self.ctx.camera
         if event.type == pygame.MOUSEWHEEL:
@@ -142,7 +143,7 @@ class SelectTool(Tool):
 
     def __init__(self, ctx: ToolContext):
         super().__init__(ctx)
-        self._mode = "idle"  # idle | marquee | move
+        self._mode = "idle"
         self._marquee_screen_start = (0, 0)
         self._marquee_screen_end = (0, 0)
         self._move_anchor: tuple[int, int] | None = None
@@ -157,7 +158,17 @@ class SelectTool(Tool):
         else:
             self.ctx.status("Ready", "")
 
-    # -- interaction ---------------------------------------------------------
+    def exit(self) -> None:
+        # mid-drag tool switches must not leak a stale move/marquee:
+        # the mouse-up lands in the new tool and would otherwise commit
+        # a bogus command when switching back
+        super().exit()
+        self._mode = "idle"
+        self._move_anchor = None
+        self._move_cells = []
+        self._move_ghost = {}
+        self._move_offset = (0, 0)
+
     def handle_event(self, event: pygame.event.Event) -> bool:
         if self._handle_view_events(event):
             return True
@@ -189,6 +200,9 @@ class SelectTool(Tool):
             if event.key == pygame.K_ESCAPE:
                 if self._mode == "move":
                     self._cancel_move()
+                    return True
+                if self._mode == "marquee":
+                    self._mode = "idle"
                     return True
                 return False
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
@@ -237,7 +251,6 @@ class SelectTool(Tool):
         )
         return True
 
-    # -- press / move / release ---------------------------------------------
     def _on_left_down(self, pos: tuple[int, int]) -> None:
         cell = self.ctx.viewport.cell_at_screen(pos)
         ctrl = pygame.key.get_mods() & (pygame.KMOD_CTRL | pygame.KMOD_META)
@@ -315,7 +328,6 @@ class SelectTool(Tool):
         self._mode = "idle"
         self.ctx.status(f"Selection: {len(cells)} tiles", "")
 
-    # -- overlay --------------------------------------------------------------
     def draw_overlay(self, screen: Surface) -> None:
         if self._mode == "move":
             self._draw_move_overlay(screen)
@@ -356,12 +368,20 @@ class PasteTool(Tool):
         self._target: tuple[int, int] = (0, 0)
 
     def enter(self) -> None:
-        self.ctx.status("Paste · LMB to place", "Esc/RMB to cancel")
+        cell = self.ctx.viewport.cell_at_screen(pygame.mouse.get_pos())
+        if cell is not None:
+            self._target = cell
+        self.ctx.status("Paste · LMB/Enter to place", "Esc/RMB to cancel")
 
     def exit(self) -> None:
         pass
 
     def handle_event(self, event: pygame.event.Event) -> bool:
+        # RMB cancels the armed paste; it must win over the base-class
+        # RMB-pan or every cancel attempt just pans the view instead
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            self.cancel()
+            return True
         if self._handle_view_events(event):
             return True
         if event.type == pygame.MOUSEMOTION:
@@ -384,6 +404,13 @@ class PasteTool(Tool):
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.cancel()
             return True
+        if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            # commit the keyboard-nudged ghost: LMB always re-anchors
+            # to the click cell, so arrows alone could never place
+            self._clamp_target()
+            self._place()
+            self.ctx.set_tool("select")
+            return True
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
             self._move_target(event.key)
             return True
@@ -400,13 +427,29 @@ class PasteTool(Tool):
         elif key == pygame.K_DOWN:
             dr = 1
         self._target = (self._target[0] + dc, self._target[1] + dr)
+        self._clamp_target()
+
+    def _clamp_target(self) -> None:
+        doc = self.ctx.doc
+        if not doc.has_canvas:
+            return
+        max_col = doc.origin_col + doc.cols - 1
+        max_row = doc.origin_row + doc.rows - 1
+        self._target = (
+            max(doc.origin_col, min(max_col, self._target[0])),
+            max(doc.origin_row, min(max_row, self._target[1])),
+        )
 
     def _place(self) -> None:
+        if self.ctx.clipboard.is_empty:
+            self.ctx.toast("Nothing to paste")
+            return
         self.ctx.commands.push(
             PasteCommand(
                 self._target[0],
                 self._target[1],
                 self.ctx.clipboard.tiles,
+                self.ctx.clipboard.tile_size,
             ),
             self.ctx.doc,
             self.ctx.selection,
@@ -456,7 +499,7 @@ class RegionTool(Tool):
         super().__init__(ctx)
         self.selected_id: str | None = None
         self._hover_id: str | None = None
-        self._drag: str | None = None  # create | move | resize
+        self._drag: str | None = None
         self._press_rect: list[float] = [0.0, 0.0, 0.0, 0.0]
         self._press_world: tuple[float, float] = (0.0, 0.0)
         self._pending_rect: list[float] = [0.0, 0.0, 0.0, 0.0]
@@ -471,15 +514,15 @@ class RegionTool(Tool):
             self.ctx.toast("Load a spritesheet first")
 
     def exit(self) -> None:
+        super().exit()
         self._drag = None
         self._end_rename()
 
-    # -- helpers -------------------------------------------------------------
     def _selected_region(self) -> Region | None:
         return self.ctx.doc.region_by_id(self.selected_id) if self.selected_id else None
 
     def _region_at(self, pos: tuple[int, int]) -> Region | None:
-        for region in sorted(self.ctx.doc.regions, key=lambda r: -(r.w * r.h)):
+        for region in sorted(self.ctx.doc.regions, key=lambda r: (r.w * r.h)):
             rect = _screen_rect_for_region(self.ctx.camera, region)
             if rect.inflate(8, 8).collidepoint(pos):
                 return region
@@ -519,7 +562,6 @@ class RegionTool(Tool):
                 h = self.doc.size[1] - y0
         return [x, y, w, h]
 
-    # -- interaction ---------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:
         if self._handle_view_events(event):
             return True
@@ -679,11 +721,14 @@ class RegionTool(Tool):
         self.ctx.toast("Region deleted")
         return True
 
-    # -- rename ----------------------------------------------------------------
     def _start_rename(self, region_id: str | None) -> bool:
         region = self.ctx.doc.region_by_id(region_id) if region_id else None
         if region is None:
             return False
+        if self._drag is not None:
+            # renaming mid-drag would swallow the mouse-up and wedge
+            # the drag state; drop the in-flight gesture first
+            self._cancel_drag()
         self._editing_id = region_id
         self._rename_input = InputBox(Rect(0, 0, 160, 24), font=FONTS.get_font(15))
         self._rename_input.text = region.name
@@ -712,7 +757,6 @@ class RegionTool(Tool):
         self._editing_id = None
         self._rename_input = None
 
-    # -- overlay --------------------------------------------------------------
     def draw_overlay(self, screen: Surface) -> None:
         if not self.doc.has_canvas:
             return
@@ -752,9 +796,6 @@ class RegionTool(Tool):
         return self.ctx.doc
 
 
-# -- text ---------------------------------------------------------------
-
-# flameshot-like palette: white, black, red, orange, yellow, green, blue, purple
 _TEXT_FG_PALETTE: list[tuple[int, int, int]] = [
     (255, 255, 255),
     (20, 20, 22),
@@ -765,7 +806,6 @@ _TEXT_FG_PALETTE: list[tuple[int, int, int]] = [
     (70, 120, 210),
     (160, 90, 210),
 ]
-# bg: None = transparent (shown as checker), then same hues plus white/black
 _TEXT_BG_PALETTE: list[tuple[int, int, int] | None] = [
     None,
     (255, 255, 255),
@@ -850,7 +890,6 @@ def _render_text_surface(
     max_text_w = max(1, w - pad * 2)
     lines = _wrap_lines(text, font, max_text_w)
     line_h = font.get_height()
-    # vertical center if lines shorter than box
     total_h = len(lines) * line_h
     y0 = max(pad, (h - total_h) // 2)
     for i, line in enumerate(lines):
@@ -875,11 +914,11 @@ class TextTool(Tool):
 
     def __init__(self, ctx: ToolContext):
         super().__init__(ctx)
-        self._mode: str = "idle"  # idle | drafting | editing
+        self._mode: str = "idle"
         self._draft_rect: list[float] = [0.0, 0.0, 0.0, 0.0]
         self._press_world: tuple[float, float] = (0.0, 0.0)
         self._press_rect: list[float] = [0.0, 0.0, 0.0, 0.0]
-        self._drag: str | None = None  # drafting | move | rotate
+        self._drag: str | None = None
         self._rotate_start_angle: float = 0.0
         self._rotate_press_angle: float = 0.0
 
@@ -910,11 +949,11 @@ class TextTool(Tool):
             self.ctx.status("Text — drag to place label", "Enter commit · Esc cancel")
 
     def exit(self) -> None:
+        super().exit()
         self._drag = None
         self._mode = "idle"
         self._input.is_focused = False
 
-    # -- helpers -------------------------------------------------------
     def _min_world(self) -> float:
         return MIN_SCREEN_PX / max(0.1, self.ctx.camera.zoom)
 
@@ -947,7 +986,6 @@ class TextTool(Tool):
         y = y_above if y_above >= self.ctx.viewport.content_rect.y else y_below
         x = max(self.ctx.viewport.rect.x + 4, min(x, self.ctx.viewport.rect.right - panel_w - 4))
         self._panel_rect = Rect(x, y, panel_w, panel_h)
-        # layout inside
         cx = x + _PANEL_PAD
         cy = y + (panel_h - _SWATCH) // 2
         self._swatch_rects_fg = []
@@ -962,7 +1000,6 @@ class TextTool(Tool):
         cx += 6
         self._btn_minus = Rect(cx, cy, 22, _SWATCH)
         cx += 24
-        # size label gap 10
         cx += 10
         self._btn_plus = Rect(cx, cy, 22, _SWATCH)
         cx += 24
@@ -979,7 +1016,6 @@ class TextTool(Tool):
             h = -h
         return [x, y, w, h]
 
-    # -- commit --------------------------------------------------------
     def _commit(self) -> None:
         text = self._input.text
         if not text.strip():
@@ -1018,10 +1054,8 @@ class TextTool(Tool):
     def _cancel(self) -> None:
         self.cancel()
 
-    # -- events --------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:
         if self._handle_view_events(event):
-            # panning handled; if we are editing, keep panel synced
             return True
         # keyboard: InputBox gets first chance when editing (so typing 't' doesn't toggle tool)
         if self._mode == "editing" and self._input.is_focused:
@@ -1032,7 +1066,6 @@ class TextTool(Tool):
                 if event.key == pygame.K_ESCAPE:
                     self._cancel()
                     return True
-                # let InputBox consume typing/navigation
                 if self._input.handle_event(event):
                     return True
                 if event.key in (pygame.K_UP, pygame.K_DOWN):
@@ -1062,21 +1095,16 @@ class TextTool(Tool):
                     import math
 
                     ang = math.degrees(math.atan2(event.pos[1] - cy, event.pos[0] - cx))
-                    # press orientation is the handle angle at press; keep delta
                     delta = ang - self._rotate_start_angle
                     self._angle = self._rotate_press_angle + delta
-                    # snap to 15° when near
                     snap = round(self._angle / 15.0) * 15.0
                     if abs(self._angle - snap) < 4:
                         self._angle = snap
                 return True
-            # hover (for cursor feedback) — not essential
             return False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # panel hit takes precedence when editing
             if self._mode == "editing" and self._panel_rect:
-                # ensure layout up to date
                 srect = self._screen_rect()
                 if srect:
                     self._compute_panel_layout(srect)
@@ -1101,7 +1129,6 @@ class TextTool(Tool):
                         self._bold = not self._bold
                         return True
                     return True
-                # clicking the rotation handle
                 if self._rot_handle_screen and ((event.pos[0] - self._rot_handle_screen[0]) ** 2 + (event.pos[1] - self._rot_handle_screen[1]) ** 2) <= (_ROT_HANDLE_R + 4) ** 2:
                     import math
 
@@ -1117,7 +1144,6 @@ class TextTool(Tool):
                 self._input.handle_event(event)
                 self._input.is_focused = True
                 return True
-            # rotation handle hit (even if panel not hit)
             if self._mode == "editing":
                 srect = self._screen_rect()
                 if srect:
@@ -1131,18 +1157,15 @@ class TextTool(Tool):
                         self._rotate_start_angle = math.degrees(math.atan2(event.pos[1] - cy, event.pos[0] - cx))
                         return True
                     if srect.collidepoint(event.pos):
-                        # drag to move the box — keep input focused
                         self._input.is_focused = True
                         self._drag = "move"
                         self._press_world = self.ctx.viewport.screen_to_world(*event.pos)
                         self._press_rect = list(self._draft_rect)
                         return True
                     # click outside while editing → commit (flameshot behavior)
-                    # panel already handled; InputBox handled above
                     if not (self._panel_rect and self._panel_rect.collidepoint(event.pos)):
                         self._commit()
                         return True
-            # idle → start drafting
             if self._mode == "idle":
                 if not self.ctx.doc.has_canvas:
                     self.ctx.toast("Load a spritesheet first")
@@ -1158,16 +1181,13 @@ class TextTool(Tool):
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._drag == "drafting":
                 self._drag = None
-                # normalize and check size
                 self._draft_rect = self._normalize_rect(self._draft_rect)
                 if self._draft_rect[2] < self._min_world() or self._draft_rect[3] < self._min_world():
-                    # too small → make a default box at click pos
                     self._draft_rect[2] = max(self._draft_rect[2], 120.0)
                     self._draft_rect[3] = max(self._draft_rect[3], 28.0)
                 self._mode = "editing"
                 self._input.text = ""
                 self._input.is_focused = True
-                # position input at bottom of box (screen) — updated in draw
                 self.ctx.status("Text — type label", "Enter commit · Esc cancel · drag box/○ rotate")
                 return True
             if self._drag in ("move", "rotate"):
@@ -1183,14 +1203,11 @@ class TextTool(Tool):
                 # already handled above when input focused; handle when not
                 self._commit()
                 return True
-            # allow Esc to exit tool back to select via parent — not needed here
         return False
 
-    # -- overlay -----------------------------------------------------
     def draw_overlay(self, screen: Surface) -> None:
         if not self.ctx.doc.has_canvas:
             return
-        # drafting rect
         if self._mode == "drafting" and self._draft_rect[2] >= 0:
             r = screen_rect_for(self.ctx.camera, self._draft_rect[0], self._draft_rect[1], max(0.5, self._draft_rect[2]), max(0.5, self._draft_rect[3]))
             draw_alpha_fill(screen, r, (255, 220, 120), 22)
@@ -1214,7 +1231,6 @@ class TextTool(Tool):
             self._bg,
             self._bold,
         )
-        # scale to screen rect size (world*zoom)
         scaled = preview_src
         if preview_src.get_size() != (max(1, srect.w), max(1, srect.h)):
             try:
@@ -1227,7 +1243,6 @@ class TextTool(Tool):
         else:
             screen.blit(scaled, srect.topleft)
 
-        # box border
         # when angle !=0, draw rotated border via polygon
         if abs(self._angle) > 0.5:
             import math
@@ -1238,7 +1253,6 @@ class TextTool(Tool):
             ca, sa = math.cos(ang), math.sin(ang)
 
             def rot(px, py):
-                # rotate (-w2,-h2) etc around center
                 rx = px * ca - py * sa
                 ry = px * sa + py * ca
                 return (cx + rx, cy + ry)
@@ -1247,11 +1261,9 @@ class TextTool(Tool):
             pygame.draw.lines(screen, (255, 230, 140), True, pts, 1)
         else:
             draw_dashed_border(screen, srect, (255, 230, 140))
-            # inner fill hint when transparent
             if self._bg is None:
                 draw_alpha_fill(screen, srect, (255, 255, 255), 6)
 
-        # rotation handle
         hx, hy = self._rotation_handle_screen_pos(srect)
         self._rot_handle_screen = (hx, hy)
         pygame.draw.line(screen, (255, 230, 140), srect.center, (hx, hy), 1)
@@ -1262,11 +1274,9 @@ class TextTool(Tool):
             lbl = FONTS.get_small_font().render(f"{self._angle:.0f}°", True, COLORS.text)
             screen.blit(lbl, (hx + 10, hy - 7))
 
-        # floating formatting panel
         if self._panel_rect:
             pygame.draw.rect(screen, COLORS.panel, self._panel_rect, border_radius=SHAPE.radius_sm)
             pygame.draw.rect(screen, COLORS.border, self._panel_rect, 1, border_radius=SHAPE.radius_sm)
-            # fg swatches
             for i, r in enumerate(self._swatch_rects_fg):
                 col = _TEXT_FG_PALETTE[i]
                 pygame.draw.rect(screen, col, r, border_radius=3)
@@ -1274,14 +1284,11 @@ class TextTool(Tool):
                 if col == self._fg:
                     pygame.draw.rect(screen, (255, 255, 255), r.inflate(4, 4), 2, border_radius=4)
                     pygame.draw.rect(screen, (0, 0, 0), r.inflate(4, 4), 1, border_radius=4)
-            # separator
             sep_x = self._swatch_rects_fg[-1].right + 6 if self._swatch_rects_fg else self._panel_rect.x + 10
             pygame.draw.line(screen, COLORS.border_soft, (sep_x, self._panel_rect.y + 5), (sep_x, self._panel_rect.bottom - 5), 1)
-            # bg swatches
             for i, r in enumerate(self._swatch_rects_bg):
                 col = _TEXT_BG_PALETTE[i]
                 if col is None:
-                    # checker + cross for transparent
                     pygame.draw.rect(screen, (60, 60, 65), r, border_radius=3)
                     pygame.draw.rect(screen, (40, 40, 44), Rect(r.x, r.y, r.w // 2, r.h // 2), border_radius=2)
                     pygame.draw.rect(screen, (40, 40, 44), Rect(r.x + r.w // 2, r.y + r.h // 2, r.w // 2, r.h // 2), border_radius=2)
@@ -1292,18 +1299,15 @@ class TextTool(Tool):
                 is_sel = (col == self._bg) or (col is None and self._bg is None)
                 if is_sel:
                     pygame.draw.rect(screen, (255, 255, 255), r.inflate(4, 4), 2, border_radius=4)
-            # font size controls
             if self._btn_minus and self._btn_plus and self._btn_bold:
                 for btn, label in [(self._btn_minus, "−"), (self._btn_plus, "+")]:
                     pygame.draw.rect(screen, COLORS.panel_alt, btn, border_radius=3)
                     pygame.draw.rect(screen, COLORS.border_soft, btn, 1, border_radius=3)
                     ts = FONTS.get_font(14).render(label, True, COLORS.text)
                     screen.blit(ts, ts.get_rect(center=btn.center))
-                # size value between
                 mid_x = (self._btn_minus.right + self._btn_plus.x) // 2
                 sz_lbl = FONTS.get_small_font().render(str(self._font_size), True, COLORS.text)
                 screen.blit(sz_lbl, sz_lbl.get_rect(center=(mid_x, self._panel_rect.centery)))
-                # bold toggle
                 bg_col = COLORS.accent if self._bold else COLORS.panel_alt
                 border_col = COLORS.accent_active if self._bold else COLORS.border_soft
                 txt_col = COLORS.text_on_accent if self._bold else COLORS.text
@@ -1312,10 +1316,8 @@ class TextTool(Tool):
                 b_lbl = FONTS.get_bold_font(13).render("B", True, txt_col)
                 screen.blit(b_lbl, b_lbl.get_rect(center=self._btn_bold.center))
 
-        # inline InputBox anchored to box bottom (screen)
         input_w = min(220, max(120, srect.w))
         irect = Rect(srect.x, srect.bottom + 4, input_w, _INPUT_H)
-        # keep inside viewport
         if irect.right > self.ctx.viewport.rect.right - 4:
             irect.x = self.ctx.viewport.rect.right - irect.w - 4
         if irect.bottom > self.ctx.viewport.rect.bottom - 4:
@@ -1323,7 +1325,6 @@ class TextTool(Tool):
         self._input.rect = irect
         self._input._update_content_rect()
         self._input.draw(screen)
-        # hint when empty
         if not self._input.text:
             hint = FONTS.get_small_font().render("Label…  Enter ✓  Esc ✕", True, COLORS.text_muted)
             screen.blit(hint, (irect.x + 8, irect.y + 6))

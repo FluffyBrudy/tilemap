@@ -94,7 +94,6 @@ class AliasComposerEditor:
         self._setup_toolbar_buttons()
         self._update_layout()
 
-    # ------------------------------------------------------------------ setup
     def start_rename(self) -> bool:
         """Begin inline rename of the selected alias."""
         if 0 <= self.selected_alias_idx < len(self.aliases):
@@ -174,7 +173,6 @@ class AliasComposerEditor:
         self.strip_h = max(80, min(r.h - 200, r.bottom - STATUS_H - pos_y))
         self._update_layout()
 
-    # ------------------------------------------------------------- model ops
     def _mark_dirty(self) -> None:
         self.dirty = True
         self._esc_armed = False
@@ -269,7 +267,6 @@ class AliasComposerEditor:
                       if x < w and y < h}
         self._mark_dirty()
 
-    # ------------------------------------------------------------- undo/redo
     def _snapshot(self) -> tuple[dict, int, int]:
         return (dict(self.cells), self.canvas_w, self.canvas_h)
 
@@ -309,7 +306,6 @@ class AliasComposerEditor:
     def get_alias_file(self) -> AliasFile:
         return AliasFile(tileset=self._tileset_ref, aliases=list(self.aliases))
 
-    # ------------------------------------------------------------ persistence
     def _default_save_path(self) -> Path | None:
         if self._data_root is None:
             return None
@@ -381,7 +377,9 @@ class AliasComposerEditor:
         surface = pygame.image.load(tileset_path).convert_alpha()
         editor = cls(Rect(0, 0, window_size[0], window_size[1]), surface, tile_size)
         editor._data_root = Path(data_root) if data_root else None
-        editor._tileset_stem = Path(tileset_path).stem
+        from aliases import alias_key_for
+
+        editor._tileset_stem = alias_key_for(tileset_ref or Path(tileset_path).name)
         editor._tileset_ref = tileset_ref or Path(tileset_path).name
         editor._fit_canvas()
         sw, sh = editor.tileset_surface.get_size()
@@ -390,7 +388,6 @@ class AliasComposerEditor:
             editor._clamp_ts_scroll()
         return editor
 
-    # ------------------------------------------------------------------ view
     def _fit_canvas(self) -> None:
         tw, th = self.tile_size
         if self.canvas_rect.w <= 0 or self.canvas_rect.h <= 0:
@@ -482,7 +479,6 @@ class AliasComposerEditor:
             surf.blit(self.tileset_surface, (0, 0), src)
         return surf
 
-    # ------------------------------------------------------------------ events
     def handle_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.VIDEORESIZE:
             self.rect = Rect(0, 0, event.w, event.h)
@@ -707,7 +703,6 @@ class AliasComposerEditor:
             return True
         return False
 
-    # ------------------------------------------------------------------ draw
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill(COLORS.bg)
         pygame.draw.rect(screen, COLORS.header, self.toolbar_rect)
@@ -841,7 +836,6 @@ class AliasComposerEditor:
         finally:
             screen.set_clip(clip)
 
-    # ------------------------------------------------------------------ run
     def run(self) -> None:
         screen = pygame.display.get_surface()
         if screen is None:

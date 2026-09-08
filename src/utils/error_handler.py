@@ -17,13 +17,10 @@ from typing import Any
 
 
 class ErrorHandler:
-    """Singleton error handler for centralized error capture and logging."""
-
     _instance = None
     _lock = threading.Lock()
 
     def __new__(cls, log_root: Path = None, config: dict = None):
-        """Ensure singleton pattern with thread safety."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -101,10 +98,6 @@ class ErrorHandler:
         severity: str = "error",
         message: str | None = None,
     ) -> None:
-        """
-        Internal implementation of error capture.
-        """
-
         if severity not in self._severity_levels:
             return
 
@@ -136,7 +129,6 @@ class ErrorHandler:
         self._notify_console(error_data)
 
     def _write_to_log(self, error_data: dict[str, Any]) -> None:
-        """Write error data to log file."""
         try:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(error_data) + "\n")
@@ -145,7 +137,6 @@ class ErrorHandler:
             print(f"Original error: {error_data}")
 
     def _console_output(self, error_data: dict[str, Any]) -> None:
-        """Output error to console with formatting."""
         severity_symbol = {"error": "ERROR", "warning": "WARN", "info": "INFO"}.get(
             error_data["severity"], "ERROR"
         )
@@ -156,7 +147,6 @@ class ErrorHandler:
         )
 
     def get_recent_errors(self, count: int = 10) -> list[dict[str, Any]]:
-        """Get recent errors from memory."""
         with self._lock:
             return (
                 self._recent_errors[-count:]
@@ -165,12 +155,10 @@ class ErrorHandler:
             )
 
     def clear_errors(self) -> None:
-        """Clear recent errors from memory."""
         with self._lock:
             self._recent_errors.clear()
 
     def get_error_summary(self) -> dict[str, Any]:
-        """Get summary of error statistics."""
         with self._lock:
             if not self._recent_errors:
                 return {"total": 0, "by_type": {}, "by_context": {}, "by_severity": {}}
@@ -198,7 +186,6 @@ class ErrorHandler:
             }
 
     def _notify_console(self, error_data: dict[str, Any]) -> None:
-        """Notify error console of new error (if available)."""
         with self._lock:
             if self._console:
                 try:
@@ -207,12 +194,10 @@ class ErrorHandler:
                     self._console = None
 
     def register_console(self, console) -> None:
-        """Register an error console for real-time updates."""
         with self._lock:
             self._console = console
 
     def unregister_console(self) -> None:
-        """Unregister error console."""
         with self._lock:
             self._console = None
 

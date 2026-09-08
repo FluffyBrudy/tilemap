@@ -73,13 +73,6 @@ class RegexAutomapDesigner:
     """
 
     def __init__(self, editor: "Editor", x: int, y: int):
-        """Initialize the regex automap designer.
-
-        Args:
-            editor: Reference to the main editor
-            x: Initial X position
-            y: Initial Y position
-        """
         warnings.warn(
             "RegexAutomapDesigner is deprecated and will be removed in a "
             "future release. Its rules are not resilient to tileset removal.",
@@ -118,11 +111,6 @@ class RegexAutomapDesigner:
         self._update_layout()
 
     def _create_match_mode_icons(self) -> dict:
-        """Create and cache icon surfaces for each match mode.
-
-        Returns:
-            Dictionary mapping MatchMode to icon Surface
-        """
         icon_size = 16
         icons = {}
 
@@ -230,7 +218,6 @@ class RegexAutomapDesigner:
         return icons
 
     def _update_layout(self):
-        """Update layout rectangles based on current window position."""
 
         self.close_btn_rect = Rect(
             self.rect.right - 30, self.rect.y, 30, self.header_height
@@ -267,24 +254,14 @@ class RegexAutomapDesigner:
         )
 
     def show(self) -> None:
-        """Display the automap designer window."""
         self.visible = True
         self._update_preview_from_selector()
 
     def hide(self) -> None:
-        """Hide the automap designer window."""
         self.visible = False
         self.is_dragging = False
 
     def handle_event(self, event) -> bool:
-        """Process user input events.
-
-        Args:
-            event: Pygame event to process
-
-        Returns:
-            True if event was handled, False otherwise
-        """
         if not self.visible:
             return False
 
@@ -350,11 +327,6 @@ class RegexAutomapDesigner:
         return not (not self.rect.collidepoint(mouse_pos) and not self.is_dragging)
 
     def draw(self, screen: Surface):
-        """Render the automap designer UI.
-
-        Args:
-            screen: Pygame surface to draw on
-        """
         if not self.visible:
             return
 
@@ -380,7 +352,6 @@ class RegexAutomapDesigner:
         self._draw_buttons(screen)
 
     def _update_preview_from_selector(self):
-        """Update current tile selection from the editor's tile selector."""
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if tile_selector and tile_selector.selected_tile:
             ts = tile_selector.get_active_tile()
@@ -404,7 +375,6 @@ class RegexAutomapDesigner:
                     error_handler.capture(e, context="regex_automap_preview")
 
     def _handle_rule_list_click(self, mouse_pos):
-        """Handle clicks on the rule list."""
 
         if self.new_rule_btn_rect.collidepoint(mouse_pos):
             self._reset_selection()
@@ -425,15 +395,6 @@ class RegexAutomapDesigner:
                 break
 
     def _handle_grid_click(self, mouse_pos, button: int) -> bool:
-        """Handle clicks on pattern grids.
-
-        Args:
-            mouse_pos: Mouse position tuple
-            button: Mouse button (1=left, 3=right)
-
-        Returns:
-            True if a grid was clicked
-        """
 
         input_grid_rect, output_grid_rect = self._get_grid_rects()
 
@@ -463,11 +424,6 @@ class RegexAutomapDesigner:
         return False
 
     def _get_grid_rects(self) -> tuple[Rect, Rect]:
-        """Calculate the rectangles for input and output pattern grids.
-
-        Returns:
-            Tuple of (input_grid_rect, output_grid_rect)
-        """
         grid_w = self.pattern_width * self.cell_size
         grid_h = self.pattern_height * self.cell_size
 
@@ -482,13 +438,6 @@ class RegexAutomapDesigner:
         return input_grid_rect, output_grid_rect
 
     def _set_pattern_cell(self, grid: PatternGrid, x: int, y: int):
-        """Set a pattern cell with the current tile selection.
-
-        Args:
-            grid: The pattern grid to modify
-            x: Cell X coordinate
-            y: Cell Y coordinate
-        """
         if self.current_tile_id is not None and self.current_tileset_index is not None:
             cell = PatternCell(
                 tile_id=self.current_tile_id,
@@ -498,13 +447,6 @@ class RegexAutomapDesigner:
             grid.set_cell(x, y, cell)
 
     def _cycle_match_mode(self, grid: PatternGrid, x: int, y: int):
-        """Cycle through match modes for a pattern cell.
-
-        Args:
-            grid: The pattern grid to modify
-            x: Cell X coordinate
-            y: Cell Y coordinate
-        """
         cell = grid.get_cell(x, y)
 
         mode_cycle = [
@@ -536,11 +478,6 @@ class RegexAutomapDesigner:
         grid.cells[(x, y)] = new_cell
 
     def _load_rule_to_editor(self, rule: PatternRule):
-        """Load a pattern rule into the editor grids.
-
-        Args:
-            rule: The pattern rule to load
-        """
         self.input_pattern_grid = PatternGrid(
             rule.input_pattern.width, rule.input_pattern.height
         )
@@ -557,7 +494,6 @@ class RegexAutomapDesigner:
         self.pattern_height = rule.input_pattern.height
 
     def _reset_selection(self):
-        """Reset the editor to create a new rule."""
         self.selected_rule_idx = -1
         self.input_pattern_grid = PatternGrid(3, 3)
         self.output_pattern_grid = PatternGrid(3, 3)
@@ -565,7 +501,6 @@ class RegexAutomapDesigner:
         self.pattern_height = 3
 
     def _save_pattern_rule(self):
-        """Save current input/output pattern as a rule."""
         try:
             if not self.input_pattern_grid.cells:
                 print("Cannot save rule: input pattern is empty")
@@ -601,14 +536,12 @@ class RegexAutomapDesigner:
             print(f"Error saving pattern rule: {e}")
 
     def _delete_pattern_rule(self):
-        """Remove the currently selected pattern rule."""
         if 0 <= self.selected_rule_idx < len(self.pattern_rules):
             deleted_rule = self.pattern_rules.pop(self.selected_rule_idx)
             print(f"Deleted rule: {deleted_rule.name}")
             self._reset_selection()
 
     def _apply_automap(self):
-        """Execute all pattern rules on the active layer."""
         layer = self.editor.tilemap.layer_manager.get_active_layer()
         if not layer:
             print("No active layer to apply automap")
@@ -635,11 +568,6 @@ class RegexAutomapDesigner:
             print(f"Automap applied: {transformation_count} tile transformations")
 
     def serialize_rules(self) -> list[dict]:
-        """Serialize all pattern rules to dictionary format with error handling.
-
-        Returns:
-            List of serialized rule dictionaries
-        """
         import logging
 
         serialized_rules = []
@@ -657,11 +585,6 @@ class RegexAutomapDesigner:
         return serialized_rules
 
     def deserialize_rules(self, rules_data: list[dict]) -> None:
-        """Deserialize pattern rules from dictionary format with error handling.
-
-        Args:
-            rules_data: List of serialized rule dictionaries
-        """
         import logging
 
         self.pattern_rules.clear()
@@ -679,7 +602,6 @@ class RegexAutomapDesigner:
         print(f"Loaded {len(self.pattern_rules)} pattern rules")
 
     def _draw_rule_list(self, screen: Surface):
-        """Draw the list of saved pattern rules."""
 
         title = self.title_font.render("Pattern Rules", True, (150, 150, 255))
         screen.blit(title, (self.rule_list_area.x + 5, self.rule_list_area.y + 5))
@@ -710,7 +632,6 @@ class RegexAutomapDesigner:
         )
 
     def _draw_pattern_grids(self, screen: Surface):
-        """Draw the input and output pattern grids."""
         input_grid_rect, output_grid_rect = self._get_grid_rects()
 
         input_label = self.title_font.render("Input Pattern", True, TEXT_COLOR)
@@ -735,13 +656,6 @@ class RegexAutomapDesigner:
         self._draw_match_mode_legend(screen)
 
     def _draw_grid(self, screen: Surface, grid: PatternGrid, grid_rect: Rect):
-        """Draw a single pattern grid.
-
-        Args:
-            screen: Surface to draw on
-            grid: Pattern grid to draw
-            grid_rect: Rectangle defining grid position
-        """
         for y in range(self.pattern_height):
             for x in range(self.pattern_width):
                 cell_rect = Rect(
@@ -763,13 +677,6 @@ class RegexAutomapDesigner:
                 self._draw_match_mode_indicator(screen, cell, cell_rect)
 
     def _draw_tile_in_cell(self, screen: Surface, cell: PatternCell, cell_rect: Rect):
-        """Draw a tile preview in a pattern cell.
-
-        Args:
-            screen: Surface to draw on
-            cell: Pattern cell with tile data
-            cell_rect: Rectangle of the cell
-        """
 
         tile_selector = getattr(self.editor, "tileset_widget", None)
         if tile_selector and cell.tileset_index is not None:
@@ -795,13 +702,6 @@ class RegexAutomapDesigner:
     def _draw_match_mode_indicator(
         self, screen: Surface, cell: PatternCell, cell_rect: Rect
     ):
-        """Draw a visual indicator for the cell's match mode.
-
-        Args:
-            screen: Surface to draw on
-            cell: Pattern cell
-            cell_rect: Rectangle of the cell
-        """
 
         icon = self.match_mode_icons.get(cell.match_mode)
         if icon:
@@ -810,11 +710,6 @@ class RegexAutomapDesigner:
             screen.blit(icon, (icon_x, icon_y))
 
     def _draw_match_mode_legend(self, screen: Surface):
-        """Draw a legend explaining the match mode icons.
-
-        Args:
-            screen: Surface to draw on
-        """
         legend_x = self.edit_area.x + 10
         legend_y = self.edit_area.bottom - 120
 
@@ -842,7 +737,6 @@ class RegexAutomapDesigner:
                 y_offset += 16
 
     def _draw_buttons(self, screen: Surface):
-        """Draw action buttons."""
 
         pygame.draw.rect(screen, (70, 180, 70), self.save_btn_rect, border_radius=4)
         save_text = self.font.render("Save", True, Color("white"))

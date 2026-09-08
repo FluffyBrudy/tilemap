@@ -75,7 +75,6 @@ class ContextMenu:
         return None
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Consume all mouse/keyboard events while open."""
         if not self.is_open:
             return False
         mouse_pos = getattr(event, "pos", None) or pygame.mouse.get_pos()

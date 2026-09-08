@@ -1,8 +1,3 @@
-"""
-Layer selector widget for the tilemap editor.
-Displays list of layers with ability to select, reorder, and manage them.
-"""
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -298,7 +293,6 @@ class LayerSelector:
         mgr.set_active_layer(max(0, min(count - 1, mgr.active_layer_idx + delta)))
 
     def _get_layer_at_pos(self, pos) -> int | None:
-        """Get layer index at the given mouse position."""
         if not self.list_rect.collidepoint(pos):
             return None
 
@@ -318,7 +312,6 @@ class LayerSelector:
         return manager.get_layer(getattr(manager, "active_layer_idx", -1))
 
     def _get_opacity_bar_rect(self, layer_idx: int) -> Rect | None:
-        """Get the clickable rect for the opacity bar of a layer."""
         item_y = self.list_rect.y + (layer_idx * self.item_h) - self.scroll_offset
 
         if item_y + self.item_h < self.list_rect.y or item_y > self.list_rect.bottom:
@@ -331,7 +324,6 @@ class LayerSelector:
         return Rect(bar_x, bar_y, bar_w, bar_h)
 
     def _get_ysort_icon_rect(self, layer_idx: int) -> Rect | None:
-        """Get the clickable rect for the y-sort toggle of a layer."""
         if layer_idx is None:
             return None
 
@@ -352,7 +344,6 @@ class LayerSelector:
         return Rect(ysort_x, ysort_y, 12, 20)
 
     def _get_eye_icon_rect(self, layer_idx: int, mouse_pos) -> Rect | None:
-        """Get the clickable rect for the eye icon of a layer."""
         if layer_idx is None:
             return None
 
@@ -373,7 +364,6 @@ class LayerSelector:
         return Rect(eye_x - 5, eye_y - 5, 10, 10)
 
     def _get_lock_icon_rect(self, layer_idx: int, mouse_pos) -> Rect | None:
-        """Get the clickable rect for the lock icon of a layer."""
         if layer_idx is None:
             return None
 
@@ -394,7 +384,6 @@ class LayerSelector:
         return Rect(lock_x - 5, lock_y - 5, 10, 10)
 
     def _scroll(self, delta: int) -> None:
-        """Scroll the layer list. Positive delta scrolls down."""
         layer_count = self.editor.tilemap.layer_manager.get_layer_count()
         max_scroll = max(0, (layer_count * self.item_h) - self.list_rect.height)
 
@@ -402,14 +391,12 @@ class LayerSelector:
         self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
     def _add_layer(self) -> None:
-        """Add a new layer - show dialog to select type."""
         self.editor.layer_type_dialog.show(
             on_confirm=self._on_layer_type_selected,
             on_cancel=lambda: None,
         )
 
     def _on_layer_type_selected(self, layer_type: str) -> None:
-        """Callback when user selects layer type from dialog."""
         if layer_type == "image":
             self.editor.open_file_manager(
                 on_select=self._create_image_layer_from_path,
@@ -424,7 +411,6 @@ class LayerSelector:
         self.editor.tilemap.layer_manager.set_active_layer(count)
 
     def _initial_image_rect(self) -> dict[str, int]:
-        """Return the image rectangle that covers the current map in pixels."""
         tilemap = self.editor.tilemap
         tile_w, tile_h = tilemap.tile_size
         offset_x, offset_y = tilemap.offset
@@ -474,7 +460,6 @@ class LayerSelector:
     def _replace_image_from_path(self, path: Path, layer=None) -> None:
         if layer is None:
             layer = self._get_active_layer()
-        # verify captured layer still exists by identity
         if layer not in self.editor.tilemap.layer_manager.layers:
             self.editor.notifications.notify("Could not load image", duration=2.0)
             return
@@ -494,7 +479,6 @@ class LayerSelector:
         self.editor.notifications.success("Image replaced")
 
     def _remove_layer(self) -> None:
-        """Remove the currently active layer."""
         mgr = self.editor.tilemap.layer_manager
         if len(mgr.layers) <= 1:
             self.editor.notifications.notify("Cannot delete the last layer")
@@ -519,7 +503,6 @@ class LayerSelector:
         self.editor.notifications.success(f"Duplicated layer '{clone.name}'")
 
     def _start_rename(self, layer_idx: int) -> None:
-        """Start renaming a layer."""
         layer = self.editor.tilemap.layer_manager.get_layer(layer_idx)
         if layer:
             self.renaming_layer_idx = layer_idx
@@ -529,7 +512,6 @@ class LayerSelector:
             self.rename_input.select_all()
 
     def _confirm_rename(self) -> None:
-        """Confirm and apply the rename."""
         if self.renaming_layer_idx is None:
             return
 
@@ -546,7 +528,6 @@ class LayerSelector:
         self._cancel_rename()
 
     def _cancel_rename(self) -> None:
-        """Cancel rename and revert to original name."""
         self.renaming_layer_idx = None
         self.rename_input.text = ""
         self.rename_input.cursor_pos = 0
@@ -570,8 +551,6 @@ class LayerSelector:
         print(f"Saved properties for layer: {layer.name}")
 
     def draw(self, screen: Surface) -> None:
-        """Draw the layer selector widget."""
-
         pygame.draw.rect(screen, COLORS.panel, self.rect)
         pygame.draw.rect(screen, COLORS.border, self.rect, 1)
 
@@ -584,7 +563,6 @@ class LayerSelector:
         self._draw_footer(screen)
 
     def _draw_layer_list(self, screen: Surface) -> None:
-        """Draw the list of layers with scrolling support."""
         layer_manager = self.editor.tilemap.layer_manager
         active_idx = layer_manager.active_layer_idx
 
@@ -735,7 +713,6 @@ class LayerSelector:
             pygame.draw.rect(screen, COLORS.border_soft, bar_rect, border_radius=2)
 
     def _draw_footer(self, screen: Surface) -> None:
-        """Draw the footer with buttons."""
         pygame.draw.rect(screen, COLORS.header, self.footer_rect)
         pygame.draw.line(
             screen,

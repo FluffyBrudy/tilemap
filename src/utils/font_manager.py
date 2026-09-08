@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class FontWeight(Enum):
-    """Font weight variants."""
-
     THIN = "thin"
     EXTRA_LIGHT = "extralight"
     LIGHT = "light"
@@ -28,15 +26,11 @@ class FontWeight(Enum):
 
 
 class FontStyle(Enum):
-    """Font style variants."""
-
     NORMAL = "normal"
     ITALIC = "italic"
 
 
 class FontManager:
-    """Singleton font manager for centralized font loading."""
-
     _instance = None
     _initialized = False
 
@@ -73,7 +67,6 @@ class FontManager:
         return Path(__file__).parent.parent.parent / "assets" / "fonts"
 
     def _load_font_families(self):
-        """Load available font families from assets directory."""
         if not self._assets_path.exists():
             logger.warning(f"Font assets directory not found: {self._assets_path}")
             return
@@ -99,7 +92,6 @@ class FontManager:
                 )
 
     def _parse_font_filename(self, filename: str) -> tuple[FontWeight, FontStyle]:
-        """Parse font filename to extract weight and style."""
         filename_lower = filename.lower()
 
         style = FontStyle.NORMAL
@@ -123,10 +115,13 @@ class FontManager:
         bold: bool | None = None,
         italic: bool | None = None,
     ) -> pygame.font.Font:
+        font_was_init = bool(pygame.font.get_init())
         if not pygame.get_init():
             pygame.init()
         if not pygame.font.get_init():
             pygame.font.init()
+        if not font_was_init:
+            self._fonts.clear()
         """
         Get a font with specified properties.
 
@@ -155,8 +150,14 @@ class FontManager:
         logger.debug(f"Font request: {family} {size} {weight.value} {style.value}")
 
         if cache_key in self._fonts:
-            logger.debug(f"Font cache hit: {cache_key}")
-            return self._fonts[cache_key]
+            cached = self._fonts[cache_key]
+            try:
+                cached.get_height()
+            except pygame.error:
+                del self._fonts[cache_key]
+            else:
+                logger.debug(f"Font cache hit: {cache_key}")
+                return cached
 
         logger.debug(f"Attempting to load bundled font: {family}")
         font = self._load_custom_font(family, size, weight, style)
@@ -176,7 +177,6 @@ class FontManager:
     def _load_custom_font(
         self, family: str, size: int, weight: FontWeight, style: FontStyle
     ) -> pygame.font.Font | None:
-        """Load custom font from assets directory."""
         family_lower = family.lower()
 
         if family_lower not in self._font_families:
@@ -213,8 +213,6 @@ class FontManager:
     def _load_system_font(
         self, family: str, size: int, weight: FontWeight, style: FontStyle
     ) -> pygame.font.Font | None:
-        """Load system font with fallback."""
-
         try:
             bold = weight in [
                 FontWeight.SEMI_BOLD,
@@ -258,11 +256,9 @@ class FontManager:
         return None
 
     def set_default_family(self, family: str):
-        """Set default font family."""
         self._default_family = family
 
     def get_available_families(self) -> list[str]:
-        """Get list of available font families."""
         families = list(self._font_families.keys())
         families.extend(pygame.font.get_fonts())
         return list(set(families))
@@ -274,15 +270,12 @@ class FontManager:
         weight: FontWeight = FontWeight.REGULAR,
         style: FontStyle = FontStyle.NORMAL,
     ):
-        """Preload a font to cache it for later use."""
         self.get_font(family, size, weight, style)
 
     def clear_cache(self):
-        """Clear font cache."""
         self._fonts.clear()
 
     def get_font_info(self, family: str) -> dict[str, str]:
-        """Get information about available font variants for a family."""
         family_lower = family.lower()
         return self._font_families.get(family_lower, {})
 
@@ -296,7 +289,6 @@ def get_font(
     weight: FontWeight = FontWeight.REGULAR,
     style: FontStyle = FontStyle.NORMAL,
 ) -> pygame.font.Font:
-    """Get font using global font manager."""
     return font_manager.get_font(family, size, weight, style)
 
 
@@ -306,14 +298,12 @@ def get_system_font(
     bold: bool = False,
     italic: bool = False,
 ) -> pygame.font.Font:
-    """Get system font (backward compatibility)."""
     weight = FontWeight.BOLD if bold else FontWeight.REGULAR
     style = FontStyle.ITALIC if italic else FontStyle.NORMAL
     return font_manager.get_font(name, size, weight, style)
 
 
 def preload_common_fonts():
-    """Preload commonly used fonts."""
     common_sizes = [11, 12, 13, 14, 16, 18]
 
     if "jetbrain-fonts" in font_manager._font_families:

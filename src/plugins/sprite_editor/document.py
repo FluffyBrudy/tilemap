@@ -58,9 +58,15 @@ class Region:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Region:
         r = data.get("rect", [0, 0, 32, 32])
+        try:
+            rect = [float(v) for v in r]
+            if len(rect) != 4:
+                raise ValueError("rect needs 4 numbers")
+        except (TypeError, ValueError):
+            rect = [0.0, 0.0, 32.0, 32.0]
         return cls(
             id=str(data.get("id", "") or uuid.uuid4().hex[:8]),
-            rect=[float(v) for v in r],
+            rect=rect,
             name=str(data.get("name", "")),
         )
 
@@ -80,7 +86,6 @@ class Document:
         self.origin_row: int = 0
         self.revision: int = 0
 
-    # -- state ---------------------------------------------------------
     @property
     def has_canvas(self) -> bool:
         return self.surface is not None
@@ -122,7 +127,6 @@ class Document:
     def cell_count(self) -> int:
         return self.cols * self.rows
 
-    # -- grid math -----------------------------------------------------
     def tile_rect(self, col: int, row: int) -> Rect:
         """Local (document px) rect of a cell. The rect may extend past the
         canvas edge for partial edge tiles."""
@@ -140,7 +144,7 @@ class Document:
         w, h = self.surface.get_size()
         if x < 0 or y < 0 or x >= w or y >= h:
             return None
-        return (int(x) // self.tw + self.origin_col, int(y) // self.th + self.origin_row)
+        return (math.floor(x / self.tw) + self.origin_col, math.floor(y / self.th) + self.origin_row)
 
     def cell_at_unbounded(self, x: float, y: float) -> tuple[int, int] | None:
         """Cell index for any non-negative document point, even past the
@@ -149,7 +153,7 @@ class Document:
             return None
         if x < 0 or y < 0:
             return None
-        return (int(x) // self.tw + self.origin_col, int(y) // self.th + self.origin_row)
+        return (math.floor(x / self.tw) + self.origin_col, math.floor(y / self.th) + self.origin_row)
 
     def is_valid_cell(self, col: int, row: int) -> bool:
         if not self.surface:
@@ -178,7 +182,6 @@ class Document:
             return -1
         return self.cell_index(*cell)
 
-    # -- tile access ---------------------------------------------------
     def extract_tile(self, col: int, row: int) -> Surface:
         """Copy of the cell's pixels (transparent where outside the canvas)."""
         tile = Surface((self.tw, self.th), pygame.SRCALPHA)
@@ -203,13 +206,16 @@ class Document:
         Nothing is ever dropped for negative coordinates."""
         if not self.surface:
             return
+        old_cols, old_rows = self.cols, self.rows
         new_origin_col = min(self.origin_col, col)
         new_origin_row = min(self.origin_row, row)
-        need_cols = max(self.cols, col - new_origin_col + 1)
-        need_rows = max(self.rows, row - new_origin_row + 1)
+        need_cols = max(self.origin_col + old_cols, col + 1) - new_origin_col
+        need_rows = max(self.origin_row + old_rows, row + 1) - new_origin_row
+        shift_x = (self.origin_col - new_origin_col) * self.tw
+        shift_y = (self.origin_row - new_origin_row) * self.th
         self.origin_col = new_origin_col
         self.origin_row = new_origin_row
-        self.expand_canvas_to(need_cols, need_rows)
+        self.expand_canvas_to(need_cols, need_rows, shift=(shift_x, shift_y))
 
     def clear_tiles(self, cells: list[tuple[int, int]]) -> None:
         if not self.surface or not cells:
@@ -237,6 +243,8 @@ class Document:
                 return False
             self.surface = Surface((tw, th), pygame.SRCALPHA)
             self.surface.fill((0, 0, 0, 0))
+            self.origin_col = 0
+            self.origin_row = 0
             self.regions = []
             self._bump()
             return True
@@ -270,8 +278,9 @@ class Document:
             x, y, w, h = region.rect
             nx, ny = x - left, y - top
             if nx < new_w and ny < new_h and nx + w > 0 and ny + h > 0:
-                region.rect = [nx, ny, w, h]
-                kept.append(region)
+                # new object: trim must never rewrite a Region that
+                # command history (or callers) still reference
+                kept.append(Region(id=region.id, rect=[nx, ny, w, h], name=region.name))
         self.regions = kept
         self._bump()
         return True
@@ -287,7 +296,6 @@ class Document:
             )
         self._bump()
 
-    # -- canvas growth -------------------------------------------------
     def ensure_contains_cells(self, cells: list[tuple[int, int]]) -> bool:
         """Grow the canvas (transparent) so every cell is in bounds.
         Returns True if the canvas changed."""
@@ -298,26 +306,30 @@ class Document:
         max_col = max(c for c, _ in cells)
         max_row = max(r for _, r in cells)
 
+        old_cols, old_rows = self.cols, self.rows
         new_origin_col = min(self.origin_col, min_col)
         new_origin_row = min(self.origin_row, min_row)
-        need_cols = max(self.cols, max_col - new_origin_col + 1)
-        need_rows = max(self.rows, max_row - new_origin_row + 1)
+        need_cols = max(self.origin_col + old_cols, max_col + 1) - new_origin_col
+        need_rows = max(self.origin_row + old_rows, max_row + 1) - new_origin_row
 
+        shift_x = (self.origin_col - new_origin_col) * self.tw
+        shift_y = (self.origin_row - new_origin_row) * self.th
         self.origin_col = new_origin_col
         self.origin_row = new_origin_row
-        return self.expand_canvas_to(need_cols, need_rows)
+        return self.expand_canvas_to(need_cols, need_rows, shift=(shift_x, shift_y))
 
-    def expand_canvas_to(self, need_cols: int, need_rows: int) -> bool:
+    def expand_canvas_to(self, need_cols: int, need_rows: int,
+                         shift: tuple[int, int] = (0, 0)) -> bool:
         if not self.surface:
             return False
         cur_w, cur_h = self.surface.get_size()
         new_w = max(cur_w, need_cols * self.tw)
         new_h = max(cur_h, need_rows * self.th)
-        if new_w == cur_w and new_h == cur_h:
+        if new_w == cur_w and new_h == cur_h and shift == (0, 0):
             return False
         new_surface = Surface((new_w, new_h), pygame.SRCALPHA)
         new_surface.fill((0, 0, 0, 0))
-        new_surface.blit(self.surface, (0, 0))
+        new_surface.blit(self.surface, shift)
         self.surface = new_surface
         self._bump()
         return True
@@ -332,7 +344,7 @@ class Document:
         pass becomes the next column placed right of the content.
         Blank canvas adopts the sheet as-is."""
         if self.surface is None:
-            self.surface = sheet
+            self.surface = sheet.copy()
             self._bump()
             return
         cur_w, cur_h = self.surface.get_size()
@@ -353,21 +365,26 @@ class Document:
         self._bump()
 
     def set_tile_size(self, tile_size: tuple[int, int]) -> None:
-        self.tile_size = (int(tile_size[0]), int(tile_size[1]))
+        tw, th = int(tile_size[0]), int(tile_size[1])
+        if tw < 1 or th < 1:
+            raise ValueError(f"tile size must be >= 1, got {(tw, th)}")
+        self.tile_size = (tw, th)
         self._bump()
 
     def scale(self, factor: float) -> None:
-        """Scale the whole canvas; tile size is unchanged."""
+        """Scale the whole canvas (and regions); tile size is unchanged."""
         if not self.surface or factor <= 0:
             return
         w, h = self.surface.get_size()
-        self.surface = pygame.transform.scale(
-            self.surface,
-            (max(1, round(w * factor)), max(1, round(h * factor))),
-        )
+        nw, nh = max(1, round(w * factor)), max(1, round(h * factor))
+        if nw > 8192 or nh > 8192:
+            raise ValueError(f"scaled size {(nw, nh)} exceeds 8192px cap")
+        self.surface = pygame.transform.scale(self.surface, (nw, nh))
+        for region in self.regions:
+            x, y, rw, rh = region.rect
+            region.rect = [x * factor, y * factor, rw * factor, rh * factor]
         self._bump()
 
-    # -- regions -------------------------------------------------------
     def region_by_id(self, region_id: str) -> Region | None:
         for region in self.regions:
             if region.id == region_id:
@@ -375,8 +392,8 @@ class Document:
         return None
 
     def add_region(self, region: Region) -> None:
-        """Add a region and bump revision."""
-        self.regions.append(region)
+        """Add a (copy of the) region and bump revision."""
+        self.regions.append(Region(id=region.id, rect=list(region.rect), name=region.name))
         self._bump()
 
     def move_region(self, region_id: str, dx: float, dy: float) -> bool:
@@ -394,7 +411,13 @@ class Document:
         region = self.region_by_id(region_id)
         if region is None:
             return False
-        region.rect = list(rect)
+        try:
+            clean = [float(v) for v in rect]
+            if len(clean) != 4:
+                return False
+        except (TypeError, ValueError):
+            return False
+        region.rect = clean
         self._bump()
         return True
 
@@ -416,7 +439,6 @@ class Document:
         self._bump()
         return True
 
-    # -- freeform surface blit (text) -----------------------------------
     def blit_surface(self, surf: Surface, pos: tuple[int, int]) -> None:
         """Blit an arbitrary surface at world px; expands canvas if needed.
 
@@ -464,7 +486,6 @@ class Document:
         self.surface.blit(surf, (x, y))
         self._bump()
 
-    # -- snapshots (command undo/redo) ---------------------------------
     def snapshot(self) -> tuple[Surface | None, list[Region], tuple[int, int], tuple[int, int]]:
         return (
             self.surface.copy() if self.surface else None,
