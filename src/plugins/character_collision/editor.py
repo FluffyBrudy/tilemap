@@ -253,7 +253,6 @@ class CharacterCollisionEditor:
             self._toast_manager.error(str(e))
 
     def resize(self, rect: Rect) -> None:
-        """Resize the editor"""
         self.rect = rect
 
         shape_editor_rect = Rect(
@@ -277,7 +276,6 @@ class CharacterCollisionEditor:
         return "character.collision.json"
 
     def get_collision_data(self) -> CharacterCollisionData:
-        """Get the current collision data"""
         shape_data = self.shape_editor.get_shape_data()
 
         from .models import (
@@ -365,7 +363,6 @@ class CharacterCollisionEditor:
         self._toast_manager.warning(f"No sprite image found for '{data.name}'")
 
     def _get_save_path(self) -> Path:
-        """Full path for saving/loading collision data."""
         collision_dir = self._get_collision_dir()
         return collision_dir / self._get_save_name()
 
@@ -382,7 +379,6 @@ class CharacterCollisionEditor:
         return collision_dir / self._get_save_name()
 
     def _get_collision_dir(self) -> Path:
-        """Get collision data directory (data_root/character_collision)"""
         if self._data_root is None:
             raise RuntimeError(
                 "data_root is required. Initialize via from_path() with data_root parameter."
@@ -390,7 +386,6 @@ class CharacterCollisionEditor:
         return self._data_root / "character_collision"
 
     def save_to_file(self, path: Path) -> None:
-        """Save collision data to file"""
         try:
             import json
 
@@ -417,7 +412,6 @@ class CharacterCollisionEditor:
             )
 
     def load_from_file(self, path: Path) -> None:
-        """Load collision data from file"""
         try:
             import json
 
@@ -437,12 +431,10 @@ class CharacterCollisionEditor:
             raise ValueError(f"Failed to load collision data: {e}") from None
 
     def _name_input_rect(self) -> Rect:
-        """Screen rect for the editable name field in the toolbar."""
         label_w = self._font_sm.size("Name:")[0]
         return Rect(self.rect.x + 10 + label_w + 8, self.rect.y + 10, 160, 28)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle input events"""
         if not self.visible:
             return False
 
@@ -493,7 +485,6 @@ class CharacterCollisionEditor:
         return any(btn.handle_event(event) for btn in self._buttons)
 
     def draw(self, screen: Surface) -> None:
-        """Draw the editor"""
         if not self.visible:
             return
 
@@ -516,7 +507,6 @@ class CharacterCollisionEditor:
         self._draw_properties(screen)
 
     def _draw_toolbar(self, screen: Surface) -> None:
-        """Draw the toolbar"""
         toolbar_rect = Rect(self.rect.x, self.rect.y, self.rect.w, self.toolbar_height)
         draw_panel(screen, toolbar_rect, COLORS.header, COLORS.border)
 
@@ -531,7 +521,6 @@ class CharacterCollisionEditor:
             btn.draw(screen)
 
     def _draw_properties(self, screen: Surface) -> None:
-        """Draw the properties panel"""
         props_rect = Rect(
             self.rect.x,
             self.rect.bottom - self.properties_height,
@@ -584,7 +573,6 @@ class CharacterCollisionEditor:
         character_name: str = "Character",
         data_root: Path = None,
     ) -> CharacterCollisionEditor:
-        """Create editor from sprite image path (for standalone use)"""
         surface = None
         image_path = None
         if sprite_path is not None:
@@ -602,7 +590,6 @@ class CharacterCollisionEditor:
         return editor
 
     def run(self) -> None:
-        """Run standalone editor (for standalone use)"""
         screen = pygame.display.get_surface()
         if screen is None:
             raise RuntimeError("pygame display not initialized")

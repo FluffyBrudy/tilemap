@@ -21,8 +21,10 @@ def export_all_regions(
 ) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
+    bounds = image.get_rect()
     for i, region in enumerate(regions):
         r = Rect(region.x, region.y, region.w, region.h)
+        r = r.clip(bounds)
         if r.width <= 0 or r.height <= 0:
             continue
         sub = image.subsurface(r)

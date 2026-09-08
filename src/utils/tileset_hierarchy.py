@@ -49,7 +49,6 @@ class TilesetHierarchy:
         return next((i for i in self.items if i.path == path), None)
 
     def placement_map(self) -> dict[str, str]:
-        """path -> folder_id for items assigned to a known folder."""
         known = {f.id for f in self.folders}
         return {
             i.path: i.folder for i in self.items if i.folder and i.folder in known
@@ -90,7 +89,6 @@ def sanitize(hierarchy: TilesetHierarchy) -> TilesetHierarchy:
             cur = by_id[cur].parent
 
     hierarchy.folders = folders
-    # drop empty paths, dedupe items by path (keep first occurrence)
     seen_paths: set[str] = set()
     deduped: list[ItemEntry] = []
     for i in hierarchy.items:
@@ -145,7 +143,7 @@ def load_hierarchy(data_root: Path) -> TilesetHierarchy | None:
 
 
 def save_hierarchy(data_root: Path, hierarchy: TilesetHierarchy) -> bool:
-    """Atomically write the hierarchy file. Returns False on failure."""
+    """Write the hierarchy file. Returns False on failure."""
     path = hierarchy_path(data_root)
     payload = {
         "version": VERSION,

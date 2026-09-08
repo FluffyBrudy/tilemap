@@ -17,7 +17,6 @@ from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 
 class _BitButton:
-    """A single bit toggle button."""
 
     def __init__(
         self,
@@ -77,7 +76,6 @@ class CollisionLayerMaskWidget:
 
     @classmethod
     def calc_min_width(cls, max_layers: int = 16, cols: int = 8) -> int:
-        """Calculate minimum width needed to fit all buttons in one row."""
         actual_cols = min(max_layers, cols)
         return (
             cls.PADDING
@@ -89,7 +87,6 @@ class CollisionLayerMaskWidget:
 
     @classmethod
     def calc_min_height(cls, max_layers: int = 16, cols: int = 8) -> int:
-        """Calculate minimum height needed."""
         rows = (max_layers + cols - 1) // cols
         return (
             cls.PADDING

@@ -129,7 +129,6 @@ class SpriteEditor:
         self._status_bar.info("Ready", "")
         self._update_button_states()
 
-    # -- geometry ---------------------------------------------------------
     def _content_rect(self) -> Rect:
         return Rect(
             self.rect.x,
@@ -147,7 +146,6 @@ class SpriteEditor:
         self._grid_dialog.editor_rect = self.rect
         self._build_toolbar()
 
-    # -- toolbar -----------------------------------------------------------
     def _build_menus(self) -> list[Menu]:
         vp = self.viewport
         return [
@@ -270,7 +268,6 @@ class SpriteEditor:
             ),
         ]
 
-    # -- menu actions -------------------------------------------------------
     def _on_save_as(self) -> None:
         if not self.doc.has_canvas:
             self._status_bar.warning("No spritesheet loaded")
@@ -465,7 +462,6 @@ class SpriteEditor:
                 return btn
         return None
 
-    # -- tool wiring ------------------------------------------------------
     def _set_tool(self, name: str) -> None:
         target = self._tools.get(name)
         if target is None or target is self._active_tool:
@@ -500,21 +496,38 @@ class SpriteEditor:
     def _toast(self, message: str) -> None:
         self._notifications.success(message)
 
-    # -- toolbar actions ---------------------------------------------------
     def _on_open(self) -> None:
         self._open_add_sheets_dialog()
 
     def _on_save(self) -> None:
         self._open_save_dialog()
 
+    def _abort_in_flight_gestures(self) -> None:
+        """Reset tool drag state before undo/redo rewrites the canvas.
+
+        Otherwise a release after undo commits stale cached pixels
+        (select move) or acts on a vanished region.
+        """
+        select = self._tools.get("select")
+        if select is not None:
+            select.exit()
+
+    def _prune_dangling_region_selection(self) -> None:
+        if self.doc.region_by_id(self._region_tool.selected_id or "") is None:
+            self._region_tool.selected_id = None
+
     def _on_undo(self) -> None:
+        self._abort_in_flight_gestures()
         if self.commands.undo(self.doc, self.selection):
+            self._prune_dangling_region_selection()
             name = self.commands.peek_redo().name if self.commands.can_redo else "Edit"
             self._status_bar.info(f"Undo {name}")
             self._toast(f"Undo {name}")
 
     def _on_redo(self) -> None:
+        self._abort_in_flight_gestures()
         if self.commands.redo(self.doc, self.selection):
+            self._prune_dangling_region_selection()
             name = self.commands.peek_undo().name if self.commands.can_undo else "Edit"
             self._status_bar.info(f"Redo {name}")
             self._toast(f"Redo {name}")
@@ -576,12 +589,17 @@ class SpriteEditor:
     def _on_scale(self) -> None:
         self._scale_dialog.show_scale(on_apply=self._apply_scale)
 
-    def _apply_scale(self, factor: float) -> None:
+    def _apply_scale(self, factor: float) -> bool:
         if not self.doc.has_canvas:
             self._status_bar.warning("No spritesheet loaded")
-            return
-        self.commands.push(ScaleCommand(factor), self.doc, self.selection)
+            return False
+        try:
+            self.commands.push(ScaleCommand(factor), self.doc, self.selection)
+        except ValueError as e:
+            self._status_bar.warning(str(e) or "Scale rejected: exceeds 8192px cap")
+            return False
         self._status_bar.success(f"Scaled ×{factor:.2f}")
+        return True
 
     def _on_grid(self) -> None:
         self._grid_dialog.show_grid(on_apply=self._apply_grid_size, current_size=self.doc.tile_size)
@@ -604,7 +622,6 @@ class SpriteEditor:
     def _on_reset_zoom(self) -> None:
         self.camera.reset()
 
-    # -- region actions ----------------------------------------------------
     def _on_export_all(self) -> None:
         regions = self.doc.regions
         if not regions:
@@ -622,12 +639,10 @@ class SpriteEditor:
                 self._text_tool.cancel()
             self._set_tool("select" if self.mode == "grid" else "regions")
             return
-        # leaving paste/region etc.
         if self._active_tool is self._paste_tool:
             self._toast("Paste canceled")
         self._set_tool("text")
 
-    # -- status / button sync ----------------------------------------------
     def _update_button_states(self) -> None:
         undo_btn = self._get_btn("undo")
         if undo_btn:
@@ -649,7 +664,6 @@ class SpriteEditor:
         if getattr(self, "_zoom_btn", None):
             self._zoom_btn.text = f"{self.camera.zoom * 100:.0f}%"
 
-    # -- events ------------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:
         if self._handle_drop_event(event):
             return True
@@ -736,7 +750,7 @@ class SpriteEditor:
                     self._on_select_all()
                     return True
             else:
-                # while the text tool input is focused every unmodified
+                # while a text/rename input is focused every unmodified
                 # keypress belongs to the label — skipping these shortcuts
                 # lets them fall through to the tool's InputBox instead
                 typing_in_text_input = (
@@ -744,7 +758,11 @@ class SpriteEditor:
                     and getattr(self._text_tool, "_input", None) is not None
                     and self._text_tool._input.is_focused
                 )
-                if not typing_in_text_input:
+                typing_in_rename = (
+                    self._active_tool is self._region_tool
+                    and getattr(self._region_tool, "_editing_id", None) is not None
+                )
+                if not typing_in_text_input and not typing_in_rename:
                     if event.key == pygame.K_f:
                         self._on_fit()
                         return True
@@ -830,7 +848,6 @@ class SpriteEditor:
             return True
         return event.type == pygame.KEYDOWN or getattr(event, "pos", None) is not None
 
-    # -- system file drop -----------------------------------------------------
     def _handle_drop_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.DROPBEGIN:
             self._flush_pending_drops()
@@ -908,19 +925,26 @@ class SpriteEditor:
                 return text
         except Exception:
             pass
+        import os
         import shutil
         import subprocess
+        import sys
 
-        for cmd in (
-            ["pbpaste"],
-            ["xclip", "-selection", "clipboard", "-o"],
-            ["wl-paste", "--no-newline"],
-            ["powershell", "-NoProfile", "-command", "Get-Clipboard"],
-        ):
+        if sys.platform == "darwin":
+            cmds = (["pbpaste"],)
+        elif sys.platform == "win32":
+            cmds = (["powershell", "-NoProfile", "-command", "Get-Clipboard"],)
+        elif os.environ.get("WAYLAND_DISPLAY"):
+            cmds = (["wl-paste", "--no-newline"],)
+        elif os.environ.get("DISPLAY"):
+            cmds = (["xclip", "-selection", "clipboard", "-o"],)
+        else:
+            return ""
+        for cmd in cmds:
             try:
                 if not shutil.which(cmd[0]):
                     continue
-                out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                out = subprocess.run(cmd, capture_output=True, text=True, timeout=1)
                 if out.returncode == 0 and out.stdout:
                     return out.stdout
             except Exception:
@@ -987,7 +1011,6 @@ class SpriteEditor:
         surf = FONTS.get_small_font().render("Drop image sheets to load", True, COLORS.text)
         screen.blit(surf, surf.get_rect(center=area.center))
 
-    # -- draw ----------------------------------------------------------------
     def draw(self, screen: Surface) -> None:
         draw_panel(screen, self.rect, COLORS.bg, COLORS.border)
 
@@ -1088,7 +1111,6 @@ class SpriteEditor:
         pygame.draw.rect(screen, COLORS.border_soft, bg, 1, border_radius=3)
         screen.blit(surf, (tx, ty))
 
-    # -- file flows -----------------------------------------------------------
     def _file_manager_rect(self) -> Rect:
         w, h = 600, 400
         cx, cy = self.rect.center
@@ -1136,6 +1158,11 @@ class SpriteEditor:
                     surf = padded
             pygame.image.save(surf, str(path))
             self.set_save_path(path)
+            # saved pixels and regions must travel together: the sidecar
+            # follows the chosen path and becomes the image identity, or a
+            # Save As silently orphans regions on the old file
+            save_regions_json(self.doc.regions, regions_sidecar_path(path))
+            self.image_path = path
             self._status_bar.success(f"Saved {path.name}")
             self._toast(f"Saved {path.name}")
         except Exception as e:
@@ -1258,7 +1285,6 @@ class SpriteEditor:
     def set_save_path(self, path: Path) -> None:
         self._save_path = path
 
-    # -- persistence ------------------------------------------------------
     def load_regions_for_image(self) -> None:
         if self.image_path:
             sidecar = regions_sidecar_path(self.image_path)

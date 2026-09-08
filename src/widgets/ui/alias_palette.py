@@ -64,7 +64,6 @@ class AliasPalette:
         self.reload_scope_list()
         self.set_brush_mode("tileset")
 
-    # ------------------------------------------------------------------ state
     def aliases_dir(self) -> Path:
         return Path(self.editor.data_root) / self.editor.config.get("aliases_path", "aliases")
 
@@ -159,7 +158,6 @@ class AliasPalette:
     def open_composer(self) -> None:
         self.editor.launch_alias_composer()
 
-    # ------------------------------------------------------------------ tileset
     def _tileset_surface(self, tileset_ref: str):
         """Match an alias tileset ref to a loaded tileset (surface, index)."""
         from aliases import resolve_tileset
@@ -205,14 +203,12 @@ class AliasPalette:
         self._thumbs[key] = surf
         return surf
 
-    # ------------------------------------------------------------------ layout
     def resize(self, x: int, y: int, w: int, h: int) -> None:
         self.rect = Rect(x, y, w, h)
         pad = 6
         bw = (w - pad * 3) // 2
         self.btn_tileset.resize(x + pad, y + 22, bw, 24)
         self.btn_alias.resize(x + pad * 2 + bw, y + 22, bw, 24)
-        # active-alias label owns y+50; scope/search/grid shift below it
         self.alias_label_rect = Rect(x + pad, y + 50, w - pad * 2, 16)
         self.btn_scope.resize(x + pad, y + 70, w - pad * 2, 24)
         self.search_rect = Rect(x + pad, y + 100, w - pad * 2, 24)
@@ -238,7 +234,6 @@ class AliasPalette:
     def _row_of(self, idx: int) -> int:
         return idx // COLS
 
-    # ------------------------------------------------------------------ events
     def handle_event(self, event: pygame.event.Event) -> bool:
         self.refresh_items()
         if self.btn_tileset.handle_event(event):
@@ -343,7 +338,6 @@ class AliasPalette:
         elif top + THUMB_BOX + 18 > self.scroll + grid.h:
             self.scroll = top + THUMB_BOX + 18 - grid.h
 
-    # ------------------------------------------------------------------ draw
     def draw(self, screen: pygame.Surface) -> None:
         self.refresh_items()
         mode = getattr(self.editor, "brush_mode", "tileset")

@@ -1022,7 +1022,6 @@ class AutotileRuleDesigner:
         screen.blit(rntxt, (self.new_rule_btn_rect.x + 10, self.new_rule_btn_rect.y + 5))
 
     def _draw_scrollable_rule_list(self, screen: Surface) -> None:
-        """Draw rules with scroll indicators and scrollbar - with clipping to prevent overflow"""
         if self.selected_group_idx == -1:
             return
 
@@ -1092,7 +1091,6 @@ class AutotileRuleDesigner:
             self.scroll_bar_rect = None
 
     def _handle_scroll_event(self, event) -> bool:
-        """Handle mouse wheel and scrollbar dragging"""
         if self.selected_group_idx == -1:
             return False
 
@@ -1132,7 +1130,6 @@ class AutotileRuleDesigner:
         return False
 
     def _handle_group_rename(self, event) -> bool:
-        """Handle F2 key and inline text editing for group names"""
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_F2 and self.selected_group_idx >= 0:
                 self.renaming_group_idx = self.selected_group_idx
@@ -1195,7 +1192,6 @@ class AutotileRuleDesigner:
         return migrated
 
     def _create_new_group_with_focus(self) -> None:
-        """Create new group and immediately enter rename mode"""
 
         existing = {g.name for g in self.groups}
         counter = len(self.groups) + 1

@@ -52,20 +52,9 @@ class DimensionPersistence:
     """Handles saving and loading FileManager dimension preferences."""
 
     def __init__(self, pref_file: Path):
-        """Initialize with path to preference file.
-
-        Args:
-            pref_file: Path to JSON file for storing dimension preferences
-        """
         self.pref_file = pref_file
 
     def save_dimensions(self, width: int, height: int):
-        """Persist dimensions to JSON file.
-
-        Args:
-            width: Widget width in pixels
-            height: Widget height in pixels
-        """
         try:
             self.pref_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -77,11 +66,6 @@ class DimensionPersistence:
             print(f"Warning: Could not save FileManager dimensions: {e}")
 
     def load_dimensions(self) -> tuple[int, int] | None:
-        """Load dimensions from JSON file.
-
-        Returns:
-            Tuple of (width, height) if found, None otherwise
-        """
         try:
             if not self.pref_file.exists():
                 return None
@@ -108,13 +92,6 @@ class ResizeHandler:
     """Handles resize operations for the FileManager widget."""
 
     def __init__(self, widget_rect: pygame.Rect, min_width: int = 400, min_height: int = 300):
-        """Initialize resize handler with widget rect and constraints.
-
-        Args:
-            widget_rect: The pygame.Rect of the widget to resize
-            min_width: Minimum allowed width in pixels (default: 400)
-            min_height: Minimum allowed height in pixels (default: 300)
-        """
         self.widget_rect = widget_rect
         self.min_width = min_width
         self.min_height = min_height
@@ -124,14 +101,6 @@ class ResizeHandler:
         self.drag_start_rect = None
 
     def get_handle_at_pos(self, pos: tuple[int, int]) -> str | None:
-        """Returns handle type if pos is over a resize handle, else None.
-
-        Args:
-            pos: Mouse position as (x, y) tuple
-
-        Returns:
-            'right', 'bottom', 'corner', or None
-        """
         x, y = pos
 
         right_edge = self.widget_rect.right
@@ -152,12 +121,6 @@ class ResizeHandler:
         return None
 
     def start_drag(self, handle: str, pos: tuple[int, int]):
-        """Initiates resize drag operation.
-
-        Args:
-            handle: Handle type ('right', 'bottom', 'corner')
-            pos: Mouse position as (x, y) tuple
-        """
         self.is_dragging = True
         self.drag_handle = handle
         self.drag_start_pos = pos
@@ -165,14 +128,6 @@ class ResizeHandler:
         self.drag_start_rect = pygame.Rect(self.widget_rect)
 
     def update_drag(self, pos: tuple[int, int]) -> pygame.Rect:
-        """Updates widget rect during drag, returns new rect.
-
-        Args:
-            pos: Current mouse position as (x, y) tuple
-
-        Returns:
-            Updated pygame.Rect with constraints applied
-        """
         if not self.is_dragging or not self.drag_start_pos or not self.drag_start_rect:
             return self.widget_rect
 
@@ -194,18 +149,12 @@ class ResizeHandler:
         return self.widget_rect
 
     def end_drag(self):
-        """Completes resize drag operation."""
         self.is_dragging = False
         self.drag_handle = None
         self.drag_start_pos = None
         self.drag_start_rect = None
 
     def draw_handles(self, surface: pygame.Surface):
-        """Renders resize handles on the widget.
-
-        Args:
-            surface: pygame.Surface to draw on
-        """
 
         handle_color = COLORS.border
         handle_hover_color = COLORS.accent
@@ -235,11 +184,6 @@ class ImagePreview:
     """Handles image preview display with loading, scaling, and error handling."""
 
     def __init__(self, max_file_size_mb: int = 50):
-        """Initialize image preview component.
-
-        Args:
-            max_file_size_mb: Maximum file size in MB to load (default: 50)
-        """
         self.current_image = None
         self.current_path = None
         self.image_dimensions = None
@@ -250,14 +194,6 @@ class ImagePreview:
         self.cached_target_size = None
 
     def load_image(self, path: Path) -> bool:
-        """Loads image from path, returns success status.
-
-        Args:
-            path: Path to image file
-
-        Returns:
-            True if image loaded successfully, False otherwise
-        """
 
         self.current_image = None
         self.current_path = None
@@ -290,7 +226,6 @@ class ImagePreview:
             return False
 
     def clear(self):
-        """Clears current preview."""
         self.current_image = None
         self.current_path = None
         self.image_dimensions = None
@@ -300,15 +235,6 @@ class ImagePreview:
         self.cached_target_size = None
 
     def scale_to_fit(self, target_width: int, target_height: int) -> pygame.Surface | None:
-        """Returns scaled image surface maintaining aspect ratio.
-
-        Args:
-            target_width: Target width in pixels
-            target_height: Target height in pixels
-
-        Returns:
-            Scaled pygame.Surface or None if no image loaded
-        """
         if not self.current_image:
             return None
 
@@ -349,12 +275,6 @@ class ImagePreview:
         return scaled_surface
 
     def draw(self, surface: pygame.Surface, rect: pygame.Rect):
-        """Renders preview panel with image, metadata, and close button.
-
-        Args:
-            surface: pygame.Surface to draw on
-            rect: pygame.Rect defining the preview panel area
-        """
 
         pygame.draw.rect(surface, COLORS.panel, rect, border_radius=SHAPE.radius_sm)
         pygame.draw.rect(
@@ -787,7 +707,6 @@ class FileManager:
             error_handler.capture(e, context="filemanager_create_folder")
 
     def _start_rename(self, item_idx: int) -> None:
-        """Start renaming a file or folder."""
         if item_idx < 0 or item_idx >= len(self.items):
             return
 
@@ -801,7 +720,6 @@ class FileManager:
         self.save_input.is_focused = False
 
     def _confirm_rename(self) -> None:
-        """Confirm and apply the rename."""
         if self.renaming_item_idx is None:
             return
 
@@ -864,7 +782,6 @@ class FileManager:
         self.rename_input.is_focused = False
 
     def _cancel_rename(self) -> None:
-        """Cancel rename and revert to original name."""
         self.renaming_item_idx = None
         self.rename_input.text = ""
         self.rename_input.is_focused = False
@@ -1205,7 +1122,6 @@ class FileManager:
 
         footer_lx = lx - self.sidebar_width
 
-        # Footer spans full content width (consistent with draw/handle_event)
         footer_width = self.rect.width - self.sidebar_width
 
         cancel_x = footer_width - btn_w - pad
@@ -1282,14 +1198,6 @@ class FileManager:
             self.on_select_callback(path)
 
     def _get_file_list_rect(self) -> pygame.Rect:
-        """Returns rect for file list, accounting for preview panel.
-
-        When preview is visible, file list gets 60% of content area width.
-        When preview is hidden, file list gets full content area width.
-
-        Returns:
-            pygame.Rect defining the file list area
-        """
         content_width = self.rect.width - self.sidebar_width
         content_x = self.rect.x + self.sidebar_width
         content_y = self.rect.y + self.header_height + self.search_header_height
@@ -1306,13 +1214,6 @@ class FileManager:
         return pygame.Rect(content_x, content_y, file_list_width, content_height)
 
     def _get_preview_rect(self) -> pygame.Rect:
-        """Returns rect for preview panel.
-
-        Preview panel occupies remaining content area width (40% when visible).
-
-        Returns:
-            pygame.Rect defining the preview panel area
-        """
         content_width = self.rect.width - self.sidebar_width
         content_y = self.rect.y + self.header_height + self.search_header_height
         content_height = self.rect.height - self.header_height - self.footer_height - self.search_header_height
@@ -1324,13 +1225,6 @@ class FileManager:
         return pygame.Rect(preview_x, content_y, preview_width, content_height)
 
     def _show_preview(self, file_path: Path):
-        """Activates preview panel for given image file.
-
-        Checks file extension and loads image if it's a supported format.
-
-        Args:
-            file_path: Path to the image file to preview
-        """
 
         supported_extensions = [".png", ".jpg", ".jpeg"]
         if file_path.suffix.lower() not in supported_extensions:
@@ -1339,11 +1233,9 @@ class FileManager:
         self.image_preview.load_image(file_path)
 
     def _hide_preview(self):
-        """Deactivates preview panel and restores full-width file list."""
         self.image_preview.clear()
 
     def _open_image_viewer(self):
-        """Open the standalone image viewer for the current preview image."""
         if not self.image_preview.current_path:
             return
 
@@ -1430,7 +1322,6 @@ class FileManager:
         self._draw_file_list(screen, file_list_rect)
         self._draw_error_pill(screen, file_list_rect)
 
-        # Footer always spans full content width (stable hit-test vs. input)
         footer_rect = pygame.Rect(
             self.rect.x + self.sidebar_width,
             self.rect.bottom - self.footer_height,

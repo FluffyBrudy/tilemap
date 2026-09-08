@@ -35,7 +35,6 @@ def draw_dashed_border(
 ) -> None:
     x1, y1 = rect.topleft
     x2, y2 = rect.bottomright
-    # top / bottom
     for cx in range(x1, x2, dash * 2):
         pygame.draw.line(screen, color, (cx, y1), (min(cx + dash, x2), y1), width)
         pygame.draw.line(screen, color, (cx, y2 - 1), (min(cx + dash, x2), y2 - 1), width)

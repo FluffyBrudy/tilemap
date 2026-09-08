@@ -630,7 +630,6 @@ class SpriteAnimationEditor:
         return bool(self.frame_picker.handle_event(event))
 
     def draw(self, screen: pygame.Surface) -> None:
-        """Draw the full editor panel."""
         if not self.visible:
             return
 
@@ -1192,7 +1191,6 @@ class SpriteAnimationEditor:
         """
         if self._frame_size_mode == "cells":
             self._frame_size_mode = "px"
-            # show the currently applied frame size in px
             self._frame_width_input = str(self._tile_size[0])
             self._frame_height_input = str(self._tile_size[1])
         else:
@@ -1316,7 +1314,6 @@ class SpriteAnimationEditor:
             return
         max_v = max(0, self.frame_picker.total_frames - 1)
         self._clip_warnings = collect_clip_warnings(anim, max_v)
-        # warn when spritesheet not tile-multiple (floor clips partial row/col)
         try:
             sw, sh = self._surface.get_size() if self._surface else (0, 0)
             tw, th = self._tile_size
@@ -1685,7 +1682,6 @@ class SpriteAnimationEditor:
         self._notify_animation_modified()
 
     def _on_timeline_frame_selected(self, index: int) -> None:
-        """User selected a frame in the timeline."""
         self.preview.current_frame = index
         self.preview._elapsed = 0.0
         self._apply_timeline_focus_to_sheet(scroll=True)
@@ -1847,7 +1843,6 @@ class SpriteAnimationEditor:
         self._close_file_manager()
 
     def _close_file_manager(self) -> None:
-        """Close the file manager dialog."""
         self._file_manager = None
 
     def _load_spritesheet_dialog(self) -> None:
@@ -1948,7 +1943,6 @@ class SpriteAnimationEditor:
         self.preview.set_surface(surface, tile_size)
 
     def set_provider(self, provider: SpriteSheetProvider) -> None:
-        """Switch to a different spritesheet provider."""
         self._provider = provider
         self.set_surface(provider.get_surface(), provider.get_tile_size())
         self._sheet_name = provider.get_name()
@@ -1960,7 +1954,6 @@ class SpriteAnimationEditor:
         self.visible = False
 
     def get_animation_data(self) -> dict:
-        """Return the full animation library as a serializable dict."""
         return self.library.to_dict()
 
     def load_animation_data(self, data: dict) -> None:

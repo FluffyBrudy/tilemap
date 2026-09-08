@@ -20,8 +20,6 @@ from typing import Any
 
 
 class ContextKind(Enum):
-    """What was clicked / is being edited."""
-
     TILESET = auto()       # whole-tileset properties
     TILE_VARIANT = auto()  # per-tile properties (grid tilesets)
     MAP_OBJECT = auto()    # placed object on an object layer

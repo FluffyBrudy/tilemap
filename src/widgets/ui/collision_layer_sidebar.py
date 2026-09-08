@@ -151,7 +151,6 @@ class CollisionLayerSidebar:
         self.widget.draw(screen)
 
     def draw_toggle_button(self, screen: Surface) -> None:
-        """Draw the toggle button — always visible, even when sidebar is closed."""
         mouse = pygame.mouse.get_pos()
         self._toggle_hover = self._toggle_rect.collidepoint(mouse)
 
@@ -169,7 +168,6 @@ class CollisionLayerSidebar:
         screen.blit(gear_icon, gear_icon.get_rect(center=self._toggle_rect.center))
 
     def handle_toggle_event(self, event: pygame.event.Event) -> bool:
-        """Handle events for the toggle button only."""
         pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._toggle_rect.collidepoint(pos):

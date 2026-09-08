@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 
 class MatchMode(Enum):
-    """Defines how a pattern cell matches against layer tiles."""
 
     EXACT = "exact"
     WILDCARD = "wildcard"
@@ -27,13 +26,6 @@ class MatchMode(Enum):
 
 @dataclass
 class PatternCell:
-    """A single cell within a pattern grid with tile ID and match mode.
-
-    Attributes:
-        tile_id: The tile variant ID to match (None for wildcard/empty)
-        tileset_index: The tileset index (ttype) for the tile
-        match_mode: How this cell matches against layer tiles
-    """
 
     tile_id: int | None
     tileset_index: int | None
@@ -42,15 +34,6 @@ class PatternCell:
     def matches(
         self, actual_tile_id: int | None, actual_tileset_index: int | None = None
     ) -> bool:
-        """Check if actual tile matches this pattern cell.
-
-        Args:
-            actual_tile_id: The tile variant ID from the layer (None for empty)
-            actual_tileset_index: The tileset index (ttype) from the layer (None for empty)
-
-        Returns:
-            True if the tile matches according to this cell's match mode
-        """
         if self.match_mode == MatchMode.WILDCARD:
             return True
         if self.match_mode == MatchMode.ANY_FILLED:
@@ -64,38 +47,13 @@ class PatternCell:
 
 
 class PatternGrid:
-    """A grid of pattern cells with sparse storage for efficient memory usage.
-
-    Uses a sparse dictionary to store only non-wildcard cells, minimizing
-    memory usage for patterns with many wildcard cells.
-
-    Attributes:
-        width: Grid width in cells
-        height: Grid height in cells
-        cells: Sparse dictionary mapping (x, y) to PatternCell
-    """
 
     def __init__(self, width: int, height: int):
-        """Initialize a pattern grid with given dimensions.
-
-        Args:
-            width: Grid width (must be positive)
-            height: Grid height (must be positive)
-        """
         self.width = width
         self.height = height
         self.cells: dict[tuple[int, int], PatternCell] = {}
 
     def set_cell(self, x: int, y: int, cell: PatternCell) -> None:
-        """Set pattern cell at position.
-
-        If the cell is WILDCARD, it will be removed from storage to save memory.
-
-        Args:
-            x: X coordinate (0-indexed)
-            y: Y coordinate (0-indexed)
-            cell: The pattern cell to set
-        """
         if cell.match_mode == MatchMode.WILDCARD:
             if (x, y) in self.cells:
                 del self.cells[(x, y)]
@@ -103,28 +61,9 @@ class PatternGrid:
             self.cells[(x, y)] = cell
 
     def get_cell(self, x: int, y: int) -> PatternCell:
-        """Get pattern cell at position.
-
-        Returns a default wildcard cell if the position is not in storage.
-
-        Args:
-            x: X coordinate (0-indexed)
-            y: Y coordinate (0-indexed)
-
-        Returns:
-            The pattern cell at this position, or a default wildcard cell
-        """
         return self.cells.get((x, y), PatternCell(None, None, MatchMode.WILDCARD))
 
     def matches(self, tiles: dict[tuple[int, int], int | None]) -> bool:
-        """Check if tile data matches this pattern.
-
-        Args:
-            tiles: Dictionary mapping (x, y) to tile variant ID
-
-        Returns:
-            True if all pattern cells match their corresponding tiles
-        """
         for y in range(self.height):
             for x in range(self.width):
                 cell = self.get_cell(x, y)
@@ -134,11 +73,6 @@ class PatternGrid:
         return True
 
     def to_dict(self) -> dict:
-        """Serialize pattern to dictionary.
-
-        Returns:
-            Dictionary containing width, height, and cell data
-        """
         cells_data = {}
         for (x, y), cell in self.cells.items():
             cells_data[f"{x},{y}"] = {
@@ -151,14 +85,6 @@ class PatternGrid:
 
     @staticmethod
     def from_dict(data: dict) -> "PatternGrid":
-        """Deserialize pattern from dictionary.
-
-        Args:
-            data: Dictionary containing pattern data
-
-        Returns:
-            Reconstructed PatternGrid instance
-        """
         grid = PatternGrid(data["width"], data["height"])
 
         for pos_str, cell_data in data.get("cells", {}).items():
@@ -175,15 +101,6 @@ class PatternGrid:
 
 @dataclass
 class PatternRule:
-    """A complete automap rule with input pattern, output pattern, and metadata.
-
-    Attributes:
-        name: User-defined name for the rule
-        input_pattern: Pattern to match in the layer
-        output_pattern: Pattern to apply when input matches
-        enabled: Whether this rule is active
-        priority: Higher priority rules are applied first
-    """
 
     name: str
     input_pattern: PatternGrid
@@ -207,11 +124,6 @@ class PatternRule:
             raise ValueError("Pattern rule name cannot be empty")
 
     def to_dict(self) -> dict:
-        """Serialize pattern rule to dictionary.
-
-        Returns:
-            Dictionary containing all rule data
-        """
         return {
             "name": self.name,
             "input_pattern": self.input_pattern.to_dict(),
@@ -222,17 +134,6 @@ class PatternRule:
 
     @staticmethod
     def from_dict(data: dict) -> "PatternRule":
-        """Deserialize pattern rule from dictionary with validation.
-
-        Args:
-            data: Dictionary containing rule data
-
-        Returns:
-            Reconstructed PatternRule instance
-
-        Raises:
-            ValueError: If validation fails
-        """
 
         input_data = data["input_pattern"]
         output_data = data["output_pattern"]
@@ -259,39 +160,14 @@ class PatternRule:
 
 
 class AutomapEngine:
-    """Engine for executing pattern matching and tile transformation.
-
-    Processes pattern rules to transform tiles in a layer based on visual
-    pattern matching, similar to Tiled editor's automap functionality.
-
-    Attributes:
-        tilemap: Reference to the tilemap (currently unused, for future expansion)
-        max_transformations: Maximum transformations per execution to prevent infinite loops
-    """
 
     def __init__(self, tilemap=None):
-        """Initialize the automap engine.
-
-        Args:
-            tilemap: Optional reference to the tilemap
-        """
         self.tilemap = tilemap
         self.max_transformations = 10000
 
     def match_pattern(
         self, layer: "Layer", x: int, y: int, pattern: PatternGrid
     ) -> bool:
-        """Check if pattern matches at given position in layer.
-
-        Args:
-            layer: The layer to check
-            x: Starting X coordinate
-            y: Starting Y coordinate
-            pattern: The pattern to match
-
-        Returns:
-            True if pattern matches at this position, False otherwise
-        """
 
         for py in range(pattern.height):
             for px in range(pattern.width):
@@ -312,18 +188,6 @@ class AutomapEngine:
     def scan_layer_for_pattern(
         self, layer: "Layer", pattern: PatternGrid
     ) -> list[tuple[int, int]]:
-        """Find all positions where pattern matches in the layer.
-
-        Scans the entire layer and returns all positions where the pattern matches.
-        Uses early termination on first cell mismatch for optimization.
-
-        Args:
-            layer: The layer to scan
-            pattern: The pattern to find
-
-        Returns:
-            List of (x, y) positions where pattern matches
-        """
         import logging
 
         matches = []
@@ -354,17 +218,6 @@ class AutomapEngine:
     def apply_pattern_at_position(
         self, layer: "Layer", x: int, y: int, pattern: PatternGrid
     ) -> None:
-        """Apply output pattern at specific position.
-
-        Only modifies tiles for cells with EXACT match mode. WILDCARD cells
-        preserve existing tiles. Includes boundary checking and error handling.
-
-        Args:
-            layer: The layer to modify
-            x: Starting X coordinate
-            y: Starting Y coordinate
-            pattern: The output pattern to apply
-        """
         import logging
 
         for py in range(pattern.height):
@@ -404,19 +257,6 @@ class AutomapEngine:
                         layer.remove_tile((layer_x, layer_y))
 
     def apply_rules(self, layer: "Layer", rules: list[PatternRule]) -> int:
-        """Apply all enabled pattern rules to layer in priority order.
-
-        Rules are sorted by priority (descending) and applied sequentially.
-        Disabled rules are skipped. Includes transformation limit to prevent
-        infinite loops from circular dependencies.
-
-        Args:
-            layer: The layer to transform
-            rules: List of pattern rules to apply
-
-        Returns:
-            Total number of tile transformations applied
-        """
         import logging
 
         if not rules:

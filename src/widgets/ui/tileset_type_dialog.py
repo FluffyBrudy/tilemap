@@ -52,7 +52,6 @@ class TilesetTypeDialog(DialogBase):
         self._layout()
 
     def _layout(self):
-        """Position child controls from the current dialog rect."""
         self.rect.center = self.editor_rect.center
         self._update_content_rect()
 
@@ -183,7 +182,6 @@ class TilesetTypeDialog(DialogBase):
             self._computed_stride = 1
 
     def show(self, on_confirm: Callable[[str], None], on_cancel: Callable[[], None]):
-        """Show the dialog."""
         if self.active:
             self.hide()
         self.active = True
@@ -202,13 +200,11 @@ class TilesetTypeDialog(DialogBase):
         self._edit_buffer = ""
 
     def hide(self):
-        """Hide the dialog."""
         self.active = False
         self._editing_field = None
         self._edit_buffer = ""
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle events. Returns True if event was consumed."""
         if not self.active:
             return False
 
@@ -296,7 +292,6 @@ class TilesetTypeDialog(DialogBase):
         return False
 
     def draw(self, surface: Surface):
-        """Draw the dialog on the given surface."""
         if not self.active:
             return
 
@@ -337,7 +332,6 @@ class TilesetTypeDialog(DialogBase):
         self._draw_button(surface, self.btn_cancel, self.btn_cancel_hover, "Cancel")
 
     def _draw_animation_fields(self, surface: Surface):
-        """Draw the animation configuration fields."""
         numeric_keys = ["frame_count", "frame_duration_ms"]
         for key in numeric_keys:
             rects = self.anim_fields_rects.get(key)
@@ -423,7 +417,6 @@ class TilesetTypeDialog(DialogBase):
         label: str,
         label_rect: Rect,
     ):
-        """Draw a radio button with label."""
         pygame.draw.rect(surface, COLORS.panel, row_rect, border_radius=6)
         pygame.draw.rect(surface, COLORS.border, row_rect, 1, border_radius=6)
 

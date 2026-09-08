@@ -134,9 +134,7 @@ class TreeWidget(WidgetBase):
 
         return search(self.roots)
 
-    # -- inline rename -----------------------------------------------------
     def begin_rename(self, node_id: str) -> bool:
-        """Start inline editing of a node's label. Returns False if unknown."""
         node = self.find_node(node_id)
         if node is None:
             return False

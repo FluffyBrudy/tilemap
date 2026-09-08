@@ -336,7 +336,6 @@ class Editor:
         default_name: str = "",
         multi_select: bool = False,
     ):
-        """Launch file manager as a subprocess."""
         if allowed_exts is None:
             allowed_exts = [".png", ".jpg", ".json"]
         if self.file_manager_process and self.file_manager_process.poll() is None:
@@ -396,7 +395,6 @@ class Editor:
             self.file_manager_process = None
 
     def _poll_file_manager_result(self):
-        """Check if file manager subprocess has completed and process result."""
         if not self.file_manager_process:
             return
 
@@ -451,7 +449,6 @@ class Editor:
                 self._file_manager_callbacks = {}
 
     def close_file_manager(self):
-        """Terminate file manager subprocess if running."""
         if self.file_manager_process and self.file_manager_process.poll() is None:
             try:
                 self.file_manager_process.terminate()
@@ -542,7 +539,6 @@ class Editor:
     def _sandbox_export_map(self, path: Path, assets_src: Path, assets_dst: Path):
         redirected: list[tuple[object, Path]] = []
         newly_copied: list[Path] = []
-        # Snapshot staged outputs before any writes
         map_existed = path.exists()
         try:
             proj_nodes_dir = self._project_data_root / self.config.get("nodes_path", "nodes")
@@ -576,10 +572,7 @@ class Editor:
                         redirected.append((ts, Path(ts_path)))
                         ts.path = assets_dst / ts_path.name
 
-            # Restore real-data context BEFORE saving so the node sidecar is
-            # written next to the exported map (NodeManager falls back to
-            # <map>.nodes.json once the sandbox pointer is cleared).  Prior
-            # state is reinstated if the save fails.
+            # Clear the sandbox pointer so the node sidecar lands next to the export.
             prev_data_root = self.data_root
             prev_is_sandbox = self.is_sandbox
             prev_nodes_dir = getattr(self.node_manager, "_nodes_dir", None) if hasattr(self, "node_manager") else None
@@ -954,7 +947,6 @@ class Editor:
             self.tile_grid_widget.show_map_boundary = not self.tile_grid_widget.show_map_boundary
 
     def cycle_theme(self):
-        """Cycle through available themes."""
         theme_names = list(THEMES.keys())
         current = get_theme_manager().name
         current_idx = theme_names.index(current) if current in theme_names else 0
@@ -1019,7 +1011,6 @@ class Editor:
         )
 
     def _launch_animation_editor_with_image(self, path: Path):
-        """Launch animation editor subprocess with selected image or JSON."""
         try:
             if path.suffix.lower() == ".json":
                 self._launch_animation_editor_with_json(path)
@@ -1050,7 +1041,6 @@ class Editor:
             error_handler.capture(e, context="launch_animation_editor")
 
     def _launch_animation_editor_with_json(self, path: Path) -> None:
-        """Launch animation editor from a saved .anim.json file."""
         try:
             from plugins.sprite_animation.models import AnimationLibrary
             from utils.project_paths import resolve_project_path
@@ -1094,7 +1084,7 @@ class Editor:
             error_handler.capture(e, context="launch_animation_editor")
 
     def launch_sprite_editor(self):
-        """Launch the sprite editor (blank) in a new window. Use [Open] inside to load sheets."""
+        """Blank sprite editor. Use [Open] inside to load sheets."""
         try:
             tile_size = "32x32"
             if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
@@ -1129,7 +1119,6 @@ class Editor:
         self.notifications.notify("No tileset loaded. Please load a tileset first.")
 
     def _launch_collision_editor_with_image(self, path: Path, tileset_type: str = "tile"):
-        """Launch collision editor subprocess with selected tileset."""
         try:
             if tileset_type == "object":
                 self._launch_object_tileset_collision_editor_with_image(path)
@@ -1139,7 +1128,6 @@ class Editor:
             error_handler.capture(e, context="launch_collision_editor")
 
     def _launch_tileset_collision_editor_with_image(self, path: Path):
-        """Launch tileset collision editor (tile-based)."""
         logger = self.logger if hasattr(self, "logger") else None
         tile_size = "32x32"
         if hasattr(self.tilemap, "tile_size") and self.tilemap.tile_size:
@@ -1203,7 +1191,6 @@ class Editor:
             palette.reload_scope_list()
 
     def launch_alias_composer(self):
-        """Launch the standalone alias composer for the active tileset."""
         sheet = self._active_tileset_image_path()
         if sheet is None:
             self.notifications.notify("No tileset loaded. Please load a tileset first.")
@@ -1223,9 +1210,12 @@ class Editor:
                 tileset_ref = sheet.name
             args.extend(["--tileset-ref", str(tileset_ref)])
             aliases_dir = self.data_root / self.config.get("aliases_path", "aliases")
-            alias_path = aliases_dir / f"{sheet.stem}.alias.json"
-            if alias_path.exists():
-                args.extend(["--load", str(alias_path)])
+            from aliases import load_alias_path, resolve_alias_path
+
+            alias_path = resolve_alias_path(aliases_dir, str(tileset_ref))
+            existing = load_alias_path(aliases_dir, str(tileset_ref))
+            if existing is not None:
+                args.extend(["--load", str(existing)])
             process = launch_standalone(
                 "plugins.tile_alias.standalone", args, cwd=self.base_path, text=True)
             self.child_processes.append(process)
@@ -1281,7 +1271,6 @@ class Editor:
         return Path(tmp_path)
 
     def _launch_object_tileset_collision_editor_with_image(self, path: Path):
-        """Launch object tileset collision editor (region-based)."""
         logger = self.logger if hasattr(self, "logger") else None
 
         collision_dir = self.data_root / self.config.get("collision_paths", {}).get("object_tileset", "collision")
@@ -1311,7 +1300,6 @@ class Editor:
             logger.info(msg)
 
     def launch_character_collision_editor(self):
-        """Launch the character collision editor in a new window."""
         try:
             args = [
                 "--name",
@@ -1333,7 +1321,6 @@ class Editor:
             error_handler.capture(e, context="launch_character_collision_editor")
 
     def launch_error_console(self):
-        """Launch the error console as a subprocess."""
         if self.error_console_process and self.error_console_process.poll() is None:
             print("Error console is already running")
             return
@@ -1396,13 +1383,10 @@ class Editor:
             self.notifications.notify("Dice Brush: random tiles from selection (T)")
 
     def exit_editor(self):
-        """Clean up and exit the editor."""
-
         self._cleanup_child_processes()
         self.running = False
 
     def _cleanup_child_processes(self):
-        """Terminate all child processes before exiting."""
         for process in self.child_processes:
             if process.poll() is None:
                 try:
@@ -1416,8 +1400,6 @@ class Editor:
         self.child_processes.clear()
 
     def _cleanup_finished_processes(self):
-        """Remove finished processes from the tracking list."""
-
         for process in self.child_processes:
             if process.poll() is not None:
                 try:
@@ -1431,7 +1413,6 @@ class Editor:
         self.child_processes = [p for p in self.child_processes if p.poll() is None]
 
     def handle_events(self):
-        """Process all pygame events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False

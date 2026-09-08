@@ -65,5 +65,4 @@ def copy_object(obj: "TypeObject") -> "TypeObject":
 
 
 def serialize_object(obj: "TypeObject") -> "TypeObject":
-    """Prepare a TypeObject for JSON serialization (copy the object structure)."""
     return copy_object(obj)

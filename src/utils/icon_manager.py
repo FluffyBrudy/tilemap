@@ -10,8 +10,6 @@ import pygame
 
 
 class IconManager:
-    """Manages loading and rendering of SVG icons using pygame's native support."""
-
     _instance = None
     _initialized = False
 
@@ -75,7 +73,6 @@ class IconManager:
             return Path(__file__).parent.parent.parent / "assets" / "icons"
 
     def _scan_icons(self) -> set:
-        """Scan available icon files."""
         icons = set()
         if self._icons_path.exists():
             for f in self._icons_path.glob("*.svg"):
@@ -83,17 +80,14 @@ class IconManager:
         return icons
 
     def list_icons(self) -> list:
-        """Return list of available icon names."""
         return sorted(self._available_icons)
 
     def has_icon(self, name: str) -> bool:
-        """Check if an icon exists."""
         return name in self._available_icons
 
     def _draw_fallback_icon(
         self, name: str, size: int, color: tuple[int, int, int]
     ) -> pygame.Surface:
-        """Draw a simple fallback icon using pygame primitives."""
         surface = pygame.Surface((size, size), pygame.SRCALPHA)
         padding = max(2, size // 8)
 
@@ -545,7 +539,6 @@ class IconManager:
         return surface
 
     def clear_cache(self):
-        """Clear the icon cache."""
         self._surface_cache.clear()
 
 
@@ -555,7 +548,6 @@ icon_manager = IconManager()
 def get_icon(
     name: str, size: int = 16, color: tuple[int, int, int] | None = None
 ) -> pygame.Surface:
-    """Convenience function to get an icon."""
     return icon_manager.get_icon(name, size, color)
 
 
@@ -566,7 +558,6 @@ _ICON_ALIASES = {
 
 
 def has_icon(name: str) -> bool:
-    """Check if an icon exists (either as SVG or fallback)."""
     resolved = _ICON_ALIASES.get(name, name)
     return icon_manager.has_icon(resolved) or resolved in [
         "plus",

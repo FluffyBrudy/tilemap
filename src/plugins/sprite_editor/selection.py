@@ -17,7 +17,6 @@ class Selection:
         self._cells: set[tuple[int, int]] = set()
         self._anchor: tuple[int, int] | None = None
 
-    # -- query ----------------------------------------------------------
     @property
     def cells(self) -> set[tuple[int, int]]:
         return self._cells
@@ -43,6 +42,8 @@ class Selection:
         return (col, row) in self._cells
 
     def contains_index(self, idx: int, cols: int) -> bool:
+        if cols <= 0 or idx < 0:
+            return False
         return (idx % cols, idx // cols) in self._cells
 
     def bounds(self) -> tuple[int, int, int, int] | None:
@@ -53,7 +54,6 @@ class Selection:
         rows = [r for _, r in self._cells]
         return (min(cols), min(rows), max(cols), max(rows))
 
-    # -- mutation ------------------------------------------------------
     def clear(self) -> None:
         self._cells.clear()
         self._anchor = None
@@ -95,7 +95,6 @@ class Selection:
         return result
 
     def select_all(self, doc) -> None:
-        """Select every cell of the canvas."""
         self._cells = {
             (col, row)
             for col in range(doc.origin_col, doc.origin_col + doc.cols)

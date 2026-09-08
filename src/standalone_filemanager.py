@@ -32,8 +32,6 @@ from widgets.ui.theme import COLORS
 
 
 class StandaloneFileManager:
-    """Wrapper for FileManager that runs as a standalone process."""
-
     def __init__(
         self,
         mode: str = "open",
@@ -84,7 +82,6 @@ class StandaloneFileManager:
         )
 
     def _on_select(self, path):
-        """Handle file selection - output to stdout and exit."""
         if isinstance(path, list):
             result = {
                 "status": "selected",
@@ -100,7 +97,6 @@ class StandaloneFileManager:
         self.running = False
 
     def _on_save(self, path):
-        """Handle save operation - output to stdout and exit."""
         result = {
             "status": "saved",
             "path": str(path.resolve()),
@@ -109,13 +105,11 @@ class StandaloneFileManager:
         self.running = False
 
     def _on_cancel(self):
-        """Handle cancellation - output to stdout and exit."""
         result = {"status": "cancelled"}
         print(json.dumps(result), flush=True)
         self.running = False
 
     def run(self, fps: int = 60):
-        """Main event loop."""
         while self.running:
             self.clock.tick(fps)
 

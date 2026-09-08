@@ -117,7 +117,6 @@ class FramePicker:
         self.rect = rect
 
     def set_grid_offset(self, offset_x: int, offset_y: int) -> None:
-        """Set the grid offset for aligning the grid to a specific position in the spritesheet."""
         self.grid_offset_x = offset_x
         self.grid_offset_y = offset_y
         self._recalc_grid()
@@ -493,7 +492,6 @@ class FramePicker:
         screen.set_clip(clip)
 
     def _recalc_grid(self) -> None:
-        """Recalculate grid dimensions based on tile size and offset."""
         tw, th = self.tile_size
 
         available_w = self.surface.get_width() - self.grid_offset_x

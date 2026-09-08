@@ -151,7 +151,6 @@ class NodeSelector:
 
     @staticmethod
     def _row_action_rects(item_rect: Rect) -> tuple[Rect, Rect]:
-        """Duplicate/delete hit rects for a row (shared by hover/click/draw)."""
         dup_rect = Rect(item_rect.right - 48, item_rect.y + 2, 20, 24)
         del_rect = Rect(item_rect.right - 24, item_rect.y + 2, 20, 24)
         return dup_rect, del_rect

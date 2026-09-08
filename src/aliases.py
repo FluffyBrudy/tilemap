@@ -9,7 +9,7 @@ One ``*.alias.json`` file per tileset under ``data/aliases/``::
 Aliases are tile-only: a (tileset identity, local pattern) pair. No
 objects, no layer references. Malformed entries are skipped on load so
 one bad leaf cannot break the palette; valid data round-trips exactly.
-Saves are atomic (tmp + replace).
+Saves are atomic.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ class AliasFile:
             return AliasFile()
 
     def save(self, path: str | Path) -> None:
-        """Atomic write (tmp + replace) so a crash never half-writes."""
+        """Atomic write so a crash never half-writes."""
         path = Path(path)
         if path.parent and not path.parent.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -147,12 +147,59 @@ def alias_path_for(aliases_dir: str | Path, stem: str) -> Path:
     return Path(aliases_dir) / f"{stem}{ALIAS_SUFFIX}"
 
 
-def resolve_tileset(matches: list, ref: str) -> int | None:
+def alias_key_for(tileset_ref: str) -> str:
+    """Collision-free sidecar key for a tileset ref.
+
+    Bare filenames map to their stem (identical to the legacy layout,
+    so existing single-level sidecars keep working). Project-relative
+    refs with directories are namespaced by joining the suffix-less
+    parts with ``__``, so ``a/stone.png`` and ``b/stone.png`` get
+    separate files. Refs escaping the project root (``..``) fall back
+    to the legacy stem: they cannot be namespaced meaningfully.
+    """
+    ref = (tileset_ref or "").replace("\\", "/").strip()
+    if not ref:
+        return ""
+    base = ref.rsplit("/", 1)[-1]
+    stem = base.rsplit(".", 1)[0] if "." in base else base
+    if "/" not in ref:
+        return stem
+    no_suffix = ref[: -len("." + ref.rsplit(".", 1)[1])] if "." in ref.rsplit("/", 1)[-1] else ref
+    parts = [p for p in no_suffix.split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        return stem
+    return "__".join(parts)
+
+
+def resolve_alias_path(aliases_dir: str | Path, tileset_ref: str) -> Path:
+    """Save path for a tileset ref (namespaced; bare names = legacy stem)."""
+    return alias_path_for(aliases_dir, alias_key_for(tileset_ref))
+
+
+def load_alias_path(aliases_dir: str | Path, tileset_ref: str) -> Path | None:
+    """Existing sidecar for a ref: namespaced first, then legacy stem."""
+    key = alias_key_for(tileset_ref)
+    namespaced = alias_path_for(aliases_dir, key)
+    if namespaced.exists():
+        return namespaced
+    legacy_stem = Path(tileset_ref.replace("\\", "/")).stem
+    if legacy_stem and legacy_stem != key:
+        legacy = alias_path_for(aliases_dir, legacy_stem)
+        if legacy.exists():
+            return legacy
+    return namespaced if namespaced.exists() else None
+
+
+def resolve_tileset(matches: list, ref: str, base: str | Path | None = None) -> int | None:
     """Index into tileset-likes (each with a ``path`` attr) for an alias ref.
 
     Full normalized-path equality wins; basename/stem fallbacks only
     resolve when they identify exactly one loaded tileset, so
     ``a/stone.png`` vs ``b/stone.png`` never silently picks wrong.
+    When ``base`` is given, each candidate path and the ref are first
+    compared as project-relative refs against that root, so an
+    absolute ``TilesetData.path`` still exact-matches a stored
+    project-relative ref.
     """
     import os
 
@@ -160,6 +207,15 @@ def resolve_tileset(matches: list, ref: str) -> int | None:
     norm_ref = os.path.normpath(ref)
     base_ref = os.path.basename(norm_ref)
     stem_ref = os.path.splitext(base_ref)[0]
+    if base is not None:
+        try:
+            from utils.project_paths import to_project_path
+
+            norm_ref_proj = os.path.normpath(to_project_path(ref, Path(base)))
+        except Exception:
+            norm_ref_proj = norm_ref
+    else:
+        norm_ref_proj = None
     base_hits: list[int] = []
     stem_hits: list[int] = []
     for idx, ts in enumerate(matches):
@@ -168,10 +224,20 @@ def resolve_tileset(matches: list, ref: str) -> int | None:
             continue
         if p == norm_ref:
             return idx
-        base = os.path.basename(p)
-        if base_ref and base == base_ref:
+        if norm_ref_proj is not None:
+            try:
+                from utils.project_paths import to_project_path
+
+                cand_proj = os.path.normpath(
+                    to_project_path(getattr(ts, "path", "") or "", Path(base)))
+            except Exception:
+                cand_proj = None
+            if cand_proj is not None and cand_proj == norm_ref_proj:
+                return idx
+        base_name = os.path.basename(p)
+        if base_ref and base_name == base_ref:
             base_hits.append(idx)
-        elif stem_ref and os.path.splitext(base)[0] == stem_ref:
+        elif stem_ref and os.path.splitext(base_name)[0] == stem_ref:
             stem_hits.append(idx)
     if len(base_hits) == 1:
         return base_hits[0]

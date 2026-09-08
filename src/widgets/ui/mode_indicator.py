@@ -22,7 +22,6 @@ from widgets.ui.theme import COLORS, SHAPE
 
 @dataclass
 class Mode:
-    """A workflow mode with ID, label, and optional icon"""
 
     id: str
     label: str
@@ -61,11 +60,9 @@ class ModeIndicator:
         self.on_mode_change_rejected: Callable[[str, str], None] | None = None
 
     def add_mode(self, mode: Mode) -> None:
-        """Add a mode"""
         self.modes.append(mode)
 
     def remove_mode(self, mode_id: str) -> bool:
-        """Remove a mode by ID"""
         for i, mode in enumerate(self.modes):
             if mode.id == mode_id:
                 self.modes.pop(i)
@@ -75,10 +72,6 @@ class ModeIndicator:
         return False
 
     def set_active(self, mode_id: str, force: bool = False) -> bool:
-        """
-        Set active mode.
-        Returns True if mode was changed.
-        """
         if mode_id == self.active_mode_id:
             return False
 
@@ -108,24 +101,18 @@ class ModeIndicator:
         return True
 
     def get_active_mode(self) -> Mode | None:
-        """Get currently active mode"""
         for mode in self.modes:
             if mode.id == self.active_mode_id:
                 return mode
         return None
 
     def get_mode(self, mode_id: str) -> Mode | None:
-        """Get mode by ID"""
         for mode in self.modes:
             if mode.id == mode_id:
                 return mode
         return None
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """
-        Handle input events.
-        Returns True if event was handled.
-        """
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse = pygame.mouse.get_pos()
             if self.rect.collidepoint(mouse):
@@ -138,7 +125,6 @@ class ModeIndicator:
         return False
 
     def _get_button_rects(self) -> list[tuple[Mode, Rect]]:
-        """Get button rectangles for each mode"""
         if not self.modes:
             return []
 
@@ -164,7 +150,6 @@ class ModeIndicator:
         return result
 
     def draw(self, screen: Surface) -> None:
-        """Draw the mode indicator"""
 
         pygame.draw.rect(screen, COLORS.panel, self.rect)
         pygame.draw.rect(screen, COLORS.border, self.rect, 1)
@@ -221,11 +206,9 @@ class ModeIndicator:
                     break
 
     def resize(self, rect: Rect) -> None:
-        """Resize the component"""
         self.rect = rect
 
     def set_modes(self, modes: list[Mode]) -> None:
-        """Set all modes at once"""
         self.modes = modes
         if not self.active_mode_id and modes:
             self.active_mode_id = modes[0].id

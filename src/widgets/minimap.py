@@ -31,8 +31,6 @@ class MinimapWidget:
         self._sig = None
         self.font = FONTS.get_small_font()
 
-    # ------------------------------------------------------------------ layout
-
     def _panel_rect(self) -> Rect | None:
         grid = getattr(self.editor, "tile_grid_widget", None)
         if grid is None:
@@ -47,8 +45,6 @@ class MinimapWidget:
 
     def _toggle_rect(self, panel: Rect) -> Rect:
         return Rect(panel.right - 20, panel.y + 2, 16, 16)
-
-    # ------------------------------------------------------------------ state
 
     def mark_dirty(self):
         self.dirty = True
@@ -66,8 +62,6 @@ class MinimapWidget:
         return (tuple(getattr(tm, "map_size", (0, 0))),
                 tuple(getattr(tm, "tile_size", (0, 0))),
                 len(layers), ts_sig)
-
-    # ------------------------------------------------------------------ bake
 
     def _rebuild(self, panel: Rect):
         tm = self.editor.tilemap
@@ -130,8 +124,6 @@ class MinimapWidget:
         self.dirty = False
         self._sig = self._signature()
 
-    # ------------------------------------------------------------------ viewport
-
     def _viewport_rect(self) -> Rect | None:
         grid = getattr(self.editor, "tile_grid_widget", None)
         if grid is None or self.cache is None:
@@ -151,8 +143,6 @@ class MinimapWidget:
         x = self.origin[0] + (grid.scroll_x - ox * eff_w) * self.scale
         y = self.origin[1] + (grid.scroll_y - oy * eff_h) * self.scale
         return Rect(x, y, vw * self.scale, vh * self.scale)
-
-    # ------------------------------------------------------------------ events
 
     def _navigate(self, pos):
         grid = getattr(self.editor, "tile_grid_widget", None)
@@ -199,8 +189,6 @@ class MinimapWidget:
             self._navigate(event.pos)
             return True
         return False
-
-    # ------------------------------------------------------------------ draw
 
     def draw(self, screen):
         panel = self._panel_rect()

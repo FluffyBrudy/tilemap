@@ -24,7 +24,7 @@ class MenuAction:
 
 
 class MenuSeparator:
-    """Drop-in entry for menu action lists: renders a horizontal divider."""
+    pass
 
 
 class Menu:

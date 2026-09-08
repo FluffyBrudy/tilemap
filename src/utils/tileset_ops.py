@@ -23,12 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from widgets.tile_selector import TilesetData
 
 
-# ---------------------------------------------------------------------------
-# record iteration
-# ---------------------------------------------------------------------------
-
 def _iter_layers(layer_manager: Any) -> Iterable[Any]:
-    """Yield every layer of a LayerManager-like object."""
     yield from getattr(layer_manager, "layers", []) or []
 
 
@@ -52,12 +47,7 @@ def iter_ttype_records(layer_manager: Any) -> Iterable[dict]:
                     yield rec
 
 
-# ---------------------------------------------------------------------------
-# reference counting / remapping
-# ---------------------------------------------------------------------------
-
 def count_ttype_refs(layer_manager: Any, index: int) -> int:
-    """Number of painted tiles/objects referencing tileset *index*."""
     return sum(
         1
         for rec in iter_ttype_records(layer_manager)
@@ -116,10 +106,6 @@ def validate_ttype_bounds(
     return problems
 
 
-# ---------------------------------------------------------------------------
-# autotile rules
-# ---------------------------------------------------------------------------
-
 def _iter_rules(autotiler: Any) -> Iterable[AutotileRule]:
     for group in getattr(autotiler, "groups", []) or []:
         yield from getattr(group, "rules", []) or []
@@ -127,7 +113,6 @@ def _iter_rules(autotiler: Any) -> Iterable[AutotileRule]:
 
 
 def _resolve_rule_index(rule_path: str, tilesets: list) -> int | None:
-    """Re-resolve an autotile rule's tileset index from its stored path."""
     if not rule_path:
         return None
     try:
@@ -168,10 +153,6 @@ def remap_rule_indexes(autotiler: Any, removed_index: int, tilesets: list) -> in
             fixed += 1
     return fixed
 
-
-# ---------------------------------------------------------------------------
-# placeholder for missing tileset files (load-time index preservation)
-# ---------------------------------------------------------------------------
 
 PLACEHOLDER_SUFFIX = " (missing)"
 

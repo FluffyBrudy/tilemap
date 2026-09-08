@@ -42,7 +42,6 @@ class LayerTypeDialog(DialogBase):
         self.btn_cancel = Rect(self.rect.x + 220, btn_y, btn_w, btn_h)
 
     def show(self, on_confirm: Callable[[str], None], on_cancel: Callable[[], None]):
-        """Show the dialog."""
         self.active = True
         self.selected_type = "tile"
         self.on_confirm = on_confirm
@@ -52,11 +51,9 @@ class LayerTypeDialog(DialogBase):
         self._layout()
 
     def hide(self):
-        """Hide the dialog."""
         self.active = False
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle events. Returns True if event was consumed."""
         if not self.active:
             return False
 
@@ -101,7 +98,6 @@ class LayerTypeDialog(DialogBase):
         return False
 
     def draw(self, surface: Surface):
-        """Draw the dialog on the given surface."""
         if not self.active:
             return
 
@@ -143,8 +139,6 @@ class LayerTypeDialog(DialogBase):
         label: str,
         label_rect: Rect,
     ):
-        """Draw a radio button with label."""
-
         center = (radio_rect.centerx, radio_rect.centery)
         radius = radio_rect.width // 2
 

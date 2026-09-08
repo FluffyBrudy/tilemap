@@ -672,3 +672,158 @@ class TestStacking:
         editor._toggle_stack()
         assert editor._stack_horizontal is False
         assert stack_action.is_checked() is False
+
+
+class TestReviewFixes:
+    def test_paste_rmb_cancels_not_pans(self, editor, monkeypatch):
+        editor._clipboard_text = lambda: ""
+        editor.selection.replace([(0, 0)])
+        editor._on_copy()
+        editor._on_paste_smart()
+        assert editor._active_tool is editor._paste_tool
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (500, 300))
+        editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=3, pos=(500, 300)))
+        assert editor._active_tool is not editor._paste_tool
+
+    def test_paste_enter_places_nudged(self, editor, monkeypatch):
+        editor._clipboard_text = lambda: ""
+        editor.selection.replace([(0, 0)])
+        editor._on_copy()
+        editor._on_paste_smart()
+        tool = editor._paste_tool
+        tool._target = (2, 2)
+        editor.handle_event(ev(pygame.KEYDOWN, key=pygame.K_RETURN))
+        assert editor.doc.surface.get_at((2 * 32 + 5, 2 * 32 + 5))[:3] == (100, 60, 200)
+        assert editor._active_tool is not editor._paste_tool
+
+    def test_region_click_prefers_small(self, editor):
+        editor._on_mode_changed("grid", "regions")
+        big = Region(id="big", rect=[0.0, 0.0, 96.0, 96.0], name="big")
+        small = Region(id="small", rect=[8.0, 8.0, 16.0, 16.0], name="small")
+        editor.doc.add_region(big)
+        editor.doc.add_region(small)
+        tool = editor._region_tool
+        wx, wy = 10.0, 10.0  # inside small (8..24), also inside big
+        sx, sy = editor.viewport.world_to_screen(wx, wy)
+        assert tool._region_at((sx, sy)).id == "small"
+
+    def test_select_exit_clears_drag(self, editor):
+        tool = editor._tools["select"]
+        tool._mode = "move"
+        tool._move_cells = [(0, 0)]
+        tool.exit()
+        assert tool._mode == "idle"
+        assert tool._move_cells == []
+
+    def test_rename_typing_not_stolen(self, editor):
+        editor._on_mode_changed("grid", "regions")
+        r = Region(id="r1", rect=[0.0, 0.0, 32.0, 32.0], name="box")
+        editor.doc.add_region(r)
+        editor._region_tool.selected_id = "r1"
+        assert editor._region_tool._start_rename("r1") is True
+        editor.handle_event(ev(pygame.KEYDOWN, key=pygame.K_t, unicode="t"))
+        assert editor._active_tool is editor._region_tool
+        assert editor._region_tool._editing_id == "r1"
+
+    def test_save_as_keeps_regions(self, editor, tmp_path):
+        editor.image_path = tmp_path / "a.png"
+        editor.doc.add_region(Region(id="r1", rect=[0.0, 0.0, 32.0, 32.0], name="x"))
+        out = tmp_path / "b.png"
+        editor._close_file_manager = lambda: None
+        editor._on_save_path_selected(out)
+        assert out.is_file()
+        assert editor.image_path == out
+        from plugins.sprite_editor.region_export import load_regions_json
+
+        back = load_regions_json(out.with_suffix(".regions.json"))
+        assert [r.id for r in back] == ["r1"]
+
+    def test_export_clips_oob_region(self, editor, tmp_path):
+        from plugins.sprite_editor.region_export import export_all_regions
+
+        editor.doc.add_region(Region(id="r1", rect=[0.0, 0.0, 32.0, 32.0], name=""))
+        editor.doc.add_region(Region(id="r2", rect=[1000.0, 1000.0, 32.0, 32.0], name=""))
+        saved = export_all_regions(editor.doc.surface, editor.doc.regions, tmp_path)
+        assert len(saved) == 1
+
+    def test_scale_huge_rejected(self, editor):
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError):
+            editor.doc.scale(100.0)
+        from plugins.sprite_editor.dialogs import ScaleDialog
+
+        dlg = ScaleDialog(Rect(0, 0, 1000, 700))
+        called = []
+        dlg.show_scale(on_apply=called.append)
+        dlg._input.text = "999999"
+        dlg._apply()
+        assert called == []
+
+    def test_region_rect_validation(self):
+        bad = Region.from_dict({"id": "x", "rect": [0, 0], "name": ""})
+        assert bad.rect == [0.0, 0.0, 32.0, 32.0]
+        bad2 = Region.from_dict({"id": "y", "rect": ["a", 0, 0, 0], "name": ""})
+        assert bad2.rect == [0.0, 0.0, 32.0, 32.0]
+
+    def test_trim_keeps_history_rects(self, editor):
+        from plugins.sprite_editor.commands import RegionAddCommand
+
+        r = Region(id="r1", rect=[64.0, 0.0, 32.0, 32.0], name="")
+        editor.commands.push(RegionAddCommand(r), editor.doc, editor.selection)
+        editor.doc.clear_tiles([(c, row) for c in (0, 1) for row in range(4)])
+        assert editor.doc.trim_to_content() is True
+        # command's region untouched; doc holds a shifted live copy
+        assert r.rect == [64.0, 0.0, 32.0, 32.0]
+        assert editor.doc.regions[0].rect == [0.0, 0.0, 32.0, 32.0]
+        assert editor.doc.regions[0] is not r
+        editor.commands.undo(editor.doc, editor.selection)
+        assert editor.doc.regions == []
+        editor.commands.redo(editor.doc, editor.selection)
+        assert editor.doc.regions[0].rect == [64.0, 0.0, 32.0, 32.0]
+        assert editor.doc.regions[0] is not r
+
+    def test_undo_aborts_select_move(self, editor):
+        tool = editor._tools["select"]
+        tool._mode = "move"
+        tool._move_cells = [(0, 0)]
+        editor._on_undo()
+        assert tool._mode == "idle"
+
+    def test_paste_rescales_across_grid(self, editor):
+        from plugins.sprite_editor.commands import CommandStack, PasteCommand
+        from plugins.sprite_editor.selection import Selection
+
+        editor.selection.replace([(0, 0)])
+        editor.clipboard.copy_from_selection(editor.doc, editor.selection)
+        editor.doc.set_tile_size((16, 16))
+        stack = CommandStack()
+        stack.push(PasteCommand(4, 0, editor.clipboard.tiles, (32, 32)),
+                   editor.doc, Selection())
+        got = editor.doc.extract_tile(4, 0)
+        assert got.get_size() == (16, 16)
+
+
+
+class TestViewportExtremeZoom:
+    def test_sheet_stays_glued_past_cache_cap(self, editor):
+        import pygame as _pg
+
+        from plugins.sprite_editor.document import Document
+        from plugins.sprite_editor.viewport import MAX_CACHE_SIZE, Viewport
+
+        big = _pg.Surface((1024, 1024), _pg.SRCALPHA)
+        big.fill((10, 20, 30, 255))
+        big.fill((200, 30, 30, 255), (28, 28, 6, 6))  # marker at world ~(30, 30)
+        doc = Document(big, (32, 32))
+        editor.camera._zoom = 16.0
+        assert MAX_CACHE_SIZE < 1024 * 16
+        screen = _pg.Surface((1000, 700))
+        viewport = Viewport(Rect(0, 42, 1000, 632), doc,
+                            editor.camera, editor.selection)
+        viewport.draw(screen, editor._select_tool)  # must not raise
+        # the marker's true screen position must show marker color;
+        # a capped-but-unscaled cache would drift it off-grid here
+        sx, sy = editor.camera.world_to_screen(31, 31)
+        assert 0 <= int(sx) < 1000 and 0 <= int(sy) < 700
+        assert screen.get_at((int(sx), int(sy)))[:3] == (200, 30, 30)
