@@ -225,7 +225,14 @@ class MinimapWidget:
                 self.cache = None
                 self.dirty = False
         if self.cache is not None:
-            screen.blit(self.cache, self.origin)
-            vp = self._viewport_rect()
-            if vp is not None:
-                pygame.draw.rect(screen, COLORS.accent, vp, 1)
+            # the viewport rect grows past the panel when zoomed out;
+            # clip both blits so nothing spills onto neighbor widgets
+            clip = screen.get_clip()
+            screen.set_clip(panel)
+            try:
+                screen.blit(self.cache, self.origin)
+                vp = self._viewport_rect()
+                if vp is not None:
+                    pygame.draw.rect(screen, COLORS.accent, vp, 1)
+            finally:
+                screen.set_clip(clip)

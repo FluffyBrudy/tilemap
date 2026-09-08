@@ -494,7 +494,10 @@ class TileGrid:
                     return True
 
                 if is_hovering and not self.is_panning:
-                    self.editor.tilemap.capture_history("Place Tile")
+                    if getattr(self.editor, "brush_mode", "tileset") == "alias":
+                        self.editor.tilemap.capture_history("Paint Alias")
+                    else:
+                        self.editor.tilemap.capture_history("Place Tile")
                     self.place_tile()
                     return True
 
@@ -662,7 +665,6 @@ class TileGrid:
         mw, mh = tm.map_size
         ax, ay = self.hover_cell
         plotted = 0
-        self.editor.tilemap.capture_history("Paint Alias")
         for dx, dy, variant_id in pattern.cells:
             map_x, map_y = ax + dx, ay + dy
             if not (ox <= map_x < ox + mw and oy <= map_y < oy + mh):
@@ -1458,7 +1460,7 @@ class TileGrid:
             register(stem)
         palette = getattr(self.editor, "alias_palette", None)
         if palette is not None and hasattr(palette, "refresh_items"):
-            palette.refresh_items()
+            palette.refresh_items(force=True)
         self.editor.notifications.success(
             f"Alias '{name}' saved — rename anytime in Composer (F2)")
         return True

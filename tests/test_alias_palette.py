@@ -15,6 +15,7 @@ from pygame import Rect
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from layers import Layer
+from widgets.ui import theme as theme_module
 
 
 @pytest.fixture(autouse=True)
@@ -134,7 +135,7 @@ class TestPalette:
         pal, _ = make_palette(ad)
         assert len(pal.filtered) == 1
         write_alias_file(ad / "stone.alias.json", aliases=[("A", 1), ("B", 2)])
-        pal.refresh_items()
+        pal.refresh_items(force=True)
         assert [a.name for _, _, a in pal.filtered] == ["A", "B"]
 
     def test_missing_tileset_thumb_no_crash(self, tmp_path):
@@ -157,16 +158,29 @@ class TestPalette:
 
 def make_grid(monkeypatch, tilesets=("stone.png",)):
     from widgets.tile_grid import TileGrid
+    from widgets.ui.tool_manager import ToolManager
 
     layer = Layer("t")
     ed = FakeEditor("/tmp", [FakeTileset(n) for n in tilesets])
     ed.tilemap = FakeTilemap(layer)
     ed.autotile_mode = False
+    ed.node_editing_mode = False
+    ed.show_nodes = False
+    ed.tool_manager = ToolManager()
     g = TileGrid.__new__(TileGrid)
     g.editor = ed
     g.rect = Rect(-10000, -10000, 20000, 20000)
     g.hover_cell = (2, 3)
     g.invalidate_bounds_cache = lambda: None
+    g.is_panning = False
+
+    class NoScroll:
+        def handle_event(self, event):
+            return False
+
+    g._v_scroll = NoScroll()
+    g._h_scroll = NoScroll()
+    g._handle_image_layer_event = lambda event: False
     monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
     return g, ed, layer
 
@@ -184,8 +198,31 @@ class TestAliasPaint:
         assert layer.tiles[(2, 3)]["variant"] == 5
         assert layer.tiles[(3, 4)]["variant"] == 6
         assert layer.tiles[(2, 3)]["ttype"] == 0
-        assert ed.tilemap.history == ["Paint Alias"]
+        # plotting itself captures nothing; the stroke entry comes
+        # from the mousedown event path (single entry per stroke)
+        assert ed.tilemap.history == []
         assert any("W" in m for m in ed.notifications.good)
+
+    def test_stroke_captures_once(self, monkeypatch):
+        from aliases import AliasPattern
+        from widgets.ui.tool_manager import ToolKind
+
+        g, ed, layer = make_grid(monkeypatch)
+        ed.brush_mode = "alias"
+        ed.active_alias = ("stone", "tiles/stone.png",
+                           AliasPattern(name="W", w=1, h=1,
+                                        cells=[(0, 0, 5)]))
+        g.hover_cell = (1, 1)
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
+        down = pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                  {"button": 1, "pos": (0, 0)})
+        assert g.handle_event(down) is True
+        assert ed.tilemap.history == ["Paint Alias"]
+        # held-button motion plots without new history entries
+        g.place_tile()
+        g.place_tile()
+        assert ed.tilemap.history == ["Paint Alias"]
+        assert not ed.tool_manager.is_active(ToolKind.RECT_FILL)
 
     def test_missing_tileset_notifies_no_crash(self, monkeypatch):
         from aliases import AliasPattern
@@ -231,7 +268,7 @@ class TestCreateAliasFromSelection:
         ed.register_alias_source = lambda stem: ed.registered.append(stem)
         refreshed = []
         ed.alias_palette = type(
-            "P", (), {"refresh_items": lambda self: refreshed.append(1)})()
+            "P", (), {"refresh_items": lambda self, force=False: refreshed.append(1)})()
         ed._refreshed = refreshed
         g = TileGrid.__new__(TileGrid)
         g.editor = ed
@@ -291,20 +328,17 @@ class TestCreateAliasFromSelection:
 class TestThemeAndDraw:
     def test_all_colors_attrs_exist(self):
         import re
-        from pathlib import Path as _P
-
-        from widgets.ui import theme as _theme
 
         files = [
-            _P("src/widgets/ui/alias_palette.py"),
-            _P("src/plugins/tile_alias/editor.py"),
+            Path("src/widgets/ui/alias_palette.py"),
+            Path("src/plugins/tile_alias/editor.py"),
         ]
         names = set()
         for f in files:
             names |= set(re.findall(r"COLORS\.([A-Za-z_0-9]+)",
                                     (Path(__file__).parent.parent / f).read_text()))
         assert names, "no COLORS uses found (guard broken)"
-        missing = [n for n in sorted(names) if not hasattr(_theme.COLORS, n)]
+        missing = [n for n in sorted(names) if not hasattr(theme_module.COLORS, n)]
         assert missing == [], f"unknown theme colors: {missing}"
 
     def test_palette_draw_no_exception(self, tmp_path):
@@ -374,3 +408,45 @@ class TestPaletteHelp:
         for btn in (pal.btn_tileset, pal.btn_alias, pal.btn_scope,
                     pal.btn_composer, pal.btn_help):
             assert getattr(btn, "tooltip_text", ""), btn.text
+
+
+class TestWheelAndThrottle:
+    def test_legacy_buttons_scroll(self, tmp_path, monkeypatch):
+        import pygame as pg
+
+        ad = tmp_path / "aliases"
+        ad.mkdir()
+        write_alias_file(ad / "stone.alias.json",
+                         aliases=[(f"A{i}", i) for i in range(12)])
+        pal, _ = make_palette(ad)
+        grid = pal._grid_rect()
+        pos = (grid.x + 10, grid.y + 10)
+        monkeypatch.setattr(pg.mouse, "get_pos", lambda: pos)
+        assert pal.handle_event(pg.event.Event(
+            pg.MOUSEBUTTONDOWN, {"button": 5, "pos": pos})) is True
+        assert pal.scroll > 0
+        assert pal.handle_event(pg.event.Event(
+            pg.MOUSEBUTTONDOWN, {"button": 4, "pos": pos})) is True
+        assert pal.scroll == 0
+
+    def test_throttle_skips_rescan(self, tmp_path, monkeypatch):
+        import json as _json
+
+        import pygame as pg
+
+        ad = tmp_path / "aliases"
+        ad.mkdir()
+        write_alias_file(ad / "stone.alias.json", aliases=[("A", 1)])
+        pal, _ = make_palette(ad)
+        pal.refresh_items(force=True)
+        base = pg.time.get_ticks()
+        (ad / "stone.alias.json").write_text(_json.dumps({
+            "version": 1, "tileset": "t.png",
+            "aliases": [{"name": "A", "w": 1, "h": 1, "cells": [[0, 0, 1]]},
+                        {"name": "B", "w": 1, "h": 1, "cells": [[0, 0, 2]]}]}))
+        monkeypatch.setattr(pg.time, "get_ticks", lambda: base + 100)
+        pal.refresh_items()
+        assert [a.name for _, _, a in pal.filtered] == ["A"]
+        monkeypatch.setattr(pg.time, "get_ticks", lambda: base + 600)
+        pal.refresh_items()
+        assert [a.name for _, _, a in pal.filtered] == ["A", "B"]

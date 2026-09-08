@@ -396,7 +396,7 @@ class AliasComposerEditor:
         if self.canvas_rect.w <= 0 or self.canvas_rect.h <= 0:
             return
         self.canvas_zoom = min(self.canvas_rect.w / max(1, self.canvas_w * tw),
-                               self.canvas_rect.h / max(1, self.canvas_h * tw))
+                               self.canvas_rect.h / max(1, self.canvas_h * th))
         self.canvas_zoom = max(0.25, min(4.0, self.canvas_zoom))
         self.canvas_pan = [0.0, 0.0]
 
@@ -505,7 +505,7 @@ class AliasComposerEditor:
         if event.type == pygame.MOUSEWHEEL:
             mods = pygame.key.get_mods()
             if self.strip_rect.collidepoint(mouse):
-                if mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA):
+                if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
                     self.ts_zoom = max(0.25, min(3.0, self.ts_zoom * (1.15 if event.y > 0 else 1 / 1.15)))
                     self._clamp_ts_scroll()
                 elif mods & pygame.KMOD_SHIFT:
@@ -643,7 +643,7 @@ class AliasComposerEditor:
             self._space_held = True
             return True
         mods = pygame.key.get_mods()
-        ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
+        ctrl = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
         if self._renaming:
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 name = self._rename_buf.strip()

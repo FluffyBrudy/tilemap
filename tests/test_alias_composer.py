@@ -390,3 +390,17 @@ class TestHelpOverlay:
         monkeypatch.setattr(pygame.mouse, "get_pos", lambda: (0, 0))
         assert ed.handle_event(pygame.event.Event(
             pygame.KEYDOWN, {"key": pygame.K_ESCAPE})) is not True
+
+
+class TestNonSquareTiles:
+    def test_fit_uses_tile_height(self):
+        from plugins.tile_alias.editor import AliasComposerEditor
+
+        surf = pygame.Surface((8 * 32, 8 * 16), pygame.SRCALPHA)
+        surf.fill((10, 20, 30, 255))
+        ed = AliasComposerEditor(Rect(0, 0, 1200, 800), surf, (32, 16))
+        ed.canvas_w, ed.canvas_h = 8, 8
+        ed._fit_canvas()
+        # height bound: rect_h / (8 * 16); tw-based math would give half that
+        assert ed.canvas_zoom == min(
+            ed.canvas_rect.w / (8 * 32), ed.canvas_rect.h / (8 * 16))
