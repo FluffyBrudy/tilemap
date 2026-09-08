@@ -252,7 +252,16 @@ class Document:
         old_w, old_h = self.surface.get_size()
         if (left, top, right - left, bottom - top) == (0, 0, old_w, old_h):
             return False
-        self.surface = self.surface.subsurface(Rect(left, top, right - left, bottom - top)).copy()
+        # the tile-snapped box can extend past ragged canvas edges;
+        # subsurface() requires a fully-inside rect, so clip and blit
+        # onto a fresh tile-aligned destination instead
+        dest = Surface((right - left, bottom - top), pygame.SRCALPHA)
+        dest.fill((0, 0, 0, 0))
+        src_rect = Rect(left, top, right - left, bottom - top).clip(
+            self.surface.get_rect())
+        if src_rect.w > 0 and src_rect.h > 0:
+            dest.blit(self.surface, (src_rect.x - left, src_rect.y - top), src_rect)
+        self.surface = dest
         self.origin_col += left // tw
         self.origin_row += top // th
         new_w, new_h = self.surface.get_size()

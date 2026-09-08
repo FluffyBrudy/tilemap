@@ -21,6 +21,7 @@ if sys.platform == "darwin":
 from constants import BASE_PATH
 from node_manager import NodeManager
 from tilemap import Tilemap
+from tilemap_editor.settings import BUILTIN_THEMES
 from utils import error_context, error_handler
 from utils.context_dispatch import PropertyContextDispatcher
 from utils.property_suggestions import PropertySuggestionRegistry
@@ -109,7 +110,7 @@ def _load_project_config() -> tuple[Path, Path, dict]:
 
     defaults = {
         "theme": "dark",
-        "themes_list": ["dark", "midnight", "nord", "molokai", "light", "semi_light"],
+        "themes_list": list(BUILTIN_THEMES),
         "nodes_path": "nodes",
         "aliases_path": "aliases",
         "alias_scopes": {},

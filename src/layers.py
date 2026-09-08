@@ -45,7 +45,11 @@ class Layer:
         self.properties: dict[str, Any] = {}
 
         self.image_path = image_path if layer_type == "image" else None
-        self.image_rect = dict(image_rect) if layer_type == "image" and image_rect is not None else None
+        self.image_rect = (
+            dict(image_rect)
+            if layer_type == "image" and image_rect is not None
+            else None
+        )
 
         self.tiles: dict[tuple[int, int], TypeTile] = {}
 

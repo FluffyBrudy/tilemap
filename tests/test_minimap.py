@@ -243,3 +243,21 @@ class TestDirtyHook:
         g.invalidate_bounds_cache()
         assert g._cached_bounds is None
         assert mm.dirty is True
+
+
+class TestViewportClip:
+    def test_zoomed_out_viewport_stays_in_panel(self):
+        mm, ed = make_mm({(0, 0): tile((0, 0))})
+        ed.tile_grid_widget.zoom_level = 0.05  # zoomed way out
+        ed.tile_grid_widget.scroll_x = -160
+        ed.tile_grid_widget.scroll_y = -80
+        panel = mm._panel_rect()
+        bg = (7, 7, 7, 255)
+        screen = pygame.Surface((800, 600), pygame.SRCALPHA)
+        screen.fill(bg)
+        mm.draw(screen)
+        vp = mm._viewport_rect()
+        assert vp is not None and (vp.w > panel.w or vp.h > panel.h)
+        # points on the spilled outline, outside the panel, stay background
+        assert screen.get_at((int(vp.x), panel.centery)) == bg
+        assert screen.get_at((panel.centerx, int(vp.y))) == bg

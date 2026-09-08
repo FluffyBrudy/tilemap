@@ -348,3 +348,21 @@ class TestTrimToContent:
         stack = CommandStack()
         stack.push(MoveCommand([(3, 0)], -3, 0), doc, Selection.from_cells([(3, 0)]))
         assert pixel_at(doc, 0, 0) == (200, 30, 30, 255)
+
+
+class TestTrimRaggedEdge:
+    def test_content_past_tile_boundary(self):
+        # 33px-wide canvas: tile-snapped box (64 wide) exceeds the
+        # surface; trim must clip, not raise, and keep the pixel
+        doc = make_doc(w=33, h=32)
+        doc.surface.set_at((32, 5), (9, 9, 9, 255))
+        assert doc.trim_to_content() is True
+        assert doc.surface.get_size() == (32, 32)
+        assert doc.surface.get_at((0, 5)) == (9, 9, 9, 255)
+
+    def test_partial_bottom_edge(self):
+        doc = make_doc(w=64, h=40)
+        doc.surface.set_at((10, 39), (1, 2, 3, 255))
+        assert doc.trim_to_content() is True
+        assert doc.surface.get_size() == (32, 32)
+        assert doc.surface.get_at((10, 7)) == (1, 2, 3, 255)

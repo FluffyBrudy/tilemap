@@ -88,17 +88,22 @@ class AliasPalette:
         self._thumbs = {}
         if self.scope_name is not None:
             self.scope = AliasScope(self.aliases_dir(), scopes[self.scope_name])
-            self.refresh_items()
+            self.refresh_items(force=True)
 
-    def refresh_items(self) -> None:
+    def refresh_items(self, force: bool = False) -> None:
         if self.scope is None:
             self.items, self.filtered = [], []
             return
-        if self.scope.changed():
-            self.scope.refresh()
-            self._thumbs = {}
+        if force or self._poll_due():
+            if self.scope.changed():
+                self.scope.refresh()
+                self._thumbs = {}
+            self._poll_at = pygame.time.get_ticks()
         self.items = self.scope.all_aliases()
         self.apply_filter()
+
+    def _poll_due(self) -> bool:
+        return pygame.time.get_ticks() - getattr(self, "_poll_at", 0) >= 500
 
     def apply_filter(self) -> None:
         q = self.search.text.strip().lower()
@@ -119,7 +124,7 @@ class AliasPalette:
                         f"Scope: {self.scope_name} ({len(self.filtered)} aliases)")
             return
         if len(scopes) == 1 and self.scope_name in scopes:
-            self.refresh_items()
+            self.refresh_items(force=True)
             if notes is not None:
                 notes.notify(
                     f"Only one scope: {scopes[0]} ({len(self.filtered)} aliases)")
@@ -131,7 +136,7 @@ class AliasPalette:
         self.scope = AliasScope(self.aliases_dir(),
                                 self.configured_scopes()[self.scope_name])
         self.selected, self.scroll = 0, 0
-        self.refresh_items()
+        self.refresh_items(force=True)
         if notes is not None:
             notes.success(f"Scope: {self.scope_name} ({len(self.filtered)} aliases)")
 
@@ -246,10 +251,10 @@ class AliasPalette:
             return True
         if self.btn_help.handle_event(event):
             return True
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if self.show_help:
-                self.show_help = False
-                return True
+        if (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+                and self.show_help):
+            self.show_help = False
+            return True
         mouse = pygame.mouse.get_pos()
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -271,6 +276,12 @@ class AliasPalette:
 
         if event.type == pygame.MOUSEWHEEL and self._grid_rect().collidepoint(mouse):
             self.scroll = max(0, self.scroll + (-event.y) * 3 * (THUMB_BOX + 18))
+            return True
+
+        if (event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5)
+                and self._grid_rect().collidepoint(mouse)):
+            step = 3 * (THUMB_BOX + 18)
+            self.scroll = max(0, self.scroll + (step if event.button == 5 else -step))
             return True
 
         if event.type == pygame.KEYDOWN:
