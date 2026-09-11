@@ -1,16 +1,28 @@
 # Changelog
 
 <!-- towncrier release notes start -->
-# tilemap_editor 5.2.0 (2026-09-04)
+# tilemap_editor 5.2.0 (2026-09-11)
 
 ## Features
 
 - **Background layer support** — load and display image layers from your map. The first image layer loads automatically as the background, and can place additional layers manually.
 - **Object animation** — animate objects on object layers with per-object or shared tileset animation strips. Configure frame count, duration, loop mode, and custom frame order. Objects without animation fall back to their tileset's shared strip automatically.
+- **Ordered tile-animation sequences** — play frame sequences across separate spritesheets: pick frames in order from any loaded tileset instead of relying on row stride. Invalid sequences are rejected before saving, so saved maps stay intact. (54-tile-sequences)
+- **Alias composer** — author tile-pattern brushes with a standalone composer and palette. Patterns save as `*.alias.json` sidecars per tileset and reload live in the editor.
+- **Autotile upgrades** — 4x4/5x5 strips with ownership tracking, hierarchical classification via distance-2 subcases, and template management with hardened asserts.
+- **New paint tools** — dice (random) brush, rect fill, line tool, replace-variant, and a marker palette with preview gating.
+- **Minimap** — tile-view minimap for navigation.
+- **Collision editor** — body-drag, per-tile flip flags, and baked mirror actions.
+- **Sprite editor** — recency-ordered paste, auto-trim on content delete, internal tiles preferred over OS paths on paste, plus model/tools/persistence/viewport review fixes.
+- **Layer control** — layer toggle and slope flag on marker generation.
 
 ## Bug Fixes
 
 - Fixed image-layer metadata round-trip: persists `metadata` alongside `properties` in save/load, guards image handle/rect calls against partial `image_rect`, coerces `custom_frames` to int, centralizes frame-aware object selection, avoids `anim_*` collisions via explicit mapping, and handles `OSError` in image validation. (#999)
+- Fixed autotile duplication and event behavior: orphaned subcase leaves are dropped when variant ids change, and corrupted persisted autotile data no longer crashes map load.
+- Fixed collision body-drag state corruption on mid-interaction polygon delete and mirror overwriting unselected tiles; marker slope polygons now render correctly at cell boundaries; minimap keeps minimum 1px dimensions.
+- Fixed view checkboxes, node keys, pick/fill tools, edit menu, shortcuts, rule ops, themes, filemanager refresh, and ESC scope.
+- Fixed modal palette help and exact tileset resolution, plus sprite editor trim/composer/palette issues.
 
 
 # tilemap_editor 5.0.1 (2026-08-30)
