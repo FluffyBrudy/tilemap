@@ -1,6 +1,12 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 5.2.1 (2026-09-11)
+
+## Bug Fixes
+
+- Fixed installed package missing the `aliases` module: `tilemap-editor` crashed at startup with `ModuleNotFoundError: No module named 'aliases'`. The alias-composer module is now packaged.
+
 # tilemap_editor 5.2.0 (2026-09-11)
 
 ## Features

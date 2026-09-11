@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tilemap-editor"
-version = "5.2.0"
+version = "5.2.1"
 description = "Pygame tilemap editor with collision, animation, sprite & particle tools"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -63,6 +63,7 @@ showcontent = true
 package-dir = {"" = "src"}
 include-package-data = true
 py-modules = [
+  "aliases",
   "constants",
   "editor",
   "event_map",
