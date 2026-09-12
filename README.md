@@ -1,4 +1,5 @@
 # tilemap-editor
+<img width="2832" height="1746" alt="image" src="https://github.com/user-attachments/assets/7da34b28-da45-4993-a09f-bdbd7085352c" />
 
 `tilemap-editor` is a pygame-based map editor focused on fast iteration for 2D games.
 
