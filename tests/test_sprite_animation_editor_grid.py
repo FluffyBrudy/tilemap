@@ -7,8 +7,6 @@ correctly synced to internal editor state and sub-widget properties.
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -16,8 +14,6 @@ from pathlib import Path
 import pygame
 import pytest
 from pygame import Rect
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)

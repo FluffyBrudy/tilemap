@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect
@@ -141,6 +140,16 @@ class TestLineCommit:
         stroke(g, 0, 0, 2, 0)
         assert g.line_start is None and g.line_end is None
 
+    def test_object_layer_places_one_object_per_cell(self, monkeypatch):
+        g, ed, layer = make_grid(monkeypatch)
+        layer.layer_type = "object"
+        stroke(g, 0, 0, 3, 0)
+        assert layer.tiles == {}
+        assert len(layer.objects) == 4
+        assert ed.tilemap.history == ["Line"]
+        assert any("4 objects" in m for m in ed.notifications.good)
+        assert [o["variant"] for o in layer.objects.values()] == [0, 1, 0, 1]
+
     def test_no_brush_noop(self, monkeypatch):
         g, ed, layer = make_grid(monkeypatch)
         ed.tileset_widget.selected_tile = None
@@ -186,7 +195,7 @@ class TestLineCommit:
                       "variant_to_group": {}})()
         calls = []
         monkeypatch.setattr(LayerCls, "autotile_at_pos",
-                            lambda self, pos, rules: calls.append((pos, rules)))
+                            lambda self, pos, rules, variant_props=None: calls.append((pos, rules)))
         stroke(g, 0, 0, 1, 0)
         assert sorted(p for p, _ in calls) == [(0, 0), (1, 0)]
         assert all(r == [sentinel] for _, r in calls)

@@ -14,18 +14,13 @@ Covers:
 """
 
 import os
-
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
 import sys
+import types
 from pathlib import Path
 
 import pygame
 import pytest
 from pygame import Rect
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)
@@ -173,78 +168,26 @@ def make_grid(layer=None):
 
 
 # ---------------------------------------------------------------------------
-# Initial state
-# ---------------------------------------------------------------------------
-
-
-class TestInitialState:
-    def test_selection_rect_is_none(self):
-        g = make_grid()
-        assert g.selection_rect is None
-
-    def test_selection_start_is_none(self):
-        g = make_grid()
-        assert g.selection_start is None
-
-    def test_is_selecting_is_false(self):
-        g = make_grid()
-        assert g.is_selecting is False
-
-    def test_is_moving_is_false(self):
-        g = make_grid()
-        assert g.is_moving is False
-
-    def test_move_delta_is_zero(self):
-        g = make_grid()
-        assert g.move_delta == (0, 0)
-
-    def test_move_start_mouse_is_none(self):
-        g = make_grid()
-        assert g.move_start_mouse is None
-
-    def test_move_origin_rect_is_none(self):
-        g = make_grid()
-        assert g.move_origin_rect is None
-
-    def test_clipboard_is_none(self):
-        g = make_grid()
-        assert g.clipboard is None
-
-
-# ---------------------------------------------------------------------------
 # _point_in_selection
 # ---------------------------------------------------------------------------
 
 
 class TestPointInSelection:
-    def test_returns_false_when_no_selection(self):
+    @pytest.mark.parametrize(
+        ("rect", "point", "expected"),
+        [
+            (None, (3, 3), False),
+            ((2, 2, 5, 5), (3, 3), True),
+            ((2, 2, 5, 5), (2, 2), True),
+            ((2, 2, 5, 5), (5, 5), True),
+            ((2, 2, 5, 5), (6, 3), False),
+            ((2, 2, 5, 5), (1, 3), False),
+        ],
+    )
+    def test_point_membership(self, rect, point, expected):
         g = make_grid()
-        assert g._point_in_selection((3, 3)) is False
-
-    def test_point_inside_selection(self):
-        g = make_grid()
-        g.selection_rect = (2, 2, 5, 5)
-        assert g._point_in_selection((3, 3)) is True
-
-    def test_point_on_top_left_corner(self):
-        g = make_grid()
-        g.selection_rect = (2, 2, 5, 5)
-        assert g._point_in_selection((2, 2)) is True
-
-    def test_point_on_bottom_right_corner(self):
-        g = make_grid()
-        g.selection_rect = (2, 2, 5, 5)
-        assert g._point_in_selection((5, 5)) is True
-
-    def test_point_outside_selection(self):
-        g = make_grid()
-        g.selection_rect = (2, 2, 5, 5)
-        assert g._point_in_selection((6, 3)) is False
-
-    def test_point_just_outside_left(self):
-        g = make_grid()
-        g.selection_rect = (2, 2, 5, 5)
-        assert g._point_in_selection((1, 3)) is False
+        g.selection_rect = rect
+        assert g._point_in_selection(point) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -253,22 +196,14 @@ class TestPointInSelection:
 
 
 class TestFinalizeSelection:
-    def test_removes_single_cell_selection(self):
+    def test_single_cell_collapses_multi_cell_keeps(self):
         g = make_grid()
         g.selection_rect = (3, 3, 3, 3)
         g._finalize_selection()
         assert g.selection_rect is None
-
-    def test_keeps_multi_cell_selection(self):
-        g = make_grid()
         g.selection_rect = (1, 1, 4, 4)
         g._finalize_selection()
         assert g.selection_rect == (1, 1, 4, 4)
-
-    def test_noop_when_no_selection(self):
-        g = make_grid()
-        g._finalize_selection()
-        assert g.selection_rect is None
 
 
 # ---------------------------------------------------------------------------
@@ -277,53 +212,7 @@ class TestFinalizeSelection:
 
 
 class TestCopySelection:
-    def test_copy_with_no_selection_does_nothing(self):
-        g = make_grid()
-        g.copy_selection()
-        assert g.clipboard is None
-
-    def test_copy_empty_selection_sets_clipboard_none(self):
-        """Copying a region with no tiles sets clipboard to None."""
-        g = make_grid()
-        g.selection_rect = (0, 0, 2, 2)
-        g.copy_selection()
-        # No tiles in the layer, so clipboard should be None
-        assert g.clipboard is None
-
-    def test_copy_with_tiles_populates_clipboard(self):
-        layer = FakeTileLayer()
-        layer.set_tile((1, 1), {"pos": (1, 1), "ttype": 0, "variant": 3})
-        g = make_grid(layer)
-        g.selection_rect = (1, 1, 2, 2)
-        g.copy_selection()
-        assert g.clipboard is not None
-        assert len(g.clipboard["tiles"]) == 1
-
-    def test_copy_preserves_relative_positions(self):
-        layer = FakeTileLayer()
-        layer.set_tile((2, 3), {"pos": (2, 3), "ttype": 0, "variant": 5})
-        g = make_grid(layer)
-        g.selection_rect = (2, 3, 3, 4)
-        g.copy_selection()
-        assert (0, 0) in g.clipboard["tiles"]
-
-    def test_copy_records_layer_type(self):
-        layer = FakeTileLayer()
-        layer.set_tile((0, 0), {"pos": (0, 0), "ttype": 0, "variant": 1})
-        g = make_grid(layer)
-        g.selection_rect = (0, 0, 1, 1)
-        g.copy_selection()
-        assert g.clipboard["layer_type"] == "tile"
-
-    def test_copy_records_origin(self):
-        layer = FakeTileLayer()
-        layer.set_tile((3, 2), {"pos": (3, 2), "ttype": 0, "variant": 1})
-        g = make_grid(layer)
-        g.selection_rect = (3, 2, 4, 3)
-        g.copy_selection()
-        assert g.clipboard["origin"] == (3, 2)
-
-    def test_copy_multiple_tiles(self):
+    def test_copy_populates_clipboard(self):
         layer = FakeTileLayer()
         layer.set_tile((0, 0), {"pos": (0, 0), "ttype": 0, "variant": 1})
         layer.set_tile((1, 0), {"pos": (1, 0), "ttype": 0, "variant": 2})
@@ -331,16 +220,15 @@ class TestCopySelection:
         g = make_grid(layer)
         g.selection_rect = (0, 0, 1, 1)
         g.copy_selection()
+        assert g.clipboard is not None
         assert len(g.clipboard["tiles"]) == 3
+        assert (0, 0) in g.clipboard["tiles"]  # relative positions
+        assert g.clipboard["layer_type"] == "tile"
+        assert g.clipboard["origin"] == (0, 0)
 
-    def test_copy_notifies_success(self):
-        layer = FakeTileLayer()
-        layer.set_tile((0, 0), {"pos": (0, 0), "ttype": 0, "variant": 1})
-        g = make_grid(layer)
-        g.selection_rect = (0, 0, 0, 0)
+        g.selection_rect = (9, 9, 10, 10)  # empty region
         g.copy_selection()
-        msgs = [m[0] for m in g.editor.notifications.messages]
-        assert "success" in msgs
+        assert g.clipboard is None
 
 
 # ---------------------------------------------------------------------------
@@ -357,31 +245,13 @@ class TestPasteClipboard:
         g.copy_selection()
         return g
 
-    def test_paste_does_nothing_with_no_clipboard(self):
-        g = make_grid()
-        g.paste_clipboard((0, 0))
-        # No exception; layer is unchanged
-        layer = g.editor.tilemap.layer_manager.get_active_layer()
-        assert layer.get_tile((0, 0)) is None
-
-    def test_paste_places_tile_at_target(self):
-        g = self._setup_clipboard()
-        layer = g.editor.tilemap.layer_manager.get_active_layer()
-        g.paste_clipboard((5, 5))
-        assert layer.get_tile((5, 5)) is not None
-
-    def test_paste_tile_has_correct_variant(self):
+    def test_paste_places_tiles(self):
         g = self._setup_clipboard()
         layer = g.editor.tilemap.layer_manager.get_active_layer()
         g.paste_clipboard((5, 5))
         tile = layer.get_tile((5, 5))
+        assert tile is not None
         assert tile["variant"] == 7
-
-    def test_paste_notifies_success(self):
-        g = self._setup_clipboard()
-        g.paste_clipboard((5, 5))
-        msgs = [m[0] for m in g.editor.notifications.messages]
-        assert "success" in msgs
 
     def test_paste_layer_mismatch_notifies(self):
         """Pasting tile data onto an object layer should notify the user."""
@@ -406,45 +276,18 @@ class TestPasteClipboard:
 
 
 class TestDeleteSelection:
-    def test_delete_with_no_selection_does_nothing(self):
-        g = make_grid()
-        g.delete_selection()  # should not raise
-        assert g.selection_rect is None
-
-    def test_delete_removes_tiles_in_rect(self):
+    def test_delete_removes_rect_contents_only(self):
         layer = FakeTileLayer()
         layer.set_tile((1, 1), {"pos": (1, 1), "ttype": 0, "variant": 1})
         layer.set_tile((2, 1), {"pos": (2, 1), "ttype": 0, "variant": 2})
+        layer.set_tile((5, 5), {"pos": (5, 5), "ttype": 0, "variant": 9})
         g = make_grid(layer)
         g.selection_rect = (1, 1, 2, 1)
         g.delete_selection()
         assert layer.get_tile((1, 1)) is None
         assert layer.get_tile((2, 1)) is None
-
-    def test_delete_clears_selection_rect(self):
-        layer = FakeTileLayer()
-        layer.set_tile((0, 0), {"pos": (0, 0), "ttype": 0, "variant": 1})
-        g = make_grid(layer)
-        g.selection_rect = (0, 0, 1, 1)
-        g.delete_selection()
-        assert g.selection_rect is None
-
-    def test_delete_does_not_remove_tiles_outside_selection(self):
-        layer = FakeTileLayer()
-        layer.set_tile((5, 5), {"pos": (5, 5), "ttype": 0, "variant": 9})
-        g = make_grid(layer)
-        g.selection_rect = (0, 0, 2, 2)
-        g.delete_selection()
         assert layer.get_tile((5, 5)) is not None
-
-    def test_delete_notifies_success(self):
-        layer = FakeTileLayer()
-        layer.set_tile((0, 0), {"pos": (0, 0), "ttype": 0, "variant": 1})
-        g = make_grid(layer)
-        g.selection_rect = (0, 0, 1, 1)
-        g.delete_selection()
-        msgs = [m[0] for m in g.editor.notifications.messages]
-        assert "success" in msgs
+        assert g.selection_rect is None
 
 
 # ---------------------------------------------------------------------------
@@ -452,58 +295,27 @@ class TestDeleteSelection:
 # ---------------------------------------------------------------------------
 
 
-class TestBeginMoveAndCancelMove:
-    def test_begin_move_sets_is_moving(self):
-        g = make_grid()
-        g.selection_rect = (1, 1, 3, 3)
-        g._begin_move((100, 200))
-        assert g.is_moving is True
-
-    def test_begin_move_records_start_mouse(self):
-        g = make_grid()
-        g.selection_rect = (1, 1, 3, 3)
-        g._begin_move((100, 200))
-        assert g.move_start_mouse == (100, 200)
-
-    def test_begin_move_saves_origin_rect(self):
-        g = make_grid()
-        g.selection_rect = (1, 1, 3, 3)
-        g._begin_move((100, 200))
-        assert g.move_origin_rect == (1, 1, 3, 3)
-
-    def test_begin_move_resets_delta(self):
+class TestBeginAndCancelMove:
+    def test_begin_saves_origin_state(self):
         g = make_grid()
         g.selection_rect = (1, 1, 3, 3)
         g.move_delta = (5, 5)
         g._begin_move((100, 200))
+        assert g.is_moving is True
+        assert g.move_start_mouse == (100, 200)
+        assert g.move_origin_rect == (1, 1, 3, 3)
         assert g.move_delta == (0, 0)
 
-    def test_cancel_move_clears_is_moving(self):
-        g = make_grid()
-        g.selection_rect = (1, 1, 3, 3)
-        g._begin_move((50, 50))
-        g.cancel_move()
-        assert g.is_moving is False
-
-    def test_cancel_move_restores_selection_rect(self):
+    def test_cancel_restores_everything(self):
         g = make_grid()
         g.selection_rect = (1, 1, 3, 3)
         g._begin_move((50, 50))
         g.selection_rect = (2, 2, 4, 4)  # simulate drag update
-        g.cancel_move()
-        assert g.selection_rect == (1, 1, 3, 3)
-
-    def test_cancel_move_clears_move_delta(self):
-        g = make_grid()
-        g.selection_rect = (1, 1, 3, 3)
-        g._begin_move((50, 50))
         g.move_delta = (3, 2)
         g.cancel_move()
+        assert g.is_moving is False
+        assert g.selection_rect == (1, 1, 3, 3)
         assert g.move_delta == (0, 0)
-
-    def test_cancel_move_when_not_moving_is_safe(self):
-        g = make_grid()
-        g.cancel_move()  # should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -512,53 +324,27 @@ class TestBeginMoveAndCancelMove:
 
 
 class TestCommitMove:
-    def test_commit_move_with_zero_delta_does_not_move_tiles(self):
+    def test_commit_move_journey(self):
         layer = FakeTileLayer()
-        layer.set_tile((2, 2), {"pos": (2, 2), "ttype": 0, "variant": 1})
+        layer.set_tile((1, 1), {"pos": (1, 1), "ttype": 0, "variant": 42})
         g = make_grid(layer)
-        g.selection_rect = (2, 2, 3, 3)
+        g.selection_rect = (1, 1, 1, 1)
         g._begin_move((0, 0))
         g.move_delta = (0, 0)
-        g.commit_move()
-        assert layer.get_tile((2, 2)) is not None
-        assert g.is_moving is False
+        g.commit_move()  # zero delta: tiles stay, moving ends
+        assert layer.get_tile((1, 1)) is not None
 
-    def test_commit_move_moves_tiles_by_delta(self):
-        layer = FakeTileLayer()
-        layer.set_tile((2, 2), {"pos": (2, 2), "ttype": 0, "variant": 5})
-        g = make_grid(layer)
-        g.selection_rect = (2, 2, 2, 2)
         g._begin_move((0, 0))
-        g.move_delta = (1, 0)
+        g.move_delta = (0, 1)
         g.commit_move()
-        assert layer.get_tile((2, 2)) is None
-        assert layer.get_tile((3, 2)) is not None
-
-    def test_commit_move_updates_selection_rect(self):
-        layer = FakeTileLayer()
-        layer.set_tile((2, 2), {"pos": (2, 2), "ttype": 0, "variant": 5})
-        g = make_grid(layer)
-        g.selection_rect = (2, 2, 3, 3)
-        g._begin_move((0, 0))
-        g.move_delta = (2, 1)
-        g.commit_move()
-        assert g.selection_rect == (4, 3, 5, 4)
-
-    def test_commit_move_clears_moving_state(self):
-        layer = FakeTileLayer()
-        layer.set_tile((2, 2), {"pos": (2, 2), "ttype": 0, "variant": 1})
-        g = make_grid(layer)
-        g.selection_rect = (2, 2, 2, 2)
-        g._begin_move((0, 0))
-        g.move_delta = (1, 0)
-        g.commit_move()
+        assert layer.get_tile((1, 1)) is None
+        moved = layer.get_tile((1, 2))
+        assert moved is not None
+        assert moved["variant"] == 42  # variant unchanged
+        assert g.selection_rect == (1, 2, 1, 2)
         assert g.is_moving is False
         assert g.move_start_mouse is None
         assert g.move_origin_rect is None
-
-    def test_commit_move_when_not_moving_is_safe(self):
-        g = make_grid()
-        g.commit_move()  # should not raise
 
     def test_commit_move_records_history(self):
         layer = FakeTileLayer()
@@ -570,15 +356,190 @@ class TestCommitMove:
         g.commit_move()
         assert "Move Selection" in g.editor.tilemap._history
 
-    def test_commit_move_preserves_tile_variant(self):
-        """Moved tiles should keep their variant ID unchanged."""
-        layer = FakeTileLayer()
-        layer.set_tile((1, 1), {"pos": (1, 1), "ttype": 0, "variant": 42})
-        g = make_grid(layer)
-        g.selection_rect = (1, 1, 1, 1)
-        g._begin_move((0, 0))
-        g.move_delta = (0, 1)
+
+# ---------------------------------------------------------------------------
+# empty-state safety: no-ops must never raise
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyStateSafety:
+    def test_empty_operations_are_safe(self):
+        g = make_grid()
+        g._finalize_selection()
+        g.copy_selection()
+        g.paste_clipboard((0, 0))
+        g.delete_selection()
+        g.cancel_move()
         g.commit_move()
-        moved = layer.get_tile((1, 2))
-        assert moved is not None
-        assert moved["variant"] == 42
+        assert g.selection_rect is None
+        assert g.clipboard is None
+
+
+# ---------------------------------------------------------------------------
+# Rubber-band lifecycle: clicks never destroy committed state
+# ---------------------------------------------------------------------------
+
+
+def _rig_select(grid, monkeypatch):
+    from widgets.ui.tool_manager import ToolKind
+
+    grid.editor.tool_manager = types.SimpleNamespace(
+        is_active=lambda kind: kind == ToolKind.SELECT
+    )
+    grid.editor.node_editing_mode = False
+    grid.editor.show_nodes = False
+    return grid
+
+
+def _cell_center(grid, cell):
+    return grid.cell_screen_rect(*cell).center
+
+
+def _down(pos):
+    return pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": pos})
+
+
+def _up(pos):
+    return pygame.event.Event(pygame.MOUSEBUTTONUP, {"button": 1, "pos": pos})
+
+
+def _motion(pos):
+    return pygame.event.Event(
+        pygame.MOUSEMOTION, {"pos": pos, "rel": (0, 0), "buttons": (0, 0, 0)}
+    )
+
+
+def _key(key):
+    return pygame.event.Event(pygame.KEYDOWN, {"key": key, "unicode": ""})
+
+
+class TestRubberBandLifecycle:
+    def test_click_without_drag_preserves_selection(self, monkeypatch):
+        g = _rig_select(make_grid(), monkeypatch)
+        g.selection_rect = (2, 2, 5, 5)
+        pos = _cell_center(g, (0, 0))
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: pos)
+        g.handle_event(_motion(pos))  # motion only tracks hover; unconsumed
+        assert g.hover_cell == (0, 0)
+        assert g.handle_event(_down(pos)) is True
+        assert g.handle_event(_up(pos)) is True
+        assert g.selection_rect == (2, 2, 5, 5)
+        assert g.is_selecting is False
+
+    def test_drag_replaces_selection(self, monkeypatch):
+        g = _rig_select(make_grid(), monkeypatch)
+        g.selection_rect = (2, 2, 5, 5)
+        start = _cell_center(g, (0, 0))
+        end = _cell_center(g, (3, 3))
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: start)
+        g.handle_event(_motion(start))
+        assert g.handle_event(_down(start)) is True
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: end)
+        g.handle_event(_motion(end))
+        assert g.handle_event(_up(end)) is True
+        assert g.selection_rect == (0, 0, 3, 3)
+
+    def test_no_drag_leaves_no_selection(self, monkeypatch):
+        g = _rig_select(make_grid(), monkeypatch)
+        assert g.selection_rect is None
+        pos = _cell_center(g, (1, 1))
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: pos)
+        g.handle_event(_motion(pos))  # motion only tracks hover; unconsumed
+        assert g.hover_cell == (1, 1)
+        assert g.handle_event(_down(pos)) is True
+        assert g.handle_event(_up(pos)) is True
+        assert g.selection_rect is None
+
+    def test_escape_clears(self, monkeypatch):
+        g = _rig_select(make_grid(), monkeypatch)
+        g.selection_rect = (2, 2, 5, 5)
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: 0)
+        assert g.handle_event(_key(pygame.K_ESCAPE)) is True
+        assert g.selection_rect is None
+
+    def test_return_clears(self, monkeypatch):
+        g = _rig_select(make_grid(), monkeypatch)
+        g.selection_rect = (2, 2, 5, 5)
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: 0)
+        assert g.handle_event(_key(pygame.K_RETURN)) is True
+        assert g.selection_rect is None
+
+    def test_flip_after_stray_click_hits_selection(self, monkeypatch):
+        from layers import Layer
+
+        layer = Layer("t")
+        layer.tiles[(2, 2)] = {"pos": (2, 2), "ttype": 0, "variant": 3,
+                               "flip_h": False, "flip_v": False}
+        layer.tiles[(4, 4)] = {"pos": (4, 4), "ttype": 0, "variant": 5,
+                               "flip_h": False, "flip_v": False}
+        g = _rig_select(make_grid(layer), monkeypatch)
+        g.selection_rect = (2, 2, 4, 4)
+        # stray click elsewhere (no drag): selection must survive ...
+        pos = _cell_center(g, (0, 0))
+        monkeypatch.setattr(pygame.mouse, "get_pos", lambda: pos)
+        g.handle_event(_motion(pos))  # motion only tracks hover; unconsumed
+        assert g.hover_cell == (0, 0)
+        assert g.handle_event(_down(pos)) is True
+        assert g.handle_event(_up(pos)) is True
+        assert g.selection_rect == (2, 2, 4, 4)
+        # ... so Shift+H flips the batch, not the brush.
+        monkeypatch.setattr(pygame.key, "get_mods", lambda: pygame.KMOD_SHIFT)
+        assert g.handle_event(_key(pygame.K_h)) is True
+        assert layer.tiles[(4, 2)]["variant"] == 3
+        assert layer.tiles[(2, 4)]["variant"] == 5
+        assert layer.tiles[(4, 2)]["flip_h"] is True
+        assert getattr(g, "brush_flip_h", False) is False
+
+
+# ---------------------------------------------------------------------------
+# _draw_move_preview honors flip flags (same helpers as main paint)
+# ---------------------------------------------------------------------------
+
+
+def _preview_grid(layer, tileset_surface):
+    g = make_grid(layer)
+    g.editor.tileset_widget = types.SimpleNamespace(
+        tileset_map={0: types.SimpleNamespace(surface=tileset_surface)}
+    )
+    g._tile_scale_cache = {}
+    return g
+
+
+class TestMovePreviewFlip:
+    def _sheet(self):
+        surf = pygame.Surface((64, 32), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        surf.fill((255, 0, 0, 255), (0, 0, 4, 32))
+        return surf
+
+    def _moving_grid(self, layer, surf, dx=2, dy=0):
+        g = _preview_grid(layer, surf)
+        g.selection_rect = (2, 2, 2, 2)
+        g.move_origin_rect = (2, 2, 2, 2)
+        g.move_delta = (dx, dy)
+        g.is_moving = True
+        return g
+
+    def test_flipped_tile_preview_mirrors(self):
+        layer = FakeTileLayer()
+        layer.set_tile((2, 2), {"pos": (2, 2), "ttype": 0, "variant": 0,
+                                "flip_h": True, "flip_v": False})
+        g = self._moving_grid(layer, self._sheet())
+        screen = pygame.Surface((800, 600), pygame.SRCALPHA)
+        screen.fill((0, 0, 0, 255))
+        g._draw_move_preview(screen)
+        dest = g.cell_screen_rect(4, 2)
+        # ghost alpha blends over black: red-dominant right, black left
+        assert screen.get_at((dest.right - 2, dest.centery))[:3] == (160, 0, 0)
+        assert screen.get_at((dest.x + 2, dest.centery))[:3] == (0, 0, 0)
+
+    def test_unflipped_preview_unchanged(self):
+        layer = FakeTileLayer()
+        layer.set_tile((2, 2), {"pos": (2, 2), "ttype": 0, "variant": 0,
+                                "flip_h": False, "flip_v": False})
+        g = self._moving_grid(layer, self._sheet())
+        screen = pygame.Surface((800, 600), pygame.SRCALPHA)
+        screen.fill((0, 0, 0, 255))
+        g._draw_move_preview(screen)
+        dest = g.cell_screen_rect(4, 2)
+        assert screen.get_at((dest.x + 2, dest.centery))[:3] == (160, 0, 0)

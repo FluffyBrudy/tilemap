@@ -1,13 +1,9 @@
-"""Commands — every document mutation goes through a Command.
-
-Commands hold **data, never events** (`MoveCommand(offset)`). Each command
-snapshots the document (canvas + regions) and the selection before and
-after; undo/redo restores state so the "what was selected" is remembered.
-"""
+"""Undoable edits for the sprite document."""
 
 from __future__ import annotations
 
 import pygame
+from pygame import Rect, Surface
 
 from .document import Document, Region
 from .selection import Selection
@@ -17,7 +13,6 @@ class Command:
     name: str = "Edit"
 
     def apply(self, doc: Document, selection: Selection) -> None:
-        """Run the mutation; captures before/after snapshots."""
         self.before_doc = doc.snapshot()
         self.before_selection = selection.sorted_cells()
         self._do(doc, selection)
@@ -37,8 +32,6 @@ class Command:
 
 
 class MoveCommand(Command):
-    """Carry selected tiles to a grid offset (dc, dr)."""
-
     name = "Move"
 
     def __init__(self, cells: list[tuple[int, int]], offset_col: int, offset_row: int):
@@ -51,16 +44,12 @@ class MoveCommand(Command):
         for col, row in self.cells:
             placements[(col + self.dc, row + self.dr)] = doc.extract_tile(col, row)
         doc.clear_tiles(self.cells)
-        # write_tile auto-grows the canvas and shifts the origin for negative
-        # destinations — no placement is ever dropped, selection stays intact
         for (col, row), surf in placements.items():
             doc.write_tile(col, row, surf)
         selection.replace(list(placements.keys()))
 
 
 class PasteCommand(Command):
-    """Write clipboard tiles anchored at a target cell."""
-
     name = "Paste"
 
     def __init__(
@@ -76,10 +65,12 @@ class PasteCommand(Command):
 
     def _do(self, doc: Document, selection: Selection) -> None:
         surfs = self.tiles
-        if (self.src_tile_size and self.src_tile_size != doc.tile_size
-                and self.src_tile_size[0] > 0 and self.src_tile_size[1] > 0):
-            # grid changed since the copy: retile surfaces to the
-            # current cell size instead of overflowing neighbors
+        if (
+            self.src_tile_size
+            and self.src_tile_size != doc.tile_size
+            and self.src_tile_size[0] > 0
+            and self.src_tile_size[1] > 0
+        ):
             sx = doc.tw / self.src_tile_size[0]
             sy = doc.th / self.src_tile_size[1]
             scaled = []
@@ -87,19 +78,13 @@ class PasteCommand(Command):
                 w, h = max(1, round(surf.get_width() * sx)), max(1, round(surf.get_height() * sy))
                 scaled.append((dx, dy, pygame.transform.scale(surf, (w, h))))
             surfs = scaled
-        placements = [
-            (self.target[0] + dx, self.target[1] + dy, surf)
-            for dx, dy, surf in surfs
-        ]
-        # write_tile auto-grows the canvas / shifts the origin as needed
+        placements = [(self.target[0] + dx, self.target[1] + dy, surf) for dx, dy, surf in surfs]
         for col, row, surf in placements:
             doc.write_tile(col, row, surf)
         selection.replace([(col, row) for col, row, _ in placements])
 
 
 class ClearCommand(Command):
-    """Make the given cells transparent."""
-
     name = "Clear"
 
     def __init__(self, cells: list[tuple[int, int]]):
@@ -107,15 +92,11 @@ class ClearCommand(Command):
 
     def _do(self, doc: Document, selection: Selection) -> None:
         doc.clear_tiles(self.cells)
-        # auto-trim: cleared-away edges collapse so no empty gap remains.
-        # write_tile/paste paths re-expand on demand; undo restores via snapshot.
         doc.trim_to_content()
         selection.replace([], anchor=None)
 
 
 class FlipCommand(Command):
-    """Flip the given cells horizontally and/or vertically."""
-
     name = "Flip"
 
     def __init__(self, cells: list[tuple[int, int]], flip_x: bool, flip_y: bool):
@@ -125,12 +106,22 @@ class FlipCommand(Command):
 
     def _do(self, doc: Document, selection: Selection) -> None:
         doc.flip_tiles(self.cells, self.flip_x, self.flip_y)
-        # keep the same cells selected
+
+
+class CropCommand(Command):
+    name = "Crop"
+
+    def __init__(self):
+        self.changed = False
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        self.changed = doc.trim_to_content()
+        if not self.changed:
+            return
+        selection.replace([(c, r) for c, r in selection.sorted_cells() if doc.is_valid_cell(c, r)])
 
 
 class ScaleCommand(Command):
-    """Scale the whole canvas by factor; tile size unchanged."""
-
     name = "Scale"
 
     def __init__(self, factor: float):
@@ -142,8 +133,6 @@ class ScaleCommand(Command):
 
 
 class GridResizeCommand(Command):
-    """Change the tile size (grid) without resizing the canvas."""
-
     name = "Grid Resize"
 
     def __init__(self, tile_size: tuple[int, int]):
@@ -154,19 +143,14 @@ class GridResizeCommand(Command):
 
 
 class AppendSheetCommand(Command):
-    """Stack an imported sheet below (or right of) the existing canvas.
-
-    The imported file names are part of the operation: they are captured
-    into the command so undo removes them again and redo re-adds them,
-    keeping ``doc.sheets`` in lockstep with the canvas across the cycle.
-    """
+    """Add imported sheet below or right of canvas. Undo restores sheets list."""
 
     name = "Import Sheets"
 
-    def __init__(self, sheet: pygame.Surface, names: list[str], horizontal: bool = False):
+    def __init__(self, sheet: pygame.Surface, names: list[str], place: str = "below"):
         self.sheet = sheet
         self.names = list(names)
-        self.horizontal = bool(horizontal)
+        self.place = place if place in ("below", "right") else "below"
         self._prev_sheets: list[str] | None = None
 
     def apply(self, doc: Document, selection: Selection) -> None:
@@ -174,7 +158,7 @@ class AppendSheetCommand(Command):
         super().apply(doc, selection)
 
     def _do(self, doc: Document, selection: Selection) -> None:
-        doc.append_sheet(self.sheet, horizontal=self.horizontal)
+        doc.append_sheet(self.sheet, place=self.place)
         if self.names:
             doc.sheets.extend(self.names)
         selection.replace([], anchor=None)
@@ -188,6 +172,108 @@ class AppendSheetCommand(Command):
         super().redo(doc, selection)
         if self.names:
             doc.sheets.extend(self.names)
+
+
+class PixelMoveCommand(Command):
+    name = "Move Pixels"
+
+    def __init__(self, src_rect: Rect, dx: int, dy: int):
+        self.src_rect = Rect(src_rect)
+        self.dx = int(dx)
+        self.dy = int(dy)
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        doc.move_pixels(self.src_rect, self.dx, self.dy)
+        selection.replace([], anchor=None)
+
+
+class PixelClearCommand(Command):
+    name = "Clear Pixels"
+
+    def __init__(self, rect: Rect):
+        self.rect = Rect(rect)
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        doc.clear_rect(self.rect)
+        selection.replace([], anchor=None)
+
+
+class PixelStampCommand(Command):
+    name = "Stamp Pixels"
+
+    def __init__(self, pos: tuple[int, int], surface: Surface):
+        self.pos = (int(pos[0]), int(pos[1]))
+        self.surface = surface.copy() if surface is not None else None
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        if not doc.has_canvas or self.surface is None:
+            return
+        doc.blit_surface(self.surface, self.pos)
+        selection.replace([], anchor=None)
+
+
+class PixelMirrorCommand(Command):
+    name = "Mirror Pixels"
+
+    def __init__(self, src_rect: Rect, axis: str, side: int = 1):
+        self.src_rect = Rect(src_rect)
+        self.axis = "v" if axis == "v" else "h"
+        self.side = -1 if side < 0 else 1
+        self.dest: Rect | None = None
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        self.dest = doc.mirror_pixels(self.src_rect, self.axis, self.side)
+        selection.replace([], anchor=None)
+
+
+class PixelScaleCommand(Command):
+    name = "Scale Pixels"
+
+    def __init__(self, src_rect: Rect, dest_rect: Rect):
+        self.src_rect = Rect(src_rect)
+        self.dest_rect = Rect(
+            int(dest_rect.x),
+            int(dest_rect.y),
+            max(1, int(dest_rect.w)),
+            max(1, int(dest_rect.h)),
+        )
+        self.dest: Rect | None = None
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        self.dest = doc.scale_pixels(self.src_rect, self.dest_rect)
+        selection.replace([], anchor=None)
+
+
+class ColorReplaceCommand(Command):
+    name = "Replace Color"
+
+    def __init__(
+        self,
+        src: tuple[int, int, int, int],
+        dst: tuple[int, int, int, int],
+        rect: Rect | None = None,
+        tolerance: int = 0,
+        contiguous: bool = False,
+        seed: tuple[int, int] | None = None,
+    ):
+        self.src = (int(src[0]), int(src[1]), int(src[2]), int(src[3]))
+        self.dst = (int(dst[0]), int(dst[1]), int(dst[2]), int(dst[3]))
+        self.rect = Rect(rect) if rect is not None else None
+        self.tolerance = max(0, int(tolerance))
+        self.contiguous = bool(contiguous)
+        self.seed = (int(seed[0]), int(seed[1])) if seed is not None else None
+        self.replaced = 0
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        self.replaced = doc.remap_pixels(
+            self.src,
+            self.dst,
+            rect=self.rect,
+            tolerance=self.tolerance,
+            contiguous=self.contiguous,
+            seed=self.seed,
+        )
+        selection.replace([], anchor=None)
 
 
 class RegionAddCommand(Command):
@@ -245,11 +331,7 @@ class RegionRenameCommand(Command):
 
 
 class TextStampCommand(Command):
-    """Bake a text surface onto the canvas at a world-space rect.
-
-    Text is rendered at image-pixel scale (respects zoom) and then
-    blitted; rotation is baked into the source surface before blit.
-    """
+    """Bake text onto the canvas."""
 
     name = "Stamp Text"
 
@@ -260,7 +342,6 @@ class TextStampCommand(Command):
         angle: float = 0.0,
     ):
         self.rect = tuple(float(v) for v in rect)
-        # store a copy so redo is deterministic
         self.text_surface = text_surface.copy() if text_surface else None
         self.angle = float(angle)
 
@@ -271,7 +352,6 @@ class TextStampCommand(Command):
         if abs(self.angle) > 0.01:
             surf = pygame.transform.rotate(surf, self.angle)
         x, y, w, h = self.rect
-        # center the (possibly rotated) surface in the original rect
         sw, sh = surf.get_size()
         cx = x + w / 2.0
         cy = y + h / 2.0
@@ -282,7 +362,7 @@ class TextStampCommand(Command):
 
 
 class CommandStack:
-    """Bounded undo/redo stack. Commands hold data, not events."""
+    """Undo and redo stack."""
 
     def __init__(self, limit: int = 50):
         self.limit = limit
@@ -303,6 +383,13 @@ class CommandStack:
         if len(self._undo) > self.limit:
             self._undo.pop(0)
         self._redo.clear()
+
+    def discard_last(self) -> bool:
+        """Drop last pushed command. Use only for no-ops."""
+        if not self._undo:
+            return False
+        self._undo.pop()
+        return True
 
     def undo(self, doc: Document, selection: Selection) -> bool:
         if not self._undo:

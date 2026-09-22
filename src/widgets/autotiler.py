@@ -11,6 +11,7 @@ from utils.icon_manager import icon_manager
 
 from .autotile_template import AutotileTemplateApplier
 from .input import InlineTextInput
+from .ui.scrollbar import Scrollbar
 from .ui.theme import COLORS, FONTS
 
 if TYPE_CHECKING:
@@ -186,6 +187,13 @@ class AutotileRuleDesigner:
         self.scroll_bar_rect: Rect | None = None
         self.is_scrollbar_dragging: bool = False
 
+        self.group_item_h = 25
+        self.rule_item_h = 25
+        self.group_scroll_px: float = 0.0
+        self.rule_scroll_px: float = 0.0
+        self._group_bar = Scrollbar("vertical", on_scroll=self._on_group_scroll)
+        self._rule_bar = Scrollbar("vertical", on_scroll=self._on_rule_scroll)
+
         self.current_neighbors: set[tuple[int, int]] = set()
 
         self.current_variant_ids: list[int] = []
@@ -266,6 +274,139 @@ class AutotileRuleDesigner:
             90,
             25,
         )
+        self._sync_list_scrollbars()
+
+    def _group_view_h(self) -> int:
+        area = getattr(self, "group_list_area", None)
+        if area is None:
+            return 0
+        return max(0, area.height - 25)
+
+    def _rule_view_h(self) -> int:
+        area = getattr(self, "rule_list_area", None)
+        if area is None:
+            return 0
+        return max(0, area.height - 25)
+
+    def _group_content_h(self) -> int:
+        item_h = getattr(self, "group_item_h", 25)
+        return len(getattr(self, "groups", [])) * item_h
+
+    def _rule_content_h(self) -> int:
+        idx = getattr(self, "selected_group_idx", -1)
+        groups = getattr(self, "groups", [])
+        if not (0 <= idx < len(groups)):
+            return 0
+        item_h = getattr(self, "rule_item_h", 25)
+        return len(groups[idx].rules) * item_h
+
+    def _clamp_list_scroll(self) -> None:
+        self.group_scroll_px = max(
+            0.0, min(float(getattr(self, "group_scroll_px", 0.0)),
+                     max(0.0, float(self._group_content_h() - self._group_view_h()))))
+        self.rule_scroll_px = max(
+            0.0, min(float(getattr(self, "rule_scroll_px", 0.0)),
+                     max(0.0, float(self._rule_content_h() - self._rule_view_h()))))
+        max_rule_start = max(0, len(self._current_rules()) - self._max_visible_rules())
+        self.scroll_offset = max(0, min(int(getattr(self, "scroll_offset", 0)), max_rule_start))
+        if int(self.rule_scroll_px // 25) != self.scroll_offset:
+            self.rule_scroll_px = float(self.scroll_offset * 25)
+
+    def _current_rules(self) -> list:
+        idx = getattr(self, "selected_group_idx", -1)
+        groups = getattr(self, "groups", [])
+        if 0 <= idx < len(groups):
+            return groups[idx].rules
+        return []
+
+    def _max_visible_rules(self) -> int:
+        view_h = self._rule_view_h()
+        item_h = getattr(self, "rule_item_h", 25)
+        if view_h <= 0:
+            return int(getattr(self, "max_visible_rules", 6))
+        return max(1, view_h // item_h)
+
+    def _max_visible_groups(self) -> int:
+        view_h = self._group_view_h()
+        item_h = getattr(self, "group_item_h", 25)
+        if view_h <= 0:
+            return 7
+        return max(1, view_h // item_h)
+
+    def _group_visible_start(self) -> int:
+        item_h = getattr(self, "group_item_h", 25)
+        return int(float(getattr(self, "group_scroll_px", 0.0)) // item_h)
+
+    def _rule_visible_start(self) -> int:
+        if getattr(self, "_rule_bar", None) is not None:
+            return int(float(getattr(self, "rule_scroll_px", 0.0)) // 25)
+        return int(getattr(self, "scroll_offset", 0))
+
+    def _sync_list_scrollbars(self) -> None:
+        group_bar = getattr(self, "_group_bar", None)
+        rule_bar = getattr(self, "_rule_bar", None)
+        if group_bar is None and rule_bar is None:
+            return
+        self._clamp_list_scroll()
+        if group_bar is not None and getattr(self, "group_list_area", None) is not None:
+            group_bar.resize(
+                self.group_list_area.right - 12,
+                self.group_list_area.y + 25,
+                12,
+                max(0, self.group_list_area.height - 25),
+            )
+            group_bar.set_range(
+                float(self._group_content_h()),
+                float(self._group_view_h()),
+                float(getattr(self, "group_scroll_px", 0.0)),
+            )
+            self.group_scroll_px = group_bar.scroll_pos
+        if rule_bar is not None and getattr(self, "rule_list_area", None) is not None:
+            rule_bar.resize(
+                self.rule_list_area.right - 12,
+                self.rule_list_area.y + 25,
+                12,
+                max(0, self.rule_list_area.height - 25),
+            )
+            rule_bar.set_range(
+                float(self._rule_content_h()),
+                float(self._rule_view_h()),
+                float(getattr(self, "rule_scroll_px", 0.0)),
+            )
+            self.rule_scroll_px = rule_bar.scroll_pos
+            self.scroll_offset = int(self.rule_scroll_px // 25)
+
+    def _on_group_scroll(self, val: float) -> None:
+        self.group_scroll_px = max(
+            0.0, min(float(val), max(0.0, float(self._group_content_h() - self._group_view_h()))))
+
+    def _on_rule_scroll(self, val: float) -> None:
+        self.rule_scroll_px = max(
+            0.0, min(float(val), max(0.0, float(self._rule_content_h() - self._rule_view_h()))))
+        self.scroll_offset = int(self.rule_scroll_px // 25)
+
+    def _ensure_group_visible(self, idx: int) -> None:
+        item_h = getattr(self, "group_item_h", 25)
+        start = self._group_visible_start()
+        count = self._max_visible_groups()
+        if idx < start:
+            self.group_scroll_px = float(idx * item_h)
+        elif idx >= start + count:
+            self.group_scroll_px = float((idx - count + 1) * item_h)
+        self._clamp_list_scroll()
+        self._sync_list_scrollbars()
+
+    def _ensure_rule_visible(self, idx: int) -> None:
+        start = self._rule_visible_start()
+        count = self._max_visible_rules()
+        if idx < start:
+            self.rule_scroll_px = float(idx * 25)
+            self.scroll_offset = idx
+        elif idx >= start + count:
+            self.rule_scroll_px = float((idx - count + 1) * 25)
+            self.scroll_offset = idx - count + 1
+        self._clamp_list_scroll()
+        self._sync_list_scrollbars()
 
     def _get_grid_start_pos(self):
         center_x = self.edit_area.centerx
@@ -347,6 +488,16 @@ class AutotileRuleDesigner:
         if self._handle_group_menu_event(event):
             return True
 
+        group_bar = getattr(self, "_group_bar", None)
+        rule_bar = getattr(self, "_rule_bar", None)
+        if group_bar is not None and group_bar.handle_event(event):
+            self.group_scroll_px = group_bar.scroll_pos
+            return True
+        if rule_bar is not None and rule_bar.handle_event(event):
+            self.rule_scroll_px = rule_bar.scroll_pos
+            self.scroll_offset = int(self.rule_scroll_px // 25)
+            return True
+
         if self._handle_scroll_event(event):
             return True
 
@@ -377,6 +528,7 @@ class AutotileRuleDesigner:
                     if idx is not None:
                         self.selected_group_idx = idx
                         self.selected_rule_index = -1
+                        self._ensure_group_visible(idx)
                         self._open_group_menu(idx, mouse_pos)
                         return True
             if event.button == 1:
@@ -522,19 +674,24 @@ class AutotileRuleDesigner:
 
     def _handle_group_list_click(self, mouse_pos):
         start_y = self.group_list_area.y + 25
-        item_h = 25
-        for i, _group in enumerate(self.groups):
-            item_rect = Rect(
-                self.group_list_area.x + 5,
-                start_y + i * item_h,
-                self.group_list_area.width - 10,
-                item_h,
-            )
-            if item_rect.collidepoint(mouse_pos):
-                self.selected_group_idx = i
-                self.selected_rule_index = -1
-                self.scroll_offset = 0
-                return
+        item_h = getattr(self, "group_item_h", 25)
+        scroll_px = float(getattr(self, "group_scroll_px", 0.0))
+        content = Rect(
+            self.group_list_area.x,
+            self.group_list_area.y + 25,
+            self.group_list_area.width,
+            self.group_list_area.height - 25,
+        )
+        if not content.collidepoint(mouse_pos):
+            return
+        idx = int((mouse_pos[1] - start_y + scroll_px) // item_h)
+        if 0 <= idx < len(self.groups):
+            self.selected_group_idx = idx
+            self.selected_rule_index = -1
+            self.scroll_offset = 0
+            self.rule_scroll_px = 0.0
+            self._ensure_group_visible(idx)
+            self._sync_list_scrollbars()
 
     def _handle_rule_list_click(self, mouse_pos):
         if self.selected_group_idx == -1:
@@ -554,8 +711,8 @@ class AutotileRuleDesigner:
         if not list_content_area.collidepoint(mouse_pos):
             return
 
-        visible_start = self.scroll_offset
-        visible_end = min(visible_start + self.max_visible_rules, len(group.rules))
+        visible_start = self._rule_visible_start()
+        visible_end = min(visible_start + self._max_visible_rules(), len(group.rules))
 
         for i in range(visible_start, visible_end):
             rule = group.rules[i]
@@ -568,6 +725,7 @@ class AutotileRuleDesigner:
             )
             if item_rect.collidepoint(mouse_pos):
                 self.selected_rule_index = i
+                self._ensure_rule_visible(i)
                 self._load_rule_to_editor(rule)
                 break
 
@@ -690,16 +848,19 @@ class AutotileRuleDesigner:
 
     def _group_index_at_pos(self, mouse_pos) -> int | None:
         start_y = self.group_list_area.y + 25
-        item_h = 25
-        for i in range(len(self.groups)):
-            item_rect = Rect(
-                self.group_list_area.x + 5,
-                start_y + i * item_h,
-                self.group_list_area.width - 10,
-                item_h,
-            )
-            if item_rect.collidepoint(mouse_pos):
-                return i
+        item_h = getattr(self, "group_item_h", 25)
+        scroll_px = float(getattr(self, "group_scroll_px", 0.0))
+        content = Rect(
+            self.group_list_area.x,
+            self.group_list_area.y + 25,
+            self.group_list_area.width,
+            self.group_list_area.height - 25,
+        )
+        if not content.collidepoint(mouse_pos):
+            return None
+        idx = int((mouse_pos[1] - start_y + scroll_px) // item_h)
+        if 0 <= idx < len(self.groups):
+            return idx
         return None
 
     def _open_group_menu(self, idx: int, mouse_pos):
@@ -795,6 +956,9 @@ class AutotileRuleDesigner:
         self.selected_group_idx = min(max(0, idx - 1), len(self.groups) - 1)
         self.selected_rule_index = -1
         self.scroll_offset = 0
+        self.rule_scroll_px = 0.0
+        self._clamp_list_scroll()
+        self._ensure_group_visible(self.selected_group_idx)
         self._close_group_menu()
         print(f"Group deleted: {name}")
         return True
@@ -830,6 +994,7 @@ class AutotileRuleDesigner:
         )
         group.rules.insert(self.selected_rule_index + 1, clone)
         self.selected_rule_index += 1
+        self._ensure_rule_visible(self.selected_rule_index)
         self._load_rule_to_editor(clone)
         print(f"Rule duplicated: {src.name} -> {clone.name}")
         return True
@@ -864,8 +1029,10 @@ class AutotileRuleDesigner:
         group.rules.pop(idx)
         self._reset_selection()
 
-        max_scroll = max(0, len(group.rules) - self.max_visible_rules)
-        self.scroll_offset = min(self.scroll_offset, max_scroll)
+        max_scroll = max(0, len(group.rules) - self._max_visible_rules())
+        self.scroll_offset = min(int(getattr(self, "scroll_offset", 0)), max_scroll)
+        self._clamp_list_scroll()
+        self._sync_list_scrollbars()
         print(f"Rule deleted from group '{group.name}'")
         return True
 
@@ -964,12 +1131,25 @@ class AutotileRuleDesigner:
         screen.blit(lbl_groups, (self.group_list_area.x + 5, self.group_list_area.y + 5))
 
         start_y = self.group_list_area.y + 25
-        item_h = 25
+        item_h = getattr(self, "group_item_h", 25)
+        scroll_px = float(getattr(self, "group_scroll_px", 0.0))
+        self._sync_list_scrollbars()
+        group_clip = Rect(
+            self.group_list_area.x,
+            self.group_list_area.y + 25,
+            self.group_list_area.width,
+            self.group_list_area.height - 25,
+        )
+        old_clip = screen.get_clip()
+        screen.set_clip(group_clip)
         for i, group in enumerate(self.groups):
+            y_pos = start_y + i * item_h - scroll_px
+            if y_pos + item_h < group_clip.y or y_pos > group_clip.bottom:
+                continue
             r = Rect(
                 self.group_list_area.x + 5,
-                start_y + i * item_h,
-                self.group_list_area.width - 10,
+                int(y_pos),
+                self.group_list_area.width - 10 - (12 if self._group_content_h() > self._group_view_h() else 0),
                 item_h,
             )
 
@@ -1001,6 +1181,11 @@ class AutotileRuleDesigner:
             )
             screen.blit(self.font.render(d_name, True, g_color), (r.x + 5, r.y + 5))
 
+        screen.set_clip(old_clip)
+        group_bar = getattr(self, "_group_bar", None)
+        if group_bar is not None:
+            group_bar.draw(screen)
+
         pygame.draw.rect(screen, COLORS.success, self.new_group_btn_rect, border_radius=4)
         gntxt = self.font.render("+ Group", True, COLORS.text)
         screen.blit(gntxt, (self.new_group_btn_rect.x + 8, self.new_group_btn_rect.y + 5))
@@ -1027,10 +1212,8 @@ class AutotileRuleDesigner:
 
         group = self.groups[self.selected_group_idx]
         total_rules = len(group.rules)
-
-        max_scroll = max(0, total_rules - self.max_visible_rules)
-
-        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+        self._clamp_list_scroll()
+        self._sync_list_scrollbars()
 
         list_clip = Rect(
             self.rule_list_area.x,
@@ -1041,18 +1224,21 @@ class AutotileRuleDesigner:
         old_clip = screen.get_clip()
         screen.set_clip(list_clip)
 
-        visible_start = self.scroll_offset
-        visible_end = min(visible_start + self.max_visible_rules, total_rules)
-
+        item_h = getattr(self, "rule_item_h", 25)
+        scroll_px = float(getattr(self, "rule_scroll_px", float(int(getattr(self, "scroll_offset", 0)) * 25)))
         start_y_r = self.rule_list_area.y + 25
-        item_h = 25
+        has_bar = self._rule_content_h() > self._rule_view_h()
 
-        for i in range(visible_start, visible_end):
-            rule = group.rules[i]
-            display_index = i - visible_start
-            y_pos = start_y_r + display_index * item_h
-
-            r = Rect(self.rule_list_area.x + 5, y_pos, self.rule_list_area.width - 10, item_h)
+        for i, rule in enumerate(group.rules):
+            y_pos = start_y_r + i * item_h - scroll_px
+            if y_pos + item_h < list_clip.y or y_pos > list_clip.bottom:
+                continue
+            r = Rect(
+                self.rule_list_area.x + 5,
+                int(y_pos),
+                self.rule_list_area.width - 10 - (12 if has_bar else 0),
+                item_h,
+            )
 
             if i == self.selected_rule_index:
                 pygame.draw.rect(screen, COLORS.hover, r, border_radius=3)
@@ -1061,6 +1247,14 @@ class AutotileRuleDesigner:
             screen.blit(self.font.render(d_name, True, COLORS.text), (r.x + 5, r.y + 5))
 
         screen.set_clip(old_clip)
+        rule_bar = getattr(self, "_rule_bar", None)
+        if rule_bar is not None:
+            rule_bar.draw(screen)
+            self.scroll_bar_rect = None
+            return
+
+        max_scroll = max(0, total_rules - self.max_visible_rules)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
         if total_rules > self.max_visible_rules:
             if self.scroll_offset > 0:
@@ -1091,42 +1285,47 @@ class AutotileRuleDesigner:
             self.scroll_bar_rect = None
 
     def _handle_scroll_event(self, event) -> bool:
-        if self.selected_group_idx == -1:
+        if event.type == pygame.MOUSEWHEEL:
+            pos = pygame.mouse.get_pos()
+            if getattr(self, "group_list_area", None) is not None and self.group_list_area.collidepoint(pos):
+                old = float(getattr(self, "group_scroll_px", 0.0))
+                self.group_scroll_px = old + float(-event.y * 25)
+                self._clamp_list_scroll()
+                self._sync_list_scrollbars()
+                return float(getattr(self, "group_scroll_px", 0.0)) != old
+            if getattr(self, "rule_list_area", None) is not None and self.rule_list_area.collidepoint(pos):
+                if self.selected_group_idx == -1:
+                    return False
+                old = float(getattr(self, "rule_scroll_px", float(int(getattr(self, "scroll_offset", 0)) * 25)))
+                self.rule_scroll_px = old + float(-event.y * 25)
+                self._clamp_list_scroll()
+                self._sync_list_scrollbars()
+                return float(getattr(self, "rule_scroll_px", 0.0)) != old
             return False
 
-        group = self.groups[self.selected_group_idx]
-        total_rules = len(group.rules)
-        max_scroll = max(0, total_rules - self.max_visible_rules)
-
-        if event.type == pygame.MOUSEWHEEL:
-            if self.rule_list_area.collidepoint(pygame.mouse.get_pos()):
-                scroll_delta = -event.y
-                old_offset = self.scroll_offset
-                self.scroll_offset = max(0, min(self.scroll_offset + scroll_delta, max_scroll))
-                return old_offset != self.scroll_offset
-
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:
-                if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(event.pos):
-                    self.is_scrollbar_dragging = True
+        if getattr(self, "_group_bar", None) is None and getattr(self, "_rule_bar", None) is None:
+            if self.selected_group_idx == -1:
+                return False
+            group = self.groups[self.selected_group_idx]
+            total_rules = len(group.rules)
+            max_scroll = max(0, total_rules - self.max_visible_rules)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    if self.scroll_bar_rect and self.scroll_bar_rect.collidepoint(event.pos):
+                        self.is_scrollbar_dragging = True
+                        return True
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1 and self.is_scrollbar_dragging:
+                    self.is_scrollbar_dragging = False
                     return True
-
-        elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1 and self.is_scrollbar_dragging:
-                self.is_scrollbar_dragging = False
+            elif event.type == pygame.MOUSEMOTION and self.is_scrollbar_dragging:
+                relative_y = event.pos[1] - self.rule_list_area.y - 25
+                track_height = self.rule_list_area.height - 50
+                if track_height > 0:
+                    scroll_ratio = max(0, min(1, relative_y / track_height))
+                    self.scroll_offset = int(scroll_ratio * max_scroll)
+                    self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
                 return True
-
-        elif event.type == pygame.MOUSEMOTION and self.is_scrollbar_dragging:
-            relative_y = event.pos[1] - self.rule_list_area.y - 25
-            track_height = self.rule_list_area.height - 50
-
-            if track_height > 0:
-                scroll_ratio = max(0, min(1, relative_y / track_height))
-                self.scroll_offset = int(scroll_ratio * max_scroll)
-                self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
-
-            return True
-
         return False
 
     def _handle_group_rename(self, event) -> bool:
@@ -1205,6 +1404,7 @@ class AutotileRuleDesigner:
 
         self.selected_group_idx = len(self.groups) - 1
         self.selected_rule_index = -1
+        self._ensure_group_visible(self.selected_group_idx)
 
         self.renaming_group_idx = self.selected_group_idx
         self.rename_input.text = new_group_name

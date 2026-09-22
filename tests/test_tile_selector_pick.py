@@ -14,8 +14,6 @@ Covers:
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -25,8 +23,6 @@ import pytest
 
 from utils.context_dispatch import PropertyContextDispatcher
 from widgets.tile_selector import TileSelector
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)

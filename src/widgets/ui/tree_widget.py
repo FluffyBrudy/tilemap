@@ -9,10 +9,12 @@ import pygame
 from pygame import Rect, Surface
 
 from utils.icon_manager import icon_manager
+from utils.shortcuts import is_cmd_or_ctrl
 
 from ..input import InlineTextInput
 from ..widget_base import WidgetBase
 from .draw_utils import truncate_text
+from .scrollbar import Scrollbar
 from .theme import COLORS, FONTS
 
 
@@ -90,6 +92,12 @@ class TreeWidget(WidgetBase):
         self.scroll_y = 0
         self._last_drop_time = 0.0
 
+        self.show_scrollbar = True
+        self.scrollbar_width = 10
+        self._scrollbar = Scrollbar("vertical", on_scroll=self._on_scrollbar)
+        self.thumb_size: int = 0
+        self.thumb_provider: Callable[[TreeNode], Surface | None] | None = None
+
         self.font = FONTS.get_medium_font()
 
         self.on_selection_changed: Callable[[list[str]], None] | None = None
@@ -116,11 +124,44 @@ class TreeWidget(WidgetBase):
 
         self.roots = clean_roots
         self._invalidate_cache()
+        self._clamp_scroll()
 
     def _invalidate_cache(self):
         self._cache_valid = False
         if self.on_structure_changed:
             self.on_structure_changed()
+
+    def _content_height(self) -> int:
+        if not self._cache_valid:
+            self._build_flat_cache()
+        return len(self._flat_cache) * self.item_height
+
+    def _max_scroll(self) -> int:
+        return max(0, self._content_height() - self.rect.height)
+
+    def _clamp_scroll(self) -> None:
+        self.scroll_y = max(0, min(float(self.scroll_y), float(self._max_scroll())))
+
+    def _on_scrollbar(self, val: float) -> None:
+        self.scroll_y = max(0.0, min(float(val), float(self._max_scroll())))
+
+    def _sync_scrollbar(self) -> None:
+        if not self.show_scrollbar:
+            return
+        self._clamp_scroll()
+        self._scrollbar.resize(
+            self.rect.right - self.scrollbar_width,
+            self.rect.y,
+            self.scrollbar_width,
+            self.rect.height,
+        )
+        self._scrollbar.set_range(
+            float(self._content_height()), float(self.rect.height), float(self.scroll_y)
+        )
+        self.scroll_y = self._scrollbar.scroll_pos
+
+    def _scrollbar_visible(self) -> bool:
+        return bool(self.show_scrollbar) and self._content_height() > self.rect.height
 
     def find_node(self, node_id: str) -> TreeNode | None:
         def search(nodes):
@@ -269,6 +310,11 @@ class TreeWidget(WidgetBase):
         mouse = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
         in_bounds = self.rect.collidepoint(mouse)
 
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            if self.show_scrollbar and self._scrollbar.handle_event(event):
+                self.scroll_y = self._scrollbar.scroll_pos
+                return True
+
         if event.type == pygame.MOUSEWHEEL and in_bounds:
             max_scroll = max(0, len(self._flat_cache) * self.item_height - self.rect.height)
             self.scroll_y = max(0, min(self.scroll_y - event.y * 30, max_scroll))
@@ -322,7 +368,7 @@ class TreeWidget(WidgetBase):
                     return True
 
                 mods = pygame.key.get_mods()
-                ctrl = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
+                ctrl = is_cmd_or_ctrl(mods)
                 shift = mods & pygame.KMOD_SHIFT
 
                 if ctrl:
@@ -420,6 +466,8 @@ class TreeWidget(WidgetBase):
         self.draw_base(screen)
         if not self._cache_valid:
             self._build_flat_cache()
+        self._sync_scrollbar()
+        bar_w = self.scrollbar_width if self._scrollbar_visible() else 0
 
         self._hovered_truncated = None
         clip = screen.get_clip()
@@ -451,23 +499,34 @@ class TreeWidget(WidgetBase):
                 screen.blit(arrow_icon, (x + 2, arrow_y))
 
             icon_x = x + self.arrow_width
-            if node.is_folder:
+            thumb: Surface | None = None
+            if self.thumb_size > 0 and self.thumb_provider is not None:
+                try:
+                    thumb = self.thumb_provider(node)
+                except Exception:
+                    thumb = None
+            if thumb is not None:
+                ty = y + (self.item_height - thumb.get_height()) // 2
+                screen.blit(thumb, (icon_x, ty))
+                label_x = icon_x + thumb.get_width() + 6
+            elif node.is_folder:
                 folder_icon = icon_manager.get_icon("folder", 16, COLORS.text)
                 icon_y = y + (self.item_height - 16) // 2
                 screen.blit(folder_icon, (icon_x, icon_y))
+                label_x = icon_x + 20
             elif node.icon_key:
                 icon = icon_manager.get_icon(node.icon_key, 16, COLORS.text)
                 icon_y = y + (self.item_height - 16) // 2
                 screen.blit(icon, (icon_x, icon_y))
+                label_x = icon_x + 20
             else:
                 icon_x -= 4
-
-            label_x = icon_x + 20
+                label_x = icon_x + 20
             if node.id == self._rename_id and self._rename_input is not None:
                 self._draw_rename_editor(screen, row_rect, label_x)
             else:
                 lbl_color = COLORS.text_on_accent if is_selected else COLORS.text
-                max_w = max(0, row_rect.right - label_x - 8)
+                max_w = max(0, row_rect.right - label_x - 8 - bar_w)
                 display, was_truncated = truncate_text(node.label, self.font, max_w)
                 if is_hover and was_truncated:
                     self._hovered_truncated = node.label
@@ -490,12 +549,8 @@ class TreeWidget(WidgetBase):
         elif self._state == self.State.DRAGGING and not self._drop_target_node:
             pygame.draw.line(screen, COLORS.accent, (self.rect.x, self.rect.y), (self.rect.right, self.rect.y), 2)
 
-        total_h = len(self._flat_cache) * self.item_height
-        if total_h > self.rect.height:
-            scroll_pct = self.scroll_y / (total_h - self.rect.height)
-            bar_h = max(20, self.rect.height * (self.rect.height / total_h))
-            bar_y = self.rect.y + scroll_pct * (self.rect.height - bar_h)
-            pygame.draw.rect(screen, COLORS.border, Rect(self.rect.right - 6, bar_y, 4, bar_h), border_radius=2)
+        if self.show_scrollbar:
+            self._scrollbar.draw(screen)
 
         if self._state == self.State.DRAGGING and self._dragging_nodes:
             count = len(self._dragging_nodes)

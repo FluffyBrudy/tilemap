@@ -12,13 +12,10 @@ import os
 from pathlib import Path
 import sys
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from layers import Layer, LayerManager
 from ttypes.tilemap import TypeObject

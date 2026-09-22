@@ -3,6 +3,8 @@ from collections.abc import Callable
 import pygame
 from pygame import Rect
 
+from utils.shortcuts import is_cmd_or_ctrl
+
 from .theme import COLORS, SHAPE
 
 THUMB_MIN = 20
@@ -136,7 +138,7 @@ class Scrollbar:
 
         if event.type == pygame.MOUSEWHEEL:
             mods = pygame.key.get_mods()
-            if self._hovered and not (mods & (pygame.KMOD_CTRL | pygame.KMOD_META)):
+            if self._hovered and not is_cmd_or_ctrl(mods):
                 step = self.view_size * 0.1
                 if self.orientation == "vertical":
                     self.scroll_pos -= event.y * step

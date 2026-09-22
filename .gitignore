@@ -137,3 +137,6 @@ data/automap/
 
 # project specific
 data/
+
+# Local scratch tests
+local-tests/

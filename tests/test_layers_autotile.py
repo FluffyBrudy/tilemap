@@ -15,7 +15,6 @@ Covers:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from typing import List, Optional, Set, Tuple
 
@@ -1063,3 +1062,82 @@ class TestLayerYSort:
         layer = Layer("test", y_sort=True, y_sort_origin=24)
         restored = Layer.from_dict(layer.to_dict())
         assert restored.y_sort_origin == 24
+
+
+class TestVariantPropsSync:
+    def _water_rules(self):
+        center = make_rule(
+            "center", {(-1, 0), (1, 0), (0, -1), (0, 1)},
+            variant_ids=[331], tileset_index=0, group_id="water",
+        )
+        return [center]
+
+    def _ring(self, layer, variant=0):
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if (dx, dy) == (0, 0):
+                    continue
+                layer.tiles[(5 + dx, 5 + dy)] = tile((5 + dx, 5 + dy), ttype=0, variant=variant)
+
+    def test_swap_refreshes_properties(self):
+        from layers import build_variant_props_lookup
+
+        layer = Layer("test")
+        self._ring(layer, variant=331)
+        layer.tiles[(5, 5)] = {
+            "pos": (5, 5), "ttype": 0, "variant": 365,
+            "autotile_group": "water",
+            "properties": {"anim_clip": "green_water_8"},
+        }
+        from types import SimpleNamespace
+
+        lookup = build_variant_props_lookup(
+            {0: SimpleNamespace(tile_properties={331: {"anim_clip": "green_water_7"}})}
+        )
+        assert layer.autotile_at_pos((5, 5), self._water_rules(), lookup) == 1
+        assert layer.tiles[(5, 5)]["variant"] == 331
+        assert layer.tiles[(5, 5)]["properties"] == {"anim_clip": "green_water_7"}
+
+    def test_swap_to_bare_variant_drops_properties(self):
+        layer = Layer("test")
+        self._ring(layer, variant=331)
+        layer.tiles[(5, 5)] = {
+            "pos": (5, 5), "ttype": 0, "variant": 365,
+            "autotile_group": "water",
+            "properties": {"anim_clip": "green_water_8"},
+        }
+        assert layer.autotile_at_pos((5, 5), self._water_rules(), {}) == 1
+        assert layer.tiles[(5, 5)]["variant"] == 331
+        assert "properties" not in layer.tiles[(5, 5)]
+
+    def test_no_lookup_preserves_legacy_behavior(self):
+        layer = Layer("test")
+        self._ring(layer, variant=331)
+        layer.tiles[(5, 5)] = {
+            "pos": (5, 5), "ttype": 0, "variant": 365,
+            "autotile_group": "water",
+            "properties": {"anim_clip": "green_water_8"},
+        }
+        assert layer.autotile_at_pos((5, 5), self._water_rules()) == 1
+        assert layer.tiles[(5, 5)]["variant"] == 331
+        assert layer.tiles[(5, 5)]["properties"] == {"anim_clip": "green_water_8"}
+
+    def test_no_swap_leaves_properties_alone(self):
+        layer = Layer("test")
+        self._ring(layer, variant=331)
+        layer.tiles[(5, 5)] = {
+            "pos": (5, 5), "ttype": 0, "variant": 331,
+            "autotile_group": "water",
+            "properties": {"anim_clip": "green_water_7"},
+        }
+        lookup = {(0, 331): {"anim_clip": "other"}}
+        assert layer.autotile_at_pos((5, 5), self._water_rules(), lookup) == 0
+        assert layer.tiles[(5, 5)]["properties"] == {"anim_clip": "green_water_7"}
+
+    def test_lookup_builder_skips_empty(self):
+        from layers import build_variant_props_lookup
+
+        ts = type("TS", (), {"tile_properties": {1: {"a": 1}, 2: {}}})()
+        assert build_variant_props_lookup({0: ts}) == {(0, 1): {"a": 1}}
+        assert build_variant_props_lookup(None) == {}
+        assert build_variant_props_lookup({}) == {}

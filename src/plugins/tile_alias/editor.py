@@ -19,6 +19,7 @@ from pygame import Rect
 from aliases import AliasFile, AliasPattern, alias_path_for
 from utils.error_handler import error_handler
 from utils.font_manager import FontWeight, font_manager
+from utils.shortcuts import is_cmd_or_ctrl
 from widgets.ui.button import Button
 from widgets.ui.splitter import Splitter
 from widgets.ui.theme import COLORS, FONTS
@@ -501,7 +502,7 @@ class AliasComposerEditor:
         if event.type == pygame.MOUSEWHEEL:
             mods = pygame.key.get_mods()
             if self.strip_rect.collidepoint(mouse):
-                if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                if is_cmd_or_ctrl(mods):
                     self.ts_zoom = max(0.25, min(3.0, self.ts_zoom * (1.15 if event.y > 0 else 1 / 1.15)))
                     self._clamp_ts_scroll()
                 elif mods & pygame.KMOD_SHIFT:
@@ -639,7 +640,7 @@ class AliasComposerEditor:
             self._space_held = True
             return True
         mods = pygame.key.get_mods()
-        ctrl = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
+        ctrl = is_cmd_or_ctrl(mods)
         if self._renaming:
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 name = self._rename_buf.strip()

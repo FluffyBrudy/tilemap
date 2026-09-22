@@ -4,7 +4,6 @@ import sys
 import types
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect

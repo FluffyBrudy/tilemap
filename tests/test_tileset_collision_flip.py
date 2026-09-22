@@ -4,14 +4,10 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 import pytest
 from pygame import Rect
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)
@@ -184,6 +180,8 @@ class TestMirrorAction:
         ed._selected_tiles = {5}
         ed._user_cleared_tiles = set()
         ed._tile_size = (32, 32)
+        ed.tile_cols = 3
+        ed.tile_rows = 3
         ed.library = TilesetCollisionLibrary(tileset_name="t", tile_size=(32, 32))
         ed.toasts = []
         ed._show_toast = lambda msg, duration=2.5: ed.toasts.append(msg)
@@ -194,6 +192,8 @@ class TestMirrorAction:
                 self, "polys", [list(p) for p in polys]),
             "get_polygons": lambda self: [list(p) for p in getattr(self, "polys", [])],
             "get_one_way_flags": lambda self: [False] * len(getattr(self, "polys", [])),
+            "set_neighbor_polygons": lambda self, edge=None, corners=None: None,
+            "tile_surface": None,
         })()
         return ed
 
@@ -260,3 +260,67 @@ class TestMirrorAction:
         assert ed.library.tiles[6].shapes[0].vertices == [
             (32.0, 0.0), (16.0, 0.0), (16.0, 16.0), (32.0, 16.0)]
         assert set(saved) == {5, 6}
+
+
+class TestLayerMaskFanOut:
+    def _editor(self):
+        from plugins.tileset_collision import editor as ed_mod
+        from plugins.tileset_collision.models import TilesetCollisionLibrary
+
+        ed = ed_mod.TilesetCollisionEditor.__new__(ed_mod.TilesetCollisionEditor)
+        ed._selected_tiles = {5, 7}
+        ed._user_cleared_tiles = set()
+        ed.library = TilesetCollisionLibrary(tileset_name="t", tile_size=(32, 32))
+        ed.toasts = []
+        ed._show_toast = lambda msg, duration=2.5: ed.toasts.append(msg)
+        ed.saved = []
+        ed.consumer = type(
+            "C", (), {"on_collision_saved": lambda self, tid, data: ed.saved.append((tid, data))},
+        )()
+        ed.painter = type(
+            "P", (), {
+                "get_polygons": lambda self: [list(TRI)],
+                "get_one_way_flags": lambda self: [False],
+            },
+        )()
+        return ed
+
+    def test_fan_out_sets_all_selected(self):
+        from plugins.tileset_collision.models import CollisionPolygon, TileCollisionData
+
+        ed = self._editor()
+        ed.library.tiles[5] = TileCollisionData(tile_id=5, shapes=[], properties={})
+        ed.library.tiles[7] = TileCollisionData(
+            tile_id=7, shapes=[], properties={"collision_layer": 3}
+        )
+        ed._on_layer_mask_changed(2, 0xFF)
+        assert ed.library.tiles[5].properties["collision_layer"] == 2
+        assert ed.library.tiles[5].properties["collision_mask"] == 0xFF
+        assert ed.library.tiles[7].properties["collision_layer"] == 2
+        assert ed.library.tiles[7].properties["collision_mask"] == 0xFF
+        assert sorted(tid for tid, _ in ed.saved) == [5, 7]
+        assert any("2 tile(s)" in t for t in ed.toasts)
+
+    def test_shapeless_selection_skipped(self):
+        ed = self._editor()
+        ed._selected_tiles = {9}
+        ed._on_layer_mask_changed(2, 0xFF)
+        assert 9 not in ed.library.tiles
+        assert ed.saved == []
+        assert any("no collision shapes" in t for t in ed.toasts)
+
+    def test_polygon_save_preserves_layer_mask(self):
+        from plugins.tileset_collision.models import CollisionPolygon, TileCollisionData
+
+        ed = self._editor()
+        ed._selected_tiles = {5}
+        ed.library.tiles[5] = TileCollisionData(
+            tile_id=5,
+            shapes=[CollisionPolygon(vertices=list(TRI))],
+            properties={"collision_layer": 4, "collision_mask": 0xF},
+        )
+        ed._save_tile_collision_for_selection()
+        props = ed.library.tiles[5].properties
+        assert props["collision_layer"] == 4
+        assert props["collision_mask"] == 0xF
+        assert ed.saved and ed.saved[0][1]["properties"] == props

@@ -23,7 +23,10 @@ from utils import error_handler
 from utils.font_manager import FontWeight
 from utils.icon_manager import icon_manager
 from utils.project_paths import resolve_project_path
+from utils.shortcuts import is_cmd_or_ctrl
 from widgets.input import InlineTextInput
+from widgets.ui.button import Button
+from widgets.ui.draw_utils import truncate_text
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 
 from .clipboard_util import copy_plain_text
@@ -152,18 +155,61 @@ class SpriteAnimationEditor:
         self._renaming = False
         self._rename_input = InlineTextInput("anim_rename", "")
 
-        self._btn_new = Rect(0, 0, 0, 0)
-        self._btn_del = Rect(0, 0, 0, 0)
-        self._btn_save = Rect(0, 0, 0, 0)
-        self._btn_load = Rect(0, 0, 0, 0)
-        self._btn_load_spritesheet = Rect(0, 0, 0, 0)
-        self._btn_meta = Rect(0, 0, 0, 0)
+        self._btn_new = Button(Rect(0, 0, 0, 0), text="+", tooltip_text="New animation")
+        self._btn_del = Button(
+            Rect(0, 0, 0, 0),
+            icon_key="close",
+            icon_size=14,
+            danger=True,
+            tooltip_text="Delete animation",
+        )
+        self._btn_save = Button(Rect(0, 0, 0, 0), text="Save", tooltip_text="Save (Ctrl+S)")
+        self._btn_load = Button(Rect(0, 0, 0, 0), text="Load", tooltip_text="Load (Ctrl+O)")
+        self._btn_load_spritesheet = Button(
+            Rect(0, 0, 0, 0), text="Sheet", tooltip_text="Load spritesheet"
+        )
+        self._btn_export = Button(
+            Rect(0, 0, 0, 0), text="Export", tooltip_text="Export tile clips"
+        )
+        self._btn_export_desync = Button(
+            Rect(0, 0, 0, 0), text="Desync", tooltip_text="Desync start times"
+        )
+        self._btn_meta = Button(Rect(0, 0, 0, 0), text="{ }", tooltip_text="Animation metadata")
+        self._btn_dup = Button(
+            Rect(0, 0, 0, 0),
+            icon_key="duplicate",
+            icon_size=12,
+            tooltip_text="Duplicate animation",
+        )
+        self._btn_mk = Button(
+            Rect(0, 0, 0, 0),
+            icon_key="radio",
+            icon_size=12,
+            tooltip_text="Add marker at selection",
+        )
+        self._btn_copyjson = Button(
+            Rect(0, 0, 0, 0),
+            icon_key="file",
+            icon_size=12,
+            tooltip_text="Copy clip JSON (Ctrl+Shift+C)",
+        )
+        self._toolbar_buttons: list[Button] = [
+            self._btn_new,
+            self._btn_del,
+            self._btn_save,
+            self._btn_load,
+            self._btn_load_spritesheet,
+            self._btn_export,
+            self._btn_export_desync,
+            self._btn_meta,
+            self._btn_dup,
+            self._btn_mk,
+            self._btn_copyjson,
+        ]
+        self._export_desync = False
         self._btn_anim_selector = Rect(0, 0, 0, 0)
         self._btn_rename = Rect(0, 0, 0, 0)
         self._btn_info = Rect(0, 0, 0, 0)
-        self._btn_dup = Rect(0, 0, 0, 0)
-        self._btn_mk = Rect(0, 0, 0, 0)
-        self._btn_copyjson = Rect(0, 0, 0, 0)
 
         self._clip_warnings: list[str] = []
 
@@ -203,12 +249,26 @@ class SpriteAnimationEditor:
         self._grid_offset_y = 0
 
         self._ensure_fonts()
+        for _btn in self._toolbar_buttons:
+            _btn.font = self._font_sm
+        self._btn_new.on_click = self._on_new_animation
+        self._btn_del.on_click = self._delete_active_animation
+        self._btn_save.on_click = self._save_dialog
+        self._btn_load.on_click = self._load_dialog
+        self._btn_load_spritesheet.on_click = self._load_spritesheet_dialog
+        self._btn_export.on_click = self._export_tanim_dialog
+        self._btn_export_desync.on_click = self._toggle_export_desync
+        self._btn_meta.on_click = self._toggle_meta_panel
+        self._btn_dup.on_click = self._duplicate_active_animation
+        self._btn_mk.on_click = self._add_marker_at_selection
+        self._btn_copyjson.on_click = self._copy_active_clip_json
 
         self._clock: pygame.time.Clock | None = None
 
         self._file_manager = None
 
         self._last_saved_path: Path | None = None
+        self._tanim_source: dict | None = None
         self._data_root: Path | None = Path.cwd() / "data"
 
         self._sync_active_animation()
@@ -339,7 +399,7 @@ class SpriteAnimationEditor:
             and not self.frame_picker.is_filter_input_active()
         ):
             mods = pygame.key.get_mods()
-            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            ctrl_held = is_cmd_or_ctrl(mods)
             shift_held = mods & (pygame.KMOD_LSHIFT | pygame.KMOD_RSHIFT)
 
             if ctrl_held and event.key == pygame.K_s:
@@ -381,7 +441,7 @@ class SpriteAnimationEditor:
         elif self._editing_frame_width:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
-                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                ctrl_held = is_cmd_or_ctrl(mods)
 
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._apply_frame_size()
@@ -412,7 +472,7 @@ class SpriteAnimationEditor:
         elif self._editing_frame_height:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
-                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                ctrl_held = is_cmd_or_ctrl(mods)
 
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._apply_frame_size()
@@ -443,7 +503,7 @@ class SpriteAnimationEditor:
         elif self._editing_offset_x:
             if event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
-                ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+                ctrl_held = is_cmd_or_ctrl(mods)
 
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._apply_grid_offset()
@@ -477,7 +537,7 @@ class SpriteAnimationEditor:
 
         elif self._editing_offset_y and event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
-            ctrl_held = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+            ctrl_held = is_cmd_or_ctrl(mods)
 
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self._apply_grid_offset()
@@ -510,8 +570,16 @@ class SpriteAnimationEditor:
                     self._offset_y_input += event.unicode
                 return True
 
+        if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            for _btn in self._toolbar_buttons:
+                _btn.handle_event(event)
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse = pygame.mouse.get_pos()
+
+            for _btn in self._toolbar_buttons:
+                if _btn.handle_event(event):
+                    return True
 
             if self._btn_anim_selector.collidepoint(mouse):
                 self._dropdown_open = not self._dropdown_open
@@ -530,48 +598,6 @@ class SpriteAnimationEditor:
                             self._sync_active_animation()
                         self._dropdown_open = False
                         return True
-
-            if self._btn_new.collidepoint(mouse):
-                base = "anim"
-                n = len(self.library.animations)
-                name = f"{base}_{n}"
-                while name in self.library.animations:
-                    n += 1
-                    name = f"{base}_{n}"
-                self._create_new_animation(name)
-                return True
-
-            if self._btn_del.collidepoint(mouse):
-                self._delete_active_animation()
-                return True
-
-            if self._btn_save.collidepoint(mouse):
-                self._save_dialog()
-                return True
-
-            if self._btn_load.collidepoint(mouse):
-                self._load_dialog()
-                return True
-
-            if self._btn_load_spritesheet.collidepoint(mouse):
-                self._load_spritesheet_dialog()
-                return True
-
-            if self._btn_dup.collidepoint(mouse):
-                self._duplicate_active_animation()
-                return True
-            if self._btn_mk.collidepoint(mouse):
-                self._add_marker_at_selection()
-                return True
-            if self._btn_copyjson.collidepoint(mouse):
-                self._copy_active_clip_json()
-                return True
-
-            if self._btn_meta.collidepoint(mouse):
-                self._meta_panel_open = not self._meta_panel_open
-                self._editing_meta_key = False
-                self._editing_meta_value = False
-                return True
 
             if self._btn_info.collidepoint(mouse):
                 self._info_tooltip_pinned = not self._info_tooltip_pinned
@@ -652,6 +678,25 @@ class SpriteAnimationEditor:
 
         if self._file_manager:
             self._file_manager.draw(screen)
+
+        mouse_pos = pygame.mouse.get_pos()
+        for _btn in self._toolbar_buttons:
+            if _btn.rect.collidepoint(mouse_pos) and _btn.tooltip_text:
+                self._draw_btn_tooltip(screen, _btn.tooltip_text, mouse_pos)
+                break
+
+    def _draw_btn_tooltip(self, screen: pygame.Surface, text: str, pos: tuple[int, int]) -> None:
+        surf = self._font_sm.render(text, True, COLORS.text)
+        tw, th = surf.get_size()
+        pad = 4
+        tx = pos[0] + 12
+        ty = pos[1] + 16
+        if tx + tw + pad * 2 > screen.get_width():
+            tx = pos[0] - tw - pad * 2 - 4
+        bg = Rect(tx - pad, ty - pad, tw + pad * 2, th + pad * 2)
+        pygame.draw.rect(screen, COLORS.panel, bg, border_radius=3)
+        pygame.draw.rect(screen, COLORS.border_soft, bg, 1, border_radius=3)
+        screen.blit(surf, (tx, ty))
 
     def _layout_rects(self) -> tuple[Rect, Rect, Rect]:
         """Calculate rects for frame_picker, preview, timeline."""
@@ -744,42 +789,44 @@ class SpriteAnimationEditor:
         screen.blit(pencil_icon, (self._btn_rename.x + 5, self._btn_rename.y + 6))
         x += rename_btn_w + pad
 
-        self._btn_new = Rect(x, cy, 28, bh)
-        self._draw_toolbar_btn(screen, self._btn_new, "+", mouse)
+        self._btn_new.rect = Rect(x, cy, 28, bh)
+        self._btn_new.draw(screen)
         x += 32
 
-        self._btn_del = Rect(x, cy, 28, bh)
-
-        close_icon = icon_manager.get_icon("close", 14, COLORS.danger_hover)
-        screen.blit(close_icon, (self._btn_del.x + 7, self._btn_del.y + 6))
+        self._btn_del.rect = Rect(x, cy, 28, bh)
+        self._btn_del.draw(screen)
         x += 36
 
         pygame.draw.line(screen, COLORS.border, (x, cy + 2), (x, cy + bh - 2))
         x += pad + 4
 
-        self._btn_save = Rect(x, cy, 48, bh)
-        self._draw_toolbar_btn(screen, self._btn_save, "Save", mouse)
+        self._btn_save.rect = Rect(x, cy, 48, bh)
+        self._btn_save.draw(screen)
         x += 52
 
-        self._btn_load = Rect(x, cy, 48, bh)
-        self._draw_toolbar_btn(screen, self._btn_load, "Load", mouse)
+        self._btn_load.rect = Rect(x, cy, 48, bh)
+        self._btn_load.draw(screen)
         x += 52
 
-        self._btn_load_spritesheet = Rect(x, cy, 80, bh)
-        self._draw_toolbar_btn(screen, self._btn_load_spritesheet, "Sheet", mouse)
+        self._btn_load_spritesheet.rect = Rect(x, cy, 80, bh)
+        self._btn_load_spritesheet.draw(screen)
         x += 84
+
+        self._btn_export.rect = Rect(x, cy, 62, bh)
+        self._btn_export.draw(screen)
+        x += 66
+
+        self._btn_export_desync.rect = Rect(x, cy, 68, bh)
+        self._btn_export_desync.active = self._export_desync
+        self._btn_export_desync.draw(screen)
+        x += 72
 
         pygame.draw.line(screen, COLORS.border, (x, cy + 2), (x, cy + bh - 2))
         x += pad + 4
 
-        self._btn_meta = Rect(x, cy, 36, bh)
-        self._draw_toolbar_btn(
-            screen,
-            self._btn_meta,
-            "{ }",
-            mouse,
-            active=self._meta_panel_open,
-        )
+        self._btn_meta.rect = Rect(x, cy, 36, bh)
+        self._btn_meta.active = self._meta_panel_open
+        self._btn_meta.draw(screen)
         x += 40
 
         pygame.draw.line(screen, COLORS.border, (x, cy + 2), (x, cy + bh - 2))
@@ -887,8 +934,11 @@ class SpriteAnimationEditor:
         x += offset_input_w + 4
 
         info = f"{self._sheet_name}"
-        info_surf = self._font_sm.render(info, True, COLORS.text_dim)
-        screen.blit(info_surf, (tb.right - info_surf.get_width() - 8, cy + 6))
+        avail = max(0, tb.right - 8 - (x + 8))
+        if avail >= 40:
+            disp, _ = truncate_text(info, self._font_sm, avail)
+            info_surf = self._font_sm.render(disp, True, COLORS.text_dim)
+            screen.blit(info_surf, (tb.right - info_surf.get_width() - 8, cy + 6))
 
         tb2 = Rect(self.rect.x, self.rect.y + TOOLBAR_ROW1_H, self.rect.w, TOOLBAR_ROW2_H)
         pygame.draw.rect(screen, COLORS.header, tb2)
@@ -902,22 +952,16 @@ class SpriteAnimationEditor:
         cy2 = tb2.y + (TOOLBAR_ROW2_H - bh2) // 2
         x2 = tb2.x + 6
 
-        self._btn_dup = Rect(x2, cy2, 24, bh2)
-        self._draw_toolbar_btn(screen, self._btn_dup, "", mouse)
-        dup_icon = icon_manager.get_icon("duplicate", 12, COLORS.text)
-        screen.blit(dup_icon, dup_icon.get_rect(center=self._btn_dup.center))
+        self._btn_dup.rect = Rect(x2, cy2, 24, bh2)
+        self._btn_dup.draw(screen)
         x2 += 28
 
-        self._btn_mk = Rect(x2, cy2, 24, bh2)
-        self._draw_toolbar_btn(screen, self._btn_mk, "", mouse)
-        marker_icon = icon_manager.get_icon("radio", 12, COLORS.text)
-        screen.blit(marker_icon, marker_icon.get_rect(center=self._btn_mk.center))
+        self._btn_mk.rect = Rect(x2, cy2, 24, bh2)
+        self._btn_mk.draw(screen)
         x2 += 28
 
-        self._btn_copyjson = Rect(x2, cy2, 24, bh2)
-        self._draw_toolbar_btn(screen, self._btn_copyjson, "", mouse)
-        json_icon = icon_manager.get_icon("file", 12, COLORS.text)
-        screen.blit(json_icon, json_icon.get_rect(center=self._btn_copyjson.center))
+        self._btn_copyjson.rect = Rect(x2, cy2, 24, bh2)
+        self._btn_copyjson.draw(screen)
         x2 += 28
         if self._clip_warnings:
             warning_icon = icon_manager.get_icon("warning", 12, COLORS.danger_hover)
@@ -1327,6 +1371,23 @@ class SpriteAnimationEditor:
         except Exception:
             pass
 
+    def _on_new_animation(self) -> None:
+        base = "anim"
+        n = len(self.library.animations)
+        name = f"{base}_{n}"
+        while name in self.library.animations:
+            n += 1
+            name = f"{base}_{n}"
+        self._create_new_animation(name)
+
+    def _toggle_export_desync(self) -> None:
+        self._export_desync = not self._export_desync
+
+    def _toggle_meta_panel(self) -> None:
+        self._meta_panel_open = not self._meta_panel_open
+        self._editing_meta_key = False
+        self._editing_meta_value = False
+
     def _duplicate_active_animation(self) -> None:
         anim = self._get_active()
         if anim is None:
@@ -1629,7 +1690,7 @@ class SpriteAnimationEditor:
         if anim is None:
             return
         mods = pygame.key.get_mods()
-        ctrl = mods & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL)
+        ctrl = is_cmd_or_ctrl(mods)
         if ctrl and anim.frames:
             for i, fr in enumerate(anim.frames):
                 if fr.variant_id == variant_id:
@@ -1750,6 +1811,13 @@ class SpriteAnimationEditor:
 
         If no path exists, opens save dialog.
         """
+        if self._tanim_source is not None and self._last_saved_path:
+            try:
+                if self._write_tanim_file(self._last_saved_path):
+                    print(f"Tile clips saved to {self._last_saved_path}")
+            except Exception as e:
+                error_handler.capture(e, context="save_tile_clips_quick")
+            return
         if self._last_saved_path:
             try:
                 self.library.grid_offset = (self._grid_offset_x, self._grid_offset_y)
@@ -1772,15 +1840,21 @@ class SpriteAnimationEditor:
             path = self._default_save_path()
             if path.exists():
                 try:
-                    self.library = AnimationLibrary.load(path)
-                    self._resolve_library_paths(path)
-                    self._apply_library_grid_settings()
-                    names = self.library.animation_names()
-                    self._active_anim_name = names[0] if names else None
-                    if not names:
-                        self._create_new_animation("idle")
-                    self._sync_active_animation()
-                    print(f"Animations loaded from {path}")
+                    from utils.tile_anim import detect_anim_schema_file
+
+                    if detect_anim_schema_file(path) == "tile":
+                        self.load_tanim_file(path)
+                    else:
+                        self.library = AnimationLibrary.load(path)
+                        self._resolve_library_paths(path)
+                        self._tanim_source = None
+                        self._apply_library_grid_settings()
+                        names = self.library.animation_names()
+                        self._active_anim_name = names[0] if names else None
+                        if not names:
+                            self._create_new_animation("idle")
+                        self._sync_active_animation()
+                        print(f"Animations loaded from {path}")
                 except Exception as e:
                     error_handler.capture(e, context="load_animations")
             else:
@@ -1808,12 +1882,144 @@ class SpriteAnimationEditor:
     def _on_save_file_selected(self, path: Path) -> None:
         """Callback when user selects a file to save to."""
         try:
+            if path.name.lower().endswith(".tanim.json"):
+                if self._write_tanim_file(path):
+                    from utils.tile_anim import TileAnimFile
+
+                    self._record_tanim_source(path, TileAnimFile.load(path))
+                    self._last_saved_path = path
+                    print(f"Tile clips saved to {path}")
+                self._close_file_manager()
+                return
             self.library.grid_offset = (self._grid_offset_x, self._grid_offset_y)
             self.library.save(path, base_path=path.parent)
             self._last_saved_path = path
+            self._tanim_source = None
             print(f"Animations saved to {path}")
         except Exception as e:
             error_handler.capture(e, context="save_animations_dialog")
+        self._close_file_manager()
+
+    def _export_tanim_dialog(self) -> None:
+        try:
+            from widgets.filemanager import FileManager
+        except ImportError as e:
+            print(f"Warning: Could not import FileManager: {e}")
+            return
+
+        initial_dir = self._data_root / "animations"
+        initial_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.library.spritesheet_path:
+            default_name = Path(self.library.spritesheet_path).stem + ".tanim.json"
+        else:
+            default_name = "tiles.tanim.json"
+
+        screen = pygame.display.get_surface()
+        w, h = 600, 400
+        screen_w, screen_h = screen.get_size()
+        rect = pygame.Rect((screen_w - w) // 2, (screen_h - h) // 2, w, h)
+
+        self._file_manager = FileManager(
+            rect=rect,
+            initial_dir=initial_dir,
+            allowed_exts=[".tanim.json"],
+            on_save=self._on_export_tanim_selected,
+            mode="save",
+            default_name=default_name,
+            on_cancel=self._close_file_manager,
+            data_root=self._data_root,
+        )
+
+    def _sheet_ref_for_export(self, path: Path) -> str:
+        from utils.project_paths import to_project_path
+
+        sheet_ref = self.library.spritesheet_path or ""
+        if sheet_ref:
+            export_dir = Path(path).parent
+            project_root = self._project_base_path()
+            raw = Path(sheet_ref)
+            try:
+                if raw.is_absolute():
+                    abs_sheet = raw.resolve()
+                elif project_root is not None:
+                    abs_sheet = (project_root / raw).resolve()
+                else:
+                    abs_sheet = (export_dir / raw).resolve()
+                sheet_ref = to_project_path(abs_sheet, export_dir)
+            except OSError:
+                pass
+        return sheet_ref
+
+    def _record_tanim_source(self, path: Path, tanim) -> None:
+        self._tanim_source = {
+            "path": path,
+            "sheets": {c.name: [f.sheet for f in c.frames] for c in tanim.clips},
+            "modes": {c.name: c.mode for c in tanim.clips},
+        }
+
+    def _write_tanim_file(self, path: Path) -> bool:
+        from utils.tile_anim import sprite_library_to_tanim
+
+        sheet_ref = self._sheet_ref_for_export(path)
+        if not sheet_ref:
+            print("Export skipped: no spritesheet set")
+            return False
+        sources = self._tanim_source or {}
+        export_mode = "random_start_times" if self._export_desync else None
+        tanim = sprite_library_to_tanim(
+            self.library.to_dict(),
+            sheet=sheet_ref,
+            mode=export_mode,
+            sheets=sources.get("sheets"),
+            clip_modes=sources.get("modes"),
+        )
+        if not tanim.clips:
+            print("Export skipped: no exportable clips")
+            return False
+        tanim.save(path)
+        return True
+
+    def load_tanim_file(self, path: Path) -> bool:
+        from utils.project_paths import resolve_project_path
+        from utils.tile_anim import TileAnimFile, tanim_to_library_dict
+
+        tanim = TileAnimFile.load(path)
+        if not tanim.clips:
+            print(f"No tile clips found in {path}")
+            return False
+        sheet_ref = tanim.tileset
+        if sheet_ref:
+            project_root = self._project_base_path()
+            resolved = resolve_project_path(
+                sheet_ref,
+                path.parent,
+                fallback_roots=[project_root] if project_root else None,
+                must_exist=True,
+            )
+            if resolved.exists():
+                sheet_ref = str(resolved)
+        self.library = AnimationLibrary.from_dict(
+            tanim_to_library_dict(tanim, spritesheet=sheet_ref, tile_size=self._tile_size)
+        )
+        self._record_tanim_source(path, tanim)
+        self._last_saved_path = path
+        self._apply_library_grid_settings()
+        names = self.library.animation_names()
+        self._active_anim_name = names[0] if names else None
+        if not names:
+            self._create_new_animation("idle")
+        self._sync_active_animation()
+        print(f"Tile clips loaded from {path}")
+        return True
+
+    def _on_export_tanim_selected(self, path: Path) -> None:
+        try:
+            if self._write_tanim_file(path):
+                suffix = " (desynced)" if self._export_desync else ""
+                print(f"Tile clips exported to {path}{suffix}")
+        except Exception as e:
+            error_handler.capture(e, context="export_tile_clips")
         self._close_file_manager()
 
     def _on_load_file_selected(self, path: Path | list[Path]) -> None:
@@ -1826,16 +2032,25 @@ class SpriteAnimationEditor:
 
         if path.exists():
             try:
-                self.library = AnimationLibrary.load(path)
-                self._resolve_library_paths(path)
-                self._last_saved_path = path
-                self._apply_library_grid_settings()
-                names = self.library.animation_names()
-                self._active_anim_name = names[0] if names else None
-                if not names:
-                    self._create_new_animation("idle")
-                self._sync_active_animation()
-                print(f"Animations loaded from {path}")
+                from utils.tile_anim import detect_anim_schema_file
+
+                schema = detect_anim_schema_file(path)
+                if schema == "tile":
+                    self.load_tanim_file(path)
+                elif schema == "unknown":
+                    print(f"Unrecognized animation file: {path}")
+                else:
+                    self.library = AnimationLibrary.load(path)
+                    self._resolve_library_paths(path)
+                    self._tanim_source = None
+                    self._last_saved_path = path
+                    self._apply_library_grid_settings()
+                    names = self.library.animation_names()
+                    self._active_anim_name = names[0] if names else None
+                    if not names:
+                        self._create_new_animation("idle")
+                    self._sync_active_animation()
+                    print(f"Animations loaded from {path}")
             except Exception as e:
                 error_handler.capture(e, context="load_animations_dialog")
         else:
@@ -1899,6 +2114,7 @@ class SpriteAnimationEditor:
 
             self.library = AnimationLibrary(tile_size=self._tile_size)
             self.library.spritesheet_path = str(selected_path)
+            self._tanim_source = None
             self._active_anim_name = None
             self._sync_active_animation()
 

@@ -17,11 +17,7 @@ from types import SimpleNamespace
 import pygame
 import pytest
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-pygame.init()
 pygame.font.init()
 pygame.display.set_mode((120, 120))
 

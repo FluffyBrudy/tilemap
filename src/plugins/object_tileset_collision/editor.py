@@ -35,6 +35,7 @@ from plugins.tileset_collision.models import CollisionPolygon
 from utils.error_handler import error_handler
 from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
+from utils.shortcuts import is_cmd_or_ctrl
 from widgets.input import InlineTextInput
 from widgets.ui.button import Button
 from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
@@ -925,7 +926,7 @@ class ObjectTilesetCollisionEditor:
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
             mods = pygame.key.get_mods()
-            if not (mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)):
+            if not (is_cmd_or_ctrl(mods)):
                 self.layer_sidebar.toggle()
                 return True
 
@@ -974,7 +975,7 @@ class ObjectTilesetCollisionEditor:
 
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
-            ctrl_held = mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)
+            ctrl_held = is_cmd_or_ctrl(mods)
 
             if ctrl_held:
                 if event.key == pygame.K_s:

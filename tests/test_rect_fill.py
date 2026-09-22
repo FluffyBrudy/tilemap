@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect
@@ -146,12 +145,18 @@ class TestRectFill:
         assert ed.tilemap.history == []
         assert g.rect_fill_start is None
 
-    def test_non_tile_layer_noop(self, monkeypatch):
+    def test_object_layer_places_one_object_per_cell(self, monkeypatch):
         g, ed, layer = make_grid(monkeypatch)
         layer.layer_type = "object"
         drag(g, 0, 0, 2, 2)
         assert layer.tiles == {}
-        assert ed.tilemap.history == []
+        assert len(layer.objects) == 9
+        assert ed.tilemap.history == ["Rect Fill"]
+        assert any("9 objects" in m for m in ed.notifications.good)
+        areas = sorted((o["area"]["x"], o["area"]["y"]) for o in layer.objects.values())
+        assert areas[0] == (0, 0)
+        assert areas[-1] == (64, 64)
+        assert all(o["area"]["w"] == 32 and o["area"]["h"] == 32 for o in layer.objects.values())
 
     def test_dice_scatters_within_pool(self, monkeypatch):
         g, ed, layer = make_grid(monkeypatch)
@@ -212,7 +217,7 @@ class TestRectFillKeys:
                       "variant_to_group": {}})()
         calls = []
         monkeypatch.setattr(LayerCls, "autotile_at_pos",
-                            lambda self, pos, rules: calls.append((pos, rules)))
+                            lambda self, pos, rules, variant_props=None: calls.append((pos, rules)))
         drag(g, 0, 0, 1, 1)
         assert sorted(p for p, _ in calls) == [(0, 0), (0, 1), (1, 0), (1, 1)]
         assert all(r == [sentinel] for _, r in calls)

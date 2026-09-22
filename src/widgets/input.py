@@ -2,6 +2,8 @@
 import pygame
 from pygame import Rect
 
+from utils.shortcuts import is_cmd_or_ctrl
+
 from .ui.theme import COLORS, FONTS, SHAPE
 from .widget_base import WidgetBase
 
@@ -114,7 +116,7 @@ class InputBox(WidgetBase):
 
         if self.is_focused and event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
-            ctrl_held = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
+            ctrl_held = is_cmd_or_ctrl(mods)
 
             if ctrl_held and event.key == pygame.K_a:
                 self.select_all()
@@ -407,8 +409,7 @@ class InlineTextInput:
 
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
-            ctrl_held = mods & (pygame.KMOD_CTRL | pygame.KMOD_META)
-            mods & pygame.KMOD_SHIFT
+            ctrl_held = is_cmd_or_ctrl(mods)
 
             if ctrl_held and event.key == pygame.K_a:
                 self.select_all()
