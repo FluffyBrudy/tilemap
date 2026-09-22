@@ -7,8 +7,6 @@ invalidate_cache now consolidates.
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -18,8 +16,6 @@ import pytest
 from pygame import Rect
 
 from plugins.sprite_animation.timeline import Timeline
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)

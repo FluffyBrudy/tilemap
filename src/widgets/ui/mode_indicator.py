@@ -27,6 +27,7 @@ class Mode:
     label: str
     description: str = ""
     icon: Surface | None = None
+    icon_key: str | None = None
     can_enter: Callable[[], bool] | None = None
     on_enter: Callable[[], None] | None = None
 
@@ -187,10 +188,28 @@ class ModeIndicator:
                     border_radius=SHAPE.radius_sm,
                 )
 
-            label_surf = self._font.render(mode.label, True, text_color)
-            label_x = button_rect.centerx - label_surf.get_width() // 2
-            label_y = button_rect.centery - label_surf.get_height() // 2
-            screen.blit(label_surf, (label_x, label_y))
+            icon_surf = mode.icon
+            if icon_surf is None and mode.icon_key:
+                from utils.icon_manager import icon_manager
+
+                icon_surf = icon_manager.get_icon(mode.icon_key, 14, text_color)
+            if icon_surf is not None:
+                label_surf = self._font.render(mode.label, True, text_color)
+                total_w = icon_surf.get_width() + 5 + label_surf.get_width()
+                ix = button_rect.centerx - total_w // 2
+                screen.blit(
+                    icon_surf, (ix, button_rect.centery - icon_surf.get_height() // 2)
+                )
+                screen.blit(
+                    label_surf,
+                    (ix + icon_surf.get_width() + 5,
+                     button_rect.centery - label_surf.get_height() // 2),
+                )
+            else:
+                label_surf = self._font.render(mode.label, True, text_color)
+                label_x = button_rect.centerx - label_surf.get_width() // 2
+                label_y = button_rect.centery - label_surf.get_height() // 2
+                screen.blit(label_surf, (label_x, label_y))
 
         if len(self.modes) >= 2 and self.active_mode_id:
             for i, (mode, button_rect) in enumerate(button_rects):

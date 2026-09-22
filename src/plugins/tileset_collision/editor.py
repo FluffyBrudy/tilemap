@@ -181,6 +181,18 @@ class TilesetCollisionEditor:
             "Snap to Grid",
             on_changed=lambda v: setattr(self.painter, "snap_to_grid", v),
         )
+        self._chk_trace = Checkbox(
+            Rect(0, 0, 0, 0),
+            "Neighbor Trace",
+            checked=True,
+            on_changed=lambda v: setattr(self.painter, "show_neighbors", v),
+        )
+        self._chk_nsnap = Checkbox(
+            Rect(0, 0, 0, 0),
+            "Snap to Neighbors",
+            checked=True,
+            on_changed=lambda v: setattr(self.painter, "snap_to_neighbors", v),
+        )
 
         self._widget_items: list[tuple] = [
             ("section", "POLYGON"),
@@ -188,6 +200,9 @@ class TilesetCollisionEditor:
             ("checkbox", self._chk_angle),
             ("section", "DISPLAY"),
             ("checkbox", self._chk_grid),
+            ("section", "NEIGHBORS"),
+            ("checkbox", self._chk_trace),
+            ("checkbox", self._chk_nsnap),
             ("section", "GRID SNAP"),
             ("grid_dec", None),
             ("grid_val", None),
@@ -267,6 +282,8 @@ class TilesetCollisionEditor:
         p = self.painter
         self._chk_grid.checked = p.show_grid
         self._chk_snap.checked = p.snap_to_grid
+        self._chk_trace.checked = p.show_neighbors
+        self._chk_nsnap.checked = p.snap_to_neighbors
         self._chk_angle.checked = p.show_angle_hints
         sel = p.selected_polygon_idx
         if sel is not None and 0 <= sel < len(p.polygon_one_way):
@@ -322,6 +339,10 @@ class TilesetCollisionEditor:
                 if self._chk_grid.handle_event(event):
                     continue
                 if self._chk_snap.handle_event(event):
+                    continue
+                if self._chk_trace.handle_event(event):
+                    continue
+                if self._chk_nsnap.handle_event(event):
                     continue
                 if self._grid_dec_rect.collidepoint(pos):
                     painter.grid_size = max(1, painter.grid_size - 1)
@@ -496,7 +517,46 @@ class TilesetCollisionEditor:
         else:
             self.painter.set_polygons([], [])
 
+        self.painter.set_neighbor_polygons(*self._neighbor_data(first_tile))
         self.painter.tile_surface = self._get_tile_surface(first_tile)
+
+    def _neighbor_data(
+        self, tile_id: int
+    ) -> tuple[
+        dict[tuple[int, int], list[list[tuple[float, float]]]],
+        dict[tuple[int, int], list[list[tuple[float, float]]]],
+    ]:
+        """Painted neighbors in the open tile's local coords.
+
+        Edge neighbors shift by a full tile so shared borders coincide;
+        diagonal neighbors shift to their corner (painter uses only
+        corner-reach points). Sheet edges and unpainted tiles contribute
+        nothing.
+        """
+        tw, th = self._tile_size
+        col, row = tile_id % self.tile_cols, tile_id // self.tile_cols
+        shifts = {
+            (-1, 0): (-tw, 0), (1, 0): (tw, 0), (0, -1): (0, -th), (0, 1): (0, th),
+            (-1, -1): (-tw, -th), (1, -1): (tw, -th),
+            (-1, 1): (-tw, th), (1, 1): (tw, th),
+        }
+        edge: dict = {}
+        corners: dict = {}
+        if self.tile_cols <= 0:
+            return edge, corners
+        for (dc, dr), (dx, dy) in shifts.items():
+            c, r = col + dc, row + dr
+            if not (0 <= c < self.tile_cols and 0 <= r < self.tile_rows):
+                continue
+            entry = self.library.tiles.get(r * self.tile_cols + c)
+            if entry is None or not entry.shapes:
+                continue
+            moved = [[(x + dx, y + dy) for x, y in s.vertices] for s in entry.shapes]
+            if abs(dc) + abs(dr) == 1:
+                edge[(dc, dr)] = moved
+            else:
+                corners[(dc, dr)] = moved
+        return edge, corners
 
     def _save_tile_collision_for_selection(self) -> None:
         polygons = self.painter.get_polygons()

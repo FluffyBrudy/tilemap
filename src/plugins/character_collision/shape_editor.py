@@ -33,6 +33,7 @@ _COLORS = {
     "text": (230, 230, 230),
     "text_dim": (140, 140, 140),
     "grid": (255, 255, 255),
+    "probe": (100, 200, 255),
 }
 
 
@@ -71,7 +72,9 @@ class ShapeEditor:
 
         self.offset_x: float = 0.0
         self.offset_y: float = 0.0
-        self.zoom: float = 3.0
+        self.zoom: float = 1.0
+        self._scaled_cache_key: tuple | None = None
+        self._scaled_cache: pygame.Surface | None = None
 
         self.dragging_handle: str | None = None
         self.hover_handle: str | None = None
@@ -87,6 +90,7 @@ class ShapeEditor:
 
         self.show_grid = True
         self.grid_size = 8
+        self.show_probe = False
 
         self._font: pygame.font.Font | None = None
         self._font_sm: pygame.font.Font | None = None
@@ -94,11 +98,25 @@ class ShapeEditor:
         self._center_view()
         self._center_shape()
 
+    FIT_MARGIN = 0.9
+    MIN_FIT_ZOOM = 0.05
+
     def _center_view(self) -> None:
         """Center the sprite in the viewport"""
         sw, sh = self.sprite_surface.get_size()
         self.offset_x = (self.rect.w - sw * self.zoom) / 2
         self.offset_y = (self.rect.h - sh * self.zoom) / 2
+
+    def fit_view(self, margin: float = FIT_MARGIN) -> None:
+        """Fit the whole sprite with margin, then center."""
+        sw, sh = self.sprite_surface.get_size()
+        if sw <= 0 or sh <= 0 or self.rect.w <= 0 or self.rect.h <= 0:
+            self._center_view()
+            return
+        self.zoom = max(
+            self.MIN_FIT_ZOOM, min(self.rect.w / sw, self.rect.h / sh) * margin
+        )
+        self._center_view()
 
     def _focus_on_shape(self) -> None:
         """Center the viewport on the shape's bounding box"""
@@ -222,13 +240,14 @@ class ShapeEditor:
         self._focus_on_shape()
 
     def resize(self, rect: Rect) -> None:
-        """Update rect"""
+        """Update rect, preserving the current view offsets."""
         self.rect = rect
-        self._center_view()
 
     def load_sprite(self, surface: pygame.Surface) -> None:
         self.sprite_surface = surface
-        self._center_view()
+        self._scaled_cache_key = None
+        self._scaled_cache = None
+        self.fit_view()
         self._center_shape()
 
     def handle_event(self, event: pygame.event.Event) -> bool:
@@ -282,9 +301,12 @@ class ShapeEditor:
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
             mods = pygame.key.get_mods()
             if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
-                self.zoom *= 1.15 if event.y > 0 else 0.87
-                self.zoom = max(0.5, min(self.zoom, 8.0))
+                # anchor first: the world point under the cursor must be
+                # captured with the OLD zoom, or the view jumps each step
                 sprite_pos = self._screen_to_sprite(mouse)
+                self.zoom *= 1.15 if event.y > 0 else 0.87
+                self.zoom = max(self.MIN_FIT_ZOOM, min(self.zoom, 8.0))
+                self._scaled_cache_key = None
                 self.offset_x = mouse[0] - self.rect.x - sprite_pos[0] * self.zoom
                 self.offset_y = mouse[1] - self.rect.y - sprite_pos[1] * self.zoom
             elif mods & pygame.KMOD_SHIFT:
@@ -353,9 +375,11 @@ class ShapeEditor:
             if event.key == pygame.K_g:
                 self.show_grid = not self.show_grid
                 return True
+            if event.key == pygame.K_p:
+                self.show_probe = not self.show_probe
+                return True
             if event.key == pygame.K_r:
-                self._center_view()
-                self.zoom = 3.0
+                self.fit_view()
                 return True
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 if self.shape_type == "polygon" and len(self.current_polygon) >= 3:
@@ -635,8 +659,13 @@ class ShapeEditor:
         if scaled_w > 0 and scaled_h > 0:
             sprite_x = int(self.rect.x + self.offset_x)
             sprite_y = int(self.rect.y + self.offset_y)
-            scaled = pygame.transform.scale(self.sprite_surface, (scaled_w, scaled_h))
-            screen.blit(scaled, (sprite_x, sprite_y))
+            key = (id(self.sprite_surface), (sw, sh), (scaled_w, scaled_h))
+            if key != self._scaled_cache_key or self._scaled_cache is None:
+                self._scaled_cache = pygame.transform.scale(
+                    self.sprite_surface, (scaled_w, scaled_h)
+                )
+                self._scaled_cache_key = key
+            screen.blit(self._scaled_cache, (sprite_x, sprite_y))
 
             sprite_rect = Rect(sprite_x, sprite_y, scaled_w, scaled_h)
             pygame.draw.rect(screen, (100, 100, 100), sprite_rect, 1)
@@ -645,6 +674,9 @@ class ShapeEditor:
             self._draw_grid(screen, sw, sh)
 
         self._draw_shape(screen)
+
+        if self.show_probe:
+            self._draw_probe(screen)
 
         if not self._pan_mode and not self.hover_handle:
             mouse = pygame.mouse.get_pos()
@@ -658,23 +690,57 @@ class ShapeEditor:
         screen.set_clip(clip)
 
     def _draw_grid(self, screen: pygame.Surface, sw: int, sh: int) -> None:
-        """Draw grid overlay"""
-        sprite_x = int(self.rect.x + self.offset_x)
-        sprite_y = int(self.rect.y + self.offset_y)
-        scaled_w = int(sw * self.zoom)
-        scaled_h = int(sh * self.zoom)
+        """Draw grid overlay, bounded to the sprite rect.
 
-        grid_surf = pygame.Surface((scaled_w, scaled_h), pygame.SRCALPHA)
-
-        for x in range(0, sw + 1, self.grid_size):
-            sx = int(x * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (sx, 0), (sx, scaled_h))
-
-        for y in range(0, sh + 1, self.grid_size):
-            sy = int(y * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (0, sy), (scaled_w, sy))
-
-        screen.blit(grid_surf, (sprite_x, sprite_y))
+        Minor lines faint, every 4th line (one 32px cell at default
+        grid size) brighter, sprite origin axes tinted so local-zero is
+        findable. Only visible lines are drawn, directly on the screen —
+        never a full-canvas surface (which on multi-frame strips costs
+        tens of MB per frame). Below ~4px per cell every k-th line is
+        drawn so far zoom-outs stay readable.
+        """
+        if self.grid_size <= 0:
+            return
+        gx0 = max(0, math.floor(-self.offset_x / self.zoom / self.grid_size))
+        gx1 = min(
+            sw // self.grid_size,
+            math.ceil((self.rect.w - self.offset_x) / self.zoom / self.grid_size),
+        )
+        gy0 = max(0, math.floor(-self.offset_y / self.zoom / self.grid_size))
+        gy1 = min(
+            sh // self.grid_size,
+            math.ceil((self.rect.h - self.offset_y) / self.zoom / self.grid_size),
+        )
+        cell_px = self.grid_size * self.zoom
+        step = max(1, math.ceil(4 / cell_px)) if cell_px > 0 else 1
+        # Solid pre-darkened tones: the viewport surface has no per-pixel
+        # alpha, so RGBA tuples would render as harsh opaque white.
+        minor = (42, 42, 50)
+        major = (78, 82, 96)
+        origin = _COLORS["probe"]
+        # Sprite bounds on screen: lines stay inside the picture.
+        spr_x0 = self.rect.x + self.offset_x
+        spr_y0 = self.rect.y + self.offset_y
+        spr_x1 = spr_x0 + sw * self.zoom
+        spr_y1 = spr_y0 + sh * self.zoom
+        for gx in range(gx0 - (gx0 % step), gx1 + 1, step):
+            sx = round(self.rect.x + self.offset_x + gx * self.grid_size * self.zoom)
+            if gx == 0:
+                color, y0, y1 = origin, spr_y0, spr_y1
+            elif gx % 4 == 0:
+                color, y0, y1 = major, spr_y0, spr_y1
+            else:
+                color, y0, y1 = minor, spr_y0, spr_y1
+            pygame.draw.line(screen, color, (sx, y0), (sx, y1))
+        for gy in range(gy0 - (gy0 % step), gy1 + 1, step):
+            sy = round(self.rect.y + self.offset_y + gy * self.grid_size * self.zoom)
+            if gy == 0:
+                color, x0, x1 = origin, spr_x0, spr_x1
+            elif gy % 4 == 0:
+                color, x0, x1 = major, spr_x0, spr_x1
+            else:
+                color, x0, x1 = minor, spr_x0, spr_x1
+            pygame.draw.line(screen, color, (x0, sy), (x1, sy))
 
     def _draw_shape(self, screen: pygame.Surface) -> None:
         """Draw the collision shape"""
@@ -802,6 +868,40 @@ class ShapeEditor:
                 pygame.draw.circle(screen, color, point, 5)
                 pygame.draw.circle(screen, (0, 0, 0), point, 5, 1)
 
+    def _shape_anchor(self) -> tuple[float, float]:
+        """Shape origin in sprite-local coords (spawn-offset reference)."""
+        if self.shape_type == "rectangle":
+            return (self.rect_x, self.rect_y)
+        if self.shape_type == "circle":
+            return (self.circle_x, self.circle_y)
+        if self.shape_type == "capsule":
+            return (self.capsule_x, self.capsule_y)
+        if self.shape_type == "polygon" and self.polygon_vertices:
+            xs = [v[0] for v in self.polygon_vertices]
+            ys = [v[1] for v in self.polygon_vertices]
+            return (min(xs), min(ys))
+        return (0.0, 0.0)
+
+    def _draw_probe(self, screen: pygame.Surface) -> None:
+        """Crosshair + sprite-local cursor readout (zoom-invariant)."""
+        mouse = pygame.mouse.get_pos()
+        if not self.rect.collidepoint(mouse):
+            return
+        lx, ly = self._screen_to_sprite(mouse)
+        sw, sh = self.sprite_surface.get_size()
+        inside = 0 <= lx < sw and 0 <= ly < sh
+        cross = _COLORS["probe"] if inside else _COLORS["text_dim"]
+        pygame.draw.line(screen, cross, (self.rect.x, mouse[1]), (self.rect.right, mouse[1]))
+        pygame.draw.line(screen, cross, (mouse[0], self.rect.y), (mouse[0], self.rect.bottom))
+        text = f"({lx:.1f}, {ly:.1f})" + ("" if inside else " outside")
+        surf = self._font_sm.render(text, True, _COLORS["text"])
+        lx_pos = min(mouse[0] + 14, self.rect.right - surf.get_width() - 4)
+        ly_pos = min(mouse[1] + 14, self.rect.bottom - surf.get_height() - 4)
+        bg = pygame.Surface((surf.get_width() + 8, surf.get_height() + 4), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 180))
+        screen.blit(bg, (lx_pos - 4, ly_pos - 2))
+        screen.blit(surf, (lx_pos, ly_pos))
+
     def _draw_status(self, screen: pygame.Surface) -> None:
         """Draw status text"""
         lines = []
@@ -810,6 +910,10 @@ class ShapeEditor:
             lines.append("PANNING MODE — drag to pan | Space to exit")
 
         lines.append(f"Shape: {self.shape_type.upper()} | Zoom: {self.zoom:.1f}x")
+
+        if self.show_probe:
+            ax, ay = self._shape_anchor()
+            lines.append(f"Anchor: ({ax:.1f}, {ay:.1f}) | P: hide probe")
 
         if self.shape_type == "polygon":
             if self.current_polygon:
@@ -821,7 +925,7 @@ class ShapeEditor:
             else:
                 lines.append("Click to add vertices")
 
-        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: zoom")
+        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: zoom | P: position probe")
 
         y = self.rect.y + 5
         for line in lines:

@@ -98,6 +98,8 @@ class TileSelector(WidgetBase):
 
         self._pending_tileset_queue: list[tuple[Path, pygame.Surface]] = []
         self._queue_timer_active = False
+        # captured on first apply-to-all confirm; cleared on drain.
+        self._batch_type: str | None = None
 
         self.zoom: float = 1.0
         self.font = FONTS.get_medium_font()
@@ -459,7 +461,6 @@ class TileSelector(WidgetBase):
     def handle_event(self, event: pygame.event.Event) -> bool:
 
         if event.type == pygame.USEREVENT + 1 and self._queue_timer_active:
-            print("DEBUG: Timer triggered, continuing queue")
             self._queue_timer_active = False
             self._start_tileset_queue()
             return True
@@ -644,7 +645,8 @@ class TileSelector(WidgetBase):
         )
 
     def on_files_selected(self, paths):
-        print(f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)")
+        self._batch_type = None
+        self.editor.tileset_type_dialog.apply_to_all = False
         if isinstance(paths, Path):
             self.on_file_selected(paths)
             return
@@ -654,7 +656,6 @@ class TileSelector(WidgetBase):
                     self.on_file_selected(p, enqueue_only=True)
                 elif isinstance(p, str):
                     self.on_file_selected(Path(p), enqueue_only=True)
-            print(f"DEBUG: Queue size after adding: {len(self._pending_tileset_queue)}")
             if self._pending_tileset_queue:
                 self._start_tileset_queue()
         else:
@@ -682,11 +683,12 @@ class TileSelector(WidgetBase):
 
     def _start_tileset_queue(self):
         if not self._pending_tileset_queue:
-            print("DEBUG: Queue is empty, nothing to process")
+            self._batch_type = None
             return
-        print(f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining")
         self._pending_tileset_path, self._pending_tileset_surf = self._pending_tileset_queue.pop(0)
-        print(f"DEBUG: Processing tileset: {self._pending_tileset_path}")
+        if self._batch_type is not None:
+            self._on_tileset_type_selected(self._batch_type)
+            return
         tw, th = self.editor.tilemap.tile_size
         sheet_cols = self._pending_tileset_surf.get_width() // tw
         sheet_rows = self._pending_tileset_surf.get_height() // th
@@ -694,6 +696,7 @@ class TileSelector(WidgetBase):
         self.editor.tileset_type_dialog.show(
             on_confirm=self._on_tileset_type_selected,
             on_cancel=self._on_tileset_type_cancel,
+            remaining=len(self._pending_tileset_queue),
         )
 
     def load_tileset_from_path(
@@ -730,6 +733,14 @@ class TileSelector(WidgetBase):
     def _on_tileset_type_selected(self, tileset_type: str):
         if not hasattr(self, "_pending_tileset_path"):
             return
+
+        if self.editor.tileset_type_dialog.apply_to_all and self._batch_type is None:
+            self._batch_type = tileset_type
+            remaining = len(self._pending_tileset_queue)
+            self.editor.notifications.notify(
+                f"Applying '{tileset_type}' to {remaining} remaining file{'s' if remaining != 1 else ''}",
+                duration=2.5,
+            )
 
         surf = self._pending_tileset_surf
 
@@ -824,7 +835,6 @@ class TileSelector(WidgetBase):
 
             library = ObjectTilesetCollisionLibrary.load(collision_path)
             tileset_data.object_collision_data = library.to_dict()
-            print(f"Loaded object collision data: {collision_path}")
         except Exception as e:
             tileset_data.object_collision_data = None
             error_handler.capture(e, context="load_object_tileset_collision")

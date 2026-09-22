@@ -53,17 +53,33 @@ def ghost_tiles(
     """Blit tile ghosts at (col, row, surface) placements, scaled to zoom."""
     for col, row, tile in placements:
         rect = doc.tile_rect(col, row)
-        sx, sy, sw, sh = camera.world_to_screen_rect(rect.x, rect.y, rect.w, rect.h)
-        if sw <= 0 or sh <= 0:
+        dest = screen_rect_for(camera, rect.x, rect.y, rect.w, rect.h)
+        if dest.w <= 0 or dest.h <= 0:
             continue
-        scaled = pygame.transform.scale(tile, (max(1, round(sw)), max(1, round(sh))))
+        scaled = pygame.transform.scale(tile, (dest.w, dest.h))
         scaled.set_alpha(alpha)
-        screen.blit(scaled, (round(sx), round(sy)))
+        screen.blit(scaled, dest.topleft)
+
+
+def snapped_origin(camera: Camera) -> tuple[int, int]:
+    """Integer screen position of world (0,0).
+
+    All snapped rects/line positions derive offsets from this origin so
+    the sheet, grid lines, cells and region rects share one rounding rule
+    (fixes 1px drift between zoom steps).
+    """
+    sx0, sy0 = camera.world_to_screen(0.0, 0.0)
+    return round(sx0), round(sy0)
 
 
 def screen_rect_for(camera: Camera, x: float, y: float, w: float, h: float) -> Rect:
-    sx, sy, sw, sh = camera.world_to_screen_rect(x, y, w, h)
-    return Rect(round(sx), round(sy), round(sw), round(sh))
+    x0, y0 = snapped_origin(camera)
+    zoom = camera.zoom
+    rx0 = x0 + round(x * zoom)
+    ry0 = y0 + round(y * zoom)
+    rx1 = x0 + round((x + w) * zoom)
+    ry1 = y0 + round((y + h) * zoom)
+    return Rect(rx0, ry0, max(0, rx1 - rx0), max(0, ry1 - ry0))
 
 
 def draw_selection_fill(screen: Surface, doc: Document, camera: Camera, selection: Selection) -> None:

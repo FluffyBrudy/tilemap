@@ -5,6 +5,8 @@ class TypeTile(TypedDict, total=True):
     pos: tuple[int, int]
     ttype: int
     variant: int
+    flip_h: bool | None
+    flip_v: bool | None
     autotile_group: NotRequired[str]
     gid: NotRequired[int]
     properties: NotRequired[dict[str, Any]]
@@ -34,10 +36,23 @@ class TypeObject(TypedDict, total=True):
     animation: NotRequired[dict[str, Any]]
 
 
+class TypeImagePlacement(TypedDict, total=True):
+    """One duplicate copy of an image layer's picture (paint order = list order)."""
+
+    pid: int
+    x: int
+    y: int
+    w: int
+    h: int
+    mode: NotRequired[str]
+
+
 class TypeTileSerealized(TypedDict, total=True):
     pos: str
     ttype: str
     variant: int
+    flip_h: bool | None
+    flip_v: bool | None
     autotile_group: NotRequired[str]
     gid: NotRequired[int]
     properties: NotRequired[dict[str, Any]]
@@ -65,6 +80,8 @@ class TypeLayerSerialized(TypedDict, total=True):
     properties: NotRequired[dict[str, Any]]
     image_path: NotRequired[str | None]
     image_rect: NotRequired[TypeArea | None]
+    image_placements: NotRequired[list[TypeImagePlacement]]
+    next_placement_id: NotRequired[int]
 
 
 class TypeTilesetSerialized(TypedDict, total=True):

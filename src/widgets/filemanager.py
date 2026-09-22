@@ -594,7 +594,13 @@ class FileManager:
         try:
             with open(self.recents_path) as f:
                 data = json.load(f)
-                return [Path(p) for p in data if Path(p).exists()]
+                if not isinstance(data, list):
+                    return []
+                valid = [Path(p) for p in data if Path(p).exists()]
+                self.recents = valid[:20]
+                if len(valid) != len(data):
+                    self._save_recents()
+                return list(self.recents)
         except Exception as e:
             error_handler.capture(e, context="filemanager_load_recents")
         return []

@@ -20,7 +20,7 @@ from widgets.ui.theme import COLORS, FONTS
 
 from .camera import Camera
 from .document import Document
-from .overlays import draw_selection_fill
+from .overlays import draw_alpha_fill, draw_selection_fill, snapped_origin
 from .selection import Selection
 
 MAX_CACHE_SIZE = 8192
@@ -79,10 +79,33 @@ class Viewport:
         wx, wy = self.screen_to_world(*pos)
         return self.doc.index_at(wx, wy)
 
+    def sheet_screen_rect(self) -> Rect | None:
+        """Edge-snapped screen rect of the whole sheet.
+
+        Snaps offsets relative to the world-origin (not absolute screen
+        positions) so the sheet's right/bottom edge lands exactly on the
+        grid line for `cols*tw` / `rows*th` at every zoom/pan.
+        """
+        if self.doc.surface is None:
+            return None
+        w, h = self.doc.size
+        x0, y0 = snapped_origin(self.camera)
+        zoom = self.camera.zoom
+        return Rect(x0, y0, round(w * zoom), round(h * zoom))
+
+    def world_rect_to_screen(self, x: float, y: float, w: float, h: float) -> Rect:
+        """Snap a world rect relative to the world origin (shared rule)."""
+        x0, y0 = snapped_origin(self.camera)
+        zoom = self.camera.zoom
+        rx0 = x0 + round(x * zoom)
+        ry0 = y0 + round(y * zoom)
+        rx1 = x0 + round((x + w) * zoom)
+        ry1 = y0 + round((y + h) * zoom)
+        return Rect(rx0, ry0, max(0, rx1 - rx0), max(0, ry1 - ry0))
+
     def cell_screen_rect(self, col: int, row: int) -> Rect:
         rect = self.doc.tile_rect(col, row)
-        sx, sy, sw, sh = self.camera.world_to_screen_rect(rect.x, rect.y, rect.w, rect.h)
-        return Rect(round(sx), round(sy), round(sw), round(sh))
+        return self.world_rect_to_screen(rect.x, rect.y, rect.w, rect.h)
 
     def draw(self, screen: Surface, tool) -> None:
         pygame.draw.rect(screen, COLORS.panel, self.rect)
@@ -101,6 +124,7 @@ class Viewport:
                 self._draw_empty(screen)
                 return
             self._draw_sheet(screen)
+            self._draw_canvas_bounds(screen)
             if self.show_grid:
                 self._draw_grid(screen)
             draw_selection_fill(screen, self.doc, self.camera, self.selection)
@@ -119,29 +143,36 @@ class Viewport:
         surface = self.doc.surface
         if surface is None:
             return
-        zoom_bucket = round(self.camera.zoom * 20) / 20
+        zoom = self.camera.zoom
+        w, h = surface.get_size()
+        # exact-zoom pixel size: quantized only by the resulting pixel
+        # dimensions (not by the zoom float), so the sheet can never drift
+        # off the grid between zoom steps yet the cache stays stable.
         # revision: in-place mutations (move/paste/flip/cut) leave the same
         # surface object + size, so it must be part of the cache key
-        key = (id(surface), self.doc.revision, surface.get_size(), zoom_bucket)
-        w, h = surface.get_size()
+        sw, sh = max(1, round(w * zoom)), max(1, round(h * zoom))
+        key = (id(surface), self.doc.revision, surface.get_size(), sw, sh)
         if key != self._last_sheet_key or self._last_sheet is None:
-            sw = min(MAX_CACHE_SIZE, max(1, round(w * zoom_bucket)))
-            sh = min(MAX_CACHE_SIZE, max(1, round(h * zoom_bucket)))
-            scaled = pygame.transform.smoothscale(surface, (sw, sh))
+            cw = min(MAX_CACHE_SIZE, sw)
+            ch = min(MAX_CACHE_SIZE, sh)
+            scaled = pygame.transform.smoothscale(surface, (cw, ch))
             self._last_sheet_key = key
             self._last_sheet = scaled
-        sx, sy = self.camera.world_to_screen(0, 0)
-        true_w, true_h = round(w * zoom_bucket), round(h * zoom_bucket)
+        dest = self.sheet_screen_rect()
+        if dest is None:
+            return
+        true_w, true_h = dest.w, dest.h
         if (true_w, true_h) != self._last_sheet.get_size():
             # over the GPU-friendly cap: scale only the visible source
             # patch to the on-screen destination size, so dimensions past
             # the cap never allocate a full-size intermediate surface.
             try:
-                dest_rect = Rect(round(sx), round(sy), max(1, true_w), max(1, true_h))
+                sx, sy = self.camera.world_to_screen(0, 0)
+                scale = zoom if zoom > 0 else self.camera.zoom
+                dest_rect = Rect(dest.x, dest.y, max(1, true_w), max(1, true_h))
                 vis = dest_rect.clip(self.content_rect)
                 if vis.w <= 0 or vis.h <= 0:
                     return
-                scale = zoom_bucket if zoom_bucket > 0 else self.camera.zoom
                 fx0 = (vis.x - sx) / scale
                 fy0 = (vis.y - sy) / scale
                 fx1 = (vis.right - sx) / scale
@@ -160,12 +191,69 @@ class Viewport:
                 return
             screen.blit(scaled, vis.topleft)
         else:
-            screen.blit(self._last_sheet, (round(sx), round(sy)))
+            screen.blit(self._last_sheet, dest.topleft)
+
+    def _draw_canvas_bounds(self, screen: Surface) -> None:
+        """Hint-only canvas limit border (never blocks drawing).
+
+        Top/left world edges are a hard wall (negative cells are rejected
+        by the document); bottom/right grows transparently. The border
+        encodes that: warning rails on top+left, accent rails on
+        bottom+right with small "+" growth ticks at the live corner.
+        """
+        dest = self.sheet_screen_rect()
+        if dest is None or dest.w <= 0 or dest.h <= 0:
+            return
+        content = self.content_rect
+        # dim the out-of-canvas area so the live extent reads at any pan
+        dim = 56
+        if dest.x > content.x:
+            draw_alpha_fill(
+                screen,
+                Rect(content.x, content.y, dest.x - content.x, content.h),
+                (0, 0, 0), dim,
+            )
+        if dest.y > content.y:
+            draw_alpha_fill(
+                screen,
+                Rect(max(content.x, dest.x), content.y,
+                     min(content.right, dest.right) - max(content.x, dest.x),
+                     dest.y - content.y),
+                (0, 0, 0), dim,
+            )
+        right_w = content.right - dest.right
+        if right_w > 0:
+            draw_alpha_fill(
+                screen, Rect(dest.right, content.y, right_w, content.h), (0, 0, 0), dim,
+            )
+        bottom_h = content.bottom - dest.bottom
+        if bottom_h > 0:
+            draw_alpha_fill(
+                screen,
+                Rect(max(content.x, dest.x), dest.bottom,
+                     min(content.right, dest.right) - max(content.x, dest.x), bottom_h),
+                (0, 0, 0), dim,
+            )
+        # structural rails: warning = blocked top/left, accent = live edge
+        pygame.draw.line(screen, COLORS.warning, dest.topleft, dest.topright, 2)
+        pygame.draw.line(screen, COLORS.warning, dest.topleft, dest.bottomleft, 2)
+        pygame.draw.line(screen, COLORS.accent_active, dest.bottomleft, dest.bottomright, 2)
+        pygame.draw.line(screen, COLORS.accent_active, dest.topright, dest.bottomright, 2)
+        # origin L-marker (the hard 0,0 corner) + growth ticks bottom-right
+        o = dest.topleft
+        pygame.draw.lines(screen, COLORS.warning, False,
+                          [(o[0], o[1] + 10), o, (o[0] + 10, o[1])], 3)
+        br = dest.bottomright
+        tick = 7
+        pygame.draw.line(screen, COLORS.accent_active,
+                         (br[0] - tick, br[1]), (br[0] + tick, br[1]), 2)
+        pygame.draw.line(screen, COLORS.accent_active,
+                         (br[0], br[1] - tick), (br[0], br[1] + tick), 2)
 
     def _draw_grid(self, screen: Surface) -> None:
         """Full-canvas graph-paper grid, like TileGrid: lines span the whole
         visible content area (including past the sheet edge), aligned to the
-        world origin."""
+        world origin via the shared snapped-origin rule."""
         surface = self.doc.surface
         if surface is None:
             return
@@ -177,12 +265,14 @@ class Viewport:
         r0 = int(top // self.doc.th)
         r1 = int(bottom // self.doc.th)
         color = COLORS.text_muted
+        x0, y0 = snapped_origin(self.camera)
+        zoom = self.camera.zoom
         for col in range(c0, c1 + 1):
-            sx, _ = self.camera.world_to_screen(col * self.doc.tw, 0)
-            pygame.draw.line(screen, color, (round(sx), content.y), (round(sx), content.bottom))
+            px = x0 + round(col * self.doc.tw * zoom)
+            pygame.draw.line(screen, color, (px, content.y), (px, content.bottom))
         for row in range(r0, r1 + 1):
-            _, sy = self.camera.world_to_screen(0, row * self.doc.th)
-            pygame.draw.line(screen, color, (content.x, round(sy)), (content.right, round(sy)))
+            py = y0 + round(row * self.doc.th * zoom)
+            pygame.draw.line(screen, color, (content.x, py), (content.right, py))
 
     def _draw_header(self, screen: Surface) -> None:
         """Canvas header data — concise, no floating labels."""

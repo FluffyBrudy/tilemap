@@ -19,7 +19,7 @@ if sys.platform == "darwin":
     os.environ.setdefault("SDL_VIDEO_MAC_SCREEN_SCALE", "1")
 
 from constants import BASE_PATH
-from node_manager import NodeManager
+from node_manager import TRANSIENT_PROPERTY_KEYS, NodeManager
 from tilemap import Tilemap
 from tilemap_editor.settings import BUILTIN_THEMES
 from utils import error_context, error_handler
@@ -42,7 +42,6 @@ from widgets.ui.menubar import MenuBar
 from widgets.ui.node_editor import NodeEditor
 from widgets.ui.node_selector import NodeSelector
 from widgets.ui.notification import NotificationManager
-from widgets.ui.particle_config_dialog import ParticleConfigDialog
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.resize_map_dialog import ResizeMapDialog
 from widgets.ui.sidebar_container import SidebarContainer, ToolbarAction
@@ -172,6 +171,18 @@ def _display_load_path(path: Path) -> Path:
         return path
 
 
+def build_particle_editor_args(node, data_root, export=None) -> list[str]:
+    """Pure argv builder for the standalone particle editor (testable).
+
+    ``export`` is the ``--import-node``/``--export-node`` path the tilemap
+    side manages per node; ``None`` opens the library with no handoff.
+    """
+    args = ["--data-root", str(data_root)]
+    if node is not None and export is not None:
+        args += ["--import-node", str(export), "--export-node", str(export)]
+    return args
+
+
 class Editor:
     def __init__(
         self,
@@ -214,6 +225,7 @@ class Editor:
         self.autotile_mode = False
         self.node_editing_mode = False
         self.show_nodes = False
+        self.show_particles = True
         self.dice_brush = False
         self.last_picked: tuple[int, int] | None = None
         self.tool_manager = ToolManager()
@@ -251,7 +263,7 @@ class Editor:
         self.context_dispatch = PropertyContextDispatcher()
         self.error_console_process: subprocess.Popen | None = None
         self.property_editor: PropertyEditor | None = None
-        self.particle_config_dialog: ParticleConfigDialog | None = None
+        self._particle_exports: dict[str, Path] = {}
 
         self.child_processes: list[subprocess.Popen] = []
         self.file_manager_process: subprocess.Popen | None = None
@@ -325,6 +337,7 @@ class Editor:
         self.node_manager = NodeManager(self)
         self.node_selector = NodeSelector(self, 0, 65, 260, 240)
         self.node_editor = NodeEditor(self, 0, 310, 260, 230)
+        self.maybe_load_recent()
 
     def open_file_manager(
         self,
@@ -466,7 +479,8 @@ class Editor:
             return
         if self.tilemap.active_project_path:
             try:
-                self.tilemap.save_map()
+                if self.tilemap.save_map():
+                    self._remember_recent(self.tilemap.active_project_path)
             except Exception as e:
                 error_handler.capture(e, context="save_map")
         else:
@@ -492,7 +506,8 @@ class Editor:
                 target = self._project_data_root / filename
                 self._sandbox_save_as(target)
                 return
-            self.tilemap.save_map(filename)
+            if self.tilemap.save_map(filename):
+                self._remember_recent(self.tilemap.active_project_path)
         except Exception as e:
             error_handler.capture(e, context="save_map_as")
 
@@ -501,7 +516,8 @@ class Editor:
             if self.is_sandbox:
                 self._sandbox_save_as(path)
                 return
-            self.tilemap.save_map(path)
+            if self.tilemap.save_map(path):
+                self._remember_recent(self.tilemap.active_project_path)
         except Exception as e:
             error_handler.capture(e, context="save_map_selected")
 
@@ -743,6 +759,73 @@ class Editor:
             allowed_exts=[".json", ".tmx"],
         )
 
+    def reload_map(self):
+        """Reload the active map from disk (picks up external image edits)."""
+        path = self.tilemap.active_project_path
+        if path is None:
+            self.notifications.notify("No map loaded", duration=2.0)
+            return
+        if self.loading_state["active"]:
+            return
+        if self.tilemap.has_unsaved_changes():
+            name = path.name
+            self.confirm_dialog.show(
+                title="Reload Map?",
+                message=f"Unsaved changes in {name} will be lost. Reload from disk?",
+                on_confirm=lambda: self.start_async_load_map(path),
+                on_cancel=lambda: None,
+            )
+            return
+        self.start_async_load_map(path)
+
+    def _recents_path(self) -> Path:
+        if self.data_root:
+            return self.data_root / "recents.json"
+        return BASE_PATH / "data" / "recents.json"
+
+    def _read_recents(self) -> list[Path]:
+        try:
+            rp = self._recents_path()
+            if not rp.exists():
+                return []
+            data = json.loads(rp.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                return []
+            return [Path(p) for p in data if Path(p).exists()]
+        except Exception:
+            return []
+
+    def _write_recents(self, paths: list[Path]) -> None:
+        try:
+            rp = self._recents_path()
+            if not rp.parent.exists():
+                rp.parent.mkdir(parents=True, exist_ok=True)
+            rp.write_text(
+                json.dumps([str(p) for p in paths[:20]], indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            error_handler.capture(e, context="editor_save_recents")
+
+    def _remember_recent(self, path: Path | None) -> None:
+        if path is None:
+            return
+        path = Path(path)
+        self._write_recents([path] + [p for p in self._read_recents() if p != path])
+
+    def maybe_load_recent(self) -> None:
+        """Load the most recent map on startup; silent fallback to setup."""
+        recents = self._read_recents()
+        if not recents:
+            return
+        head, rest = recents[0], recents[1:]
+        try:
+            self.tilemap.read_map_payload(head)
+        except Exception:
+            self._write_recents(rest)
+            return
+        self.start_async_load_map(head)
+
     def on_map_file_selected(self, path: Path):
         self.start_async_load_map(path)
 
@@ -781,6 +864,9 @@ class Editor:
         try:
             self.handle_resize(self.width, self.height)
             self.tilemap.apply_map_payload(path, payload_or_error)
+            self._remember_recent(path)
+            if self.map_setup_widget:
+                self.map_setup_widget.visible = False
             if getattr(self, "is_sandbox", False):
                 self.notifications.notify(f"SANDBOX map loaded: {path.name}", duration=4.0)
         except Exception as e:
@@ -869,11 +955,99 @@ class Editor:
         if self.show_nodes:
             self.node_editing_mode = False
 
+    def toggle_show_particles(self):
+        """Toggle particle emitter previews on the tile grid canvas."""
+        self.show_particles = not self.show_particles
+        status = "Shown" if self.show_particles else "Hidden"
+        self.notifications.notify(f"Particle Previews {status}")
+
+    def _particle_export_path(self, node) -> Path:
+        directory = self.data_root / "particles" / ".exchange"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"{node.node_id}.node.json"
+
+    def launch_particle_editor(self, node=None):
+        """Open the standalone particle editor.
+
+        With a particle node: exports ``{name, config}`` for import and
+        registers the ``--export-node`` path so an explicit reload can
+        apply the standalone's saved result (save-first: nothing is
+        applied automatically). Without a node: opens the library as-is.
+        """
+        try:
+            args = build_particle_editor_args(node, self.data_root)
+            if node is not None:
+                export = self._particle_export_path(node)
+                try:
+                    export.write_text(
+                        json.dumps(
+                            {
+                                "name": node.name,
+                                "config": {
+                                    k: v
+                                    for k, v in dict(node.properties).items()
+                                    if k not in TRANSIENT_PROPERTY_KEYS
+                                },
+                            },
+                            indent=2,
+                        ),
+                        encoding="utf-8",
+                    )
+                except OSError as e:
+                    self.notifications.notify(f"Particle export failed: {e}")
+                    return
+                self._particle_exports[node.node_id] = export
+                args = build_particle_editor_args(node, self.data_root, export)
+            process = launch_standalone(
+                "plugins.particle_editor.standalone",
+                args,
+                cwd=self.base_path,
+                text=True,
+            )
+            self.child_processes.append(process)
+            print("Launched particle editor")
+        except Exception as e:
+            error_handler.capture(e, context="launch_particle_editor")
+
+    def reload_particle_from_export(self, node) -> bool:
+        """Apply the standalone's saved export to ``node`` (explicit only).
+
+        Returns True when a saved export was applied. Never fires
+        automatically: the viewer calls this from its Reload button.
+        """
+        export = self._particle_exports.get(node.node_id)
+        if export is None or not export.is_file():
+            self.notifications.notify(
+                "No particle export yet - open in Particle Editor and Save first"
+            )
+            return False
+        try:
+            from plugins.particle_editor.models import normalize_config
+
+            payload = json.loads(export.read_text(encoding="utf-8"))
+            config, warnings = normalize_config(payload.get("config"))
+            node.properties.clear()
+            node.properties.update(config)
+            for warning in warnings:
+                print(f"particle reload warning: {warning}")
+            if self.tile_grid_widget:
+                self.tile_grid_widget.reset_particle_preview(node.node_id, config)
+            self.suggestion_registry.refresh(self)
+            if hasattr(self.tilemap, "capture_history"):
+                self.tilemap.capture_history("Reload Particle Export")
+            self.notifications.notify(f"Reloaded particles for {node.name}")
+            return True
+        except (OSError, ValueError) as e:
+            error_handler.capture(e, context="reload_particle_from_export")
+            self.notifications.notify(f"Particle reload failed: {e}")
+            return False
+
     def open_map_setup(self):
         if self.map_setup_widget is None:
             logger.warning({"msg": "map_setup_widget is not initialized"})
             return
         self.map_setup_widget.visible = True
+        self.map_setup_widget.focus_first_field()
 
     def open_map_properties(self):
         if self.map_properties_dialog is None:
@@ -1452,10 +1626,6 @@ class Editor:
                 if self.property_editor.handle_event(event):
                     continue
 
-            if self.particle_config_dialog and self.particle_config_dialog.active:
-                if self.particle_config_dialog.handle_event(event):
-                    continue
-
             if self.autotiler.visible:
                 if self.autotiler.handle_event(event):
                     continue
@@ -1505,6 +1675,9 @@ class Editor:
                     continue
                 if event.key == pygame.K_o and (ctrl_held or meta_held):
                     self.perform_load()
+                    continue
+                if event.key == pygame.K_F5:
+                    self.reload_map()
                     continue
                 if event.key == pygame.K_SPACE and (ctrl_held or meta_held):
                     if self.tool_manager.is_active(ToolKind.PAN):
@@ -1700,8 +1873,6 @@ class Editor:
 
             if self.property_editor and self.property_editor.active:
                 self.property_editor.draw(self.screen)
-            if self.particle_config_dialog and self.particle_config_dialog.active:
-                self.particle_config_dialog.draw(self.screen)
             self.menubar.draw(self.screen)
             self.tooltip.draw(self.screen)
 

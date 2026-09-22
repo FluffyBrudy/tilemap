@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+import pygame
 
 from layers import Layer
 from widgets.autotiler import AutotileGroup
@@ -248,3 +248,212 @@ class TestPreviewGating:
         g._draw_dice_preview(screen, FakeTilesetData(), 32, 32, 32, 32,
                              [0, 1, 2, 3], 8)
         assert g._dice_preview_variant in (0, 1, 2, 3)
+
+
+class TestBrushFlip:
+    def test_defaults_off_on_legacy_grids(self):
+        ed = FakeEditor()
+        layer = paint(ed, (0, 0, 32, 32))
+        assert layer.tiles[(2, 2)]["flip_h"] is False
+        assert layer.tiles[(2, 2)]["flip_v"] is False
+
+    def test_pending_flip_stamps(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        grid = make_grid(ed)
+        grid.brush_flip_h = True
+        grid.brush_flip_v = True
+        layer = Layer("t")
+        grid._place_tile_grid(layer, 0, FakeTilesetData(), (0, 0, 32, 32), 32, 32, 8)
+        assert layer.tiles[(2, 2)]["flip_h"] is True
+        assert layer.tiles[(2, 2)]["flip_v"] is True
+        assert layer.tiles[(2, 2)]["variant"] == 0
+
+    def test_toggle_no_selection_flips_brush(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        grid = make_grid(ed)
+        grid.toggle_brush_flip("h")
+        assert grid.brush_flip_h is True
+        assert getattr(grid, "brush_flip_v", False) is False
+        assert any("Flip H" in m for m in ed.notifications.messages)
+        grid.toggle_brush_flip("v")
+        assert grid.brush_flip_v is True
+
+    def test_flip_selected_placed_tiles(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        layer = Layer("t")
+        layer.tiles[(2, 2)] = {"pos": (2, 2), "ttype": 0, "variant": 3,
+                               "flip_h": False, "flip_v": False}
+        layer.tiles[(3, 2)] = {"pos": (3, 2), "ttype": 0, "variant": 4,
+                               "flip_h": False, "flip_v": False,
+                               "properties": {"solid": True}}
+
+        class FakeManager:
+            def get_active_layer(self):
+                return layer
+
+        ed.tilemap.layer_manager = FakeManager()
+        ed.tilemap.capture_history = lambda desc: None
+        grid = make_grid(ed)
+        grid.selection_rect = (2, 2, 3, 2)
+        grid.invalidate_bounds_cache = lambda: None
+
+        grid.toggle_brush_flip("h")
+        # arrangement mirrors AND bits toggle: variant 3 moves to (3, 2)
+        assert layer.tiles[(3, 2)]["variant"] == 3
+        assert layer.tiles[(3, 2)]["flip_h"] is True
+        assert layer.tiles[(2, 2)]["variant"] == 4
+        assert layer.tiles[(2, 2)]["flip_h"] is True
+        assert layer.tiles[(2, 2)]["pos"] == (2, 2)
+        assert layer.tiles[(2, 2)]["properties"] == {"solid": True}
+        assert grid.selection_rect == (2, 2, 3, 2)
+        assert getattr(grid, "brush_flip_h", False) is False
+
+    def test_flip_selected_vertical(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        layer = Layer("t")
+        layer.tiles[(2, 2)] = {"pos": (2, 2), "ttype": 0, "variant": 3,
+                               "flip_h": False, "flip_v": False}
+        layer.tiles[(2, 3)] = {"pos": (2, 3), "ttype": 0, "variant": 4,
+                               "flip_h": False, "flip_v": False}
+
+        class FakeManager:
+            def get_active_layer(self):
+                return layer
+
+        ed.tilemap.layer_manager = FakeManager()
+        ed.tilemap.capture_history = lambda desc: None
+        grid = make_grid(ed)
+        grid.selection_rect = (2, 2, 2, 3)
+        grid.invalidate_bounds_cache = lambda: None
+
+        grid.toggle_brush_flip("v")
+        assert layer.tiles[(2, 2)]["variant"] == 4
+        assert layer.tiles[(2, 3)]["variant"] == 3
+        assert layer.tiles[(2, 2)]["flip_v"] is True
+
+    def test_double_flip_is_identity(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        layer = Layer("t")
+        before = {(2, 2): {"pos": (2, 2), "ttype": 0, "variant": 3,
+                           "flip_h": False, "flip_v": True},
+                  (3, 2): {"pos": (3, 2), "ttype": 0, "variant": 4,
+                           "flip_h": True, "flip_v": False}}
+        for pos, tile in before.items():
+            layer.tiles[pos] = dict(tile)
+
+        class FakeManager:
+            def get_active_layer(self):
+                return layer
+
+        ed.tilemap.layer_manager = FakeManager()
+        ed.tilemap.capture_history = lambda desc: None
+        grid = make_grid(ed)
+        grid.selection_rect = (2, 2, 3, 2)
+        grid.invalidate_bounds_cache = lambda: None
+
+        grid.toggle_brush_flip("h")
+        grid.toggle_brush_flip("h")
+        assert layer.tiles == before
+
+    def test_flip_sparse_box_moves_content(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        layer = Layer("t")
+        layer.tiles[(2, 2)] = {"pos": (2, 2), "ttype": 0, "variant": 9,
+                               "flip_h": False, "flip_v": False}
+
+        class FakeManager:
+            def get_active_layer(self):
+                return layer
+
+        ed.tilemap.layer_manager = FakeManager()
+        ed.tilemap.capture_history = lambda desc: None
+        grid = make_grid(ed)
+        grid.selection_rect = (2, 2, 3, 3)
+        grid.invalidate_bounds_cache = lambda: None
+
+        grid.toggle_brush_flip("h")
+        assert (2, 2) not in layer.tiles
+        assert layer.tiles[(3, 2)]["variant"] == 9
+        assert layer.tiles[(3, 2)]["flip_h"] is True
+
+    def test_refused_selection_does_not_toggle_brush(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        layer = Layer("o", "object")
+        layer.objects[1] = {"area": {"x": 0, "y": 0, "w": 32, "h": 32},
+                            "ttype": 0, "tileset_type": "tile", "variant": 0}
+
+        class FakeManager:
+            def get_active_layer(self):
+                return layer
+
+        ed.tilemap.layer_manager = FakeManager()
+        grid = make_grid(ed)
+        grid.selection_rect = (0, 0, 1, 1)
+        grid.invalidate_bounds_cache = lambda: None
+
+        grid.toggle_brush_flip("h")
+        assert getattr(grid, "brush_flip_h", False) is False
+        assert any("active tile layer" in m for m in ed.notifications.messages)
+
+    def test_flip_locked_layer_refused(self):
+        from widgets.tile_grid import TileGrid
+
+        ed = FakeEditor()
+        layer = Layer("t")
+        layer.locked = True
+        layer.tiles[(2, 2)] = {"pos": (2, 2), "ttype": 0, "variant": 3,
+                               "flip_h": False, "flip_v": False}
+
+        class FakeManager:
+            def get_active_layer(self):
+                return layer
+
+        ed.tilemap.layer_manager = FakeManager()
+        grid = make_grid(ed)
+        grid.selection_rect = (2, 2, 2, 2)
+        grid.invalidate_bounds_cache = lambda: None
+
+        assert grid._flip_selected_tiles("h") is False
+        assert layer.tiles[(2, 2)]["flip_h"] is False
+
+    def test_flip_selected_no_selection_returns_false(self):
+        from widgets.tile_grid import TileGrid
+
+        grid = make_grid(FakeEditor())
+        assert grid._flip_selected_tiles("h") is False
+
+    def test_tile_flip_flags_none_safe(self):
+        from widgets.tile_grid import TileGrid
+
+        assert TileGrid._tile_flip_flags({}) == (False, False)
+        assert TileGrid._tile_flip_flags({"flip_h": None, "flip_v": 1}) == (False, True)
+
+    def test_flipped_tile_mirrors_pixels(self):
+        from pygame import Rect
+
+        from widgets.tile_grid import TileGrid
+
+        grid = make_grid(FakeEditor())
+        grid._tile_scale_cache = {}
+        surf = pygame.Surface((64, 32), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
+        surf.fill((255, 0, 0, 255), (0, 0, 4, 32))
+        out = grid._flipped_tile(surf, Rect(0, 0, 32, 32), True, False)
+        assert out is not None
+        assert out.get_at((31, 5))[:3] == (255, 0, 0)
+        assert out.get_at((0, 5))[:3] == (0, 0, 0)
+        assert grid._flipped_tile(surf, Rect(100, 100, 32, 32), True, False) is None

@@ -8,17 +8,10 @@ from pathlib import Path
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import widgets.ui.menubar as _menubar_mod
 from utils.font_manager import font_manager
 from widgets.ui.tool_manager import ToolKind, ToolManager
-
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-pygame.init()
-pygame.display.set_mode((1, 1))
 
 
 @pytest.fixture(autouse=True)
@@ -36,10 +29,13 @@ def make_editor():
         show_nodes=False,
         node_editing_mode=False,
         autotile_mode=False,
+        show_particles=True,
         tile_grid_widget=None,
         tool_manager=ToolManager(),
+        notifications=types.SimpleNamespace(notify=lambda *a, **k: None),
         open_map_setup=lambda: None,
         perform_load=lambda: None,
+        reload_map=lambda: None,
         perform_quick_save=lambda: None,
         open_save_as_dialog=lambda: None,
         open_map_properties=lambda: None,
@@ -53,6 +49,7 @@ def make_editor():
         toggle_regex_automap=lambda: None,
         launch_animation_editor=lambda: None,
         launch_sprite_editor=lambda: None,
+        launch_particle_editor=lambda *a: None,
         launch_character_collision_editor=lambda: None,
         autotile_active=lambda: None,
         flood_fill_active=lambda: None,
@@ -65,6 +62,7 @@ def make_editor():
     # Bind the real toggle logic for fidelity.
     ed.toggle_show_nodes = types.MethodType(Editor.toggle_show_nodes, ed)
     ed.toggle_node_editing = types.MethodType(Editor.toggle_node_editing, ed)
+    ed.toggle_show_particles = types.MethodType(Editor.toggle_show_particles, ed)
     # Real auto-autotile toggle needs notifications+menubar; bind for
     # identity only (tests never invoke it, checks read the flag).
     ed.toggle_auto_autotile = types.MethodType(Editor.toggle_auto_autotile, ed)
@@ -94,13 +92,14 @@ def action(menu, label):
 
 
 class TestViewCheckboxes:
-    def test_five_checkbox_items(self):
+    def test_six_checkbox_items(self):
         labels = [a.label for a in view_menu(make_bar()).actions]
         assert labels == [
             "Toggle Grid",
             "Toggle Map Boundary",
             "Node Overlay",
             "Node Editing",
+            "Particle Previews",
             "Auto-Autotile",
         ]
 
@@ -146,6 +145,15 @@ class TestViewCheckboxes:
         assert act.is_checked() is False
         ed.autotile_mode = True
         assert act.is_checked() is True
+
+    def test_particle_previews_toggle(self):
+        ed = make_editor()
+        bar = make_bar(ed)
+        act = action(view_menu(bar), "Particle Previews")
+        assert act.is_checked() is True
+        act.callback()
+        assert ed.show_particles is False
+        assert act.is_checked() is False
 
 
 class TestToolsMenu:

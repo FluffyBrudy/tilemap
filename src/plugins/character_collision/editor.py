@@ -74,6 +74,7 @@ class CharacterCollisionEditor:
         self._shape_btns: list[Button] = []
         self._load_btn: Button | None = None
         self._open_image_btn: Button | None = None
+        self._probe_btn: Button | None = None
         self._init_buttons()
 
     def _init_buttons(self) -> None:
@@ -101,8 +102,17 @@ class CharacterCollisionEditor:
             )
             self._shape_btns.append(btn)
             self._buttons.append(btn)
+        self._probe_btn = Button(
+            Rect(0, 0, 90, 28),
+            "Coords",
+            on_click=self._toggle_probe,
+        )
+        self._buttons.append(self._probe_btn)
 
         self._layout_buttons()
+
+    def _toggle_probe(self) -> None:
+        self.shape_editor.show_probe = not self.shape_editor.show_probe
 
     def _layout_buttons(self) -> None:
         y = self.rect.y + 10
@@ -119,16 +129,17 @@ class CharacterCollisionEditor:
             btn.resize(x, y, 100, 28)
             x += 100 + 8
 
+        if self._probe_btn is not None:
+            self._probe_btn.resize(x, y, 90, 28)
+
     def _rel_path(self, path: Path) -> str:
         resolved = path.resolve()
+        base = self._data_root.resolve() if self._data_root else Path.cwd().resolve()
         try:
-            if self._data_root:
-                rel = os.path.relpath(resolved, self._data_root.resolve())
-                # relpath happily emits '../' escapes for paths outside the
-                # root — only trust the relative form when it stays inside
-                if not rel.split(os.sep)[0].startswith(".."):
-                    return rel
-            return str(resolved)
+            # Portable relative ref (including "../" escapes, which the
+            # loader resolves via the collision file's directory walk) —
+            # never persist absolute paths for portability.
+            return Path(os.path.relpath(resolved, base)).as_posix()
         except ValueError:
             return str(resolved)
 
@@ -578,14 +589,11 @@ class CharacterCollisionEditor:
         if sprite_path is not None:
             raw = pygame.image.load(str(sprite_path))
             surface = raw.convert_alpha() if raw.get_flags() & pygame.SRCALPHA else raw.convert()
-            try:
-                image_path = str(sprite_path.relative_to(data_root)) if data_root else str(sprite_path)
-            except ValueError:
-                image_path = str(sprite_path)
         rect = Rect(0, 0, window_size[0], window_size[1])
         editor = cls(rect, surface, character_name)
         editor._data_root = data_root
-        editor._image_path = image_path
+        if sprite_path is not None:
+            editor._image_path = editor._rel_path(Path(sprite_path))
         editor._auto_load_collision()
         return editor
 

@@ -8,6 +8,7 @@ after; undo/redo restores state so the "what was selected" is remembered.
 from __future__ import annotations
 
 import pygame
+from pygame import Rect, Surface
 
 from .document import Document, Region
 from .selection import Selection
@@ -114,7 +115,13 @@ class ClearCommand(Command):
 
 
 class FlipCommand(Command):
-    """Flip the given cells horizontally and/or vertically."""
+    """Mirror the selected bounding box horizontally and/or vertically.
+
+    Replace-in-place block mirror (arrangement reverses along each
+    flipped axis, pixels flip too) — never a stacked copy, never canvas
+    growth. Single-cell selections behave like a plain tile flip.
+    Sparse selections mirror within their bounding box.
+    """
 
     name = "Flip"
 
@@ -126,6 +133,33 @@ class FlipCommand(Command):
     def _do(self, doc: Document, selection: Selection) -> None:
         doc.flip_tiles(self.cells, self.flip_x, self.flip_y)
         # keep the same cells selected
+
+
+class CropCommand(Command):
+    """Shrink the canvas to its content (manual autocrop).
+
+    Tile-snapped via ``trim_to_content``; records whether anything
+    changed so callers can discard the no-op push.
+    """
+
+    name = "Crop"
+
+    def __init__(self):
+        self.changed = False
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        oc, orow = doc.origin_col, doc.origin_row
+        self.changed = doc.trim_to_content()
+        if not self.changed:
+            return
+        dx, dy = doc.origin_col - oc, doc.origin_row - orow
+        if dx or dy:
+            max_c, max_r = doc.cols - 1, doc.rows - 1
+            selection.replace([
+                (c - dx, r - dy)
+                for c, r in selection.sorted_cells()
+                if 0 <= c - dx <= max_c and 0 <= r - dy <= max_r
+            ])
 
 
 class ScaleCommand(Command):
@@ -188,6 +222,102 @@ class AppendSheetCommand(Command):
         super().redo(doc, selection)
         if self.names:
             doc.sheets.extend(self.names)
+
+
+class PixelMoveCommand(Command):
+    """Translate a pixel block; source auto-fills transparent.
+
+    Records the pre-move source rect and the applied delta. Undo/redo
+    restores snapshots like every other command, so negative-origin
+    growth replays exactly.
+    """
+
+    name = "Move Pixels"
+
+    def __init__(self, src_rect: Rect, dx: int, dy: int):
+        self.src_rect = Rect(src_rect)
+        self.dx = int(dx)
+        self.dy = int(dy)
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        doc.move_pixels(self.src_rect, self.dx, self.dy)
+        selection.replace([], anchor=None)
+
+
+class PixelClearCommand(Command):
+    """Clear a world-px rect to transparency."""
+
+    name = "Clear Pixels"
+
+    def __init__(self, rect: Rect):
+        self.rect = Rect(rect)
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        doc.clear_rect(self.rect)
+        selection.replace([], anchor=None)
+
+
+class PixelStampCommand(Command):
+    """Stamp a pixel surface at a world-px position (free paste).
+
+    Canvas growth (incl. negative-origin shifts) is inherited from
+    ``blit_surface``; undo/redo restores snapshots like all commands.
+    """
+
+    name = "Stamp Pixels"
+
+    def __init__(self, pos: tuple[int, int], surface: Surface):
+        self.pos = (int(pos[0]), int(pos[1]))
+        self.surface = surface.copy() if surface is not None else None
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        if not doc.has_canvas or self.surface is None:
+            return
+        doc.blit_surface(self.surface, self.pos)
+        selection.replace([], anchor=None)
+
+
+class PixelMirrorCommand(Command):
+    """Stamp a flipped copy of a pixel block abutting its own edge.
+
+    The stamped destination is recorded for chaining (the tool selects
+    the copy so repeated mirrors extend outward). Undo/redo restores
+    snapshots like all commands.
+    """
+
+    name = "Mirror Pixels"
+
+    def __init__(self, src_rect: Rect, axis: str, side: int = 1):
+        self.src_rect = Rect(src_rect)
+        self.axis = "v" if axis == "v" else "h"
+        self.side = -1 if side < 0 else 1
+        self.dest: Rect | None = None
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        self.dest = doc.mirror_pixels(self.src_rect, self.axis, self.side)
+        selection.replace([], anchor=None)
+
+
+class PixelScaleCommand(Command):
+    """Resample a pixel block into a new rect (free stretch).
+
+    Records the destination for chaining; undo/redo restores snapshots
+    like all commands.
+    """
+
+    name = "Scale Pixels"
+
+    def __init__(self, src_rect: Rect, dest_rect: Rect):
+        self.src_rect = Rect(src_rect)
+        self.dest_rect = Rect(
+            int(dest_rect.x), int(dest_rect.y),
+            max(1, int(dest_rect.w)), max(1, int(dest_rect.h)),
+        )
+        self.dest: Rect | None = None
+
+    def _do(self, doc: Document, selection: Selection) -> None:
+        self.dest = doc.scale_pixels(self.src_rect, self.dest_rect)
+        selection.replace([], anchor=None)
 
 
 class RegionAddCommand(Command):
@@ -303,6 +433,18 @@ class CommandStack:
         if len(self._undo) > self.limit:
             self._undo.pop(0)
         self._redo.clear()
+
+    def discard_last(self) -> bool:
+        """Drop the most recently pushed command (for no-op pushes).
+
+        Note: the redo stack cleared by ``push`` is not restored — use
+        only for idempotent no-ops (e.g. an already-tight crop) where
+        redo loss is acceptable.
+        """
+        if not self._undo:
+            return False
+        self._undo.pop()
+        return True
 
     def undo(self, doc: Document, selection: Selection) -> bool:
         if not self._undo:

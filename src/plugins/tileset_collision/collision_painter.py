@@ -42,6 +42,9 @@ _COLORS = {
     "vertex_hover": (255, 220, 80),
     "vertex_first": (80, 255, 120),
     "preview_line": (200, 200, 200),
+    "trace_stroke": (130, 190, 150),
+    "trace_vertex": (150, 210, 170),
+    "trace_marker": (255, 210, 110),
     "text": (230, 230, 230),
     "text_dim": (140, 140, 140),
     "header": (40, 42, 46),
@@ -57,6 +60,10 @@ _COLORS = {
 VERTEX_RADIUS = 5
 VERTEX_HOVER_RADIUS = 7
 SNAP_THRESHOLD = 10
+# Snap radius (screen px) for border-crossing markers. Matches the drawn
+# marker dot: clicking the dot means "joint here". Deliberately smaller
+# than SNAP_THRESHOLD so mid-edge clicks near a border are not hijacked.
+CROSSING_SNAP_RADIUS = 6
 
 
 HELP_PANEL_WIDTH = 360
@@ -118,6 +125,15 @@ class CollisionPainter:
         self.show_grid = True
         self.show_angle_hints = False
         self.edge_draw_mode = False
+
+        # neighbor trace: adjacent tiles' shapes in THIS tile's local
+        # coords (editor shifts them by ±tile size). Edge neighbors carry
+        # full polygons; diagonal neighbors carry polygons from which
+        # only corner-reach points are used.
+        self.show_neighbors = True
+        self.snap_to_neighbors = True
+        self.neighbor_polys: dict[tuple[int, int], list[list[tuple[float, float]]]] = {}
+        self.neighbor_corners: dict[tuple[int, int], list[list[tuple[float, float]]]] = {}
         self._edge_start: tuple[int, int] | None = None
         self._shift_held = False
 
@@ -169,8 +185,8 @@ class CollisionPainter:
         return (x, y)
 
     def _tile_to_screen(self, tile_pos: tuple[float, float]) -> tuple[int, int]:
-        x = int(self.rect.x + self.offset_x + tile_pos[0] * self.zoom)
-        y = int(self.rect.y + self.offset_y + tile_pos[1] * self.zoom)
+        x = round(self.rect.x + self.offset_x + tile_pos[0] * self.zoom)
+        y = round(self.rect.y + self.offset_y + tile_pos[1] * self.zoom)
         return (x, y)
 
     def _snap_to_grid(self, pos: tuple[float, float]) -> tuple[float, float]:
@@ -253,6 +269,193 @@ class CollisionPainter:
             self.polygon_one_way = [False] * len(polygons)
         self.current_polygon = []
         self.selected_polygon_idx = None
+
+    def set_neighbor_polygons(
+        self,
+        edge: dict[tuple[int, int], list[list[tuple[float, float]]]] | None = None,
+        corners: dict[tuple[int, int], list[list[tuple[float, float]]]] | None = None,
+    ) -> None:
+        """Neighbor shapes in this tile's local coords (editor-shifted).
+
+        `edge` maps (-1,0)/(1,0)/(0,-1)/(0,1) to polygons; `corners`
+        maps diagonal offsets to polygons used only for corner points.
+        """
+        self.neighbor_polys = {k: [list(p) for p in v] for k, v in (edge or {}).items()}
+        self.neighbor_corners = {k: [list(p) for p in v] for k, v in (corners or {}).items()}
+
+    def _neighbor_vertices(self) -> list[tuple[float, float]]:
+        """All snap-able neighbor points: edge vertices + corner reaches."""
+        pts: list[tuple[float, float]] = []
+        for polys in self.neighbor_polys.values():
+            for poly in polys:
+                pts.extend(poly)
+        tw, th = self.tile_size
+        reach = SNAP_THRESHOLD / max(self.zoom, 0.01)
+        corner_of = {(-1, -1): (0.0, 0.0), (1, -1): (float(tw), 0.0),
+                     (-1, 1): (0.0, float(th)), (1, 1): (float(tw), float(th))}
+        for offset, polys in self.neighbor_corners.items():
+            corner = corner_of.get(offset)
+            if corner is None:
+                continue
+            for poly in polys:
+                for v in poly:
+                    if math.hypot(v[0] - corner[0], v[1] - corner[1]) <= reach:
+                        pts.append(v)
+        return pts
+
+    def _neighbor_edges(self) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+        """Neighbor polygon segments (edge neighbors only)."""
+        segs = []
+        for polys in self.neighbor_polys.values():
+            for poly in polys:
+                for i in range(len(poly)):
+                    segs.append((poly[i], poly[(i + 1) % len(poly)]))
+        return segs
+
+    @staticmethod
+    def _project_to_segment(
+        p: tuple[float, float],
+        a: tuple[float, float],
+        b: tuple[float, float],
+    ) -> tuple[float, float]:
+        abx, aby = b[0] - a[0], b[1] - a[1]
+        denom = abx * abx + aby * aby
+        t = ((p[0] - a[0]) * abx + (p[1] - a[1]) * aby) / denom if denom > 0 else 0.0
+        t = max(0.0, min(1.0, t))
+        return (a[0] + t * abx, a[1] + t * aby)
+
+    def _snap_to_neighbors(
+        self, tile_pos: tuple[float, float], mouse: tuple[int, int]
+    ) -> tuple[float, float] | None:
+        """Snap to border crossings, neighbor vertices, else neighbor edges.
+
+        Crossings use the marker radius: a click on the joint dot returns
+        the joint exactly (seam continuity). Anything further out falls
+        through to the usual vertex (threshold) / edge (threshold) logic,
+        where vertices win ties and otherwise nearest wins.
+        """
+        if not self.snap_to_neighbors:
+            return None
+        for polys in self.neighbor_polys.values():
+            for poly in polys:
+                for i in range(len(poly)):
+                    for c in self._segment_border_crossings(
+                        poly[i], poly[(i + 1) % len(poly)]
+                    ):
+                        s = self._tile_to_screen(c)
+                        if math.hypot(mouse[0] - s[0], mouse[1] - s[1]) <= CROSSING_SNAP_RADIUS:
+                            return c
+        best: tuple[float, float] | None = None
+        best_d = float(SNAP_THRESHOLD)
+        for v in self._neighbor_vertices():
+            s = self._tile_to_screen(v)
+            d = math.hypot(mouse[0] - s[0], mouse[1] - s[1])
+            if d <= best_d:
+                best, best_d = v, d
+        for a, b in self._neighbor_edges():
+            p = self._project_to_segment(tile_pos, a, b)
+            s = self._tile_to_screen(p)
+            d = math.hypot(mouse[0] - s[0], mouse[1] - s[1])
+            if d < best_d:
+                best, best_d = p, d
+        return best
+
+    def _snap_point(
+        self, tile_pos: tuple[float, float], mouse: tuple[int, int]
+    ) -> tuple[float, float]:
+        """Neighbor snap first (crossing > vertex > edge), then grid snap."""
+        snapped = self._snap_to_neighbors(tile_pos, mouse)
+        if snapped is not None:
+            return snapped
+        return self._snap_to_grid(tile_pos)
+
+    @staticmethod
+    def _constrain_to_axis(
+        tile_pos: tuple[float, float], anchor: tuple[float, float]
+    ) -> tuple[float, float]:
+        """Lock a point to the anchor's dominant axis (edge-draw mode).
+
+        Applied AFTER snapping so the lock always holds exactly.
+        """
+        dx = tile_pos[0] - anchor[0]
+        dy = tile_pos[1] - anchor[1]
+        if abs(dx) > abs(dy):
+            return (tile_pos[0], anchor[1])
+        return (anchor[0], tile_pos[1])
+
+    def _segment_border_crossings(
+        self, p1: tuple[float, float], p2: tuple[float, float]
+    ) -> list[tuple[float, float]]:
+        """Where a neighbor segment meets this tile's borders.
+
+        Strict crossings plus endpoints touching a border (the usual
+        connecting point: a neighbor vertex exactly on the shared edge).
+        Edges running along a border are skipped — their endpoints are
+        snap-able vertices already.
+        """
+        tw, th = float(self.tile_size[0]), float(self.tile_size[1])
+        eps = 1e-6
+        pts: list[tuple[float, float]] = []
+        x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+        for c in (0.0, tw):
+            on1, on2 = abs(x1 - c) < eps, abs(x2 - c) < eps
+            if on1 != on2:
+                p = (c, y1) if on1 else (c, y2)
+                if 0.0 <= p[1] <= th:
+                    pts.append(p)
+            elif not on1 and x2 != x1 and (x1 - c) * (x2 - c) < 0:
+                y = y1 + (c - x1) * (y2 - y1) / (x2 - x1)
+                if 0.0 <= y <= th:
+                    pts.append((c, y))
+        for c in (0.0, th):
+            on1, on2 = abs(y1 - c) < eps, abs(y2 - c) < eps
+            if on1 != on2:
+                p = (x1, c) if on1 else (x2, c)
+                if 0.0 <= p[0] <= tw:
+                    pts.append(p)
+            elif not on1 and y2 != y1 and (y1 - c) * (y2 - c) < 0:
+                x = x1 + (c - y1) * (x2 - x1) / (y2 - y1)
+                if 0.0 <= x <= tw:
+                    pts.append((x, c))
+        merged: list[tuple[float, float]] = []
+        for p in pts:
+            if not any(math.hypot(p[0] - q[0], p[1] - q[1]) < 0.5 for q in merged):
+                merged.append(p)
+        return merged
+
+    def _draw_neighbors(self, screen: pygame.Surface) -> None:
+        """Dimmed neighbor ghosts + border-crossing markers.
+
+        Markers show where neighbor edges meet this tile's borders;
+        they are snap targets (see _snap_to_neighbors).
+        """
+        if not self.show_neighbors:
+            return
+        if not self.neighbor_polys and not self.neighbor_corners:
+            return
+        stroke, vertex, marker = (
+            _COLORS["trace_stroke"], _COLORS["trace_vertex"], _COLORS["trace_marker"])
+        for polys in self.neighbor_polys.values():
+            for poly in polys:
+                if len(poly) < 2:
+                    continue
+                pts = [self._tile_to_screen(v) for v in poly]
+                if len(pts) >= 3:
+                    pygame.draw.lines(screen, stroke, True, pts, 1)
+                elif len(pts) == 2:
+                    pygame.draw.line(screen, stroke, pts[0], pts[1], 1)
+                for s in pts:
+                    pygame.draw.circle(screen, vertex, s, 3)
+                for i in range(len(poly)):
+                    for cross in self._segment_border_crossings(poly[i], poly[(i + 1) % len(poly)]):
+                        s = self._tile_to_screen(cross)
+                        pygame.draw.circle(screen, (0, 0, 0), s, 5)
+                        pygame.draw.circle(screen, marker, s, 4)
+        for v in self._neighbor_vertices():
+            s = self._tile_to_screen(v)
+            if 0 <= v[0] <= self.tile_size[0] and 0 <= v[1] <= self.tile_size[1]:
+                continue  # edge vertices already dotted above
+            pygame.draw.circle(screen, vertex, s, 3)
 
     def get_polygons(self) -> list[list[tuple[float, float]]]:
         return [list(p) for p in self.polygons]
@@ -461,7 +664,16 @@ class CollisionPainter:
                 if self._dragging_vertex and self.selected_vertex_idx is not None:
                     poly_idx, vert_idx = self.selected_vertex_idx
                     tile_pos = self._screen_to_tile(mouse)
-                    tile_pos = self._snap_to_grid(tile_pos)
+                    tile_pos = self._snap_point(tile_pos, mouse)
+
+                    if (
+                        self.edge_draw_mode
+                        and self._shift_held
+                        and self._drag_anchor is not None
+                    ):
+                        tile_pos = self._constrain_to_axis(
+                            tile_pos, self._drag_anchor
+                        )
 
                     tw, th = self.tile_size
                     tile_pos = (
@@ -521,6 +733,7 @@ class CollisionPainter:
                     self.selected_polygon_idx = poly_idx
                     self.selected_vertex_idx = vertex_hit
                     self._dragging_vertex = True
+                    self._drag_anchor = tuple(self.polygons[poly_idx][vert_idx])
                     return True
 
                 poly_hit = self._find_polygon_at(mouse)
@@ -537,21 +750,16 @@ class CollisionPainter:
                 if self.mode == PaintMode.DRAW:
                     tile_pos = self._screen_to_tile(mouse)
 
+                    tile_pos = self._snap_point(tile_pos, mouse)
+
                     if (
                         self.edge_draw_mode
                         and self._shift_held
                         and len(self.current_polygon) > 0
                     ):
-                        start = self.current_polygon[-1]
-                        dx = tile_pos[0] - start[0]
-                        dy = tile_pos[1] - start[1]
-
-                        if abs(dx) > abs(dy):
-                            tile_pos = (tile_pos[0], start[1])
-                        else:
-                            tile_pos = (start[0], tile_pos[1])
-
-                    tile_pos = self._snap_to_grid(tile_pos)
+                        tile_pos = self._constrain_to_axis(
+                            tile_pos, self.current_polygon[-1]
+                        )
 
                     tw, th = self.tile_size
                     tile_pos = (
@@ -578,6 +786,7 @@ class CollisionPainter:
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._dragging_vertex:
                 self._dragging_vertex = False
+                self._drag_anchor = None
                 return True
             if self._body_drag_idx is not None:
                 self._body_drag_idx = None
@@ -713,6 +922,8 @@ class CollisionPainter:
 
         if self.show_grid:
             self._draw_grid(screen)
+
+        self._draw_neighbors(screen)
 
         for idx, polygon in enumerate(self.polygons):
             is_selected = idx == self.selected_polygon_idx

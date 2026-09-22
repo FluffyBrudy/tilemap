@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pygame
@@ -5,12 +6,18 @@ from pygame import Rect
 
 if TYPE_CHECKING:
     from editor import Editor
+from plugins.particle_editor.models import (
+    ParticleLibrary,
+    builtin_library,
+    builtin_library_path,
+    identify,
+    list_libraries,
+)
 from utils.context_dispatch import ContextKind, PropertyContext
 from utils.font_manager import FontWeight, font_manager
-from widgets.particle_presets import PRESETS, get_preset_config, get_preset_names
 from widgets.ui.draw_utils import draw_panel
 from widgets.ui.node_selector import NodeSelector
-from widgets.ui.particle_config_dialog import Dropdown, ParticleConfigDialog
+from widgets.ui.particle_config_dialog import Dropdown
 from widgets.ui.property_editor import PropertyEditor
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 
@@ -22,6 +29,7 @@ class NodeEditor:
     FIELD_PITCH = 27
     SECTION_GAP = 10
     PRESET_H = 26
+    SUMMARY_H = 18
     BUTTON_H = 28
     BUTTON_GAP = 10
     SIDE_PAD = 12
@@ -48,7 +56,8 @@ class NodeEditor:
 
         self._preset_dd: Dropdown | None = None
         self._preset_owner: str | None = None
-        self._preset_names: list[str] = get_preset_names()
+        self._particle_lib: ParticleLibrary | None = None
+        self._particle_lib_key: tuple | None = None
         self._is_particle = False
 
         d = self.editor.context_dispatch
@@ -217,10 +226,75 @@ class NodeEditor:
         w = self.rect.width - 76
         return Rect(self.rect.x + 64, y, w, self.PRESET_H)
 
+    def _summary_rect(self) -> Rect | None:
+        pr = self._preset_rect()
+        if pr is None:
+            return None
+        return Rect(
+            self.rect.x + self.SIDE_PAD,
+            pr.bottom + 4,
+            self.rect.width - 2 * self.SIDE_PAD,
+            self.SUMMARY_H,
+        )
+
+    def _particle_library(self) -> ParticleLibrary:
+        """Combined built-in + user particle libraries, cached by mtime."""
+        data_root = Path(getattr(self.editor, "data_root", Path.cwd()))
+        paths = [builtin_library_path()] + [p for p in list_libraries(data_root) if p != builtin_library_path()]
+        key = tuple((str(p), p.stat().st_mtime if p.is_file() else -1.0) for p in paths)
+        if self._particle_lib is None or self._particle_lib_key != key:
+            combined = ParticleLibrary()
+            for path in paths:
+                if path == builtin_library_path():
+                    lib, _warnings = builtin_library()
+                else:
+                    lib, _warnings = ParticleLibrary.load(path)
+                seen = {s.name for s in combined.systems}
+                for system in lib.systems:
+                    if system.name not in seen:
+                        combined.systems.append(system)
+                        seen.add(system.name)
+            self._particle_lib = combined
+            self._particle_lib_key = key
+        return self._particle_lib
+
+    def _invalidate_particle_library(self) -> None:
+        self._particle_lib = None
+        self._particle_lib_key = None
+        self._preset_owner = None
+
+    def _particle_identity(self, node) -> str:
+        """Derived preset identity -- computed, never stored."""
+        return identify(dict(node.properties), self._particle_library())
+
+    def _particle_summary(self, node) -> str:
+        props = node.properties
+        mode = props.get("mode", "continuous")
+        shape = props.get("particle_shape", "circle")
+        maxp = props.get("max_particles", "?")
+        hidden = " (hidden)" if props.get("_hidden") else ""
+        return f"{mode} | {shape} | max {maxp}{hidden}"
+
+    def _apply_library_preset(self, node, name: str) -> bool:
+        """Apply a named library entry to ``node`` (preserves _hidden)."""
+        entry = self._particle_library().find(name)
+        if entry is None:
+            return False
+        hidden = node.properties.get("_hidden")
+        node.properties.clear()
+        node.properties.update(dict(entry.config))
+        if hidden:
+            node.properties["_hidden"] = True
+        self.editor.suggestion_registry.refresh(self.editor)
+        self.editor.tile_grid_widget.reset_particle_preview(node.node_id, dict(entry.config))
+        if hasattr(self.editor.tilemap, "capture_history"):
+            self.editor.tilemap.capture_history("Apply Particle Preset")
+        return True
+
     def _buttons_top(self) -> int:
         y = self._fields_end_y() + self.SECTION_GAP
         if self._active_node_is_particle():
-            y += self.PRESET_H + self.SECTION_GAP
+            y += self.PRESET_H + 4 + self.SUMMARY_H + self.SECTION_GAP
         return y
 
     def _buttons(self):
@@ -233,15 +307,20 @@ class NodeEditor:
         buttons = []
         self._is_particle = node.node_type == "particle_emitter"
         if self._is_particle:
-            r = Rect(self.rect.x + self.SIDE_PAD, y_base, self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
-            buttons.append((r, "particle"))
-            r2 = Rect(
-                self.rect.x + self.SIDE_PAD,
-                y_base + self.BUTTON_H + self.BUTTON_GAP,
-                self.rect.width - 2 * self.SIDE_PAD,
-                self.BUTTON_H,
-            )
-            buttons.append((r2, "props"))
+            for action in (
+                "open_editor",
+                "reload_editor",
+                "toggle_visibility",
+                "props",
+            ):
+                r = Rect(
+                    self.rect.x + self.SIDE_PAD,
+                    y_base,
+                    self.rect.width - 2 * self.SIDE_PAD,
+                    self.BUTTON_H,
+                )
+                buttons.append((r, action))
+                y_base += self.BUTTON_H + self.BUTTON_GAP
         else:
             r = Rect(self.rect.x + self.SIDE_PAD, y_base, self.rect.width - 2 * self.SIDE_PAD, self.BUTTON_H)
             buttons.append((r, "props"))
@@ -272,12 +351,11 @@ class NodeEditor:
         if self._active_node_is_particle() and self._preset_dd is not None:
             result = self._preset_dd.handle_event(event)
             if result is not None:
-                if result != "Custom":
-                    cfg = get_preset_config(result)
-                    node.properties.clear()
-                    node.properties.update(cfg)
-                    self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
-                self._preset_dd.selected = result
+                if self._particle_library().find(result) is not None:
+                    self._apply_library_preset(node, result)
+                    self._preset_owner = None  # rebuild: refresh identity
+                else:
+                    self._preset_dd.selected = result
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -314,15 +392,23 @@ class NodeEditor:
                             node = mgr.get_active_node()
                             if node:
                                 self.editor.context_dispatch.open(PropertyContext(ContextKind.NODE, node))
-                        elif action == "particle":
+                        elif action == "open_editor":
                             node = mgr.get_active_node()
                             if node:
-                                self.editor.particle_config_dialog = ParticleConfigDialog(
-                                    self.editor,
-                                    dict(node.properties),
-                                    node.node_id,
-                                    on_save=lambda cfg: self._save_particle_config(cfg),
-                                )
+                                self.editor.launch_particle_editor(node)
+                        elif action == "reload_editor":
+                            node = mgr.get_active_node()
+                            if node and self.editor.reload_particle_from_export(node):
+                                self._preset_owner = None
+                        elif action == "toggle_visibility":
+                            node = mgr.get_active_node()
+                            if node:
+                                if node.properties.get("_hidden"):
+                                    node.properties.pop("_hidden", None)
+                                else:
+                                    node.properties["_hidden"] = True
+                                if hasattr(self.editor.tilemap, "capture_history"):
+                                    self.editor.tilemap.capture_history("Toggle Particle Preview")
                         return True
 
                 return True
@@ -458,14 +544,6 @@ class NodeEditor:
             node.properties = props
             self.editor.suggestion_registry.refresh(self.editor)
 
-    def _save_particle_config(self, cfg: dict):
-        node = self.editor.node_manager.get_active_node()
-        if node:
-            node.properties.clear()
-            node.properties.update(cfg)
-            self.editor.suggestion_registry.refresh(self.editor)
-            self.editor.tile_grid_widget.reset_particle_preview(node.node_id, cfg)
-
     def draw(self, screen: pygame.Surface):
         if not self.visible:
             return
@@ -528,27 +606,37 @@ class NodeEditor:
 
                 owner = node.node_id if node else None
                 if self._preset_dd is None or self._preset_dd.rect != pr or self._preset_owner != owner:
-                    current = "Custom"
-                    if node and node.properties:
-                        for p in PRESETS:
-                            if node.properties == p["config"]:
-                                current = p["name"]
-                                break
-                    opts = ["Custom"] + self._preset_names
-                    self._preset_dd = Dropdown(pr, opts, current, max_visible=12)
+                    identity = self._particle_identity(node) if node else "Custom"
+                    names = self._particle_library().names()
+                    opts = ["Custom"] + names
+                    if identity not in opts:
+                        opts.insert(1, identity)
+                    self._preset_dd = Dropdown(pr, opts, identity, max_visible=12)
                     self._preset_owner = owner
 
                 self._preset_dd.draw(screen, COLORS.header, COLORS.border)
 
+            sr = self._summary_rect()
+            if sr and node:
+                summary = self.font.render(self._particle_summary(node), True, COLORS.text_dim)
+                screen.blit(summary, (sr.x, sr.y + 2))
+
         for rect, action in self._buttons():
-            if action == "particle":
+            if action == "open_editor":
                 pygame.draw.rect(
                     screen,
                     NodeSelector.NODE_TYPE_COLORS["particle_emitter"],
                     rect,
                     border_radius=SHAPE.radius_sm,
                 )
-                txt = self.font.render("Particle Config...", True, COLORS.text)
+                txt = self.font.render("Particle Editor...", True, COLORS.text)
+            elif action == "reload_editor":
+                pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
+                txt = self.font.render("Reload Export", True, COLORS.text)
+            elif action == "toggle_visibility":
+                pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
+                hidden = bool(node and node.properties.get("_hidden"))
+                txt = self.font.render("Show Preview" if hidden else "Hide Preview", True, COLORS.text)
             else:
                 pygame.draw.rect(screen, COLORS.accent, rect, border_radius=SHAPE.radius_sm)
                 txt = self.font.render("Properties...", True, COLORS.text)

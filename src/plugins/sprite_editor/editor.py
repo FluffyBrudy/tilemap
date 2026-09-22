@@ -29,8 +29,10 @@ from .commands import (
     AppendSheetCommand,
     ClearCommand,
     CommandStack,
+    CropCommand,
     FlipCommand,
     GridResizeCommand,
+    PixelClearCommand,
     ScaleCommand,
 )
 from .dialogs import GridSizeDialog, ScaleDialog
@@ -42,7 +44,15 @@ from .region_export import (
     save_regions_json,
 )
 from .selection import Selection
-from .tools import PasteTool, RegionTool, SelectTool, TextTool, Tool, ToolContext
+from .tools import (
+    FreeTool,
+    PasteTool,
+    RegionTool,
+    SelectTool,
+    TextTool,
+    Tool,
+    ToolContext,
+)
 from .viewport import Viewport
 
 MENU_H = 30
@@ -95,11 +105,13 @@ class SpriteEditor:
         self._select_tool = SelectTool(self.ctx)
         self._paste_tool = PasteTool(self.ctx)
         self._region_tool = RegionTool(self.ctx)
+        self._free_tool = FreeTool(self.ctx)
         self._text_tool = TextTool(self.ctx)
         self._tools: dict[str, Tool] = {
             "select": self._select_tool,
             "paste": self._paste_tool,
             "regions": self._region_tool,
+            "free": self._free_tool,
             "text": self._text_tool,
         }
         self._active_tool: Tool = self._select_tool
@@ -202,6 +214,7 @@ class SpriteEditor:
                     MenuAction("Cut", self._on_cut, "Ctrl+X"),
                     MenuAction("Copy", self._on_copy, "Ctrl+C"),
                     MenuAction("Paste", self._on_paste_smart, "Ctrl+V"),
+                    MenuAction("Duplicate", self._on_duplicate, "Ctrl+D"),
                     MenuSeparator(),
                     MenuAction(
                         "Select All",
@@ -231,6 +244,11 @@ class SpriteEditor:
                         self._toggle_regions,
                         is_checked=lambda: vp.show_regions,
                     ),
+                    MenuAction(
+                        "Tight Marquee",
+                        self._toggle_tight,
+                        is_checked=lambda: self._free_tool.tight,
+                    ),
                     MenuSeparator(),
                     MenuAction("Zoom 50%", lambda: self._set_zoom(0.5)),
                     MenuAction("Zoom 100%", lambda: self._set_zoom(1.0)),
@@ -251,6 +269,12 @@ class SpriteEditor:
                     MenuAction(
                         "Flip Vertical",
                         self._on_flip_y,
+                        is_enabled=lambda: self.doc.has_canvas,
+                    ),
+                    MenuAction(
+                        "Crop to Content",
+                        self._on_crop,
+                        "C",
                         is_enabled=lambda: self.doc.has_canvas,
                     ),
                     MenuAction(
@@ -316,25 +340,51 @@ class SpriteEditor:
                 is_enabled=lambda: self.doc.has_canvas,
             ),
             MenuAction(
+                "Crop to Content",
+                self._on_crop,
+                "C",
+                is_enabled=lambda: self.doc.has_canvas,
+            ),
+            MenuAction(
                 "Scale...",
                 self._on_scale,
                 is_enabled=lambda: self.doc.has_canvas,
             ),
         ]
 
+    # toolbar groups, low priority collapses into overflow first
+    _GRP_VIEW = "view"
+    _GRP_TOOLS = "tools"
+    _GRP_TIGHT = "tight"
+    _GRP_MODES = "modes"
+    _GRP_EDIT = "edit"
+    _GRP_FILE = "file"
+    _GRP_EXPORT = "export"
+    _PRIO = {
+        _GRP_VIEW: 10,
+        _GRP_TOOLS: 20,
+        _GRP_TIGHT: 25,
+        _GRP_MODES: 30,
+        _GRP_EDIT: 40,
+        _GRP_FILE: 50,
+    }
+
     def _build_toolbar(self) -> None:
+        from widgets.ui.toolbar_layout import ToolbarLayout
+
         self._buttons.clear()
         self._separators.clear()
+        self._toolbar = ToolbarLayout(gap=BTN_GAP, sep_w=SEP_W, margin=BTN_GAP + 2)
 
         row_y = self.rect.y + MENU_H + 8
-        x = self.rect.x + BTN_GAP + 2
+        layout = self._toolbar
 
-        def add_btn(text: str, *, tooltip: str = "", on_click=None, tag: str = "") -> Button:
-            nonlocal x
+        def add_btn(text: str, *, tooltip: str = "", on_click=None, tag: str = "",
+                    group: str, right: bool = False) -> Button:
             # width fits the label so longer captions never clip
             w = max(BTN_W, FONTS.get_small_font().size(text)[0] + 14)
             btn = Button(
-                Rect(x, row_y, w, BTN_H),
+                Rect(0, row_y, w, BTN_H),
                 text=text,
                 tooltip_text=tooltip or text,
                 border_radius=3,
@@ -342,19 +392,16 @@ class SpriteEditor:
             )
             btn._tag = tag or text.lower().replace(" ", "_")
             self._buttons.append(btn)
-            x += w + BTN_GAP
+            layout.add_widget(
+                btn, w, group=group, priority=self._PRIO[group], right=right,
+                label=text, on_activate=btn.on_click,
+            )
             return btn
 
-        def sep() -> None:
-            nonlocal x
-            self._separators.append((x + SEP_W // 2, row_y + BTN_H // 2))
-            x += SEP_W
-
         # icon-only for file ops to reduce clutter (matches main Toolbar 28px style)
-        def add_icon(icon: str, tooltip: str, on_click, tag: str) -> Button:
-            nonlocal x
+        def add_icon(icon: str, tooltip: str, on_click, tag: str, group: str) -> Button:
             btn = Button(
-                Rect(x, row_y, BTN_H, BTN_H),
+                Rect(0, row_y, BTN_H, BTN_H),
                 icon_key=icon,
                 tooltip_text=tooltip,
                 border_radius=3,
@@ -363,27 +410,35 @@ class SpriteEditor:
             btn._tag = tag
             btn.icon_size = 16
             self._buttons.append(btn)
-            x += BTN_H + BTN_GAP
+            layout.add_widget(
+                btn, BTN_H, group=group, priority=self._PRIO[group],
+                label=tooltip, on_activate=on_click,
+            )
             return btn
 
-        add_icon("load", "Open spritesheets (Ctrl+O)", self._on_open, "open")
-        add_icon("save", "Save PNG (Ctrl+S)", self._on_save, "save")
-        sep()
+        def sep(group: str) -> None:
+            layout.add_separator(group=group, priority=self._PRIO[group])
 
-        add_icon("undo", "Undo (Ctrl+Z)", self._on_undo, "undo")
-        add_icon("redo", "Redo (Ctrl+Shift+Z)", self._on_redo, "redo")
-        sep()
+        add_icon("load", "Open spritesheets (Ctrl+O)", self._on_open, "open", self._GRP_FILE)
+        add_icon("save", "Save PNG (Ctrl+S)", self._on_save, "save", self._GRP_FILE)
+        sep(self._GRP_FILE)
+
+        add_icon("undo", "Undo (Ctrl+Z)", self._on_undo, "undo", self._GRP_EDIT)
+        add_icon("redo", "Redo (Ctrl+Shift+Z)", self._on_redo, "redo", self._GRP_EDIT)
+        sep(self._GRP_EDIT)
 
         add_btn(
             "Transform",
             tooltip="Flip / Scale",
             on_click=self._open_transform_menu,
             tag="transform",
+            group=self._GRP_TOOLS,
         )
-        add_btn("Tile Size", tooltip="Change tile size", on_click=self._on_grid, tag="grid")
+        add_btn("Tile Size", tooltip="Change tile size", on_click=self._on_grid,
+                tag="grid", group=self._GRP_TOOLS)
         # Text as icon button (flameshot-like) — avoids text clutter; active while editing
         t_btn = Button(
-            Rect(x, row_y, BTN_H, BTN_H),
+            Rect(0, row_y, BTN_H, BTN_H),
             icon_key="text",
             tooltip_text="Text label (T) — drag anywhere, Enter to bake, drag ○ to rotate",
             border_radius=3,
@@ -392,34 +447,53 @@ class SpriteEditor:
         t_btn._tag = "text"
         t_btn.icon_size = 16
         self._buttons.append(t_btn)
-        x += BTN_H + BTN_GAP
-        sep()
+        layout.add_widget(
+            t_btn, BTN_H, group=self._GRP_TOOLS, priority=self._PRIO[self._GRP_TOOLS],
+            label="Text label (T)", on_activate=self._on_text,
+        )
+        tight_btn = add_btn(
+            "Tight",
+            tooltip="Tight free marquee to content (transparent counts as empty)",
+            on_click=self._toggle_tight,
+            tag="tight",
+            group=self._GRP_TIGHT,
+        )
+        tight_btn.active = self._free_tool.tight
+        sep(self._GRP_TIGHT)
 
         self._mode_indicator = ModeIndicator(
-            Rect(x, row_y, 150, BTN_H),
+            Rect(0, row_y, 232, BTN_H),
             modes=[
-                Mode(id="grid", label="Grid"),
-                Mode(id="regions", label="Regions"),
+                Mode(id="grid", label="Grid", icon_key="grid"),
+                Mode(id="regions", label="Regions", icon_key="region"),
+                Mode(id="free", label="Free", icon_key="free"),
             ],
-            active_mode="grid",
+            active_mode=self.mode if self.mode in ("grid", "regions", "free") else "grid",
         )
         self._mode_indicator.on_mode_changed = self._on_mode_changed
-        x += 150 + SEP_W
-        sep()
+        layout.add_segmented(
+            self._mode_indicator, 232,
+            group=self._GRP_MODES, priority=self._PRIO[self._GRP_MODES],
+            overflow_entries=[
+                (m.label, (lambda mid: lambda: self._mode_indicator.set_active(mid))(m.id))
+                for m in self._mode_indicator.modes
+            ],
+        )
+        sep(self._GRP_MODES)
 
-        add_icon("zoomout", "Zoom out (−)", self._on_zoom_out, "zoom_out")
+        add_icon("zoomout", "Zoom out (−)", self._on_zoom_out, "zoom_out", self._GRP_VIEW)
         self._zoom_btn = add_btn(
             "100%",
             tooltip="Click to reset zoom",
             on_click=self._on_reset_zoom,
             tag="zoom_pct",
+            group=self._GRP_VIEW,
         )
-        add_icon("zoomin", "Zoom in (+)", self._on_zoom_in, "zoom_in")
-        add_icon("fit", "Fit sheet to window (F)", self._on_fit, "fit")
+        add_icon("zoomin", "Zoom in (+)", self._on_zoom_in, "zoom_in", self._GRP_VIEW)
+        add_icon("fit", "Fit sheet to window (F)", self._on_fit, "fit", self._GRP_VIEW)
 
-        export_x = self.rect.right - BTN_W - BTN_GAP - 2
         export = Button(
-            Rect(export_x, row_y, BTN_W, BTN_H),
+            Rect(0, row_y, BTN_W, BTN_H),
             text="Export",
             tooltip_text="Export all regions to PNG (Ctrl+E)",
             border_radius=3,
@@ -428,11 +502,48 @@ class SpriteEditor:
         )
         export._tag = "export_all"
         self._buttons.append(export)
+        layout.add_widget(
+            export, BTN_W, group=self._GRP_EXPORT, priority=1000,
+            right=True, collapsible=False,
+            label="Export all regions to PNG (Ctrl+E)", on_activate=self._on_export_all,
+        )
+
+        row_rect = Rect(self.rect.x, row_y, self.rect.w, BTN_H)
+        overflow_rect = layout.reflow(row_rect, row_y, BTN_H)
+        self._separators = list(layout.separators)
+        self._overflow_btn: Button | None = None
+        if overflow_rect is not None:
+            overflow = Button(
+                overflow_rect,
+                text="»",
+                tooltip_text="More tools",
+                border_radius=3,
+                on_click=self._open_overflow_menu,
+            )
+            overflow._tag = "overflow"
+            self._buttons.append(overflow)
+            self._overflow_btn = overflow
 
     def _open_transform_menu(self) -> None:
         btn = self._get_btn("transform")
         pos = (btn.rect.x, btn.rect.bottom + 2) if btn else (self.rect.x + 200, self.rect.y + MENU_H + TOOLBAR_H)
         self._popup_menu(self._transform_menu_items(), pos)
+
+    def _open_overflow_menu(self) -> None:
+        btn = self._get_btn("overflow")
+        pos = (btn.rect.x, btn.rect.bottom + 2) if btn else (self.rect.x + 200, self.rect.y + MENU_H + TOOLBAR_H)
+        rows = self._toolbar.overflow_rows() if getattr(self, "_toolbar", None) else []
+        self._popup_menu(
+            [MenuAction(r.label, r.on_activate) for r in rows]
+            or [MenuAction("Toolbar fits", lambda: None)],
+            pos,
+        )
+
+    def _toggle_tight(self) -> None:
+        self._free_tool.tight = not self._free_tool.tight
+        state = "ON — marquee shrinks to content" if self._free_tool.tight else "OFF — exact marquee"
+        self._toast(f"Tight {state}")
+        self._update_button_states()
 
     def _toggle_stack(self) -> None:
         self._stack_horizontal = not self._stack_horizontal
@@ -481,6 +592,11 @@ class SpriteEditor:
                 self._toast("Paste canceled")
             self.mode = "regions"
             self._set_tool("regions")
+        elif new == "free":
+            if self._active_tool is self._paste_tool:
+                self._toast("Paste canceled")
+            self.mode = "free"
+            self._set_tool("free")
         else:
             self.mode = "grid"
             if self._active_tool is self._paste_tool:
@@ -511,6 +627,9 @@ class SpriteEditor:
         select = self._tools.get("select")
         if select is not None:
             select.exit()
+        free = self._tools.get("free")
+        if free is not None:
+            free.exit()
 
     def _prune_dangling_region_selection(self) -> None:
         if self.doc.region_by_id(self._region_tool.selected_id or "") is None:
@@ -532,9 +651,26 @@ class SpriteEditor:
             self._status_bar.info(f"Redo {name}")
             self._toast(f"Redo {name}")
 
+    def _switch_mode(self, mode: str) -> None:
+        """Programmatic mode switch (paste/duplicate follow the payload)."""
+        if self._mode_indicator is not None:
+            self._mode_indicator.set_active(mode)
+        else:
+            self._on_mode_changed(self.mode, mode)
+
     def _on_copy(self) -> None:
         if self._active_tool is self._paste_tool:
             self._set_tool("select")
+        if self.mode == "free":
+            block = self._free_tool.block_rect()
+            if block is None:
+                self._status_bar.warning("Nothing to copy — drag a pixel block first")
+                return
+            if self.clipboard.copy_from_rect(self.doc, block):
+                self.clipboard.os_snapshot = self._clipboard_text()
+                self._status_bar.info(f"Copied pixel block {block.w}×{block.h}")
+                self._toast(f"Copied pixel block {block.w}×{block.h}")
+            return
         if not self.selection:
             self._status_bar.warning("Nothing to copy")
             return
@@ -547,6 +683,18 @@ class SpriteEditor:
     def _on_cut(self) -> None:
         if self._active_tool is self._paste_tool:
             self._set_tool("select")
+        if self.mode == "free":
+            block = self._free_tool.block_rect()
+            if block is None:
+                self._status_bar.warning("Nothing to cut — drag a pixel block first")
+                return
+            if self.clipboard.copy_from_rect(self.doc, block):
+                self.clipboard.os_snapshot = self._clipboard_text()
+                self.commands.push(PixelClearCommand(block), self.doc, self.selection)
+                self._free_tool.clear_block()
+                self._status_bar.info(f"Cut pixel block {block.w}×{block.h}")
+                self._toast(f"Cut pixel block {block.w}×{block.h}")
+            return
         if not self.selection:
             self._status_bar.warning("Nothing to cut")
             return
@@ -562,20 +710,66 @@ class SpriteEditor:
             self._status_bar.warning("Nothing to paste")
             self._toast("Clipboard is empty")
             return
-        if self.mode == "regions":
-            self._status_bar.warning("Paste works in Grid mode")
+        if self.clipboard.has_pixels:
+            if self.mode != "free":
+                self._switch_mode("free")
+                self._toast("Switched to Free mode for pixel paste")
+            assert self.clipboard.free_surface is not None
+            self._free_tool.arm_floating(self.clipboard.free_surface)
             return
+        if self.mode != "grid":
+            self._switch_mode("grid")
+            self._toast("Switched to Grid mode for paste")
         if self._active_tool is self._paste_tool:
             self._toast("Paste canceled")
             self._set_tool("select")
             return
         self._set_tool("paste")
 
+    def _on_duplicate(self) -> None:
+        """Copy the current selection/block, then arm its paste in one step."""
+        if self.mode == "free":
+            block = self._free_tool.block_rect()
+            if block is None:
+                self._status_bar.warning("Nothing to duplicate — drag a pixel block first")
+                return
+            if not self.clipboard.copy_from_rect(self.doc, block):
+                return
+            self.clipboard.os_snapshot = self._clipboard_text()
+            assert self.clipboard.free_surface is not None
+            self._free_tool.arm_floating(self.clipboard.free_surface)
+            self._status_bar.info("Duplicating pixel block — click to place")
+            return
+        if self._active_tool is self._paste_tool:
+            self._set_tool("select")
+        if not self.selection:
+            self._status_bar.warning("Nothing to duplicate")
+            return
+        if self.clipboard.copy_from_selection(self.doc, self.selection):
+            n = len(self.clipboard)
+            self.clipboard.os_snapshot = self._clipboard_text()
+            if self.mode != "grid":
+                self._switch_mode("grid")
+            self._set_tool("paste")
+            self._status_bar.info(f"Duplicating {n} tile{'s' if n != 1 else ''} — click to place")
+
     def _on_flip_x(self) -> None:
         self._flip(True, False)
 
     def _on_flip_y(self) -> None:
         self._flip(False, True)
+
+    def _on_crop(self) -> None:
+        if not self.doc.has_canvas:
+            self._status_bar.warning("No spritesheet loaded")
+            return
+        cmd = CropCommand()
+        self.commands.push(cmd, self.doc, self.selection)
+        if cmd.changed:
+            self._status_bar.success("Cropped to content")
+        else:
+            self.commands.discard_last()
+            self._status_bar.info("Already tight — nothing to crop")
 
     def _flip(self, fx: bool, fy: bool) -> None:
         if not self.selection:
@@ -637,7 +831,7 @@ class SpriteEditor:
             # toggling off while editing keeps draft — exit cleanly
             if getattr(self._text_tool, "_mode", "idle") != "idle":
                 self._text_tool.cancel()
-            self._set_tool("select" if self.mode == "grid" else "regions")
+            self._set_tool({"grid": "select", "regions": "regions"}.get(self.mode, "free"))
             return
         if self._active_tool is self._paste_tool:
             self._toast("Paste canceled")
@@ -656,6 +850,9 @@ class SpriteEditor:
         text_btn = self._get_btn("text")
         if text_btn:
             text_btn.active = self._active_tool is self._text_tool
+        tight_btn = self._get_btn("tight")
+        if tight_btn:
+            tight_btn.active = self._free_tool.tight
         export_btn = self._get_btn("export_all")
         if export_btn:
             export_btn.enabled = bool(self.doc.regions) and self.doc.has_canvas
@@ -734,6 +931,9 @@ class SpriteEditor:
                 if event.key == pygame.K_v:
                     self._on_paste_smart()
                     return True
+                if event.key == pygame.K_d:
+                    self._on_duplicate()
+                    return True
                 if event.key == pygame.K_s:
                     self._on_save()
                     return True
@@ -763,6 +963,9 @@ class SpriteEditor:
                     and getattr(self._region_tool, "_editing_id", None) is not None
                 )
                 if not typing_in_text_input and not typing_in_rename:
+                    if event.key == pygame.K_c:
+                        self._on_crop()
+                        return True
                     if event.key == pygame.K_f:
                         self._on_fit()
                         return True
@@ -783,11 +986,17 @@ class SpriteEditor:
                         return True
 
         for btn in self._buttons:
+            if not getattr(btn, "visible", True):
+                continue
             if btn.handle_event(event):
                 self._update_button_states()
                 return True
 
-        if self._mode_indicator is not None and self._mode_indicator.handle_event(event):
+        if (
+            self._mode_indicator is not None
+            and getattr(self._mode_indicator, "visible", True)
+            and self._mode_indicator.handle_event(event)
+        ):
             self._update_button_states()
             return True
 
@@ -796,7 +1005,7 @@ class SpriteEditor:
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             if self._active_tool is self._text_tool and getattr(self._text_tool, "_mode", "idle") == "idle":
-                self._set_tool("select" if self.mode == "grid" else "regions")
+                self._set_tool({"grid": "select", "regions": "regions"}.get(self.mode, "free"))
                 return True
             if self.selection:
                 self._on_deselect()
@@ -822,6 +1031,7 @@ class SpriteEditor:
                 MenuSeparator(),
                 MenuAction("Copy", self._on_copy, "Ctrl+C"),
                 MenuAction("Paste", self._on_paste_smart, "Ctrl+V"),
+                MenuAction("Duplicate", self._on_duplicate, "Ctrl+D"),
                 MenuSeparator(),
                 MenuAction(
                     "Show Grid",
@@ -1023,8 +1233,11 @@ class SpriteEditor:
 
         self._update_button_states()
         for btn in self._buttons:
-            btn.draw(screen)
-        if self._mode_indicator is not None:
+            if getattr(btn, "visible", True):
+                btn.draw(screen)
+        if self._mode_indicator is not None and getattr(
+            self._mode_indicator, "visible", True
+        ):
             self._mode_indicator.draw(screen)
 
         if self._file_manager is None:
@@ -1057,6 +1270,8 @@ class SpriteEditor:
 
         mouse_pos = pygame.mouse.get_pos()
         for btn in self._buttons:
+            if not getattr(btn, "visible", True):
+                continue
             if btn.rect.collidepoint(mouse_pos) and btn.tooltip_text:
                 self._draw_tooltip(screen, btn.tooltip_text, mouse_pos)
                 break
@@ -1064,9 +1279,13 @@ class SpriteEditor:
     SHORTCUTS = [
         ("Open", "Ctrl+O"), ("Save", "Ctrl+S"), ("Export PNGs", "Ctrl+E"),
         ("Undo", "Ctrl+Z"), ("Redo", "Ctrl+Shift+Z"),
-        ("Cut / Copy / Paste", "Ctrl+X/C/V"), ("Select All", "Ctrl+A"),
-        ("Deselect", "Esc"), ("Text label", "T → drag, Enter bake, drag ○ rotate"),
-        ("Fit to window", "F"), ("Toggle grid", "G"),
+        ("Cut / Copy / Paste", "Ctrl+X/C/V"), ("Duplicate", "Ctrl+D"), ("Select All", "Ctrl+A"),
+        ("Deselect", "Esc"), ("Free pixels", "Free mode: drag select, drag move, Enter region"),
+        ("Mirror block", "Free mode: H/V stamp mirrored copy, Shift flips side"),
+        ("Stretch block", "Free mode: drag handles, edges single-axis, Shift locks aspect"),
+        ("Tight marquee", "Shrink free selection to content"),
+        ("Text label", "T → drag, Enter bake, drag ○ rotate"),
+        ("Fit to window", "F"), ("Toggle grid", "G"), ("Crop to content", "C"),
         ("Reset zoom", "0"), ("Zoom in / out", "+ / -"),
     ]
 
@@ -1112,9 +1331,13 @@ class SpriteEditor:
         screen.blit(surf, (tx, ty))
 
     def _file_manager_rect(self) -> Rect:
+        # anchored top-left of the content area (not centered): in small
+        # or offset windows a centered dialog lands half-buried.
         w, h = 600, 400
-        cx, cy = self.rect.center
-        return Rect(cx - w // 2, cy - h // 2, w, h)
+        content = self.viewport.content_rect
+        w = min(w, max(200, content.w - 24))
+        h = min(h, max(200, content.h - 24))
+        return Rect(content.x + 12, content.y + 12, w, h)
 
     def _close_file_manager(self) -> None:
         self._file_manager = None
@@ -1253,7 +1476,27 @@ class SpriteEditor:
         self.doc.regions = []
         self.commands.clear()
         self.selection.clear()
-        self.camera.reset()
+        self._fit_sheet()
+
+    def _fit_sheet(self, margin: float = 0.9) -> None:
+        """Start fully visible, without ever zooming small sheets up.
+
+        Sheets that fit at 100% open 1:1 at the origin (crisp pixels,
+        stable grid picking); overflowing sheets fit with margin.
+        """
+        if not self.doc.has_canvas:
+            self.camera.reset()
+            return
+        content = self.viewport.content_rect
+        if content.w <= 0 or content.h <= 0:
+            self.camera.reset()
+            return
+        w, h = self.doc.size
+        if min(content.w / w, content.h / h) >= 1.0:
+            self.camera.reset()
+            return
+        self.camera.fit(self.doc.size, (content.w, content.h))
+        self.camera.zoom *= margin
 
     def _open_export_dir_dialog(self, regions: list[Region]) -> None:
         from widgets.filemanager import FileManager

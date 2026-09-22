@@ -2,8 +2,6 @@
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -11,11 +9,11 @@ from pathlib import Path
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from plugins.sprite_editor.commands import (  # noqa: E402
     ClearCommand,
     CommandStack,
+    CropCommand,
     FlipCommand,
     GridResizeCommand,
     MoveCommand,
@@ -203,6 +201,86 @@ class TestFlipCommand:
         stack = CommandStack()
         stack.push(FlipCommand([(0, 0), (1, 0)], True, False), doc, sel)
         assert sel.sorted_cells() == [(0, 0), (1, 0)]
+
+
+class TestFlipBlockMirror:
+    def _two_tile_doc(self):
+        doc = make_doc()
+        left = pygame.Surface((32, 32), pygame.SRCALPHA)
+        left.fill((0, 0, 0, 0))
+        pygame.draw.rect(left, (255, 0, 0, 255), (0, 0, 4, 32))
+        doc.write_tile(0, 0, left)
+        right = pygame.Surface((32, 32), pygame.SRCALPHA)
+        right.fill((0, 0, 0, 0))
+        pygame.draw.rect(right, (0, 0, 255, 255), (28, 0, 4, 32))
+        doc.write_tile(1, 0, right)
+        return doc
+
+    def test_flip_x_swaps_arrangement(self):
+        doc = self._two_tile_doc()
+        stack = CommandStack()
+        stack.push(FlipCommand([(0, 0), (1, 0)], True, False), doc, Selection())
+        # red bar was left-edge of (0,0): now right-edge of (1,0)
+        assert doc.surface.get_at((63, 16))[:3] == (255, 0, 0)
+        # blue bar was right-edge of (1,0): now left-edge of (0,0)
+        assert doc.surface.get_at((0, 16))[:3] == (0, 0, 255)
+
+    def test_flip_replaces_without_growth(self):
+        doc = self._two_tile_doc()
+        before = doc.surface.get_size()
+        stack = CommandStack()
+        stack.push(FlipCommand([(0, 0), (1, 0)], True, False), doc, Selection())
+        assert doc.surface.get_size() == before
+
+    def test_double_flip_is_identity(self):
+        doc = self._two_tile_doc()
+        stack = CommandStack()
+        stack.push(FlipCommand([(0, 0), (1, 0)], True, False), doc, Selection())
+        stack.push(FlipCommand([(0, 0), (1, 0)], True, False), doc, Selection())
+        assert doc.surface.get_at((2, 16))[:3] == (255, 0, 0)
+        assert doc.surface.get_at((60, 16))[:3] == (0, 0, 255)
+
+    def test_flip_undo_restores(self):
+        doc = self._two_tile_doc()
+        stack = CommandStack()
+        stack.push(FlipCommand([(0, 0), (1, 0)], True, False), doc, Selection())
+        stack.undo(doc, Selection())
+        assert doc.surface.get_at((2, 16))[:3] == (255, 0, 0)
+        assert doc.surface.get_at((60, 16))[:3] == (0, 0, 255)
+
+
+class TestCropCommand:
+    def test_crop_shrinks_to_content(self):
+        doc = make_doc()
+        fill_tile(doc, 2, 2)
+        stack = CommandStack()
+        sel = Selection.from_cells([(2, 2)])
+        cmd = CropCommand()
+        stack.push(cmd, doc, sel)
+        assert cmd.changed is True
+        assert doc.surface.get_size() == (32, 32)
+        assert sel.sorted_cells() == [(0, 0)]
+
+    def test_crop_noop_discards(self):
+        doc = make_doc(w=32, h=32)
+        fill_tile(doc, 0, 0)
+        stack = CommandStack()
+        sel = Selection()
+        cmd = CropCommand()
+        stack.push(cmd, doc, sel)
+        assert cmd.changed is False
+        assert stack.discard_last() is True
+        assert not stack.can_undo
+
+    def test_crop_undo_restores(self):
+        doc = make_doc()
+        fill_tile(doc, 2, 2)
+        stack = CommandStack()
+        sel = Selection.from_cells([(2, 2)])
+        stack.push(CropCommand(), doc, sel)
+        stack.undo(doc, sel)
+        assert doc.surface.get_size() == (128, 128)
+        assert sel.sorted_cells() == [(2, 2)]
 
 
 class TestScaleCommand:

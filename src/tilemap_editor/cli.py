@@ -24,6 +24,8 @@ def _parse_size(text: str) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tilemap Editor")
+    # Bare invocation allowed which previously was Attribute error
+    parser.set_defaults(command="run", size="1500x900", fps=60, theme=None, sandbox=None)
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     init_parser = subparsers.add_parser("init", help="Initialize a new Tilemap Editor project")
@@ -43,7 +45,7 @@ def main() -> None:
         "--theme",
         default=None,
         help=f"Theme name or path to .json theme file (built-in: "
-        f"{', '.join(BUILTIN_THEMES)}; or \"path/to/custom.json\")",
+        f'{", ".join(BUILTIN_THEMES)}; or "path/to/custom.json")',
     )
     run_parser.add_argument(
         "--sandbox",
