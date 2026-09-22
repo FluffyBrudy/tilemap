@@ -2,15 +2,12 @@
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from widgets.ui.theme import (  # noqa: E402
     THEMES,

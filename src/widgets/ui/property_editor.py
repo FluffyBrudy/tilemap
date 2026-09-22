@@ -5,10 +5,12 @@ import pygame
 from pygame import Rect, Surface
 
 from utils.context_dispatch import PropertyContext
+from utils.icon_manager import icon_manager
 
 from .button import Button
 from .draw_utils import truncate_text
 from .theme import COLORS, FONTS
+from .toast import ToastManager
 
 if TYPE_CHECKING:
     from editor import Editor
@@ -81,22 +83,68 @@ class PropertyEditor:
         )
         self.btn_remove.enabled = False
 
-    def _commit_save(self):
-        """Dispatch the staged properties to the context target, then close."""
-        if not self.editor.context_dispatch.save(self.context, self.properties):
-            self.editor.notifications.notify(
-                "Cannot save: no property handler for this target"
-            )
+        self._toasts = ToastManager(position="top-right")
+        self._last_toast_tick = pygame.time.get_ticks()
+        self._hint_cooldown_until = 0
+
+        self._x_rect = Rect(self.rect.right - 34, self.rect.y + 8, 24, 24)
+
+    def _toast_saved(self, text: str) -> None:
+        self._toasts.success(text, duration=2.0)
+
+    def _hint_locked(self) -> None:
+        now = pygame.time.get_ticks()
+        if now < self._hint_cooldown_until:
             return
-        self.active = False
+        self._hint_cooldown_until = now + 1500
+        self._toasts.warning("Press Enter to add the key first", duration=1.5)
+
+    def _commit_save(self, candidate: dict[str, Any] | None = None) -> bool:
+        """Save a candidate copy via dispatch. Stays open either way.
+
+        Assigns the candidate to self.properties only when a handler
+        accepted the save, so         rejected saves never retain the change.
+        Returns True when a handler accepted the save.
+        """
+        if candidate is None:
+            candidate = self.properties
+        if not self.editor.context_dispatch.save(self.context, candidate):
+            self.editor.notifications.notify("Cannot save: no property handler for this target")
+            return False
+        self.properties = candidate
         self._ghost_text = ""
+        return True
+
+    def _close(self) -> None:
+        self.active = False
         if self.on_close:
             self.on_close()
 
     def _on_cancel_click(self):
-        self.active = False
-        if self.on_close:
-            self.on_close()
+        self._close()
+
+    def _remove_selected(self) -> bool:
+        """Delete the selected key and save immediately. Returns saved."""
+        if self.is_entering_new_key or not self.selected_key:
+            return False
+        if self.selected_key not in self.properties:
+            return False
+        removed = self.selected_key
+        candidate = dict(self.properties)
+        del candidate[self.selected_key]
+        self.selected_key = None
+        self.editing_value = False
+        self.input_text = ""
+        self.is_entering_new_key = False
+        self._ghost_text = ""
+        self._update_remove_enabled()
+        if self._commit_save(candidate):
+            self._toast_saved(f"Removed '{removed}'")
+            return True
+        return False
+
+    def _on_remove_click(self):
+        self._remove_selected()
 
     def _on_add_click(self):
         self.is_entering_new_key = True
@@ -106,22 +154,8 @@ class PropertyEditor:
         self._ghost_text = self.editor.suggestion_registry.key_ghost("")
         self._update_remove_enabled()
 
-    def _on_remove_click(self):
-        if self.is_entering_new_key or not self.selected_key:
-            return
-        if self.selected_key in self.properties:
-            del self.properties[self.selected_key]
-        self.selected_key = None
-        self.editing_value = False
-        self.input_text = ""
-        self.is_entering_new_key = False
-        self._ghost_text = ""
-        self._update_remove_enabled()
-
     def _update_remove_enabled(self):
-        self.btn_remove.enabled = (
-            self.selected_key is not None and not self.is_entering_new_key
-        )
+        self.btn_remove.enabled = self.selected_key is not None and not self.is_entering_new_key
 
     def _title_display(self) -> tuple[str, bool]:
         max_w = self.rect.right - (self.rect.x + 20) - 20
@@ -160,6 +194,19 @@ class PropertyEditor:
 
         mouse_pos = pygame.mouse.get_pos()
 
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._x_rect.collidepoint(mouse_pos):
+                self._close()
+                return True
+
+        if self.is_entering_new_key:
+            if event.type == pygame.KEYDOWN:
+                return self._handle_keydown(event)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                self._hint_locked()
+                return True
+            return False
+
         if self.btn_cancel.handle_event(event):
             return True
         if self.btn_remove.handle_event(event):
@@ -169,9 +216,7 @@ class PropertyEditor:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                content_rect = Rect(
-                    self.rect.x, self.rect.y + 40, self.width, self.height - 90
-                )
+                content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
                 if content_rect.collidepoint(mouse_pos):
                     rel_y = mouse_pos[1] - content_rect.y + self.scroll_y
                     idx = rel_y // self.item_height
@@ -199,9 +244,7 @@ class PropertyEditor:
             elif event.button == 5:
                 keys = sorted(self.properties.keys())
                 content_height = len(keys) * self.item_height
-                content_rect = Rect(
-                    self.rect.x, self.rect.y + 40, self.width, self.height - 90
-                )
+                content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
                 max_scroll = max(0, content_height - content_rect.height)
                 self.scroll_y = min(self.scroll_y + 20, max_scroll)
                 self._update_hovered_tooltip(mouse_pos)
@@ -214,9 +257,7 @@ class PropertyEditor:
                 elif event.y < 0:
                     keys = sorted(self.properties.keys())
                     content_height = len(keys) * self.item_height
-                    content_rect = Rect(
-                        self.rect.x, self.rect.y + 40, self.width, self.height - 90
-                    )
+                    content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
                     max_scroll = max(0, content_height - content_rect.height)
                     self.scroll_y = min(self.scroll_y + 20, max_scroll)
                 self._update_hovered_tooltip(mouse_pos)
@@ -226,102 +267,97 @@ class PropertyEditor:
             self._update_hovered_tooltip(mouse_pos)
 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                self.active = False
-                if self.on_close:
-                    self.on_close()
-                return True
+            return self._handle_keydown(event)
 
+        return True
+
+    def _handle_keydown(self, event: pygame.event.Event) -> bool:
+        if event.key == pygame.K_ESCAPE:
             if self.is_entering_new_key:
-                if event.key == pygame.K_RETURN:
-                    if self.new_key_input and self.new_key_input not in self.properties:
-                        self.properties[self.new_key_input] = ""
-                        self.selected_key = self.new_key_input
-                        self.editing_value = True
-                        self.input_text = ""
-                        self._ghost_text = self.editor.suggestion_registry.ghost_text(
-                            self.selected_key, self.input_text
-                        )
-                        self.is_entering_new_key = False
-                        self._update_remove_enabled()
-                    return True
-                if event.key == pygame.K_TAB:
-                    if self._ghost_text:
-                        self.new_key_input = self.new_key_input + self._ghost_text
-                        self._ghost_text = self.editor.suggestion_registry.key_ghost(
-                            self.new_key_input
-                        )
-                    return True
-                if event.key == pygame.K_BACKSPACE:
-                    self.new_key_input = self.new_key_input[:-1]
-                    self._ghost_text = self.editor.suggestion_registry.key_ghost(
-                        self.new_key_input
-                    )
-                else:
-                    self.new_key_input += event.unicode
-                    if self._ghost_text and event.unicode:
-                        if self._ghost_text[0].lower() == event.unicode.lower():
-                            self._ghost_text = self._ghost_text[1:]
-                        else:
-                            self._ghost_text = self.editor.suggestion_registry.key_ghost(
-                                self.new_key_input
-                            )
-                    else:
-                        self._ghost_text = self.editor.suggestion_registry.key_ghost(
-                            self.new_key_input
-                        )
+                self.is_entering_new_key = False
+                self.new_key_input = ""
+                self._ghost_text = ""
                 return True
+            self._close()
+            return True
 
-            if self.editing_value and self.selected_key:
-                if event.key == pygame.K_RETURN:
-                    val = self.input_text
-                    if val.lower() == "true":
-                        val = True
-                    elif val.lower() == "false":
-                        val = False
-                    else:
-                        try:
-                            val = float(val) if "." in val else int(val)
-                        except ValueError:
-                            pass
-                    self.properties[self.selected_key] = val
-                    self.editing_value = False
-                    self._ghost_text = ""
-                    self._commit_save()
-                    return True
-                if event.key == pygame.K_TAB:
-                    if self._ghost_text:
-                        self.input_text = self.input_text + self._ghost_text
-                        self._ghost_text = ""
-                elif event.key == pygame.K_BACKSPACE:
-                    self.input_text = self.input_text[:-1]
-                    self._ghost_text = self.editor.suggestion_registry.ghost_text(
-                        self.selected_key, self.input_text
-                    )
-                elif event.key == pygame.K_DELETE:
-                    if self.selected_key in self.properties:
-                        del self.properties[self.selected_key]
-                        self.selected_key = None
-                        self.editing_value = False
-                        self._ghost_text = ""
-                else:
-                    self.input_text += event.unicode
-                    if self._ghost_text and event.unicode:
-                        if self._ghost_text[0].lower() == event.unicode.lower():
-                            self._ghost_text = self._ghost_text[1:]
-                        else:
-                            self._ghost_text = self.editor.suggestion_registry.ghost_text(
-                                self.selected_key, self.input_text
-                            )
-                    else:
-                        self._ghost_text = self.editor.suggestion_registry.ghost_text(
-                            self.selected_key, self.input_text
-                        )
-                return True
-
+        if self.is_entering_new_key:
             if event.key == pygame.K_RETURN:
-                self._commit_save()
+                if self.new_key_input and self.new_key_input not in self.properties:
+                    candidate = dict(self.properties)
+                    candidate[self.new_key_input] = ""
+                    self.selected_key = self.new_key_input
+                    self.editing_value = True
+                    self.input_text = ""
+                    self._ghost_text = self.editor.suggestion_registry.ghost_text(self.selected_key, self.input_text)
+                    self.is_entering_new_key = False
+                    self._update_remove_enabled()
+                    if self._commit_save(candidate):
+                        self._toast_saved(f"Added '{self.selected_key}'")
                 return True
+            if event.key == pygame.K_TAB:
+                if self._ghost_text:
+                    self.new_key_input = self.new_key_input + self._ghost_text
+                    self._ghost_text = self.editor.suggestion_registry.key_ghost(self.new_key_input)
+                return True
+            if event.key == pygame.K_BACKSPACE:
+                self.new_key_input = self.new_key_input[:-1]
+                self._ghost_text = self.editor.suggestion_registry.key_ghost(self.new_key_input)
+            else:
+                self.new_key_input += event.unicode
+                if self._ghost_text and event.unicode:
+                    if self._ghost_text[0].lower() == event.unicode.lower():
+                        self._ghost_text = self._ghost_text[1:]
+                    else:
+                        self._ghost_text = self.editor.suggestion_registry.key_ghost(self.new_key_input)
+                else:
+                    self._ghost_text = self.editor.suggestion_registry.key_ghost(self.new_key_input)
+            return True
+
+        if self.editing_value and self.selected_key:
+            if event.key == pygame.K_RETURN:
+                val = self.input_text
+                if val.lower() == "true":
+                    val = True
+                elif val.lower() == "false":
+                    val = False
+                else:
+                    try:
+                        val = float(val) if "." in val else int(val)
+                    except ValueError:
+                        pass
+                candidate = dict(self.properties)
+                candidate[self.selected_key] = val
+                self.editing_value = False
+                self._ghost_text = ""
+                self._commit_save(candidate)
+                return True
+            if event.key == pygame.K_TAB:
+                if self._ghost_text:
+                    self.input_text = self.input_text + self._ghost_text
+                    self._ghost_text = ""
+            elif event.key == pygame.K_BACKSPACE:
+                self.input_text = self.input_text[:-1]
+                self._ghost_text = self.editor.suggestion_registry.ghost_text(self.selected_key, self.input_text)
+            elif event.key == pygame.K_DELETE:
+                self._remove_selected()
+            else:
+                self.input_text += event.unicode
+                if self._ghost_text and event.unicode:
+                    if self._ghost_text[0].lower() == event.unicode.lower():
+                        self._ghost_text = self._ghost_text[1:]
+                    else:
+                        self._ghost_text = self.editor.suggestion_registry.ghost_text(
+                            self.selected_key, self.input_text
+                        )
+                else:
+                    self._ghost_text = self.editor.suggestion_registry.ghost_text(self.selected_key, self.input_text)
+            return True
+
+        if event.key == pygame.K_RETURN:
+            if self._commit_save(self.properties):
+                self._close()
+            return True
 
         return True
 
@@ -329,9 +365,7 @@ class PropertyEditor:
         if not self.active:
             return
 
-        overlay = pygame.Surface(
-            (self.editor.width, self.editor.height), pygame.SRCALPHA
-        )
+        overlay = pygame.Surface((self.editor.width, self.editor.height), pygame.SRCALPHA)
         overlay.fill((*COLORS.overlay, 170))
         screen.blit(overlay, (0, 0))
 
@@ -341,6 +375,15 @@ class PropertyEditor:
         title_text, _ = self._title_display()
         title_surf = self.font_title.render(title_text, True, COLORS.text)
         screen.blit(title_surf, (self.rect.x + 20, self.rect.y + 10))
+
+        x_icon = icon_manager.get_icon("close", 16, COLORS.text_dim)
+        screen.blit(
+            x_icon,
+            (
+                self._x_rect.centerx - x_icon.get_width() // 2,
+                self._x_rect.centery - x_icon.get_height() // 2,
+            ),
+        )
 
         content_rect = Rect(self.rect.x, self.rect.y + 40, self.width, self.height - 90)
         pygame.draw.line(
@@ -361,9 +404,7 @@ class PropertyEditor:
 
             is_selected = self.selected_key == key
             bg_col = COLORS.selected if is_selected else COLORS.panel_alt
-            row_rect = Rect(
-                self.rect.x + 5, y + 2, self.width - 10, self.item_height - 4
-            )
+            row_rect = Rect(self.rect.x + 5, y + 2, self.width - 10, self.item_height - 4)
             pygame.draw.rect(screen, bg_col, row_rect, border_radius=4)
 
             key_surf = self.font_label.render(
@@ -389,9 +430,11 @@ class PropertyEditor:
                             screen.blit(ghost_surf, (cursor_x, row_rect.y + 10))
                     if pygame.time.get_ticks() // 500 % 2 == 0:
                         pygame.draw.line(
-                            screen, COLORS.text,
+                            screen,
+                            COLORS.text,
                             (cursor_x, row_rect.y + 8),
-                            (cursor_x, row_rect.y + 28), 2,
+                            (cursor_x, row_rect.y + 28),
+                            2,
                         )
                 else:
                     val_text = self.input_text + ("|" if pygame.time.get_ticks() // 500 % 2 == 0 else " ")
@@ -417,9 +460,7 @@ class PropertyEditor:
 
         if self.is_entering_new_key:
             y = self.rect.y + 40 + len(keys) * self.item_height - self.scroll_y
-            row_rect = Rect(
-                self.rect.x + 5, y + 2, self.width - 10, self.item_height - 4
-            )
+            row_rect = Rect(self.rect.x + 5, y + 2, self.width - 10, self.item_height - 4)
             pygame.draw.rect(screen, COLORS.selected, row_rect, border_radius=4)
             label_w = self.font_label.size("New Key: ")[0]
             lbl_surf = self.font_label.render("New Key: ", True, COLORS.text_on_selected)
@@ -438,9 +479,11 @@ class PropertyEditor:
                     screen.blit(ghost_surf, (cursor_x, row_rect.y + 10))
                 if pygame.time.get_ticks() // 500 % 2 == 0:
                     pygame.draw.line(
-                        screen, COLORS.text,
+                        screen,
+                        COLORS.text,
                         (cursor_x, row_rect.y + 8),
-                        (cursor_x, row_rect.y + 28), 2,
+                        (cursor_x, row_rect.y + 28),
+                        2,
                     )
             else:
                 if pygame.time.get_ticks() // 500 % 2 == 0:
@@ -456,6 +499,11 @@ class PropertyEditor:
         self.btn_cancel.draw(screen)
         self.btn_remove.draw(screen)
         self.btn_add.draw(screen)
+
+        now = pygame.time.get_ticks()
+        self._toasts.update(screen, max(0.0, (now - self._last_toast_tick) / 1000.0))
+        self._last_toast_tick = now
+        self._toasts.draw(screen)
 
         if self._hovered_truncated:
             mx, my = pygame.mouse.get_pos()

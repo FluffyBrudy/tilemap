@@ -4,9 +4,6 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect
@@ -273,6 +270,7 @@ class TestDrawNodesVisibility:
         g.editor = ed
         g.rect = Rect(0, 0, 800, 600)
         g.zoom_level = 1.0
+        g._particle_previews = {}
         g._node_to_screen = lambda x, y: (x, y)
         g._node_screen_size = lambda w, h: (w, h)
         g.font_status = pygame.font.Font(None, 12)
@@ -340,20 +338,25 @@ class TestEditorLayout:
     def test_particle_panel_has_gaps_and_fits(self):
         d = make_layout_editor(particle_node())
         pr = d._preset_rect()
+        sr = d._summary_rect()
         btns = d._buttons()
-        assert pr is not None and len(btns) == 2
-        assert btns[0][0].y - pr.bottom >= NodeEditor.SECTION_GAP
-        assert btns[1][0].y - btns[0][0].bottom >= NodeEditor.BUTTON_GAP
+        assert pr is not None and sr is not None and len(btns) == 4
+        assert sr.y - pr.bottom >= 4
+        assert btns[0][0].y - sr.bottom >= NodeEditor.SECTION_GAP
+        for first, second in zip(btns, btns[1:], strict=False):
+            assert second[0].y - first[0].bottom >= NodeEditor.BUTTON_GAP
         lowest = max([r[2].bottom for r in d._get_field_rects()]
-                     + [pr.bottom] + [b[0].bottom for b in btns])
+                     + [pr.bottom, sr.bottom] + [b[0].bottom for b in btns])
         assert d._content_height() == lowest - d.rect.y + NodeEditor.BOTTOM_PAD
 
     def test_no_rect_overlaps(self):
         for node in (make_node("A"), particle_node()):
             d = make_layout_editor(node)
             pr = d._preset_rect()
+            sr = d._summary_rect()
             rects = ([r[2] for r in d._get_field_rects()]
                      + ([pr] if pr else [])
+                     + ([sr] if sr else [])
                      + [b[0] for b in d._buttons()])
             for i in range(len(rects)):
                 for j in range(i + 1, len(rects)):

@@ -2,6 +2,7 @@ include README.md
 include CHANGELOG.md
 include LICENSE
 recursive-include src *.py
+recursive-include src/plugins/particle_editor *.particles.json
 recursive-include assets/icons *.svg
 recursive-include assets/fonts *.ttf *.otf
 global-exclude *.py[cod] __pycache__/* *.spec *.spec.bak *.sh

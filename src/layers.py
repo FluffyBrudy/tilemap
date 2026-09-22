@@ -13,6 +13,59 @@ if TYPE_CHECKING:
     from widgets.autotiler import AutotileRule
 
 
+def _coerce_count(raw: object) -> int:
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 1
+    return max(1, value)
+
+
+class ImagePlacement:
+    """One duplicate copy of an image layer's picture.
+
+    ``pid`` is a layer-local unique id from a monotonic counter (never
+    reused, so delete/undo/redo can't corrupt references — same pattern
+    as ``next_object_id``). List order is paint/select order: later
+    entries draw on top and win topmost-first hit-testing.
+    """
+
+    def __init__(
+        self,
+        pid: int,
+        x: int = 0,
+        y: int = 0,
+        w: int = 8,
+        h: int = 8,
+        mode: str = "stretch",
+    ):
+        self.pid = pid
+        self.x = x
+        self.y = y
+        self.w = max(8, w)
+        self.h = max(8, h)
+        self.mode = mode if mode in ("stretch", "repeat") else "stretch"
+
+    def to_dict(self) -> dict:
+        return {
+            "pid": self.pid,
+            "x": self.x,
+            "y": self.y,
+            "w": self.w,
+            "h": self.h,
+            "mode": self.mode,
+        }
+
+    @staticmethod
+    def from_dict(data: dict) -> "ImagePlacement | None":
+        try:
+            pid = int(data["pid"])
+            rect = {k: int(data[k]) for k in ("x", "y", "w", "h")}
+        except (KeyError, TypeError, ValueError):
+            return None
+        return ImagePlacement(pid, mode=str(data.get("mode", "stretch")), **rect)
+
+
 class Layer:
     """Represents a single layer in the tilemap.
 
@@ -33,6 +86,8 @@ class Layer:
         y_sort_origin: int = 0,
         image_path: str | None = None,
         image_rect: dict[str, int] | None = None,
+        image_placements: list[dict] | None = None,
+        next_placement_id: int = 1,
     ):
         self.name = name
         self.layer_type = layer_type
@@ -45,11 +100,23 @@ class Layer:
         self.properties: dict[str, Any] = {}
 
         self.image_path = image_path if layer_type == "image" else None
-        self.image_rect = (
-            dict(image_rect)
-            if layer_type == "image" and image_rect is not None
-            else None
-        )
+        self.image_rect = dict(image_rect) if layer_type == "image" and image_rect is not None else None
+        self.image_placements: list[ImagePlacement] = []
+        self.next_placement_id: int = _coerce_count(next_placement_id)
+        if layer_type == "image" and image_placements:
+            seen_pids: set[int] = set()
+            for raw in image_placements:
+                if not isinstance(raw, dict):
+                    continue
+                placement = ImagePlacement.from_dict(raw)
+                if placement is None:
+                    continue
+                if placement.pid < 1 or placement.pid in seen_pids:
+                    continue
+                seen_pids.add(placement.pid)
+                self.image_placements.append(placement)
+                if placement.pid >= self.next_placement_id:
+                    self.next_placement_id = placement.pid + 1
 
         self.tiles: dict[tuple[int, int], TypeTile] = {}
 
@@ -331,6 +398,82 @@ class Layer:
     def get_all_objects(self) -> dict[int, TypeObject]:
         return dict(self.objects)
 
+    def ensure_placements(self) -> list[ImagePlacement]:
+        """Seed placements from ``image_rect`` on first duplicate action.
+
+        Until then the list stays empty and the layer behaves exactly as
+        before (single ``image_rect`` copy), so untouched files never
+        change shape.
+        """
+        if self.layer_type == "image" and not self.image_placements and isinstance(self.image_rect, dict):
+            rect = self.image_rect
+            try:
+                seed = ImagePlacement(
+                    self.next_placement_id,
+                    x=int(rect.get("x", 0)),
+                    y=int(rect.get("y", 0)),
+                    w=int(rect.get("w", 8)),
+                    h=int(rect.get("h", 8)),
+                )
+            except (TypeError, ValueError):
+                return self.image_placements
+            self.next_placement_id += 1
+            self.image_placements.append(seed)
+        return self.image_placements
+
+    def add_placement(self, rect: dict[str, int], mode: str = "stretch") -> int:
+        """Append a copy; returns its pid, or -1 when locked/not image."""
+        if self.locked or self.layer_type != "image":
+            return -1
+        self.ensure_placements()
+        try:
+            placement = ImagePlacement(
+                self.next_placement_id,
+                x=int(rect.get("x", 0)),
+                y=int(rect.get("y", 0)),
+                w=int(rect.get("w", 8)),
+                h=int(rect.get("h", 8)),
+                mode=mode,
+            )
+        except (TypeError, ValueError):
+            return -1
+        self.next_placement_id += 1
+        self.image_placements.append(placement)
+        return placement.pid
+
+    def get_placement(self, pid: int) -> ImagePlacement | None:
+        for placement in self.image_placements:
+            if placement.pid == pid:
+                return placement
+        return None
+
+    def placement_index(self, pid: int) -> int:
+        for i, placement in enumerate(self.image_placements):
+            if placement.pid == pid:
+                return i
+        return -1
+
+    def remove_placement(self, pid: int) -> bool:
+        if self.locked or self.layer_type != "image":
+            return False
+        index = self.placement_index(pid)
+        if index < 0:
+            return False
+        del self.image_placements[index]
+        return True
+
+    def reorder_placement(self, pid: int, to_index: int) -> bool:
+        """Move a copy within paint order (0 = back)."""
+        if self.locked or self.layer_type != "image":
+            return False
+        index = self.placement_index(pid)
+        if index < 0:
+            return False
+        to_index = max(0, min(len(self.image_placements) - 1, to_index))
+        placement = self.image_placements.pop(index)
+        self.image_placements.insert(to_index, placement)
+        return True
+
     def move_object(self, obj_id: int, new_pos: tuple[int, int]) -> bool:
         if not self.locked and obj_id in self.objects:
             self.objects[obj_id]["area"]["x"] = new_pos[0]
@@ -361,6 +504,9 @@ class Layer:
             data["tiles"] = {}
             data["objects"] = {}
             data["next_object_id"] = self.next_object_id
+            if self.image_placements:
+                data["image_placements"] = [p.to_dict() for p in self.image_placements]
+                data["next_placement_id"] = self.next_placement_id
             data["properties"] = dict(getattr(self, "properties", {}))
             data["metadata"] = getattr(self, "metadata", {})
             return data
@@ -394,6 +540,8 @@ class Layer:
             y_sort_origin=data.get("y_sort_origin", 0),
             image_path=data.get("image_path"),
             image_rect=data.get("image_rect"),
+            image_placements=data.get("image_placements"),
+            next_placement_id=_coerce_count(data.get("next_placement_id")),
         )
         layer.properties = dict(data.get("properties", {}))
         if "metadata" in data:
@@ -422,6 +570,9 @@ class Layer:
 
         if "next_object_id" in data:
             layer.next_object_id = data["next_object_id"]
+
+        if "next_placement_id" in data:
+            layer.next_placement_id = max(layer.next_placement_id, _coerce_count(data["next_placement_id"]))
 
         return layer
 
@@ -495,6 +646,8 @@ class LayerManager:
         clone.tiles = copy.deepcopy(src.tiles)
         clone.objects = copy.deepcopy(src.objects)
         clone.next_object_id = src.next_object_id
+        clone.image_placements = copy.deepcopy(src.image_placements)
+        clone.next_placement_id = src.next_placement_id
         self.layers.insert(index + 1, clone)
         self._update_z_indices()
         if self.active_layer_idx > index:

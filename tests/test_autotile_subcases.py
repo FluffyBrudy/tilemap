@@ -13,7 +13,6 @@ Covers:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from layers import Layer
 from widgets.autotile_template import (

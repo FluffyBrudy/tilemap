@@ -22,10 +22,17 @@ class CollisionPolygon:
     one_way: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization"""
+        """Convert to dictionary for serialization.
+
+        Vertices are rounded to 3 decimals: sub-pixel editor noise
+        (e.g. 76.39803629890734 from edge projection) must not reach
+        the physics runner, whose seam tolerance is 0.01px.
+        """
         return {
             "type": "polygon",
-            "vertices": self.vertices,
+            "vertices": [
+                (round(float(x), 3), round(float(y), 3)) for x, y in self.vertices
+            ],
             "one_way": self.one_way,
         }
 

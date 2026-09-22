@@ -6,8 +6,6 @@ from pathlib import Path
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 
 class TestMapResizeModel:
     def test_signed_int_input_allows_negative_values(self):

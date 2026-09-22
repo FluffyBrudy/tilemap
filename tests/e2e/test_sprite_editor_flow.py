@@ -1,32 +1,26 @@
 """Editor interaction tests: selection, copy/paste, move, region, tools, chrome.
 
 Drives the full event pipeline (pygame event -> editor -> tool -> command),
-same shape as the plan's §14 test list.
+same shape as the plan's section14 test list.
 """
 
-import os
-
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-import sys
 from pathlib import Path
 
 import pygame
 import pytest
 from pygame import Rect
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from plugins.sprite_editor.document import Region  # noqa: E402
-from plugins.sprite_editor.editor import (  # noqa: E402
+from plugins.sprite_editor.document import Region
+from plugins.sprite_editor.editor import (
     MENU_H,
     STATUS_H,
     TOOLBAR_H,
     SpriteEditor,
 )
-from plugins.sprite_editor.tools import PasteTool, RegionTool, SelectTool  # noqa: E402
-from plugins.sprite_editor.viewport import HEADER_H  # noqa: E402
+from plugins.sprite_editor.tools import PasteTool, RegionTool, SelectTool
+from plugins.sprite_editor.viewport import HEADER_H
+
+pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture(autouse=True)
@@ -126,7 +120,7 @@ class TestSelectionFlow:
 
 
 # ---------------------------------------------------------------------------
-# Copy / Paste / Cut (plan §7 + P1-P9)
+# Copy / Paste / Cut (plan section7 + P1-P9)
 # ---------------------------------------------------------------------------
 
 
@@ -214,7 +208,7 @@ class TestCopyPaste:
 
 
 # ---------------------------------------------------------------------------
-# Move / drag (plan §6.3)
+# Move / drag (plan section6.3)
 # ---------------------------------------------------------------------------
 
 
@@ -276,7 +270,7 @@ class TestMove:
 
 
 # ---------------------------------------------------------------------------
-# Region tool (plan §8)
+# Region tool (plan section8)
 # ---------------------------------------------------------------------------
 
 
@@ -309,7 +303,7 @@ class TestRegionTool:
         editor._on_mode_changed("grid", "regions")
         for zoom, label in [(0.5, "out"), (4.0, "in")]:
             editor.camera.zoom = zoom
-            # 4 screen px drag → 8/0.5=16 world px at 0.5x; 1 world px at 4x
+            # 4 screen px drag -> 8/0.5=16 world px at 0.5x; 1 world px at 4x
             editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=(100, MENU_H + TOOLBAR_H + HEADER_H + 100)))
             editor.handle_event(ev(pygame.MOUSEMOTION, pos=(104, MENU_H + TOOLBAR_H + HEADER_H + 104)))
             editor.handle_event(ev(pygame.MOUSEBUTTONUP, button=1, pos=(104, MENU_H + TOOLBAR_H + HEADER_H + 104)))
@@ -358,7 +352,7 @@ class TestRegionTool:
         editor.doc.regions = [Region(id="a", rect=[10.0, 10.0, 40.0, 40.0])]
         tool = editor._active_tool
         tool.selected_id = "a"
-        # grab the BR handle: world (50,50) → screen
+        # grab the BR handle: world (50,50) -> screen
         p1 = editor.camera.world_to_screen(50, 50)
         p2 = editor.camera.world_to_screen(80, 70)
         editor.handle_event(ev(pygame.MOUSEBUTTONDOWN, button=1, pos=p1))
@@ -380,7 +374,7 @@ class TestRegionTool:
             rect = Rect(sx, sy, sw, sh)
             cx, cy = round(sx + sw), round(sy + sh)  # BR corner center (screen px)
             assert handle_at(rect, (cx, cy), 8) == "br", f"zoom {zoom} center"
-            # ±3 px around the corner center still hits (8px handles).
+            # +/-3 px around the corner center still hits (8px handles).
             # At zoom 0.25 the 10px-wide rect makes corners overlap the
             # edge handles, so only test the full ring at zoom >= 1.
             offsets = [(0, 0), (3, 0), (-3, 0), (0, 3), (0, -3)] if zoom >= 1 else [(0, 0)]
@@ -429,7 +423,7 @@ class TestRegionTool:
 
 
 # ---------------------------------------------------------------------------
-# View / chrome (plan §10)
+# View / chrome (plan section10)
 # ---------------------------------------------------------------------------
 
 
@@ -512,7 +506,7 @@ class TestChrome:
         # vertical line at world x=96 (col 3 edge), inside the sheet
         vx = round(editor.camera.world_to_screen(96, 0)[0])
         assert screen.get_at((vx, content_y + 100))[:3] == line_color
-        # vertical line at world x=192 (col 6) — past the 128px sheet edge
+        # vertical line at world x=192 (col 6) -- past the 128px sheet edge
         wx = round(editor.camera.world_to_screen(192, 0)[0])
         assert screen.get_at((wx, content_y + 100))[:3] == line_color
         # horizontal line at world y=96 (row 3), past the sheet edge (x=700)
@@ -600,7 +594,7 @@ class TestStacking:
     def _load(self, editor, tmp_path, colors):
         for name, color in colors:
             self._write_png(tmp_path / name, color)
-        # deliberately shuffled — must come out naturally sorted
+        # deliberately shuffled -- must come out naturally sorted
         editor._on_add_sheets([tmp_path / name for name, _ in reversed(colors)])
 
     def test_multi_sheet_load_sorted_naturally(self, tmp_path):

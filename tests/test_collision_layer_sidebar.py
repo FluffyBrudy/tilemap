@@ -14,8 +14,6 @@ Covers:
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -24,7 +22,6 @@ import pygame
 import pytest
 from pygame import Rect
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
 

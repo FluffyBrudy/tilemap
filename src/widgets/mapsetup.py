@@ -58,6 +58,16 @@ class MapSetup(WidgetBase):
         )
 
         self._relayout()
+        self.focus_first_field()
+
+    def focus_first_field(self):
+        """Focus the first input (mirror sprite-editor dialogs)."""
+        for o in self.inputs:
+            o.is_focused = False
+            o.selection_start = None
+        if self.inputs:
+            self.inputs[0].is_focused = True
+            self.inputs[0].cursor_pos = len(self.inputs[0].text)
 
     def _relayout(self):
         cols = 2
@@ -101,6 +111,14 @@ class MapSetup(WidgetBase):
             return True
         if self.btn_open.handle_event(event):
             return True
+
+        if event.type == pygame.KEYDOWN and event.key in (
+            pygame.K_RETURN,
+            pygame.K_KP_ENTER,
+        ):
+            if any(inp.is_focused for inp in self.inputs):
+                self.submit()
+                return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB:
             focused = [i for i in self.inputs if i.is_focused]
