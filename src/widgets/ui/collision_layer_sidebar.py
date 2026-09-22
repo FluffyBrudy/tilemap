@@ -37,11 +37,13 @@ class CollisionLayerSidebar:
         initial_layer: int = 1,
         initial_mask: int = 0xFFFF,
         on_changed: Callable[[int, int], None] | None = None,
+        toggle_top: int = 6,
     ):
         self._parent_rect = parent_rect
         self._visible = False
         self._close_rect = Rect(0, 0, 28, 28)
         self._max_layers = max_layers
+        self._toggle_top = toggle_top
 
         self._sidebar_width = CollisionLayerMaskWidget.calc_min_width(max_layers)
 
@@ -141,11 +143,12 @@ class CollisionLayerSidebar:
             border_radius=SHAPE.radius_sm,
         )
 
-        close_font = font_manager.get_font(
-            FONTS.name, FONTS.size_md, FontWeight.REGULAR
-        )
-        close_text = close_font.render("✕", True, COLORS.text)
-        screen.blit(close_text, close_text.get_rect(center=self._close_rect.center))
+        # Drawn X: the UI font has no U+2715 glyph (renders as tofu), so
+        # stroke it directly instead of rendering text.
+        cx, cy = self._close_rect.center
+        arm = 6
+        pygame.draw.line(screen, COLORS.text, (cx - arm, cy - arm), (cx + arm, cy + arm), 2)
+        pygame.draw.line(screen, COLORS.text, (cx - arm, cy + arm), (cx + arm, cy - arm), 2)
 
         self._rebuild_widget_layout()
         self.widget.draw(screen)
@@ -178,7 +181,7 @@ class CollisionLayerSidebar:
     def _rebuild_layout(self) -> None:
         self._toggle_rect = Rect(
             self._parent_rect.right - 42,
-            self._parent_rect.y + 6,
+            self._parent_rect.y + self._toggle_top,
             32,
             32,
         )

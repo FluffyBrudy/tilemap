@@ -5,6 +5,7 @@ import pygame
 from pygame import Rect, Surface
 
 from utils.context_dispatch import ContextKind, PropertyContext
+from utils.shortcuts import is_cmd_or_ctrl
 from widgets.input import InlineTextInput
 from widgets.ui.button import Button
 from widgets.ui.property_editor import PropertyEditor
@@ -15,10 +16,7 @@ if TYPE_CHECKING:
 
 
 def fit_text(font, text: str, max_w: int) -> str:
-    """Truncate text with an ellipsis to fit max_w pixels (headless-safe).
-
-    Returns "" when nothing (not even "..") fits; short text passes through.
-    """
+    """Shorten text to fit width."""
     if max_w <= 0:
         return ""
     try:
@@ -35,7 +33,7 @@ def fit_text(font, text: str, max_w: int) -> str:
 
 
 class LayerSelector:
-    """Widget for selecting and managing tile layers."""
+
 
     def __init__(self, editor: "Editor", x: int, y: int, w: int, h: int):
         self.editor = editor
@@ -108,7 +106,7 @@ class LayerSelector:
         self.btn_replace_image.resize(x + 95, btn_y, 85, 25)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle pygame events. Returns True if event was consumed."""
+
         mouse_pos = pygame.mouse.get_pos()
 
         # Rename takes priority over every other mouse target (footer
@@ -261,13 +259,19 @@ class LayerSelector:
                 return True
 
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
-                grid_selection = getattr(getattr(self.editor, "tile_grid_widget", None), "selection_rect", None)
+                grid = getattr(self.editor, "tile_grid_widget", None)
+                grid_selection = getattr(grid, "selection_rect", None)
                 if grid_selection:
+                    return False
+                # An image-copy pick belongs to the grid's single-copy
+                # remover; deleting the layer here would wipe every copy.
+                has_image = getattr(grid, "has_image_selection", None)
+                if callable(has_image) and has_image():
                     return False
                 self._remove_layer()
                 return True
 
-            if event.key == pygame.K_d and (event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META)):
+            if event.key == pygame.K_d and is_cmd_or_ctrl(event.mod):
                 self._duplicate_layer()
                 return True
 
@@ -285,7 +289,7 @@ class LayerSelector:
         return False
 
     def _step_active_layer(self, delta: int) -> None:
-        """Move the active layer selection; list scrolls via wheel/drag."""
+
         mgr = self.editor.tilemap.layer_manager
         count = mgr.get_layer_count()
         if count == 0:
@@ -305,7 +309,7 @@ class LayerSelector:
         return None
 
     def _get_active_layer(self):
-        """Return the active layer while retaining compatibility with test doubles."""
+
         manager = self.editor.tilemap.layer_manager
         if hasattr(manager, "get_active_layer"):
             return manager.get_active_layer()
@@ -489,7 +493,7 @@ class LayerSelector:
                 self.editor.tile_grid_widget.invalidate_image_cache()
 
     def _duplicate_layer(self) -> None:
-        """Deep-copy the active layer and insert the copy below it."""
+
         mgr = self.editor.tilemap.layer_manager
         idx = mgr.active_layer_idx
         if mgr.get_layer(idx) is None:

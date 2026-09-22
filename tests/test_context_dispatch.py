@@ -7,16 +7,16 @@ Covers:
 - Saver registration + dispatch
 - Unregistered kinds no-op safely
 - Registration replaces previous handlers
-- PropertyEditor: Return saves via context dispatch and closes
+- PropertyEditor: every mutation saves immediately and stays open
 - PropertyEditor: Return while editing a value commits then saves
-- PropertyEditor: Escape cancels without saving
+- PropertyEditor: Escape closes (everything already saved)
+- PropertyEditor: Escape during add-key cancels just the entry
+- PropertyEditor: Delete/Remove saves immediately with a toast
 - PropertyEditor: no Save button anymore
 """
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -24,7 +24,6 @@ from pathlib import Path
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from utils.context_dispatch import (
     ContextKind,
@@ -159,9 +158,9 @@ class TestPropertyEditorContextSave:
 
         assert len(saved) == 1
         assert saved[0][1] == {"a": 42, "b": "x"}
-        assert pe.active is False
+        assert pe.active is True
 
-    def test_return_after_new_key_commits_then_saves(self):
+    def test_return_after_new_key_saves_immediately_and_stays_open(self):
         _editor, pe, saved, _ = self._make_editor_with_saver()
         pe.is_entering_new_key = True
         pe.new_key_input = "new_key"
@@ -171,14 +170,9 @@ class TestPropertyEditorContextSave:
         assert "new_key" in pe.properties
         assert pe.editing_value is True
         assert pe.active is True
-        assert saved == []
-
-        second = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
-        assert pe.handle_event(second) is True
         assert len(saved) == 1
-        assert pe.active is False
 
-    def test_escape_cancels_without_saving(self):
+    def test_escape_closes_everything_already_saved(self):
         _editor, pe, saved, _ = self._make_editor_with_saver()
 
         event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE)
@@ -186,6 +180,45 @@ class TestPropertyEditorContextSave:
 
         assert saved == []
         assert pe.active is False
+
+    def test_escape_during_add_cancels_entry_not_dialog(self):
+        _editor, pe, saved, _ = self._make_editor_with_saver()
+        pe.is_entering_new_key = True
+        pe.new_key_input = "half"
+
+        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE)
+        assert pe.handle_event(event) is True
+
+        assert pe.active is True
+        assert pe.is_entering_new_key is False
+        assert "half" not in pe.properties
+        assert saved == []
+
+    def test_delete_key_saves_immediately_with_toast(self):
+        _editor, pe, saved, _ = self._make_editor_with_saver()
+        pe.selected_key = "a"
+        pe.editing_value = True
+        pe.input_text = "1"
+
+        event = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DELETE)
+        assert pe.handle_event(event) is True
+
+        assert "a" not in pe.properties
+        assert len(saved) == 1
+        assert saved[0][1] == {"b": "x"}
+        assert pe.active is True
+        assert any("Removed 'a'" in t.message for t in pe._toasts._toasts)
+
+    def test_remove_button_saves_immediately(self):
+        _editor, pe, saved, _ = self._make_editor_with_saver()
+        pe.selected_key = "b"
+        pe._update_remove_enabled()
+        pe._on_remove_click()
+
+        assert "b" not in pe.properties
+        assert len(saved) == 1
+        assert saved[0][1] == {"a": 1}
+        assert pe.active is True
 
     def test_no_save_button(self):
         _editor, pe, _, _ = self._make_editor_with_saver()

@@ -9,8 +9,6 @@ Covers:
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -18,7 +16,6 @@ from pathlib import Path
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from utils.context_dispatch import (
     ContextKind,

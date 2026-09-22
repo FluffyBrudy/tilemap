@@ -55,6 +55,7 @@ class Toolbar:
         add("grid", "grid", "Toggle Grid (G)")
         add("auto", "auto", "Auto-Autotile")
         add("edit_nodes", "pencil", "Edit Nodes (Ctrl+Shift+N)")
+        add("particles", "sparkle", "Toggle Particle Previews")
         sep()
         add("zoom_out", "zoomout", "Zoom Out (Ctrl+Wheel)")
         add("zoom_in", "zoomin", "Zoom In (Ctrl+Wheel)")
@@ -87,10 +88,12 @@ class Toolbar:
             e.toggle_auto_autotile()
         elif key == "edit_nodes":
             e.toggle_node_editing()
+        elif key == "particles":
+            e.toggle_show_particles()
         elif key == "zoom_in" and e.tile_grid_widget:
-            e.tile_grid_widget.zoom_by(0.1)
+            e.tile_grid_widget.zoom_by_steps(2)
         elif key == "zoom_out" and e.tile_grid_widget:
-            e.tile_grid_widget.zoom_by(-0.1)
+            e.tile_grid_widget.zoom_by_steps(-2)
         elif key == "reset" and e.tile_grid_widget:
             e.tile_grid_widget.reset_view()
         elif key == "fit" and e.tile_grid_widget:
@@ -122,6 +125,8 @@ class Toolbar:
                 btn.active = e.autotile_mode
             elif k == "edit_nodes":
                 btn.active = e.node_editing_mode
+            elif k == "particles":
+                btn.active = bool(getattr(e, "show_particles", True))
             else:
                 btn.active = False
 

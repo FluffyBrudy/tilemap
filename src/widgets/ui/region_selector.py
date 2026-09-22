@@ -21,6 +21,7 @@ import pygame
 from pygame import Rect, Surface
 
 from utils.font_manager import FontWeight, font_manager
+from utils.shortcuts import is_cmd_or_ctrl
 from widgets.ui.drag_tracker import ResizeEdge, ResizeTracker
 from widgets.ui.theme import COLORS
 
@@ -324,7 +325,7 @@ class RegionSelector:
 
         if event.type == pygame.MOUSEWHEEL and in_bounds:
             mods = pygame.key.get_mods()
-            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+            if is_cmd_or_ctrl(mods):
                 old_zoom = self.zoom
                 if event.y > 0:
                     self.zoom = min(self.zoom * 1.15, 8.0)

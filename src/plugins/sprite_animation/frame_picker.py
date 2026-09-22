@@ -73,6 +73,8 @@ class FramePicker:
 
         self._checker: pygame.Surface | None = None
 
+        self.fit_sheet()
+
     def set_surface(
         self, surface: pygame.Surface, tile_size: tuple[int, int] | None = None
     ) -> None:
@@ -80,6 +82,7 @@ class FramePicker:
         if tile_size:
             self.tile_size = tile_size
         self._recalc_grid()
+        self.fit_sheet()
 
     def set_highlighted(self, indices: set[int]) -> None:
         self.highlighted = indices
@@ -115,6 +118,30 @@ class FramePicker:
 
     def resize(self, rect: Rect) -> None:
         self.rect = rect
+
+    def inner_rect(self) -> Rect:
+        return Rect(
+            self.rect.x,
+            self.rect.y + TOP_BAR_TOTAL,
+            self.rect.w,
+            max(0, self.rect.h - TOP_BAR_TOTAL),
+        )
+
+    def fit_sheet(self, margin: float = 0.9) -> None:
+        """Fit sheet in view. Small sheets open 1:1, centered below the header."""
+        inner = self.inner_rect()
+        sw, sh = self.surface.get_size()
+        if sw <= 0 or sh <= 0 or inner.w <= 0 or inner.h <= 0:
+            self.zoom = 1.0
+            self.offset_x = 0.0
+            self.offset_y = float(TOP_BAR_TOTAL)
+            return
+        if min(inner.w / sw, inner.h / sh) >= 1.0:
+            self.zoom = 1.0
+        else:
+            self.zoom = min(inner.w / sw, inner.h / sh) * margin
+        self.offset_x = (inner.w - sw * self.zoom) / 2
+        self.offset_y = TOP_BAR_TOTAL + (inner.h - sh * self.zoom) / 2
 
     def set_grid_offset(self, offset_x: int, offset_y: int) -> None:
         self.grid_offset_x = offset_x
@@ -272,9 +299,10 @@ class FramePicker:
                     self.offset_y -= rel_y * (scale - 1)
                     return True
                 if event.key == pygame.K_0:
-                    self.zoom = 1.0
-                    self.offset_x = 0.0
-                    self.offset_y = 0.0
+                    self.fit_sheet()
+                    return True
+                if event.key == pygame.K_f:
+                    self.fit_sheet()
                     return True
 
                 pan_amount = 20
@@ -329,7 +357,8 @@ class FramePicker:
     def draw(self, screen: pygame.Surface) -> None:
         self._ensure_fonts()
         clip = screen.get_clip()
-        screen.set_clip(self.rect)
+        inner = self.inner_rect()
+        screen.set_clip(inner)
 
         self._draw_checker_bg(screen)
 
@@ -352,7 +381,7 @@ class FramePicker:
         grid_start_x = img_x + (self.grid_offset_x * z)
         grid_start_y = img_y + (self.grid_offset_y * z)
 
-        grid_clip = sheet_screen_rect.clip(self.rect)
+        grid_clip = sheet_screen_rect.clip(self.inner_rect())
         if grid_clip.width > 0 and grid_clip.height > 0:
             grid_alpha_surf = pygame.Surface(
                 (grid_clip.w, grid_clip.h), pygame.SRCALPHA
@@ -435,13 +464,14 @@ class FramePicker:
             screen.blit(bg, bg_rect.topleft)
             screen.blit(label, (lx, ly))
 
+        screen.set_clip(self.rect)
         hdr = Rect(self.rect.x, self.rect.y, self.rect.w, TOP_TITLE_H)
         hdr_bg = pygame.Surface((hdr.w, hdr.h), pygame.SRCALPHA)
         hdr_bg.fill((*COLORS.header, 200))
         screen.blit(hdr_bg, hdr.topleft)
         title = self._font.render(
             f"Spritesheet  ({self.cols}×{self.rows})  Zoom: {self.zoom:.1f}x"
-            f"  ·  click: add/remove  ·  Ctrl+click: select  ·  +/-: zoom  ·  arrows: pan",
+            f"  ·  click: add/remove  ·  Ctrl+click: select  ·  +/-: zoom  ·  F: fit",
             True,
             COLORS.text,
         )

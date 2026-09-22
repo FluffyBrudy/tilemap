@@ -18,6 +18,7 @@ from pygame import Rect
 
 from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
+from utils.shortcuts import is_cmd_or_ctrl
 from widgets.ui.theme import COLORS
 
 ShapeType = Literal["rectangle", "circle", "capsule", "polygon"]
@@ -33,6 +34,7 @@ _COLORS = {
     "text": (230, 230, 230),
     "text_dim": (140, 140, 140),
     "grid": (255, 255, 255),
+    "probe": (100, 200, 255),
 }
 
 
@@ -71,7 +73,9 @@ class ShapeEditor:
 
         self.offset_x: float = 0.0
         self.offset_y: float = 0.0
-        self.zoom: float = 3.0
+        self.zoom: float = 1.0
+        self._scaled_cache_key: tuple | None = None
+        self._scaled_cache: pygame.Surface | None = None
 
         self.dragging_handle: str | None = None
         self.hover_handle: str | None = None
@@ -87,6 +91,7 @@ class ShapeEditor:
 
         self.show_grid = True
         self.grid_size = 8
+        self.show_probe = False
 
         self._font: pygame.font.Font | None = None
         self._font_sm: pygame.font.Font | None = None
@@ -94,14 +99,26 @@ class ShapeEditor:
         self._center_view()
         self._center_shape()
 
+    FIT_MARGIN = 0.9
+    MIN_FIT_ZOOM = 0.05
+
     def _center_view(self) -> None:
-        """Center the sprite in the viewport"""
+
         sw, sh = self.sprite_surface.get_size()
         self.offset_x = (self.rect.w - sw * self.zoom) / 2
         self.offset_y = (self.rect.h - sh * self.zoom) / 2
 
+    def fit_view(self, margin: float = FIT_MARGIN) -> None:
+
+        sw, sh = self.sprite_surface.get_size()
+        if sw <= 0 or sh <= 0 or self.rect.w <= 0 or self.rect.h <= 0:
+            self._center_view()
+            return
+        self.zoom = max(self.MIN_FIT_ZOOM, min(self.rect.w / sw, self.rect.h / sh) * margin)
+        self._center_view()
+
     def _focus_on_shape(self) -> None:
-        """Center the viewport on the shape's bounding box"""
+
         left, top, right, bottom = self._shape_bounds()
         cx = (left + right) / 2
         cy = (top + bottom) / 2
@@ -109,15 +126,23 @@ class ShapeEditor:
         self.offset_y = self.rect.h / 2 - cy * self.zoom
 
     def _shape_bounds(self) -> tuple[float, float, float, float]:
-        """Get shape bounding box in sprite-local coords (left, top, right, bottom)"""
+
         if self.shape_type == "rectangle":
             return (self.rect_x, self.rect_y, self.rect_x + self.rect_w, self.rect_y + self.rect_h)
         if self.shape_type == "circle":
-            return (self.circle_x - self.circle_radius, self.circle_y - self.circle_radius,
-                    self.circle_x + self.circle_radius, self.circle_y + self.circle_radius)
+            return (
+                self.circle_x - self.circle_radius,
+                self.circle_y - self.circle_radius,
+                self.circle_x + self.circle_radius,
+                self.circle_y + self.circle_radius,
+            )
         if self.shape_type == "capsule":
-            return (self.capsule_x - self.capsule_radius, self.capsule_y,
-                    self.capsule_x + self.capsule_radius, self.capsule_y + self.capsule_height)
+            return (
+                self.capsule_x - self.capsule_radius,
+                self.capsule_y,
+                self.capsule_x + self.capsule_radius,
+                self.capsule_y + self.capsule_height,
+            )
         if self.shape_type == "polygon" and self.polygon_vertices:
             xs = [v[0] for v in self.polygon_vertices]
             ys = [v[1] for v in self.polygon_vertices]
@@ -125,7 +150,7 @@ class ShapeEditor:
         return (0, 0, 0, 0)
 
     def _center_shape(self) -> None:
-        """Center all shape types on the sprite"""
+
         sw, sh = self.sprite_surface.get_size()
 
         self.rect_w = sw * 0.5
@@ -143,32 +168,32 @@ class ShapeEditor:
         self.capsule_y = (sh - self.capsule_height) / 2
 
     def _ensure_fonts(self) -> None:
-        """Initialize fonts"""
+
         if self._font is None:
             self._font = font_manager.get_font("Arial", 13, FontWeight.REGULAR)
         if self._font_sm is None:
             self._font_sm = font_manager.get_font("Arial", 11, FontWeight.REGULAR)
 
     def _screen_to_sprite(self, screen_pos: tuple[int, int]) -> tuple[float, float]:
-        """Convert screen coordinates to sprite-local coordinates"""
+
         x = (screen_pos[0] - self.rect.x - self.offset_x) / self.zoom
         y = (screen_pos[1] - self.rect.y - self.offset_y) / self.zoom
         return (x, y)
 
     def _sprite_to_screen(self, sprite_pos: tuple[float, float]) -> tuple[int, int]:
-        """Convert sprite-local coordinates to screen coordinates"""
+
         x = int(self.rect.x + self.offset_x + sprite_pos[0] * self.zoom)
         y = int(self.rect.y + self.offset_y + sprite_pos[1] * self.zoom)
         return (x, y)
 
     def set_shape_type(self, shape_type: ShapeType) -> None:
-        """Change the shape type"""
+
         self.shape_type = shape_type
         if shape_type == "polygon":
             self.current_polygon = []
 
     def get_shape_data(self) -> dict:
-        """Get the current shape data"""
+
         if self.shape_type == "rectangle":
             return {
                 "type": "rectangle",
@@ -198,7 +223,7 @@ class ShapeEditor:
         return {}
 
     def load_shape_data(self, data: dict) -> None:
-        """Load shape data"""
+
         shape_type = data.get("type", "rectangle")
         self.shape_type = shape_type
 
@@ -222,17 +247,18 @@ class ShapeEditor:
         self._focus_on_shape()
 
     def resize(self, rect: Rect) -> None:
-        """Update rect"""
+        """Update rect, preserving the current view offsets."""
         self.rect = rect
-        self._center_view()
 
     def load_sprite(self, surface: pygame.Surface) -> None:
         self.sprite_surface = surface
-        self._center_view()
+        self._scaled_cache_key = None
+        self._scaled_cache = None
+        self.fit_view()
         self._center_shape()
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Handle input events"""
+
         mouse = pygame.mouse.get_pos()
 
         if not self.rect.collidepoint(mouse) and event.type not in (
@@ -281,10 +307,11 @@ class ShapeEditor:
 
         if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(mouse):
             mods = pygame.key.get_mods()
-            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
-                self.zoom *= 1.15 if event.y > 0 else 0.87
-                self.zoom = max(0.5, min(self.zoom, 8.0))
+            if is_cmd_or_ctrl(mods):
                 sprite_pos = self._screen_to_sprite(mouse)
+                self.zoom *= 1.15 if event.y > 0 else 0.87
+                self.zoom = max(self.MIN_FIT_ZOOM, min(self.zoom, 8.0))
+                self._scaled_cache_key = None
                 self.offset_x = mouse[0] - self.rect.x - sprite_pos[0] * self.zoom
                 self.offset_y = mouse[1] - self.rect.y - sprite_pos[1] * self.zoom
             elif mods & pygame.KMOD_SHIFT:
@@ -353,9 +380,11 @@ class ShapeEditor:
             if event.key == pygame.K_g:
                 self.show_grid = not self.show_grid
                 return True
+            if event.key == pygame.K_p:
+                self.show_probe = not self.show_probe
+                return True
             if event.key == pygame.K_r:
-                self._center_view()
-                self.zoom = 3.0
+                self.fit_view()
                 return True
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 if self.shape_type == "polygon" and len(self.current_polygon) >= 3:
@@ -393,22 +422,12 @@ class ShapeEditor:
 
         elif self.shape_type == "circle":
             center_screen = self._sprite_to_screen((self.circle_x, self.circle_y))
-            if (
-                math.hypot(
-                    screen_pos[0] - center_screen[0], screen_pos[1] - center_screen[1]
-                )
-                <= HANDLE_SIZE
-            ):
+            if math.hypot(screen_pos[0] - center_screen[0], screen_pos[1] - center_screen[1]) <= HANDLE_SIZE:
                 return "center"
 
             radius_point = (self.circle_x + self.circle_radius, self.circle_y)
             radius_screen = self._sprite_to_screen(radius_point)
-            if (
-                math.hypot(
-                    screen_pos[0] - radius_screen[0], screen_pos[1] - radius_screen[1]
-                )
-                <= HANDLE_SIZE
-            ):
+            if math.hypot(screen_pos[0] - radius_screen[0], screen_pos[1] - radius_screen[1]) <= HANDLE_SIZE:
                 return "radius"
 
         elif self.shape_type == "capsule":
@@ -416,19 +435,11 @@ class ShapeEditor:
             bottom = (self.capsule_x, self.capsule_y + self.capsule_height)
 
             top_screen = self._sprite_to_screen(top)
-            if (
-                math.hypot(screen_pos[0] - top_screen[0], screen_pos[1] - top_screen[1])
-                <= HANDLE_SIZE
-            ):
+            if math.hypot(screen_pos[0] - top_screen[0], screen_pos[1] - top_screen[1]) <= HANDLE_SIZE:
                 return "top"
 
             bottom_screen = self._sprite_to_screen(bottom)
-            if (
-                math.hypot(
-                    screen_pos[0] - bottom_screen[0], screen_pos[1] - bottom_screen[1]
-                )
-                <= HANDLE_SIZE
-            ):
+            if math.hypot(screen_pos[0] - bottom_screen[0], screen_pos[1] - bottom_screen[1]) <= HANDLE_SIZE:
                 return "bottom"
 
             radius_point = (
@@ -436,12 +447,7 @@ class ShapeEditor:
                 self.capsule_y + self.capsule_height / 2,
             )
             radius_screen = self._sprite_to_screen(radius_point)
-            if (
-                math.hypot(
-                    screen_pos[0] - radius_screen[0], screen_pos[1] - radius_screen[1]
-                )
-                <= HANDLE_SIZE
-            ):
+            if math.hypot(screen_pos[0] - radius_screen[0], screen_pos[1] - radius_screen[1]) <= HANDLE_SIZE:
                 return "radius"
 
         return None
@@ -480,9 +486,7 @@ class ShapeEditor:
             elif self.dragging_handle == "radius":
                 self.circle_radius = max(
                     1,
-                    math.hypot(
-                        sprite_pos[0] - self.circle_x, sprite_pos[1] - self.circle_y
-                    ),
+                    math.hypot(sprite_pos[0] - self.circle_x, sprite_pos[1] - self.circle_y),
                 )
 
         elif self.shape_type == "capsule":
@@ -502,19 +506,12 @@ class ShapeEditor:
             top_y = self.rect_y
             return self._sprite_to_screen((mid_x, top_y))
         if self.shape_type == "circle":
-            return self._sprite_to_screen(
-                (self.circle_x, self.circle_y - self.circle_radius)
-            )
+            return self._sprite_to_screen((self.circle_x, self.circle_y - self.circle_radius))
         if self.shape_type == "capsule":
-            return self._sprite_to_screen(
-                (self.capsule_x, self.capsule_y + self.capsule_height / 2)
-            )
+            return self._sprite_to_screen((self.capsule_x, self.capsule_y + self.capsule_height / 2))
         if self.shape_type == "polygon" and len(self.polygon_vertices) >= 3:
             min_y = min(v[1] for v in self.polygon_vertices)
-            mid_x = (
-                min(v[0] for v in self.polygon_vertices)
-                + max(v[0] for v in self.polygon_vertices)
-            ) / 2
+            mid_x = (min(v[0] for v in self.polygon_vertices) + max(v[0] for v in self.polygon_vertices)) / 2
             return self._sprite_to_screen((mid_x, min_y))
         return (0, 0)
 
@@ -533,37 +530,25 @@ class ShapeEditor:
         """Check if a screen position is inside the current shape (for hover detection)"""
         if self.shape_type == "rectangle":
             tl = self._sprite_to_screen((self.rect_x, self.rect_y))
-            br = self._sprite_to_screen(
-                (self.rect_x + self.rect_w, self.rect_y + self.rect_h)
-            )
+            br = self._sprite_to_screen((self.rect_x + self.rect_w, self.rect_y + self.rect_h))
             return tl[0] <= screen_pos[0] <= br[0] and tl[1] <= screen_pos[1] <= br[1]
 
         if self.shape_type == "circle":
             center = self._sprite_to_screen((self.circle_x, self.circle_y))
             radius = int(self.circle_radius * self.zoom)
-            return (
-                math.hypot(screen_pos[0] - center[0], screen_pos[1] - center[1])
-                <= radius
-            )
+            return math.hypot(screen_pos[0] - center[0], screen_pos[1] - center[1]) <= radius
 
         if self.shape_type == "capsule":
             top = self._sprite_to_screen((self.capsule_x, self.capsule_y))
-            bottom = self._sprite_to_screen(
-                (self.capsule_x, self.capsule_y + self.capsule_height)
-            )
+            bottom = self._sprite_to_screen((self.capsule_x, self.capsule_y + self.capsule_height))
             radius = int(self.capsule_radius * self.zoom)
             if math.hypot(screen_pos[0] - top[0], screen_pos[1] - top[1]) <= radius:
                 return True
-            if (
-                math.hypot(screen_pos[0] - bottom[0], screen_pos[1] - bottom[1])
-                <= radius
-            ):
+            if math.hypot(screen_pos[0] - bottom[0], screen_pos[1] - bottom[1]) <= radius:
                 return True
             left = top[0] - radius
             right = top[0] + radius
-            return (
-                left <= screen_pos[0] <= right and top[1] <= screen_pos[1] <= bottom[1]
-            )
+            return left <= screen_pos[0] <= right and top[1] <= screen_pos[1] <= bottom[1]
 
         if self.shape_type == "polygon" and len(self.polygon_vertices) >= 3:
             px, py = self._screen_to_sprite(screen_pos)
@@ -573,9 +558,7 @@ class ShapeEditor:
             for i in range(n):
                 vi = self.polygon_vertices[i]
                 vj = self.polygon_vertices[j]
-                if ((vi[1] > py) != (vj[1] > py)) and (
-                    px < (vj[0] - vi[0]) * (py - vi[1]) / (vj[1] - vi[1]) + vi[0]
-                ):
+                if ((vi[1] > py) != (vj[1] > py)) and (px < (vj[0] - vi[0]) * (py - vi[1]) / (vj[1] - vi[1]) + vi[0]):
                     inside = not inside
                 j = i
             return inside
@@ -594,23 +577,13 @@ class ShapeEditor:
         """Move shape by delta in sprite-local coordinates"""
         sw, sh = self.sprite_surface.get_size()
         if self.shape_type == "rectangle":
-            self.rect_x = max(
-                0, min(sw - self.rect_w, self._drag_start_positions["rect"][0] + dx)
-            )
-            self.rect_y = max(
-                0, min(sh - self.rect_h, self._drag_start_positions["rect"][1] + dy)
-            )
+            self.rect_x = max(0, min(sw - self.rect_w, self._drag_start_positions["rect"][0] + dx))
+            self.rect_y = max(0, min(sh - self.rect_h, self._drag_start_positions["rect"][1] + dy))
         elif self.shape_type == "circle":
-            self.circle_x = max(
-                0, min(sw, self._drag_start_positions["circle"][0] + dx)
-            )
-            self.circle_y = max(
-                0, min(sh, self._drag_start_positions["circle"][1] + dy)
-            )
+            self.circle_x = max(0, min(sw, self._drag_start_positions["circle"][0] + dx))
+            self.circle_y = max(0, min(sh, self._drag_start_positions["circle"][1] + dy))
         elif self.shape_type == "capsule":
-            self.capsule_x = max(
-                0, min(sw, self._drag_start_positions["capsule"][0] + dx)
-            )
+            self.capsule_x = max(0, min(sw, self._drag_start_positions["capsule"][0] + dx))
             self.capsule_y = max(
                 0,
                 min(
@@ -635,8 +608,11 @@ class ShapeEditor:
         if scaled_w > 0 and scaled_h > 0:
             sprite_x = int(self.rect.x + self.offset_x)
             sprite_y = int(self.rect.y + self.offset_y)
-            scaled = pygame.transform.scale(self.sprite_surface, (scaled_w, scaled_h))
-            screen.blit(scaled, (sprite_x, sprite_y))
+            key = (id(self.sprite_surface), (sw, sh), (scaled_w, scaled_h))
+            if key != self._scaled_cache_key or self._scaled_cache is None:
+                self._scaled_cache = pygame.transform.scale(self.sprite_surface, (scaled_w, scaled_h))
+                self._scaled_cache_key = key
+            screen.blit(self._scaled_cache, (sprite_x, sprite_y))
 
             sprite_rect = Rect(sprite_x, sprite_y, scaled_w, scaled_h)
             pygame.draw.rect(screen, (100, 100, 100), sprite_rect, 1)
@@ -645,6 +621,9 @@ class ShapeEditor:
             self._draw_grid(screen, sw, sh)
 
         self._draw_shape(screen)
+
+        if self.show_probe:
+            self._draw_probe(screen)
 
         if not self._pan_mode and not self.hover_handle:
             mouse = pygame.mouse.get_pos()
@@ -658,23 +637,47 @@ class ShapeEditor:
         screen.set_clip(clip)
 
     def _draw_grid(self, screen: pygame.Surface, sw: int, sh: int) -> None:
-        """Draw grid overlay"""
-        sprite_x = int(self.rect.x + self.offset_x)
-        sprite_y = int(self.rect.y + self.offset_y)
-        scaled_w = int(sw * self.zoom)
-        scaled_h = int(sh * self.zoom)
 
-        grid_surf = pygame.Surface((scaled_w, scaled_h), pygame.SRCALPHA)
+        if self.grid_size <= 0:
+            return
+        gx0 = max(0, math.floor(-self.offset_x / self.zoom / self.grid_size))
+        gx1 = min(
+            sw // self.grid_size,
+            math.ceil((self.rect.w - self.offset_x) / self.zoom / self.grid_size),
+        )
+        gy0 = max(0, math.floor(-self.offset_y / self.zoom / self.grid_size))
+        gy1 = min(
+            sh // self.grid_size,
+            math.ceil((self.rect.h - self.offset_y) / self.zoom / self.grid_size),
+        )
+        cell_px = self.grid_size * self.zoom
+        step = max(1, math.ceil(4 / cell_px)) if cell_px > 0 else 1
 
-        for x in range(0, sw + 1, self.grid_size):
-            sx = int(x * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (sx, 0), (sx, scaled_h))
-
-        for y in range(0, sh + 1, self.grid_size):
-            sy = int(y * self.zoom)
-            pygame.draw.line(grid_surf, (*_COLORS["grid"], 30), (0, sy), (scaled_w, sy))
-
-        screen.blit(grid_surf, (sprite_x, sprite_y))
+        minor = (42, 42, 50)
+        major = (78, 82, 96)
+        origin = _COLORS["probe"]
+        spr_x0 = self.rect.x + self.offset_x
+        spr_y0 = self.rect.y + self.offset_y
+        spr_x1 = spr_x0 + sw * self.zoom
+        spr_y1 = spr_y0 + sh * self.zoom
+        for gx in range(gx0 - (gx0 % step), gx1 + 1, step):
+            sx = round(self.rect.x + self.offset_x + gx * self.grid_size * self.zoom)
+            if gx == 0:
+                color, y0, y1 = origin, spr_y0, spr_y1
+            elif gx % 4 == 0:
+                color, y0, y1 = major, spr_y0, spr_y1
+            else:
+                color, y0, y1 = minor, spr_y0, spr_y1
+            pygame.draw.line(screen, color, (sx, y0), (sx, y1))
+        for gy in range(gy0 - (gy0 % step), gy1 + 1, step):
+            sy = round(self.rect.y + self.offset_y + gy * self.grid_size * self.zoom)
+            if gy == 0:
+                color, x0, x1 = origin, spr_x0, spr_x1
+            elif gy % 4 == 0:
+                color, x0, x1 = major, spr_x0, spr_x1
+            else:
+                color, x0, x1 = minor, spr_x0, spr_x1
+            pygame.draw.line(screen, color, (x0, sy), (x1, sy))
 
     def _draw_shape(self, screen: pygame.Surface) -> None:
         """Draw the collision shape"""
@@ -690,9 +693,7 @@ class ShapeEditor:
     def _draw_rectangle(self, screen: pygame.Surface) -> None:
         """Draw rectangle shape"""
         tl = self._sprite_to_screen((self.rect_x, self.rect_y))
-        br = self._sprite_to_screen(
-            (self.rect_x + self.rect_w, self.rect_y + self.rect_h)
-        )
+        br = self._sprite_to_screen((self.rect_x + self.rect_w, self.rect_y + self.rect_h))
 
         rect = Rect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1])
 
@@ -706,9 +707,7 @@ class ShapeEditor:
             self._sprite_to_screen((self.rect_x, self.rect_y)),
             self._sprite_to_screen((self.rect_x + self.rect_w, self.rect_y)),
             self._sprite_to_screen((self.rect_x, self.rect_y + self.rect_h)),
-            self._sprite_to_screen(
-                (self.rect_x + self.rect_w, self.rect_y + self.rect_h)
-            ),
+            self._sprite_to_screen((self.rect_x + self.rect_w, self.rect_y + self.rect_h)),
         ]
         for corner in corners:
             pygame.draw.circle(screen, _COLORS["handle"], corner, 6)
@@ -728,18 +727,14 @@ class ShapeEditor:
         pygame.draw.circle(screen, _COLORS["handle"], center, 6)
         pygame.draw.circle(screen, (0, 0, 0), center, 6, 1)
 
-        radius_point = self._sprite_to_screen(
-            (self.circle_x + self.circle_radius, self.circle_y)
-        )
+        radius_point = self._sprite_to_screen((self.circle_x + self.circle_radius, self.circle_y))
         pygame.draw.circle(screen, _COLORS["handle"], radius_point, 6)
         pygame.draw.circle(screen, (0, 0, 0), radius_point, 6, 1)
 
     def _draw_capsule(self, screen: pygame.Surface) -> None:
         """Draw capsule shape"""
         top = self._sprite_to_screen((self.capsule_x, self.capsule_y))
-        bottom = self._sprite_to_screen(
-            (self.capsule_x, self.capsule_y + self.capsule_height)
-        )
+        bottom = self._sprite_to_screen((self.capsule_x, self.capsule_y + self.capsule_height))
         radius = int(self.capsule_radius * self.zoom)
         capsule_h = bottom[1] - top[1]
         cap_w = radius * 2
@@ -802,6 +797,40 @@ class ShapeEditor:
                 pygame.draw.circle(screen, color, point, 5)
                 pygame.draw.circle(screen, (0, 0, 0), point, 5, 1)
 
+    def _shape_anchor(self) -> tuple[float, float]:
+
+        if self.shape_type == "rectangle":
+            return (self.rect_x, self.rect_y)
+        if self.shape_type == "circle":
+            return (self.circle_x, self.circle_y)
+        if self.shape_type == "capsule":
+            return (self.capsule_x, self.capsule_y)
+        if self.shape_type == "polygon" and self.polygon_vertices:
+            xs = [v[0] for v in self.polygon_vertices]
+            ys = [v[1] for v in self.polygon_vertices]
+            return (min(xs), min(ys))
+        return (0.0, 0.0)
+
+    def _draw_probe(self, screen: pygame.Surface) -> None:
+
+        mouse = pygame.mouse.get_pos()
+        if not self.rect.collidepoint(mouse):
+            return
+        lx, ly = self._screen_to_sprite(mouse)
+        sw, sh = self.sprite_surface.get_size()
+        inside = 0 <= lx < sw and 0 <= ly < sh
+        cross = _COLORS["probe"] if inside else _COLORS["text_dim"]
+        pygame.draw.line(screen, cross, (self.rect.x, mouse[1]), (self.rect.right, mouse[1]))
+        pygame.draw.line(screen, cross, (mouse[0], self.rect.y), (mouse[0], self.rect.bottom))
+        text = f"({lx:.1f}, {ly:.1f})" + ("" if inside else " outside")
+        surf = self._font_sm.render(text, True, _COLORS["text"])
+        lx_pos = min(mouse[0] + 14, self.rect.right - surf.get_width() - 4)
+        ly_pos = min(mouse[1] + 14, self.rect.bottom - surf.get_height() - 4)
+        bg = pygame.Surface((surf.get_width() + 8, surf.get_height() + 4), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 180))
+        screen.blit(bg, (lx_pos - 4, ly_pos - 2))
+        screen.blit(surf, (lx_pos, ly_pos))
+
     def _draw_status(self, screen: pygame.Surface) -> None:
         """Draw status text"""
         lines = []
@@ -811,24 +840,24 @@ class ShapeEditor:
 
         lines.append(f"Shape: {self.shape_type.upper()} | Zoom: {self.zoom:.1f}x")
 
+        if self.show_probe:
+            ax, ay = self._shape_anchor()
+            lines.append(f"Anchor: ({ax:.1f}, {ay:.1f}) | P: hide probe")
+
         if self.shape_type == "polygon":
             if self.current_polygon:
-                lines.append(
-                    f"Drawing: {len(self.current_polygon)} vertices (right-click to complete)"
-                )
+                lines.append(f"Drawing: {len(self.current_polygon)} vertices (right-click to complete)")
             elif self.polygon_vertices:
                 lines.append(f"Polygon: {len(self.polygon_vertices)} vertices")
             else:
                 lines.append("Click to add vertices")
 
-        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: zoom")
+        lines.append("G: toggle grid | R: reset view | Space: pan mode | Wheel: zoom | P: position probe")
 
         y = self.rect.y + 5
         for line in lines:
             surf = self._font_sm.render(line, True, _COLORS["text"])
-            bg_rect = Rect(
-                self.rect.x + 5, y, surf.get_width() + 4, surf.get_height() + 2
-            )
+            bg_rect = Rect(self.rect.x + 5, y, surf.get_width() + 4, surf.get_height() + 2)
             bg = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
             bg.fill((0, 0, 0, 180))
             screen.blit(bg, bg_rect.topleft)

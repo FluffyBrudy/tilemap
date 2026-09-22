@@ -13,6 +13,7 @@ from pygame import KEYDOWN, Rect
 from utils.error_handler import error_handler
 from utils.font_manager import FontWeight, font_manager
 from utils.icon_manager import icon_manager
+from utils.shortcuts import is_cmd_or_ctrl
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -334,8 +335,7 @@ class StandaloneErrorConsole:
                 self._scroll_offset += 40
 
         if event.type == KEYDOWN:
-            ctrl_held = event.mod & pygame.KMOD_CTRL
-            cmd_held = event.mod & pygame.KMOD_META
+            ctrl_held = is_cmd_or_ctrl(event.mod)
             shift_held = event.mod & pygame.KMOD_SHIFT
 
             if event.key == pygame.K_f and ctrl_held:
@@ -344,19 +344,19 @@ class StandaloneErrorConsole:
                 return
 
             if self.search_focused:
-                if event.key == pygame.K_a and (ctrl_held or cmd_held):
+                if event.key == pygame.K_a and ctrl_held:
                     self._select_all()
                     return
 
-                if event.key == pygame.K_BACKSPACE and (ctrl_held or cmd_held):
+                if event.key == pygame.K_BACKSPACE and ctrl_held:
                     self._delete_word_left()
                     return
 
-                if event.key == pygame.K_LEFT and (ctrl_held or cmd_held):
+                if event.key == pygame.K_LEFT and ctrl_held:
                     self._move_cursor_word_left(shift_held)
                     return
 
-                if event.key == pygame.K_RIGHT and (ctrl_held or cmd_held):
+                if event.key == pygame.K_RIGHT and ctrl_held:
                     self._move_cursor_word_right(shift_held)
                     return
 

@@ -1,10 +1,4 @@
-"""Tools — one active interaction state machine at a time.
-
-Each tool has exactly `enter()`, `exit()`, `handle_event()`, `draw_overlay()`
-and nothing else. Tools read the cursor, maintain temporary interaction state
-and build Commands from **data** (never events). They never mutate the
-Document directly.
-"""
+"""Active tool interaction. Tools build commands, never edit docs directly."""
 
 from __future__ import annotations
 
@@ -16,14 +10,21 @@ from pygame import Rect, Surface
 
 from widgets.input import InputBox
 from widgets.ui.theme import COLORS, FONTS, SHAPE
+from utils.shortcuts import is_cmd_or_ctrl
 
 from .camera import Camera
 from .clipboard import Clipboard
 from .commands import (
     ClearCommand,
+    ColorReplaceCommand,
     CommandStack,
     MoveCommand,
     PasteCommand,
+    PixelClearCommand,
+    PixelMirrorCommand,
+    PixelMoveCommand,
+    PixelScaleCommand,
+    PixelStampCommand,
     RegionAddCommand,
     RegionDeleteCommand,
     RegionMoveCommand,
@@ -64,7 +65,7 @@ HANDLE_SIZE = 8
 
 
 class Tool:
-    """Base tool — shared camera gesture handling only."""
+
 
     def __init__(self, ctx: ToolContext):
         self.ctx = ctx
@@ -89,7 +90,7 @@ class Tool:
         camera = self.ctx.camera
         if event.type == pygame.MOUSEWHEEL:
             mods = pygame.key.get_mods()
-            ctrl = bool(mods & (pygame.KMOD_CTRL | pygame.KMOD_META))
+            ctrl = is_cmd_or_ctrl(mods)
             if ctrl and event.y != 0:
                 factor = 1.12 if event.y > 0 else 1 / 1.12
                 camera.zoom_at(pygame.mouse.get_pos(), factor)
@@ -137,7 +138,7 @@ class Tool:
 
 
 class SelectTool(Tool):
-    """Grid-mode tool: click select, rubber-band, drag-move, keyboard edits."""
+
 
     overlay_kind = "selection"
 
@@ -151,6 +152,8 @@ class SelectTool(Tool):
         self._move_ghost: dict[tuple[int, int], Surface] = {}
         self._move_offset = (0, 0)
         self._hover_cell: tuple[int, int] | None = None
+        self._hover_screen: tuple[int, int] = (0, 0)
+        self._hover_outside: str | None = None
 
     def enter(self) -> None:
         if self.ctx.selection:
@@ -159,9 +162,6 @@ class SelectTool(Tool):
             self.ctx.status("Ready", "")
 
     def exit(self) -> None:
-        # mid-drag tool switches must not leak a stale move/marquee:
-        # the mouse-up lands in the new tool and would otherwise commit
-        # a bogus command when switching back
         super().exit()
         self._mode = "idle"
         self._move_anchor = None
@@ -222,9 +222,22 @@ class SelectTool(Tool):
     def _update_hover(self, pos: tuple[int, int]) -> None:
         cell = self.ctx.viewport.cell_at_screen(pos)
         self._hover_cell = cell if cell is not None and self.ctx.doc.is_valid_cell(*cell) else None
+        self._hover_screen = pos
+        self._hover_outside = None
+        if self._hover_cell is None and self.ctx.doc.has_canvas:
+            wx, wy = self.ctx.viewport.screen_to_world(*pos)
+            w, h = self.ctx.doc.size
+            if wx < 0 or wy < 0:
+                self._hover_outside = "blocked"
+            elif wx >= w or wy >= h:
+                self._hover_outside = "expand"
         if self._mode == "idle":
             if self._hover_cell:
                 self.ctx.status("Ready", f"({self._hover_cell[0]}, {self._hover_cell[1]})")
+            elif self._hover_outside == "blocked":
+                self.ctx.status("Canvas edge — top/left blocked", "")
+            elif self._hover_outside == "expand":
+                self.ctx.status("Outside canvas — bottom/right expands", "")
             else:
                 self.ctx.status("Ready", "")
 
@@ -253,9 +266,9 @@ class SelectTool(Tool):
 
     def _on_left_down(self, pos: tuple[int, int]) -> None:
         cell = self.ctx.viewport.cell_at_screen(pos)
-        ctrl = pygame.key.get_mods() & (pygame.KMOD_CTRL | pygame.KMOD_META)
+        ctrl = is_cmd_or_ctrl(pygame.key.get_mods())
         if ctrl:
-            # ctrl+drag rubber-bands from anywhere; a click (no drag) toggles
+
             self._mode = "marquee"
             self._marquee_screen_start = pos
             self._marquee_screen_end = pos
@@ -265,10 +278,19 @@ class SelectTool(Tool):
                 self._begin_move(cell)
                 return
             self.ctx.selection.replace([cell])
-            self.ctx.status(f"Selection: {len(self.ctx.selection)} tile{'s' if len(self.ctx.selection) != 1 else ''}", "")
+            self.ctx.status(
+                f"Selection: {len(self.ctx.selection)} tile{'s' if len(self.ctx.selection) != 1 else ''}", ""
+            )
             return
         self.ctx.selection.clear()
-        self.ctx.status("Ready", "")
+        self._update_hover(pos)
+        if self._mode == "idle":
+            if self._hover_outside == "blocked":
+                self.ctx.status("Canvas edge — top/left blocked", "")
+            elif self._hover_outside == "expand":
+                self.ctx.status("Outside canvas — bottom/right expands", "")
+            else:
+                self.ctx.status("Ready", "")
         self._hover_cell = None
 
     def _begin_move(self, anchor: tuple[int, int]) -> None:
@@ -303,7 +325,7 @@ class SelectTool(Tool):
         x0, y0 = self._marquee_screen_start
         x1, y1 = self._marquee_screen_end
         if abs(x1 - x0) <= 3 and abs(y1 - y0) <= 3:
-            # it was a ctrl-click, not a drag: toggle the cell under the cursor
+
             cell = self.ctx.viewport.cell_at_screen((x1, y1))
             if cell is not None and self.ctx.doc.is_valid_cell(*cell):
                 self.ctx.selection.toggle(*cell)
@@ -336,16 +358,18 @@ class SelectTool(Tool):
         elif self._mode == "idle" and self._hover_cell:
             rect = self.ctx.viewport.cell_screen_rect(*self._hover_cell)
             draw_alpha_fill(screen, rect, (255, 255, 255), 14)
+        elif self._mode == "idle" and self._hover_outside:
+            color = (232, 184, 84) if self._hover_outside == "blocked" else COLORS.accent
+            x, y = self._hover_screen
+            marker = Rect(x - 9, y - 9, 18, 18)
+            draw_dashed_border(screen, marker, color)
 
     def _draw_move_overlay(self, screen: Surface) -> None:
         dc, dr = self._move_offset
         for col, row in self._move_cells:
             src_rect = self.ctx.viewport.cell_screen_rect(col, row)
             draw_alpha_fill(screen, src_rect, CANVAS_BG, 200)
-        placements = [
-            (col + dc, row + dr, surf)
-            for (col, row), surf in self._move_ghost.items()
-        ]
+        placements = [(col + dc, row + dr, surf) for (col, row), surf in self._move_ghost.items()]
         ghost_tiles(screen, placements, self.ctx.doc, self.ctx.camera, alpha=200)
 
     def _draw_marquee_overlay(self, screen: Surface) -> None:
@@ -359,7 +383,7 @@ class SelectTool(Tool):
 
 
 class PasteTool(Tool):
-    """Armed by copy/paste; carries a live pixel ghost and places on click."""
+
 
     overlay_kind = "paste"
 
@@ -377,8 +401,7 @@ class PasteTool(Tool):
         pass
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        # RMB cancels the armed paste; it must win over the base-class
-        # RMB-pan or every cancel attempt just pans the view instead
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             self.cancel()
             return True
@@ -386,8 +409,16 @@ class PasteTool(Tool):
             return True
         if event.type == pygame.MOUSEMOTION:
             cell = self.ctx.viewport.cell_at_screen(event.pos)
-            if cell is not None:
+            if cell is not None and self.ctx.doc.is_valid_cell(*cell):
                 self._target = cell
+                self.ctx.status("Paste · LMB/Enter to place", "Esc/RMB to cancel")
+            else:
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                w, h = self.ctx.doc.size if self.ctx.doc.has_canvas else (0, 0)
+                if wx < 0 or wy < 0:
+                    self.ctx.status("Paste · LMB/Enter to place", "Top/left edge blocked")
+                elif self.ctx.doc.has_canvas and (wx >= w or wy >= h):
+                    self.ctx.status("Paste · LMB/Enter to place", "Outside — canvas expands")
             return False
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             cell = self.ctx.viewport.cell_at_screen(event.pos)
@@ -405,8 +436,7 @@ class PasteTool(Tool):
             self.cancel()
             return True
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-            # commit the keyboard-nudged ghost: LMB always re-anchors
-            # to the click cell, so arrows alone could never place
+
             self._clamp_target()
             self._place()
             self.ctx.set_tool("select")
@@ -491,7 +521,7 @@ def _screen_rect_for_region(camera: Camera, region: Region) -> Rect:
 
 
 class RegionTool(Tool):
-    """Region editing: create / select / move / resize / delete / rename."""
+    """Edit regions: create, move, resize, rename."""
 
     overlay_kind = "regions"
 
@@ -522,7 +552,7 @@ class RegionTool(Tool):
         return self.ctx.doc.region_by_id(self.selected_id) if self.selected_id else None
 
     def _region_at(self, pos: tuple[int, int]) -> Region | None:
-        for region in sorted(self.ctx.doc.regions, key=lambda r: (r.w * r.h)):
+        for region in sorted(self.ctx.doc.regions, key=lambda r: r.w * r.h):
             rect = _screen_rect_for_region(self.ctx.camera, region)
             if rect.inflate(8, 8).collidepoint(pos):
                 return region
@@ -726,8 +756,7 @@ class RegionTool(Tool):
         if region is None:
             return False
         if self._drag is not None:
-            # renaming mid-drag would swallow the mouse-up and wedge
-            # the drag state; drop the in-flight gesture first
+
             self._cancel_drag()
         self._editing_id = region_id
         self._rename_input = InputBox(Rect(0, 0, 160, 24), font=FONTS.get_font(15))
@@ -762,7 +791,7 @@ class RegionTool(Tool):
             return
         for region in self.ctx.doc.regions:
             if region.id == self.selected_id and self._drag in ("move", "resize"):
-                continue  # pending rect drawn below
+                continue
             draw_region_shape(
                 screen,
                 self.ctx.camera,
@@ -794,6 +823,456 @@ class RegionTool(Tool):
     @property
     def doc(self) -> Document:
         return self.ctx.doc
+
+
+class FreeTool(Tool):
+    """Free pixel mode."""
+
+    overlay_kind = "free"
+
+    def __init__(self, ctx: ToolContext):
+        super().__init__(ctx)
+        self._drag: str | None = None
+        self._press_world: tuple[float, float] = (0.0, 0.0)
+        self._pending: list[float] = [0.0, 0.0, 0.0, 0.0]
+        self._block: Rect | None = None
+        self._move_ghost: Surface | None = None
+        self._move_offset: tuple[int, int] = (0, 0)
+
+        self.tight: bool = False
+
+        self._floating: Surface | None = None
+        self._floating_pos: tuple[int, int] = (0, 0)
+        self._resize_handle: str | None = None
+        self._press_block: Rect | None = None
+        self._resize_rect: list[int] = [0, 0, 0, 0]
+        self._resize_ghost: Surface | None = None
+        self._hover_handle: str | None = None
+
+    def enter(self) -> None:
+        self._refresh_status()
+        if not self.ctx.doc.has_canvas:
+            self.ctx.toast("Load a spritesheet first")
+
+    def _refresh_status(self, detail: str = "Enter: region · Del: clear") -> None:
+        tight = " · Tight ON" if self.tight else ""
+        self.ctx.status(f"Free mode — drag to select pixels{tight}", detail)
+
+    def exit(self) -> None:
+        super().exit()
+        self._drag = None
+        self._move_ghost = None
+        self._move_offset = (0, 0)
+        self._floating = None
+        self._resize_handle = None
+        self._press_block = None
+        self._resize_ghost = None
+        self._hover_handle = None
+
+    @property
+    def doc(self) -> Document:
+        return self.ctx.doc
+
+    def has_block(self) -> bool:
+        return self._validate_block()
+
+    def block_rect(self) -> Rect | None:
+        if not self._validate_block():
+            return None
+        assert self._block is not None
+        return Rect(self._block)
+
+    def clear_block(self) -> None:
+        self._block = None
+        self._drag = None
+        self._move_ghost = None
+        self._move_offset = (0, 0)
+        self._resize_handle = None
+        self._press_block = None
+        self._resize_ghost = None
+        self._hover_handle = None
+
+    def arm_floating(self, surface: Surface) -> None:
+        self.clear_block()
+        self._floating = surface.copy()
+        wx, wy = self.ctx.viewport.screen_to_world(*pygame.mouse.get_pos())
+        self._floating_pos = (int(round(wx)), int(round(wy)))
+        self.ctx.status("Pixel paste — move to place", "LMB/Enter stamp · Esc cancel")
+
+    def cancel_floating(self) -> bool:
+        if self._floating is None:
+            return False
+        self._floating = None
+        self.ctx.toast("Paste canceled")
+        self._refresh_status("")
+        return True
+
+    def _min_world(self) -> float:
+        return MIN_SCREEN_PX / max(0.1, self.ctx.camera.zoom)
+
+    def _clamp_to_canvas(self, wx: float, wy: float) -> tuple[float, float]:
+        w, h = self.doc.size
+        return (max(0.0, min(wx, float(w))), max(0.0, min(wy, float(h))))
+
+    def _validate_block(self) -> bool:
+        if self._block is None or not self.doc.has_canvas:
+            self._block = None
+            return False
+        clipped = self._block.clip(self.doc.surface.get_rect())
+        if clipped.w <= 0 or clipped.h <= 0:
+            self._block = None
+            return False
+        return True
+
+    def _block_screen_rect(self) -> Rect | None:
+        if not self._validate_block():
+            return None
+        b = self._block
+        assert b is not None
+        if self._drag == "move":
+            dx, dy = self._move_offset
+            return screen_rect_for(self.ctx.camera, b.x + dx, b.y + dy, b.w, b.h)
+        return screen_rect_for(self.ctx.camera, b.x, b.y, b.w, b.h)
+
+    @staticmethod
+    def _normalize(rect: list[float]) -> list[float]:
+        x, y, w, h = rect
+        if w < 0:
+            x += w
+            w = -w
+        if h < 0:
+            y += h
+            h = -h
+        return [x, y, w, h]
+
+    def _stamp_floating(self) -> None:
+        if self._floating is None:
+            return
+        self.ctx.commands.push(
+            PixelStampCommand(self._floating_pos, self._floating),
+            self.ctx.doc,
+            self.ctx.selection,
+        )
+        self._floating = None
+        self.ctx.toast("Stamped pixels")
+        self._refresh_status("")
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and self._floating is not None:
+            self.cancel_floating()
+            return True
+        if self._handle_view_events(event):
+            return True
+        if self._handle_view_keys(event):
+            return True
+
+        if event.type == pygame.MOUSEMOTION:
+            if self._floating is not None:
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                self._floating_pos = (int(round(wx)), int(round(wy)))
+                self.ctx.status("Pixel paste — move to place", "LMB/Enter stamp · Esc cancel")
+                return True
+            self._update_hover(event.pos)
+            if self._drag == "marquee":
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                cx, cy = self._clamp_to_canvas(wx, wy)
+                px, py = self._press_world
+                self._pending = self._normalize([px, py, cx - px, cy - py])
+            elif self._drag == "move":
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                px, py = self._press_world
+                self._move_offset = (round(wx - px), round(wy - py))
+            elif self._drag == "resize":
+                self._update_resize(event.pos)
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._floating is not None:
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                self._floating_pos = (int(round(wx)), int(round(wy)))
+                self._stamp_floating()
+                return True
+            self._on_left_down(event.pos)
+            return True
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._on_left_up()
+            return True
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE and self._drag:
+                self._drag = None
+                self._move_ghost = None
+                self._move_offset = (0, 0)
+                self._resize_handle = None
+                self._press_block = None
+                self._resize_ghost = None
+                self._refresh_status("")
+                return True
+            if event.key == pygame.K_ESCAPE and self._floating is not None:
+                self.cancel_floating()
+                return True
+            if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                return self._clear_block()
+            if event.key in (pygame.K_h, pygame.K_v) and self._drag is None and self._floating is None:
+                return self._mirror("v" if event.key == pygame.K_v else "h")
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                if self._floating is not None:
+                    self._stamp_floating()
+                    return True
+                return self._confirm()
+        return False
+
+    def _update_hover(self, pos: tuple[int, int]) -> None:
+        if self._drag or not self.doc.has_canvas:
+            return
+        rect = self._block_screen_rect()
+        self._hover_handle = handle_at(rect, pos, HANDLE_SIZE) if rect is not None else None
+        wx, wy = self.ctx.viewport.screen_to_world(*pos)
+        w, h = self.doc.size
+        if wx < 0 or wy < 0:
+            self.ctx.status("Canvas edge — top/left blocked", "")
+        elif wx >= w or wy >= h:
+            self.ctx.status("Outside canvas — bottom/right expands", "")
+        else:
+            self._refresh_status(f"({int(wx)}, {int(wy)})")
+
+    def _update_resize(self, pos: tuple[int, int]) -> None:
+        """Update stretch rect from resize drag."""
+        if self._press_block is None or self._resize_handle is None:
+            return
+        handle = self._resize_handle
+        x0, y0, w0, h0 = (self._press_block.x, self._press_block.y, self._press_block.w, self._press_block.h)
+        right, bottom = x0 + w0, y0 + h0
+        wx, wy = self.ctx.viewport.screen_to_world(*pos)
+        locked = len(handle) == 2 and bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
+        if "l" in handle:
+            nx = min(int(round(wx)), right - 1)
+            nw = right - nx
+        elif "r" in handle:
+            nx, nw = x0, max(1, int(round(wx)) - x0)
+        else:
+            nx, nw = x0, w0
+        if "t" in handle:
+            ny = min(int(round(wy)), bottom - 1)
+            nh = bottom - ny
+        elif "b" in handle:
+            ny, nh = y0, max(1, int(round(wy)) - y0)
+        else:
+            ny, nh = y0, h0
+        if locked and w0 > 0:
+            nh = max(1, int(round(h0 * (nw / w0))))
+            if "t" in handle:
+                ny = bottom - nh
+        self._resize_rect = [nx, ny, nw, nh]
+        detail = f"{nw}×{nh}" + (" locked" if locked else "")
+        self.ctx.status("Stretch pixels", detail + " · Release to commit · Esc cancels")
+
+    def _on_left_down(self, pos: tuple[int, int]) -> None:
+        if not self.doc.has_canvas:
+            self.ctx.toast("Load a spritesheet first")
+            return
+        rect = self._block_screen_rect()
+        if rect is not None:
+            handle = handle_at(rect, pos, HANDLE_SIZE)
+            if handle:
+                assert self._block is not None
+                clipped = self._block.clip(self.doc.surface.get_rect())
+                self._resize_ghost = self.doc.surface.subsurface(clipped).copy()
+                self._drag = "resize"
+                self._resize_handle = handle
+                self._press_block = Rect(self._block)
+                b = self._block
+                self._resize_rect = [b.x, b.y, b.w, b.h]
+                self._hover_handle = handle
+                self.ctx.status("Stretch pixels", "Shift locks aspect · Release to commit · Esc cancels")
+                return
+            if rect.inflate(6, 6).collidepoint(pos):
+                assert self._block is not None
+                clipped = self._block.clip(self.doc.surface.get_rect())
+                self._move_ghost = self.doc.surface.subsurface(clipped).copy()
+                self._drag = "move"
+                self._move_offset = (0, 0)
+                self._press_world = self.ctx.viewport.screen_to_world(*pos)
+                self.ctx.status("Move pixels", "Release to commit · Esc cancels")
+                return
+        self._block = None
+        self._drag = "marquee"
+        px, py = self.ctx.viewport.screen_to_world(*pos)
+        self._press_world = self._clamp_to_canvas(px, py)
+        self._pending = [self._press_world[0], self._press_world[1], 0.0, 0.0]
+        self._refresh_status("")
+
+    def _tighten(self, rect: Rect) -> Rect | None:
+        """Shrink marquee to content.
+
+        Transparent counts as empty (min_alpha=1, same rule as the
+        document trim). Returns None when nothing visible is inside.
+        """
+        if self.doc.surface is None:
+            return None
+        clipped = rect.clip(self.doc.surface.get_rect())
+        if clipped.w <= 0 or clipped.h <= 0:
+            return None
+        try:
+            inner = self.doc.surface.subsurface(clipped).get_bounding_rect(min_alpha=1)
+        except (ValueError, pygame.error):
+            return None
+        if inner.w <= 0 or inner.h <= 0:
+            return None
+        return Rect(clipped.x + inner.x, clipped.y + inner.y, inner.w, inner.h)
+
+    def _on_left_up(self) -> None:
+        drag, self._drag = self._drag, None
+        if drag == "marquee":
+            x, y, w, h = self._pending
+            if w < self._min_world() or h < self._min_world():
+                self.ctx.toast("Selection too small")
+            else:
+                block = Rect(int(x), int(y), max(1, int(round(w))), max(1, int(round(h))))
+                block = block.clip(self.doc.surface.get_rect())
+                if self.tight:
+                    tight = self._tighten(block)
+                    if tight is None:
+                        self.ctx.toast("Empty selection — nothing visible inside")
+                        self._refresh_status()
+                        return
+                    block = tight
+                self._block = block
+                detail = "Enter: region · Del: clear"
+                if self.tight:
+                    detail = f"Tight {block.w}×{block.h} · " + detail
+                self.ctx.status("Pixel block selected — drag to move", detail)
+        elif drag == "move":
+            dx, dy = self._move_offset
+            self._move_ghost = None
+            self._move_offset = (0, 0)
+            if (dx != 0 or dy != 0) and self._block is not None:
+                self.ctx.commands.push(PixelMoveCommand(self._block, dx, dy), self.ctx.doc, self.ctx.selection)
+                self.ctx.toast("Moved pixels")
+            self._block = None
+            self._refresh_status("")
+        elif drag == "resize":
+            dest = Rect(self._resize_rect)
+            self._resize_handle = None
+            self._press_block = None
+            self._resize_ghost = None
+            if self._block is not None and (dest.x, dest.y, dest.w, dest.h) != (
+                self._block.x,
+                self._block.y,
+                self._block.w,
+                self._block.h,
+            ):
+                cmd = PixelScaleCommand(self._block, dest)
+                self.ctx.commands.push(cmd, self.ctx.doc, self.ctx.selection)
+                if cmd.dest is not None:
+                    self._block = cmd.dest
+                    self.ctx.toast(f"Stretched {cmd.dest.w}×{cmd.dest.h}")
+                    self._refresh_status("H/V mirror · Enter: region · Del: clear")
+                    return
+            self._refresh_status("")
+
+    def _clear_block(self) -> bool:
+        if self._drag is not None:
+            return False
+        if not self._validate_block():
+            return False
+        assert self._block is not None
+        self.ctx.commands.push(PixelClearCommand(self._block), self.ctx.doc, self.ctx.selection)
+        self._block = None
+        self.ctx.toast("Cleared pixels")
+        return True
+
+    def _mirror(self, axis: str) -> bool:
+        """Stamp mirrored copy next to block.
+
+        The copy becomes the selected block so repeated presses chain
+        outward (A → AB → ABA …).
+        """
+        if not self._validate_block():
+            return False
+        assert self._block is not None
+        shift = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
+        side = -1 if shift else 1
+        cmd = PixelMirrorCommand(self._block, axis, side)
+        self.ctx.commands.push(cmd, self.ctx.doc, self.ctx.selection)
+        if cmd.dest is not None:
+            self._block = cmd.dest
+            where = {("h", 1): "right", ("h", -1): "left", ("v", 1): "down", ("v", -1): "up"}[(axis, side)]
+            self.ctx.toast(f"Mirrored {where} {cmd.dest.w}×{cmd.dest.h}")
+            self.ctx.status(
+                "Pixel block selected — drag to move",
+                "H/V mirror · Enter: region · Del: clear",
+            )
+        return True
+
+    def _confirm(self) -> bool:
+        """Commit move or save block as region on Enter."""
+        if self._drag in ("move", "resize"):
+            self._on_left_up()
+            return True
+        if self._drag is not None or not self._validate_block():
+            return False
+        assert self._block is not None
+        b = self._block
+        region = Region(id=Region.new_id(), rect=[float(b.x), float(b.y), float(b.w), float(b.h)], name="")
+        self.ctx.commands.push(RegionAddCommand(region), self.ctx.doc, self.ctx.selection)
+        self.ctx.toast("Region from block — see Regions mode")
+        return True
+
+    def draw_overlay(self, screen: Surface) -> None:
+        if not self.doc.has_canvas:
+            return
+        if self._floating is not None:
+            fw, fh = self._floating.get_size()
+            fx, fy = self._floating_pos
+            dest = screen_rect_for(self.ctx.camera, fx, fy, fw, fh)
+            if dest.w > 0 and dest.h > 0:
+                try:
+                    ghost = pygame.transform.smoothscale(self._floating, (dest.w, dest.h))
+                except (ValueError, pygame.error):
+                    ghost = pygame.transform.scale(self._floating, (dest.w, dest.h))
+                ghost.set_alpha(180)
+                screen.blit(ghost, dest.topleft)
+                draw_dashed_border(screen, dest, COLORS.accent)
+            return
+        if self._drag == "marquee" and (self._pending[2] > 0 or self._pending[3] > 0):
+            x, y, w, h = self._pending
+            rect = screen_rect_for(self.ctx.camera, x, y, max(0.5, w), max(0.5, h))
+            draw_alpha_fill(screen, rect, (80, 200, 220), 24)
+            draw_dashed_border(screen, rect, COLORS.accent)
+            return
+        if self._drag == "move" and self._move_ghost is not None and self._block is not None:
+            b = self._block
+            src_rect = screen_rect_for(self.ctx.camera, b.x, b.y, b.w, b.h)
+            draw_alpha_fill(screen, src_rect, CANVAS_BG, 200)
+            dx, dy = self._move_offset
+            dest = screen_rect_for(self.ctx.camera, b.x + dx, b.y + dy, b.w, b.h)
+            if dest.w > 0 and dest.h > 0:
+                try:
+                    ghost = pygame.transform.smoothscale(self._move_ghost, (dest.w, dest.h))
+                except (ValueError, pygame.error):
+                    ghost = pygame.transform.scale(self._move_ghost, (dest.w, dest.h))
+                ghost.set_alpha(200)
+                screen.blit(ghost, dest.topleft)
+                draw_dashed_border(screen, dest, COLORS.accent)
+            return
+        if self._drag == "resize" and self._resize_ghost is not None and self._press_block is not None:
+            b = self._press_block
+            src_rect = screen_rect_for(self.ctx.camera, b.x, b.y, b.w, b.h)
+            draw_alpha_fill(screen, src_rect, CANVAS_BG, 200)
+            nx, ny, nw, nh = self._resize_rect
+            dest = screen_rect_for(self.ctx.camera, nx, ny, nw, nh)
+            if dest.w > 0 and dest.h > 0:
+                ghost = pygame.transform.scale(self._resize_ghost, (dest.w, dest.h))
+                ghost.set_alpha(200)
+                screen.blit(ghost, dest.topleft)
+                draw_dashed_border(screen, dest, COLORS.accent)
+            return
+        rect = self._block_screen_rect()
+        if rect is not None and self._drag is None:
+            pygame.draw.rect(screen, COLORS.accent, rect, 2)
+            draw_handles(screen, rect, COLORS.accent, HANDLE_SIZE, self._hover_handle)
 
 
 _TEXT_FG_PALETTE: list[tuple[int, int, int]] = [
@@ -830,7 +1309,7 @@ def _font_for(size: int, bold: bool):
 
 
 def _wrap_lines(text: str, font: pygame.font.Font, max_w: int) -> list[str]:
-    """Greedy word-wrap to max_w; respects explicit newlines."""
+
     if not text:
         return [""]
     out: list[str] = []
@@ -847,7 +1326,7 @@ def _wrap_lines(text: str, font: pygame.font.Font, max_w: int) -> list[str]:
             else:
                 if cur:
                     out.append(cur)
-                # single word longer than max_w — hard-break by chars
+
                 if font.size(w)[0] > max_w:
                     chunk = ""
                     for ch in w:
@@ -874,12 +1353,12 @@ def _render_text_surface(
     bg: tuple[int, int, int] | None,
     bold: bool,
 ) -> Surface:
-    """Raster surface at image-pixel scale (respects scale, no zoom factor)."""
+
     w = max(1, int(round(box_w)))
     h = max(1, int(round(box_h)))
     surf = Surface((w, h), pygame.SRCALPHA)
     if bg is not None:
-        # opaque bg pill with small radius so label stands out
+
         pygame.draw.rect(surf, bg, surf.get_rect(), border_radius=SHAPE.radius_sm)
     else:
         surf.fill((0, 0, 0, 0))
@@ -903,12 +1382,7 @@ def _render_text_surface(
 
 
 class TextTool(Tool):
-    """Flameshot-like freeform text: drag box → type → Enter to bake.
-
-    Exclusive — while a draft exists the tool consumes LMB so grid/region
-    interactions cannot interleave (mirrors flameshot's modal text behaviour).
-    Rotation handle above the box bakes angle into the stamp.
-    """
+    """Freeform text: drag box, type, Enter to bake."""
 
     overlay_kind = "text"
 
@@ -923,7 +1397,7 @@ class TextTool(Tool):
         self._rotate_press_angle: float = 0.0
 
         self._fg: tuple[int, int, int] = (255, 255, 255)
-        self._bg: tuple[int, int, int] | None = None  # default transparent per spec
+        self._bg: tuple[int, int, int] | None = None
         self._font_size: int = 18
         self._bold: bool = False
         self._angle: float = 0.0
@@ -967,20 +1441,20 @@ class TextTool(Tool):
         return (srect.centerx, srect.y - 18)
 
     def _compute_panel_layout(self, srect: Rect) -> None:
-        """Populate _panel_rect and swatch/button rects in screen space."""
+    
         panel_w = (
             _PANEL_PAD * 2
             + len(_TEXT_FG_PALETTE) * (_SWATCH + _SWATCH_GAP)
             + 10
             + len(_TEXT_BG_PALETTE) * (_SWATCH + _SWATCH_GAP)
             + 10
-            + 56  # - [size] +
-            + 30  # B
+            + 56
+            + 30
         )
         panel_w = min(panel_w, self.ctx.viewport.rect.w - 10)
         panel_h = _PANEL_H + 6
         x = srect.centerx - panel_w // 2
-        # try above the box (with rotation handle gap), else below
+
         y_above = srect.y - panel_h - 28
         y_below = srect.bottom + 10
         y = y_above if y_above >= self.ctx.viewport.content_rect.y else y_below
@@ -1024,7 +1498,7 @@ class TextTool(Tool):
             return
         x, y, w, h = self._draft_rect
         if w < self._min_world() or h < self._min_world():
-            # auto-size from text if box too small
+
             font = _font_for(self._font_size, self._bold)
             tw = font.size(text)[0] + 8
             th = font.get_height() + 8
@@ -1057,7 +1531,7 @@ class TextTool(Tool):
     def handle_event(self, event: pygame.event.Event) -> bool:
         if self._handle_view_events(event):
             return True
-        # keyboard: InputBox gets first chance when editing (so typing 't' doesn't toggle tool)
+
         if self._mode == "editing" and self._input.is_focused:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN and not (pygame.key.get_mods() & pygame.KMOD_SHIFT):
@@ -1109,7 +1583,7 @@ class TextTool(Tool):
                 if srect:
                     self._compute_panel_layout(srect)
                 if self._panel_rect.collidepoint(event.pos):
-                    # swatches / buttons — keep input focused so typing continues
+
                     self._input.is_focused = True
                     for i, r in enumerate(self._swatch_rects_fg):
                         if r.collidepoint(event.pos):
@@ -1129,7 +1603,14 @@ class TextTool(Tool):
                         self._bold = not self._bold
                         return True
                     return True
-                if self._rot_handle_screen and ((event.pos[0] - self._rot_handle_screen[0]) ** 2 + (event.pos[1] - self._rot_handle_screen[1]) ** 2) <= (_ROT_HANDLE_R + 4) ** 2:
+                if (
+                    self._rot_handle_screen
+                    and (
+                        (event.pos[0] - self._rot_handle_screen[0]) ** 2
+                        + (event.pos[1] - self._rot_handle_screen[1]) ** 2
+                    )
+                    <= (_ROT_HANDLE_R + 4) ** 2
+                ):
                     import math
 
                     srect2 = self._screen_rect()
@@ -1139,7 +1620,7 @@ class TextTool(Tool):
                         self._rotate_press_angle = self._angle
                         self._rotate_start_angle = math.degrees(math.atan2(event.pos[1] - cy, event.pos[0] - cx))
                     return True
-            # InputBox hit → keep focus and allow cursor placement (no commit)
+
             if self._mode == "editing" and self._input.rect.collidepoint(event.pos):
                 self._input.handle_event(event)
                 self._input.is_focused = True
@@ -1162,7 +1643,7 @@ class TextTool(Tool):
                         self._press_world = self.ctx.viewport.screen_to_world(*event.pos)
                         self._press_rect = list(self._draft_rect)
                         return True
-                    # click outside while editing → commit (flameshot behavior)
+
                     if not (self._panel_rect and self._panel_rect.collidepoint(event.pos)):
                         self._commit()
                         return True
@@ -1209,7 +1690,13 @@ class TextTool(Tool):
         if not self.ctx.doc.has_canvas:
             return
         if self._mode == "drafting" and self._draft_rect[2] >= 0:
-            r = screen_rect_for(self.ctx.camera, self._draft_rect[0], self._draft_rect[1], max(0.5, self._draft_rect[2]), max(0.5, self._draft_rect[3]))
+            r = screen_rect_for(
+                self.ctx.camera,
+                self._draft_rect[0],
+                self._draft_rect[1],
+                max(0.5, self._draft_rect[2]),
+                max(0.5, self._draft_rect[3]),
+            )
             draw_alpha_fill(screen, r, (255, 220, 120), 22)
             draw_dashed_border(screen, r, (255, 230, 140))
             return
@@ -1220,7 +1707,7 @@ class TextTool(Tool):
             return
         self._compute_panel_layout(srect)
 
-        # text preview — render at image-pixel (box) scale, then scale to screen for overlay
+
         box_w, box_h = self._draft_rect[2], self._draft_rect[3]
         preview_src = _render_text_surface(
             self._input.text or " ",
@@ -1285,13 +1772,17 @@ class TextTool(Tool):
                     pygame.draw.rect(screen, (255, 255, 255), r.inflate(4, 4), 2, border_radius=4)
                     pygame.draw.rect(screen, (0, 0, 0), r.inflate(4, 4), 1, border_radius=4)
             sep_x = self._swatch_rects_fg[-1].right + 6 if self._swatch_rects_fg else self._panel_rect.x + 10
-            pygame.draw.line(screen, COLORS.border_soft, (sep_x, self._panel_rect.y + 5), (sep_x, self._panel_rect.bottom - 5), 1)
+            pygame.draw.line(
+                screen, COLORS.border_soft, (sep_x, self._panel_rect.y + 5), (sep_x, self._panel_rect.bottom - 5), 1
+            )
             for i, r in enumerate(self._swatch_rects_bg):
                 col = _TEXT_BG_PALETTE[i]
                 if col is None:
                     pygame.draw.rect(screen, (60, 60, 65), r, border_radius=3)
                     pygame.draw.rect(screen, (40, 40, 44), Rect(r.x, r.y, r.w // 2, r.h // 2), border_radius=2)
-                    pygame.draw.rect(screen, (40, 40, 44), Rect(r.x + r.w // 2, r.y + r.h // 2, r.w // 2, r.h // 2), border_radius=2)
+                    pygame.draw.rect(
+                        screen, (40, 40, 44), Rect(r.x + r.w // 2, r.y + r.h // 2, r.w // 2, r.h // 2), border_radius=2
+                    )
                     pygame.draw.line(screen, (200, 80, 80), r.topleft, r.bottomright, 2)
                 else:
                     pygame.draw.rect(screen, col, r, border_radius=3)
@@ -1329,3 +1820,634 @@ class TextTool(Tool):
             hint = FONTS.get_small_font().render("Label…  Enter ✓  Esc ✕", True, COLORS.text_muted)
             screen.blit(hint, (irect.x + 8, irect.y + 6))
 
+
+_COLOR_PALETTE: list[tuple[int, int, int, int]] = [
+    (255, 255, 255, 255),
+    (20, 20, 22, 255),
+    (220, 60, 60, 255),
+    (255, 150, 40, 255),
+    (240, 220, 60, 255),
+    (80, 180, 90, 255),
+    (70, 120, 210, 255),
+    (160, 90, 210, 255),
+    (128, 128, 128, 255),
+    (0, 0, 0, 0),
+]
+_COLOR_SCOPES: tuple[tuple[str, str], ...] = (
+    ("full", "Full"),
+    ("marquee", "Marquee"),
+    ("flood", "Flood"),
+)
+
+
+def _hex_of(color: tuple[int, int, int, int]) -> str:
+    r, g, b, a = (max(0, min(255, int(v))) for v in color)
+    if a == 255:
+        return f"#{r:02X}{g:02X}{b:02X}"
+    return f"#{r:02X}{g:02X}{b:02X}{a:02X}"
+
+
+def _parse_hex(text: str) -> tuple[int, int, int, int] | None:
+    t = text.strip()
+    if t.startswith("#"):
+        t = t[1:]
+    if len(t) not in (6, 8):
+        return None
+    try:
+        vals = [int(t[i : i + 2], 16) for i in range(0, len(t), 2)]
+    except ValueError:
+        return None
+    if len(vals) == 3:
+        vals.append(255)
+    r, g, b, a = vals
+    return (r, g, b, a)
+
+
+class ColorTool(Tool):
+    """Pick a color and replace it. Scopes: full canvas, marquee, flood."""
+
+    overlay_kind = "color"
+
+    def __init__(self, ctx: ToolContext):
+        super().__init__(ctx)
+        self._src: tuple[int, int, int, int] | None = None
+        self._dst: tuple[int, int, int, int] = (255, 255, 255, 255)
+        self._target: str = "src"
+        self._scope: str = "full"
+        self._tolerance: int = 0
+        self._drag: str | None = None
+        self._marquee: list[float] = [0.0, 0.0, 0.0, 0.0]
+        self._press_world: tuple[float, float] = (0.0, 0.0)
+        self._seed: tuple[int, int] | None = None
+        self._preview_count: int | None = None
+        self._panel_rect: Rect | None = None
+        self._src_box: Rect | None = None
+        self._dst_box: Rect | None = None
+        self._swatch_rects: list[Rect] = []
+        self._scope_rects: list[Rect] = []
+        self._tol_minus: Rect | None = None
+        self._tol_plus: Rect | None = None
+        self._apply_rect: Rect | None = None
+        self._custom_btn: Rect | None = None
+        self._custom_open: bool = False
+        self._custom_panel: Rect | None = None
+        self._field = None
+        self._sliders: list = []
+        self._slider_keys: list[str] = []
+        self._hex: InputBox | None = None
+        self._done_rect: Rect | None = None
+        self._custom_target: str = "dst"
+
+    def enter(self) -> None:
+        self._drag = None
+        if not self.ctx.doc.has_canvas:
+            self.ctx.toast("Load a spritesheet first")
+            self.ctx.status("Color — load an image first", "")
+        else:
+            self._refresh_count()
+            self._push_status()
+
+    def exit(self) -> None:
+        super().exit()
+        self._drag = None
+        self._marquee = [0.0, 0.0, 0.0, 0.0]
+        if self._hex is not None:
+            self._hex.is_focused = False
+
+    def _push_status(self) -> None:
+        if self._src is None:
+            self.ctx.status("Color — click to pick source", "Alt+click picks target · Enter applies")
+            return
+        detail = "Enter applies · Esc clears"
+        if self._preview_count is not None:
+            detail = f"{self._preview_count} px match · " + detail
+        scope_lbl = {"full": "Full", "marquee": "Marquee", "flood": "Flood"}.get(self._scope, "Full")
+        self.ctx.status(f"Color — {scope_lbl} {_hex_of(self._src)} → {_hex_of(self._dst)}", detail)
+
+    def _sample(self, pos: tuple[int, int]) -> tuple[int, int, int, int] | None:
+        if not self.ctx.doc.has_canvas or self.ctx.doc.surface is None:
+            return None
+        wx, wy = self.ctx.viewport.screen_to_world(*pos)
+        x, y = int(wx), int(wy)
+        if not self.ctx.doc.surface.get_rect().collidepoint(x, y):
+            return None
+        c = self.ctx.doc.surface.get_at((x, y))
+        return (c.r, c.g, c.b, c.a)
+
+    def pick_source(self, pos: tuple[int, int]) -> bool:
+        c = self._sample(pos)
+        if c is None:
+            self.ctx.status("Color — outside canvas", "")
+            return False
+        self._src = c
+        if self._scope == "flood":
+            wx, wy = self.ctx.viewport.screen_to_world(*pos)
+            self._seed = (int(wx), int(wy))
+        self._refresh_count()
+        self._push_status()
+        return True
+
+    def pick_target(self, pos: tuple[int, int]) -> bool:
+        c = self._sample(pos)
+        if c is None:
+            return False
+        self._dst = c
+        self._refresh_count()
+        self._push_status()
+        return True
+
+    def _scope_rect(self) -> Rect | None:
+        if self._scope != "marquee":
+            return None
+        x, y, w, h = self._marquee
+        if w <= 0 or h <= 0:
+            return None
+        return Rect(int(x), int(y), int(w), int(h))
+
+    def _refresh_count(self) -> None:
+        self._preview_count = None
+        if self._src is None or not self.ctx.doc.has_canvas:
+            return
+        rect = self._scope_rect()
+        if self._scope == "marquee" and rect is None:
+            return
+        seed = self._seed
+        if self._scope == "flood" and seed is None:
+            return
+        try:
+            self._preview_count = self.ctx.doc.remap_pixels(
+                self._src,
+                self._dst,
+                rect=rect,
+                tolerance=self._tolerance,
+                contiguous=self._scope == "flood",
+                seed=seed,
+                dry_run=True,
+            )
+        except Exception:
+            self._preview_count = None
+
+    def _apply(self) -> None:
+        if not self.ctx.doc.has_canvas:
+            self.ctx.toast("Load a spritesheet first")
+            return
+        if self._src is None:
+            self.ctx.toast("Pick a source color first")
+            return
+        rect = self._scope_rect()
+        if self._scope == "marquee" and rect is None:
+            self.ctx.toast("Drag a marquee first")
+            return
+        seed = self._seed
+        if self._scope == "flood" and seed is None:
+            self.ctx.toast("Click a pixel to seed flood")
+            return
+        cmd = ColorReplaceCommand(
+            self._src,
+            self._dst,
+            rect=rect,
+            tolerance=self._tolerance,
+            contiguous=self._scope == "flood",
+            seed=seed,
+        )
+        self.ctx.commands.push(cmd, self.ctx.doc, self.ctx.selection)
+        n = cmd.replaced
+        self._marquee = [0.0, 0.0, 0.0, 0.0]
+        self._seed = None
+        self._refresh_count()
+        self._push_status()
+        if n > 0:
+            self.ctx.toast(f"Replaced {n} px")
+        else:
+            self.ctx.toast("No pixels matched")
+
+    def _active_color(self) -> tuple[int, int, int, int]:
+        if self._custom_target == "src":
+            return self._src or (255, 255, 255, 255)
+        return self._dst
+
+    def _set_active_color(self, color: tuple[int, int, int, int]) -> None:
+        if self._custom_target == "src":
+            self._src = color
+        else:
+            self._dst = color
+        self._refresh_count()
+        self._push_status()
+
+    def _open_custom(self, target: str) -> None:
+        from widgets.ui.particle_config_dialog import ColorField, Slider
+
+        self._custom_target = target
+        self._custom_open = True
+        col = self._active_color()
+        self._field = ColorField(Rect(0, 0, 180, 100))
+        self._field.set_rgb(col[0], col[1], col[2])
+        self._sliders = []
+        self._slider_keys = ["r", "g", "b", "a"]
+        for i, (key, val) in enumerate(
+            [("r", col[0]), ("g", col[1]), ("b", col[2]), ("a", col[3])]
+        ):
+            self._sliders.append(Slider(Rect(0, 0, 150, 18), key.upper(), 0, 255, float(val), "{:.0f}"))
+        self._hex = InputBox(
+            Rect(0, 0, 110, 22),
+            font=FONTS.get_font(13),
+            allowed_chars="#0123456789abcdefABCDEF",
+        )
+        self._hex.text = _hex_of(col)
+        self._hex.is_focused = False
+        self._sync_custom_widgets(col)
+
+    def _sync_custom_widgets(self, col: tuple[int, int, int, int] | None = None) -> None:
+        if self._field is None or not self._sliders or self._hex is None:
+            return
+        if col is None:
+            col = self._active_color()
+        self._field.set_rgb(col[0], col[1], col[2])
+        for slider, key in zip(self._sliders, self._slider_keys):
+            slider.value = float({"r": col[0], "g": col[1], "b": col[2], "a": col[3]}[key])
+        self._hex.text = _hex_of(col)
+
+    def _layout_panels(self) -> None:
+        vp = self.ctx.viewport
+        content = vp.content_rect
+        small = FONTS.get_small_font()
+        x = content.centerx - 300
+        x = max(vp.rect.x + 4, min(x, vp.rect.right - 610))
+        y = content.y + 6
+        h = 30
+        cx = x + 6
+        self._src_box = Rect(cx, y + 5, 26, 20)
+        cx += 30
+        self._dst_box = Rect(cx, y + 5, 26, 20)
+        cx += 32
+        self._swatch_rects = []
+        for _ in _COLOR_PALETTE:
+            self._swatch_rects.append(Rect(cx, y + 6, 18, 18))
+            cx += 22
+        cx += 4
+        self._scope_rects = []
+        for _key, _label in _COLOR_SCOPES:
+            w = max(52, small.size(_label)[0] + 14)
+            self._scope_rects.append(Rect(cx, y + 5, w, 20))
+            cx += w + 4
+        self._tol_minus = Rect(cx, y + 5, 20, 20)
+        cx += 24
+        self._tol_plus = Rect(cx + 34, y + 5, 20, 20)
+        cx += 58
+        self._apply_rect = Rect(cx, y + 5, 52, 20)
+        cx += 56
+        self._custom_btn = Rect(cx, y + 5, 64, 20)
+        cx += 64
+        self._panel_rect = Rect(x, y, cx - x + 6, h)
+        self._custom_panel = None
+        self._done_rect = None
+        if not self._custom_open:
+            return
+        cw, ch = 380, 178
+        px = max(
+            self.ctx.viewport.rect.x + 4,
+            min(self._panel_rect.centerx - cw // 2, self.ctx.viewport.rect.right - cw - 4),
+        )
+        py = self._panel_rect.bottom + 6
+        if py + ch > self.ctx.viewport.rect.bottom - 4:
+            py = max(self.ctx.viewport.rect.y + 4, self._panel_rect.y - ch - 6)
+        self._custom_panel = Rect(px, py, cw, ch)
+        fx, fy = px + 10, py + 28
+        if self._field is not None:
+            self._field.rect = Rect(fx, fy, 180, 110)
+        sx = fx + 196
+        for i, slider in enumerate(self._sliders):
+            slider.rect = Rect(sx, fy + i * 30, 150, 18)
+        if self._hex is not None:
+            self._hex.rect = Rect(sx, fy + 4 * 30 + 2, 110, 22)
+            self._hex._update_content_rect()
+        self._done_rect = Rect(px + cw - 70, py + ch - 30, 60, 22)
+
+    def _custom_hit(self, pos: tuple[int, int]) -> bool:
+        return bool(self._custom_open and self._custom_panel and self._custom_panel.collidepoint(pos))
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if self._handle_view_events(event):
+            return True
+        if (
+            self._hex is not None
+            and self._custom_open
+            and self._hex.is_focused
+            and event.type == pygame.KEYDOWN
+        ):
+            if event.key == pygame.K_RETURN:
+                parsed = _parse_hex(self._hex.text)
+                if parsed is not None:
+                    self._set_active_color(parsed)
+                    self._sync_custom_widgets(parsed)
+                else:
+                    self.ctx.toast("Hex like #RRGGBB or #RRGGBBAA")
+                return True
+            if event.key == pygame.K_ESCAPE:
+                self._hex.is_focused = False
+                return True
+            if self._hex.handle_event(event):
+                return True
+        if self._handle_view_keys(event):
+            return True
+        if self._custom_open and event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            field_active = self._field is not None and self._field.dragging_part
+            dragged = [s for s in self._sliders if s.dragging]
+            if field_active or dragged:
+                if field_active and self._field is not None:
+                    self._field.handle_event(event)
+                    r, g, b = self._field.rgb
+                    a = self._active_color()[3]
+                    for slider, key in zip(self._sliders, self._slider_keys):
+                        if key in ("r", "g", "b"):
+                            continue
+                        if key == "a":
+                            a = max(0, min(255, int(round(slider.value))))
+                    self._set_active_color((r, g, b, a))
+                    self._sync_custom_widgets((r, g, b, a))
+                else:
+                    for slider in self._sliders:
+                        if slider.dragging:
+                            result = slider.handle_event(event)
+                            if result is not None:
+                                slider.value = result
+                    col = self._active_color()
+                    vals = {"r": col[0], "g": col[1], "b": col[2], "a": col[3]}
+                    for slider, key in zip(self._sliders, self._slider_keys):
+                        vals[key] = max(0, min(255, int(round(slider.value))))
+                    new_col = (vals["r"], vals["g"], vals["b"], vals["a"])
+                    if self._field is not None:
+                        self._field.set_rgb(new_col[0], new_col[1], new_col[2])
+                    self._set_active_color(new_col)
+                    self._sync_custom_widgets(new_col)
+                return True
+        if event.type == pygame.MOUSEMOTION:
+            if self._drag == "marquee":
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                x0, y0 = self._press_world
+                self._marquee = [
+                    min(x0, wx),
+                    min(y0, wy),
+                    abs(wx - x0),
+                    abs(wy - y0),
+                ]
+                return True
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._custom_open and self._custom_panel is not None:
+                self._layout_panels()
+                if self._custom_hit(event.pos):
+                    return self._handle_custom_click(event.pos)
+            self._layout_panels()
+            if self._panel_rect is not None and self._panel_rect.collidepoint(event.pos):
+                return self._handle_panel_click(event.pos)
+            if not self.ctx.doc.has_canvas:
+                self.ctx.toast("Load a spritesheet first")
+                return True
+            mods = pygame.key.get_mods()
+            if mods & pygame.KMOD_ALT:
+                return self.pick_target(event.pos)
+            if self._scope == "marquee":
+                wx, wy = self.ctx.viewport.screen_to_world(*event.pos)
+                self._press_world = (wx, wy)
+                self._marquee = [wx, wy, 0.0, 0.0]
+                self._drag = "marquee"
+                return True
+            return self.pick_source(event.pos)
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._drag == "marquee":
+                self._drag = None
+                x, y, w, h = self._marquee
+                if w < 2 or h < 2:
+                    self._marquee = [0.0, 0.0, 0.0, 0.0]
+                self._refresh_count()
+                self._push_status()
+                return True
+            return False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                if self._custom_open:
+                    self._custom_open = False
+                    if self._hex is not None:
+                        self._hex.is_focused = False
+                    return True
+                if self._scope_rect() is not None or self._seed is not None:
+                    self._marquee = [0.0, 0.0, 0.0, 0.0]
+                    self._seed = None
+                    self._refresh_count()
+                    self._push_status()
+                    return True
+                return False
+            if event.key == pygame.K_RETURN:
+                self._apply()
+                return True
+        return False
+
+    def _handle_panel_click(self, pos: tuple[int, int]) -> bool:
+        if self._src_box is not None and self._src_box.collidepoint(pos):
+            self._target = "src"
+            return True
+        if self._dst_box is not None and self._dst_box.collidepoint(pos):
+            self._target = "dst"
+            return True
+        for i, r in enumerate(self._swatch_rects):
+            if r.collidepoint(pos):
+                col = _COLOR_PALETTE[i]
+                if self._target == "src":
+                    self._src = col
+                else:
+                    self._dst = col
+                self._refresh_count()
+                self._push_status()
+                return True
+        for i, r in enumerate(self._scope_rects):
+            if r.collidepoint(pos):
+                self._scope = _COLOR_SCOPES[i][0]
+                self._seed = None
+                self._refresh_count()
+                self._push_status()
+                return True
+        if self._tol_minus is not None and self._tol_minus.collidepoint(pos):
+            self._tolerance = max(0, self._tolerance - 5)
+            self._refresh_count()
+            self._push_status()
+            return True
+        if self._tol_plus is not None and self._tol_plus.collidepoint(pos):
+            self._tolerance = min(100, self._tolerance + 5)
+            self._refresh_count()
+            self._push_status()
+            return True
+        if self._apply_rect is not None and self._apply_rect.collidepoint(pos):
+            self._apply()
+            return True
+        if self._custom_btn is not None and self._custom_btn.collidepoint(pos):
+            self._open_custom(self._target)
+            return True
+        return True
+
+    def _handle_custom_click(self, pos: tuple[int, int]) -> bool:
+        if self._field is not None and self._field.handle_event(
+            pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"pos": pos, "button": 1})
+        ):
+            r, g, b = self._field.rgb
+            a = self._active_color()[3]
+            self._set_active_color((r, g, b, a))
+            self._sync_custom_widgets()
+            return True
+        for slider, key in zip(self._sliders, self._slider_keys):
+            before = slider.value
+            result = slider.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"pos": pos, "button": 1}))
+            if result is not None:
+                slider.value = result
+            if result is not None or slider.value != before:
+                col = self._active_color()
+                vals = {"r": col[0], "g": col[1], "b": col[2], "a": col[3]}
+                vals[key] = max(0, min(255, int(round(slider.value))))
+                new_col = (vals["r"], vals["g"], vals["b"], vals["a"])
+                self._set_active_color(new_col)
+                self._sync_custom_widgets(new_col)
+                return True
+        if self._hex is not None and self._hex.rect.collidepoint(pos):
+            self._hex.is_focused = True
+            self._hex.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"pos": pos, "button": 1}))
+            return True
+        if self._done_rect is not None and self._done_rect.collidepoint(pos):
+            if self._hex is not None and self._hex.text:
+                parsed = _parse_hex(self._hex.text)
+                if parsed is not None:
+                    self._set_active_color(parsed)
+            self._custom_open = False
+            if self._hex is not None:
+                self._hex.is_focused = False
+            return True
+        return True
+
+    def draw_overlay(self, screen: Surface) -> None:
+        if not self.ctx.doc.has_canvas:
+            return
+        self._layout_panels()
+        if self._scope == "full" and self.ctx.doc.surface is not None:
+            sheet = self.ctx.viewport.sheet_screen_rect()
+            if sheet is not None:
+                draw_alpha_fill(screen, sheet, (120, 200, 255), 16)
+                draw_dashed_border(screen, sheet, (120, 200, 255))
+        elif self._scope == "marquee":
+            rect = self._scope_rect()
+            if rect is not None:
+                r = screen_rect_for(self.ctx.camera, rect.x, rect.y, rect.w, rect.h)
+                draw_alpha_fill(screen, r, (120, 200, 255), 28)
+                draw_dashed_border(screen, r, (120, 200, 255))
+        elif self._scope == "flood" and self._seed is not None:
+            sx, sy = self.ctx.camera.world_to_screen(float(self._seed[0]), float(self._seed[1]))
+            six, siy = int(sx), int(sy)
+            pygame.draw.line(screen, (120, 200, 255), (six - 8, siy), (six + 8, siy), 2)
+            pygame.draw.line(screen, (120, 200, 255), (six, siy - 8), (six, siy + 8), 2)
+        self._draw_panel(screen)
+        if self._custom_open and self._custom_panel is not None:
+            self._draw_custom(screen)
+
+    def _draw_swatches(self, screen: Surface) -> None:
+        small = FONTS.get_small_font()
+        if self._src_box is not None:
+            self._draw_color_box(screen, self._src_box, self._src, self._target == "src")
+            lbl = small.render("S", True, COLORS.text_dim)
+            screen.blit(lbl, (self._src_box.x + 9, self._src_box.bottom + 1))
+        if self._dst_box is not None:
+            self._draw_color_box(screen, self._dst_box, self._dst, self._target == "dst")
+            lbl = small.render("D", True, COLORS.text_dim)
+            screen.blit(lbl, (self._dst_box.x + 9, self._dst_box.bottom + 1))
+        for i, r in enumerate(self._swatch_rects):
+            self._draw_color_box(screen, r, _COLOR_PALETTE[i], False)
+
+    @staticmethod
+    def _draw_color_box(
+        screen: Surface, rect: Rect, color: tuple[int, int, int, int] | None, selected: bool
+    ) -> None:
+        if color is None:
+            pygame.draw.rect(screen, (60, 60, 65), rect, border_radius=3)
+            pygame.draw.line(screen, (200, 80, 80), rect.topleft, rect.bottomright, 2)
+        elif color[3] == 0:
+            pygame.draw.rect(screen, (60, 60, 65), rect, border_radius=3)
+            pygame.draw.rect(screen, (40, 40, 44), Rect(rect.x, rect.y, rect.w // 2, rect.h // 2))
+            pygame.draw.rect(
+                screen,
+                (40, 40, 44),
+                Rect(rect.x + rect.w // 2, rect.y + rect.h // 2, rect.w // 2, rect.h // 2),
+            )
+            pygame.draw.line(screen, (200, 80, 80), rect.topleft, rect.bottomright, 2)
+        else:
+            pygame.draw.rect(screen, color[:3], rect, border_radius=3)
+            if color[3] < 255:
+                pygame.draw.line(screen, (255, 255, 255), (rect.x, rect.bottom - 3), (rect.right, rect.bottom - 3), 1)
+        pygame.draw.rect(screen, COLORS.border_soft, rect, 1, border_radius=3)
+        if selected:
+            pygame.draw.rect(screen, (255, 255, 255), rect.inflate(4, 4), 2, border_radius=4)
+
+    def _draw_panel(self, screen: Surface) -> None:
+        if self._panel_rect is None:
+            return
+        small = FONTS.get_small_font()
+        pygame.draw.rect(screen, COLORS.panel, self._panel_rect, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(screen, COLORS.border, self._panel_rect, 1, border_radius=SHAPE.radius_sm)
+        self._draw_swatches(screen)
+        for i, r in enumerate(self._scope_rects):
+            key = _COLOR_SCOPES[i][0]
+            active = self._scope == key
+            bg = COLORS.accent if active else COLORS.panel_alt
+            pygame.draw.rect(screen, bg, r, border_radius=3)
+            pygame.draw.rect(screen, COLORS.border_soft, r, 1, border_radius=3)
+            fg = COLORS.text_on_accent if active else COLORS.text_dim
+            lbl = small.render(_COLOR_SCOPES[i][1], True, fg)
+            screen.blit(lbl, lbl.get_rect(center=r.center))
+        if self._tol_minus is not None and self._tol_plus is not None:
+            for btn, label in [(self._tol_minus, "−"), (self._tol_plus, "+")]:
+                pygame.draw.rect(screen, COLORS.panel_alt, btn, border_radius=3)
+                pygame.draw.rect(screen, COLORS.border_soft, btn, 1, border_radius=3)
+                ts = FONTS.get_font(14).render(label, True, COLORS.text)
+                screen.blit(ts, ts.get_rect(center=btn.center))
+            mid = (self._tol_minus.right + self._tol_plus.x) // 2
+            tlbl = small.render(str(self._tolerance), True, COLORS.text)
+            screen.blit(tlbl, tlbl.get_rect(center=(mid, self._panel_rect.centery)))
+        if self._apply_rect is not None:
+            ready = self._src is not None
+            bg = COLORS.accent if ready else COLORS.panel_alt
+            pygame.draw.rect(screen, bg, self._apply_rect, border_radius=3)
+            pygame.draw.rect(screen, COLORS.border_soft, self._apply_rect, 1, border_radius=3)
+            fg = COLORS.text_on_accent if ready else COLORS.text_dim
+            lbl = small.render("Apply", True, fg)
+            screen.blit(lbl, lbl.get_rect(center=self._apply_rect.center))
+        if self._custom_btn is not None:
+            pygame.draw.rect(screen, COLORS.panel_alt, self._custom_btn, border_radius=3)
+            pygame.draw.rect(screen, COLORS.border_soft, self._custom_btn, 1, border_radius=3)
+            lbl = small.render("Custom", True, COLORS.text)
+            screen.blit(lbl, lbl.get_rect(center=self._custom_btn.center))
+        if self._preview_count is not None and self._src is not None:
+            clf = small.render(f"{self._preview_count} px", True, COLORS.text_dim)
+            screen.blit(clf, (self._panel_rect.right + 6, self._panel_rect.y + 8))
+
+    def _draw_custom(self, screen: Surface) -> None:
+        panel = self._custom_panel
+        if panel is None:
+            return
+        small = FONTS.get_small_font()
+        pygame.draw.rect(screen, COLORS.panel, panel, border_radius=SHAPE.radius_sm)
+        pygame.draw.rect(screen, COLORS.border, panel, 1, border_radius=SHAPE.radius_sm)
+        title = small.render(
+            f"Custom {'source' if self._custom_target == 'src' else 'target'}  {_hex_of(self._active_color())}",
+            True,
+            COLORS.text,
+        )
+        screen.blit(title, (panel.x + 10, panel.y + 8))
+        if self._field is not None:
+            self._field.draw(screen)
+        for slider in self._sliders:
+            slider.draw(screen, COLORS.accent)
+        if self._hex is not None:
+            self._hex.draw(screen)
+            if not self._hex.text:
+                hint = small.render("#RRGGBB", True, COLORS.text_muted)
+                screen.blit(hint, (self._hex.rect.x + 6, self._hex.rect.y + 4))
+        if self._done_rect is not None:
+            pygame.draw.rect(screen, COLORS.accent, self._done_rect, border_radius=3)
+            lbl = small.render("Done", True, COLORS.text_on_accent)
+            screen.blit(lbl, lbl.get_rect(center=self._done_rect.center))
