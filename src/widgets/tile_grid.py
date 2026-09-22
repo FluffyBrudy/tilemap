@@ -1,3 +1,4 @@
+import math
 import random
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -8,6 +9,12 @@ from pygame import K_LEFT, K_RIGHT, K_UP, Rect, Surface
 from nodes import NodeRect
 from ttypes.tilemap import TypeObject, TypeTile
 from utils.context_dispatch import ContextKind, PropertyContext
+from utils.tile_anim import (
+    MODE_RANDOM_START,
+    clip_frame_at,
+    clip_phase_for_cell,
+    resolve_clip_sheet,
+)
 from widgets.particle_system import MAX_DT, ParticlePreview
 from widgets.ui.drag_tracker import DragTracker
 from widgets.ui.theme import COLORS, FONTS
@@ -45,6 +52,9 @@ class TileGrid:
         self.min_zoom = 0.1
         self.max_zoom = 5.0
 
+        self.brush_flip_h = False
+        self.brush_flip_v = False
+
         self.font_status = FONTS.get_font(12)
         self.font_overlay = FONTS.get_bold_font(24)
         self._last_history_capture = 0
@@ -56,6 +66,8 @@ class TileGrid:
         self.selection_rect = None
         self.selection_start = None
         self.is_selecting = False
+        self._rubber_moved = False
+        self._rubber_start_px = (0, 0)
 
         self.is_moving = False
         self.move_delta = (0, 0)
@@ -76,12 +88,19 @@ class TileGrid:
         self._image_original_rect: dict[str, int] | None = None
         self._image_drag_start: tuple[float, float] | None = None
         self._image_history_pending = False
+        self._image_drag_target: tuple[bool, int | None] = (False, None)
+
+
+        self._image_snap_hint: str | None = None
+        self._image_placement_pid: int | None = None
+        self._image_placement_layer = None
         self._image_cache: dict[str, Surface | None] = {}
         self._scaled_image_cache: dict[tuple[int, tuple[int, int], str | None], Surface] = {}
+        self._tile_scale_cache: dict[tuple, Surface] = {}
+        self._warned_unknown_clips: set[str] = set()
 
         self._particle_previews: dict[str, ParticlePreview] = {}
         self._last_preview_time: float = 0.0
-        self._last_active_node_id: str | None = None
 
         self._dice_preview_variant: int | None = None
         self._dice_preview_at: int = 0
@@ -110,12 +129,42 @@ class TileGrid:
     def screen_to_world(self, pos: tuple[int, int]) -> tuple[int, int]:
         wx = (pos[0] - self.rect.x) / self.zoom_level + self.scroll_x
         wy = (pos[1] - self.rect.y) / self.zoom_level + self.scroll_y
-        return int(wx), int(wy)
+
+        return math.floor(wx), math.floor(wy)
 
     def get_grid_pos(self, pos: tuple[int, int]) -> tuple[int, int]:
         wx, wy = self.screen_to_world(pos)
         eff_w, eff_h = self.effective_tile_size
         return int(wx // eff_w), int(wy // eff_h)
+
+    def world_rect_to_screen(self, x: float, y: float, w: float, h: float) -> Rect:
+        """Screen rect of a world rect."""
+        z = self.zoom_level
+        x0 = round((x - self.scroll_x) * z + self.rect.x)
+        y0 = round((y - self.scroll_y) * z + self.rect.y)
+        x1 = round((x + w - self.scroll_x) * z + self.rect.x)
+        y1 = round((y + h - self.scroll_y) * z + self.rect.y)
+        return Rect(x0, y0, max(0, x1 - x0), max(0, y1 - y0))
+
+    def cell_screen_rect(self, col: int, row: int) -> Rect:
+
+        eff_w, eff_h = self.effective_tile_size
+        return self.world_rect_to_screen(col * eff_w, row * eff_h, eff_w, eff_h)
+
+    def cell_range_rect(self, x1: int, y1: int, x2: int, y2: int) -> Rect:
+
+        eff_w, eff_h = self.effective_tile_size
+        return self.world_rect_to_screen(x1 * eff_w, y1 * eff_h, (x2 - x1 + 1) * eff_w, (y2 - y1 + 1) * eff_h)
+
+    def grid_line_x(self, col: int) -> int:
+
+        eff_w, _ = self.effective_tile_size
+        return round((col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x)
+
+    def grid_line_y(self, row: int) -> int:
+
+        _, eff_h = self.effective_tile_size
+        return round((row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y)
 
     def _get_map_bounds(self) -> tuple[int, int, int, int]:
         if self._cached_bounds is not None:
@@ -135,7 +184,7 @@ class TileGrid:
         return self._cached_bounds
 
     def invalidate_bounds_cache(self):
-        """Invalidate the cached bounds when tiles, objects, or layers change."""
+
         self._cached_bounds = None
         minimap = getattr(getattr(self, "editor", None), "minimap", None)
         if minimap is not None:
@@ -145,9 +194,72 @@ class TileGrid:
                 pass
 
     def invalidate_image_cache(self, _layer=None) -> None:
-        """Drop decoded image surfaces after a layer image is replaced."""
+
         self._image_cache.clear()
         self._scaled_image_cache.clear()
+        self._tile_scale_cache.clear()
+
+    TILE_SCALE_CACHE_MAX = 512
+
+    def _scaled_tile(
+        self,
+        base_surf: Surface,
+        src_rect: Rect,
+        size: tuple[int, int],
+        alpha: int | None = None,
+    ) -> Surface:
+        
+        key = (
+            id(base_surf),
+            base_surf.get_size(),
+            src_rect.x,
+            src_rect.y,
+            src_rect.w,
+            src_rect.h,
+            size[0],
+            size[1],
+            alpha,
+        )
+        hit = self._tile_scale_cache.get(key)
+        if hit is not None:
+            return hit
+        scaled = pygame.transform.scale(base_surf.subsurface(src_rect), size)
+        if alpha is not None:
+            scaled.set_alpha(alpha)
+        if len(self._tile_scale_cache) >= self.TILE_SCALE_CACHE_MAX:
+            self._tile_scale_cache.pop(next(iter(self._tile_scale_cache)))
+        self._tile_scale_cache[key] = scaled
+        return scaled
+
+    def _flipped_tile(
+        self,
+        base_surf: Surface,
+        src_rect: Rect,
+        flip_h: bool,
+        flip_v: bool,
+    ) -> Surface | None:
+        
+        if not base_surf.get_rect().contains(src_rect):
+            return None
+        key = (
+            "flip",
+            id(base_surf),
+            base_surf.get_size(),
+            src_rect.x,
+            src_rect.y,
+            src_rect.w,
+            src_rect.h,
+            flip_h,
+            flip_v,
+        )
+        hit = self._tile_scale_cache.get(key)
+        if hit is not None:
+            return hit
+        flipped = pygame.transform.flip(base_surf.subsurface(src_rect).copy(), flip_h, flip_v)
+        if len(self._tile_scale_cache) >= self.TILE_SCALE_CACHE_MAX:
+            self._tile_scale_cache.pop(next(iter(self._tile_scale_cache)))
+        self._tile_scale_cache[key] = flipped
+        return flipped
 
     def _on_h_scroll(self, val: float):
         world_min_x, _, _, _ = self._get_map_bounds()
@@ -243,9 +355,12 @@ class TileGrid:
         self._h_scroll.set_range(span_x, vww, self.scroll_x - world_min_x)
         self._v_scroll.set_range(span_y, vwh, self.scroll_y - world_min_y)
 
-    def zoom_by(self, delta: float, center: tuple[int, int] | None = None):
+    ZOOM_STEPS_PER_OCTAVE = 12
+
+    def _apply_zoom(self, new_zoom: float, center: tuple[int, int] | None = None) -> None:
+
         old_zoom = self.zoom_level
-        new_zoom = max(self.min_zoom, min(self.max_zoom, old_zoom + delta))
+        new_zoom = max(self.min_zoom, min(self.max_zoom, new_zoom))
         if new_zoom == old_zoom:
             return
         if center is None:
@@ -256,8 +371,19 @@ class TileGrid:
         self.scroll_x = wx - (center[0] - self.rect.x) / new_zoom
         self.scroll_y = wy - (center[1] - self.rect.y) / new_zoom
 
+    def zoom_by(self, delta: float, center: tuple[int, int] | None = None):
+        """Zoom step for mouse wheel."""
+        self._apply_zoom(self.zoom_level + delta, center)
+
+    def zoom_by_steps(self, steps: int, center: tuple[int, int] | None = None) -> None:
+        """Step zoom for buttons and keys."""
+        if steps == 0:
+            return
+        index = round(math.log2(max(self.zoom_level, 1e-9)) * self.ZOOM_STEPS_PER_OCTAVE)
+        self._apply_zoom(2.0 ** ((index + steps) / self.ZOOM_STEPS_PER_OCTAVE), center)
+
     def center_on_map(self):
-        """Center the map in the viewport using the fixed map bounds."""
+
         eff_w, eff_h = self.effective_tile_size
         tm = self.editor.tilemap
         ox, oy = tm.offset
@@ -319,6 +445,14 @@ class TileGrid:
 
             plain = not (ctrl_held or meta_held)
 
+            if event.key == pygame.K_h and plain and (mods & pygame.KMOD_SHIFT):
+                self.toggle_brush_flip("h")
+                return True
+
+            if event.key == pygame.K_v and plain and (mods & pygame.KMOD_SHIFT):
+                self.toggle_brush_flip("v")
+                return True
+
             if event.key == pygame.K_a and (ctrl_held or meta_held):
                 if mods & pygame.KMOD_SHIFT:
                     self.create_alias_from_selection()
@@ -326,7 +460,7 @@ class TileGrid:
                 active_layer = self.editor.tilemap.layer_manager.get_active_layer()
                 if active_layer and hasattr(self.editor, "autotiler"):
                     rules = getattr(self.editor.autotiler, "rules", [])
-                    count = active_layer.autotile_layer(rules)
+                    count = active_layer.autotile_layer(rules, self._autotile_props())
                     if count:
                         self.editor.notifications.success(f"Autotile complete: {count} tiles updated")
                     else:
@@ -416,14 +550,14 @@ class TileGrid:
                 if self.is_moving:
                     self.commit_move()
                 elif self.selection_rect:
-                    self.selection_rect = None
+                    self.clear_selection()
                 return True
 
             if event.key == pygame.K_ESCAPE:
                 if self.is_moving:
                     self.cancel_move()
                 elif self.selection_rect:
-                    self.selection_rect = None
+                    self.clear_selection()
                 return True
 
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -450,18 +584,11 @@ class TileGrid:
                                             return True
                                         nm.set_active_node(None)
 
-                                self.selection_start = self.hover_cell
-                                self.is_selecting = True
-                                self.selection_rect = (
-                                    self.hover_cell[0],
-                                    self.hover_cell[1],
-                                    self.hover_cell[0],
-                                    self.hover_cell[1],
-                                )
+                                self.begin_rubber_band(self.hover_cell, mouse_pos)
                         else:
-                            self.selection_rect = None
+                            self.clear_selection()
                     else:
-                        self.selection_rect = None
+                        self.clear_selection()
                     return True
 
                 if self.editor.tool_manager.is_active(ToolKind.ERASER):
@@ -523,7 +650,11 @@ class TileGrid:
                     return True
                 if self.is_selecting:
                     self.is_selecting = False
-                    self._finalize_selection()
+                    dragged = self._rubber_moved
+                    self._rubber_moved = False
+                    self.selection_start = None
+                    if dragged:
+                        self._finalize_selection()
                     return True
                 if self.is_moving:
                     self.commit_move()
@@ -548,6 +679,11 @@ class TileGrid:
                 self.hover_cell = None
 
             if self.is_selecting and self.selection_start and self.hover_cell:
+                if not self._rubber_moved:
+                    sx, sy = self._rubber_start_px
+                    if abs(mouse_pos[0] - sx) > 4 or abs(mouse_pos[1] - sy) > 4:
+                        self._rubber_moved = True
+            if self.is_selecting and self._rubber_moved and self.selection_start and self.hover_cell:
                 x1 = min(self.selection_start[0], self.hover_cell[0])
                 y1 = min(self.selection_start[1], self.hover_cell[1])
                 x2 = max(self.selection_start[0], self.hover_cell[0])
@@ -608,11 +744,16 @@ class TileGrid:
         return False
 
     def _tileset_map(self) -> dict:
-        """Tileset index -> data map, empty when no tileset widget is live."""
+
         ts_widget = getattr(self.editor, "tileset_widget", None)
         if ts_widget is None:
             return {}
         return getattr(ts_widget, "tileset_map", {})
+
+    def _autotile_props(self) -> dict:
+        from layers import build_variant_props_lookup
+
+        return build_variant_props_lookup(self._tileset_map())
 
     def get_selected_brush(self):
         ts_widget = self.editor.tileset_widget
@@ -649,7 +790,7 @@ class TileGrid:
         return idx, tilesets[idx], pattern
 
     def _place_alias(self, active_layer, tileset_index, tileset_data, pattern) -> int:
-        """Plot the armed alias anchored at the hover cell. Returns cell count."""
+
         if self.hover_cell is None:
             return 0
         autotile_ok = self.editor.autotile_mode and getattr(self.editor, "autotiler", None)
@@ -666,6 +807,7 @@ class TileGrid:
         mw, mh = tm.map_size
         ax, ay = self.hover_cell
         plotted = 0
+        flip_h, flip_v = self._brush_flip_flags()
         for dx, dy, variant_id in pattern.cells:
             map_x, map_y = ax + dx, ay + dy
             if not (ox <= map_x < ox + mw and oy <= map_y < oy + mh):
@@ -674,8 +816,10 @@ class TileGrid:
                 "pos": (map_x, map_y),
                 "ttype": tileset_index,
                 "variant": variant_id,
+                "flip_h": flip_h,
+                "flip_v": flip_v,
             }
-            if variant_id in tileset_data.tile_properties:
+            if tileset_data.tile_properties.get(variant_id):
                 tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
             if autotile_ok:
                 owner = vg_map.get((tileset_index, variant_id))
@@ -687,7 +831,7 @@ class TileGrid:
             if autotile_ok:
                 rules = self.editor.autotiler.rules
                 if rules:
-                    active_layer.autotile_at_pos((map_x, map_y), rules)
+                    active_layer.autotile_at_pos((map_x, map_y), rules, self._autotile_props())
             plotted += 1
         self.invalidate_bounds_cache()
         return plotted
@@ -699,7 +843,8 @@ class TileGrid:
             alias = self._active_alias()
             if not alias:
                 self.editor.notifications.notify(
-                    "No alias armed (or its tileset is missing) — pick one in the Aliases tab")
+                    "No alias armed (or its tileset is missing) — pick one in the Aliases tab"
+                )
                 return
             tileset_index, tileset_data, pattern = alias
             active_layer = self.editor.tilemap.layer_manager.get_active_layer()
@@ -707,8 +852,7 @@ class TileGrid:
                 return
             plotted = self._place_alias(active_layer, tileset_index, tileset_data, pattern)
             if plotted:
-                self.editor.notifications.success(
-                    f"Alias '{pattern.name}': {plotted} tiles plotted")
+                self.editor.notifications.success(f"Alias '{pattern.name}': {plotted} tiles plotted")
             return
         res = self.get_selected_brush()
         if not res:
@@ -744,6 +888,7 @@ class TileGrid:
             if not self.hover_cell:
                 return
 
+            self._warn_object_stamp_cutoff(tileset_data, src_rect)
             self._place_tile_grid(
                 active_layer,
                 tileset_index,
@@ -772,6 +917,95 @@ class TileGrid:
         start_sy = src_rect[1] // tile_h
         return [(start_sy + y) * sheet_cols + start_sx + x for y in range(sel_h) for x in range(sel_w)]
 
+    @staticmethod
+    def _tile_flip_flags(tile: dict) -> tuple[bool, bool]:
+
+        return (bool(tile.get("flip_h")), bool(tile.get("flip_v")))
+
+    def _brush_flip_flags(self) -> tuple[bool, bool]:
+        return (
+            getattr(self, "brush_flip_h", False),
+            getattr(self, "brush_flip_v", False),
+        )
+
+    def _notify(self, message: str) -> None:
+        notifications = getattr(self.editor, "notifications", None)
+        if notifications is not None:
+            try:
+                notifications.notify(message)
+            except Exception:
+                pass
+
+    def toggle_brush_flip(self, axis: str) -> None:
+        
+        if getattr(self, "selection_rect", None):
+            if self._flip_selected_tiles(axis):
+                return
+            return
+        if axis == "h":
+            state = not getattr(self, "brush_flip_h", False)
+            self.brush_flip_h = state
+        else:
+            state = not getattr(self, "brush_flip_v", False)
+            self.brush_flip_v = state
+        label = "Flip H" if axis == "h" else "Flip V"
+        key = "H" if axis == "h" else "V"
+        self._notify(f"{label} brush: {'on' if state else 'off'} (Shift+{key})")
+
+    def _selection_cells(self) -> list[tuple[int, int]]:
+        if not self.selection_rect:
+            return []
+        x1, y1, x2, y2 = self.selection_rect
+        return [(gx, gy) for gy in range(y1, y2 + 1) for gx in range(x1, x2 + 1)]
+
+    def _flip_selected_tiles(self, axis: str) -> bool:
+        """Mirror selection in place."""
+        if not getattr(self, "selection_rect", None):
+            return False
+        manager = self.editor.tilemap.layer_manager
+        active_layer = manager.get_active_layer() if manager else None
+        if active_layer is None or active_layer.layer_type != "tile":
+            self._notify("Flip needs an active tile layer")
+            return False
+        if getattr(active_layer, "locked", False):
+            self._notify("Layer is locked")
+            return False
+        key = "flip_h" if axis == "h" else "flip_v"
+        cells = self._selection_cells()
+        if not cells:
+            return False
+        cols = sorted({c for c, _ in cells})
+        rows = sorted({r for _, r in cells})
+        c0, c1 = cols[0], cols[-1]
+        r0, r1 = rows[0], rows[-1]
+        self.editor.tilemap.capture_history(f"Flip {'H' if axis == 'h' else 'V'} Selection")
+        snapshot = {pos: dict(tile) for pos in cells if (tile := active_layer.tiles.get(pos)) is not None}
+        for pos in snapshot:
+            active_layer.remove_tile(pos)
+        flipped = 0
+        for (c, r), tile in snapshot.items():
+            nc = c0 + c1 - c if axis == "h" else c
+            nr = r0 + r1 - r if axis == "v" else r
+            tile[key] = not bool(tile.get(key))
+            tile["pos"] = (nc, nr)
+            active_layer.set_tile((nc, nr), tile)
+            flipped += 1
+        self.invalidate_bounds_cache()
+        self._notify(f"Flipped {flipped} tile(s)")
+        return True
+
+    def _warn_object_stamp_cutoff(self, tileset_data, src_rect) -> None:
+        
+        if getattr(tileset_data, "tileset_type", None) != "object":
+            return
+        tile_w, tile_h = self.tile_size
+        if src_rect[2] <= tile_w and src_rect[3] <= tile_h:
+            return
+        self._notify(
+            f"Sprite {src_rect[2]}x{src_rect[3]} px plotted cut off "
+            f"on a {tile_w}px grid; use an object layer for the full sprite"
+        )
+
     def _place_tile_grid(
         self,
         active_layer,
@@ -782,7 +1016,7 @@ class TileGrid:
         tile_h: int,
         sheet_cols: int,
     ):
-        """Place tiles in grid-aligned fashion (tile layer or tile on object layer)."""
+
         if self.hover_cell is None:
             return
 
@@ -831,6 +1065,7 @@ class TileGrid:
 
             dice_pool = self._dice_pool(src_rect, tile_w, tile_h, sheet_cols)
             paint_w, paint_h = (1, 1) if dice_pool is not None else (sel_w_tiles, sel_h_tiles)
+            flip_h, flip_v = self._brush_flip_flags()
             for y_off in range(paint_h):
                 for x_off in range(paint_w):
                     curr_sx = start_sx + x_off
@@ -854,15 +1089,14 @@ class TileGrid:
                         "pos": target_pos,
                         "ttype": (tileset_index),
                         "variant": variant_id,
+                        "flip_h": flip_h,
+                        "flip_v": flip_v,
                     }
 
-                    if variant_id in tileset_data.tile_properties:
+                    if tileset_data.tile_properties.get(variant_id):
                         tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
 
                     if autotile_ok:
-                        # Prefer the selected group so a second ruleset reusing
-                        # the same tiles can actually be painted; fall back to
-                        # the first-group-wins owner map when nothing selected.
                         owner = vg_map.get((tileset_index, variant_id))
                         if selected_group:
                             tile_data["autotile_group"] = selected_group
@@ -876,7 +1110,7 @@ class TileGrid:
                     if autotile_ok:
                         rules = self.editor.autotiler.rules
                         if rules:
-                            active_layer.autotile_at_pos(target_pos, rules)
+                            active_layer.autotile_at_pos(target_pos, rules, self._autotile_props())
 
             if autotile_ok and reassigned:
                 total = sum(reassigned.values())
@@ -889,15 +1123,14 @@ class TileGrid:
                         pass
 
     def _commit_rect_fill(self):
-        """Fill the dragged rect with the tiled brush (one history entry)."""
+
         start, rect = self.rect_fill_start, self.rect_fill_rect
         self.rect_fill_start = None
         self.rect_fill_rect = None
         if start is None or rect is None:
             return
         if getattr(self.editor, "brush_mode", "tileset") == "alias":
-            self.editor.notifications.notify(
-                "Alias paints a single plot — switch to Tileset brush for rect fill")
+            self.editor.notifications.notify("Alias paints a single plot — switch to Tileset brush for rect fill")
             return
         res = self.get_selected_brush()
         if not res:
@@ -933,6 +1166,7 @@ class TileGrid:
         mw, mh = tm.map_size
         x1, y1, x2, y2 = rect
         filled = 0
+        flip_h, flip_v = self._brush_flip_flags()
         self.editor.tilemap.capture_history("Rect Fill")
         for map_y in range(y1, y2 + 1):
             for map_x in range(x1, x2 + 1):
@@ -948,8 +1182,10 @@ class TileGrid:
                     "pos": (map_x, map_y),
                     "ttype": tileset_index,
                     "variant": variant_id,
+                    "flip_h": flip_h,
+                    "flip_v": flip_v,
                 }
-                if variant_id in tileset_data.tile_properties:
+                if tileset_data.tile_properties.get(variant_id):
                     tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
                 if selected_group:
                     tile_data["autotile_group"] = selected_group
@@ -961,7 +1197,7 @@ class TileGrid:
                 if autotile_ok:
                     rules = self.editor.autotiler.rules
                     if rules:
-                        active_layer.autotile_at_pos((map_x, map_y), rules)
+                        active_layer.autotile_at_pos((map_x, map_y), rules, self._autotile_props())
                 filled += 1
         self.invalidate_bounds_cache()
         if filled:
@@ -969,7 +1205,7 @@ class TileGrid:
 
     @staticmethod
     def bresenham_line(x0: int, y0: int, x1: int, y1: int) -> list[tuple[int, int]]:
-        """Grid cells along the line (inclusive both ends)."""
+
         cells = []
         dx, dy = abs(x1 - x0), -abs(y1 - y0)
         sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
@@ -989,15 +1225,14 @@ class TileGrid:
         return cells
 
     def _commit_line(self):
-        """Paint the dragged line with the brush (one history entry)."""
+
         start, end = self.line_start, self.line_end
         self.line_start = None
         self.line_end = None
         if start is None or end is None:
             return
         if getattr(self.editor, "brush_mode", "tileset") == "alias":
-            self.editor.notifications.notify(
-                "Alias paints a single plot — switch to Tileset brush for lines")
+            self.editor.notifications.notify("Alias paints a single plot — switch to Tileset brush for lines")
             return
         res = self.get_selected_brush()
         if not res:
@@ -1036,6 +1271,7 @@ class TileGrid:
         mw, mh = tm.map_size
         cells = self.bresenham_line(start[0], start[1], end[0], end[1])
         painted = 0
+        flip_h, flip_v = self._brush_flip_flags()
         self.editor.tilemap.capture_history("Line")
         for i, (map_x, map_y) in enumerate(cells):
             if not (ox <= map_x < ox + mw and oy <= map_y < oy + mh):
@@ -1048,8 +1284,10 @@ class TileGrid:
                 "pos": (map_x, map_y),
                 "ttype": tileset_index,
                 "variant": variant_id,
+                "flip_h": flip_h,
+                "flip_v": flip_v,
             }
-            if variant_id in tileset_data.tile_properties:
+            if tileset_data.tile_properties.get(variant_id):
                 tile_data["properties"] = tileset_data.tile_properties[variant_id].copy()
             if selected_group:
                 tile_data["autotile_group"] = selected_group
@@ -1061,7 +1299,7 @@ class TileGrid:
             if autotile_ok:
                 rules = self.editor.autotiler.rules
                 if rules:
-                    active_layer.autotile_at_pos((map_x, map_y), rules)
+                    active_layer.autotile_at_pos((map_x, map_y), rules, self._autotile_props())
             painted += 1
         self.invalidate_bounds_cache()
         if painted:
@@ -1221,10 +1459,13 @@ class TileGrid:
         sheet_cols = tileset_data.surface.get_width() // tile_w
         variant_id = (src_rect[1] // tile_h * sheet_cols) + (src_rect[0] // tile_w)
 
+        flip_h, flip_v = self._brush_flip_flags()
         new_data: TypeTile = {
             "ttype": tileset_index,
             "variant": variant_id,
             "pos": (0, 0),
+            "flip_h": flip_h,
+            "flip_v": flip_v,
         }
         if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
             autotiler = self.editor.autotiler
@@ -1290,7 +1531,7 @@ class TileGrid:
                     if self.editor.autotile_mode and getattr(self.editor, "autotiler", None):
                         rules = self.editor.autotiler.rules
                         if rules:
-                            active_layer.autotile_at_pos(pos, rules)
+                            active_layer.autotile_at_pos(pos, rules, self._autotile_props())
 
             self.invalidate_bounds_cache()
 
@@ -1367,6 +1608,20 @@ class TileGrid:
                 return True
         return False
 
+    def begin_rubber_band(self, cell: tuple[int, int], mouse_px: tuple[int, int]) -> None:
+
+        self.selection_start = cell
+        self.is_selecting = True
+        self._rubber_moved = False
+        self._rubber_start_px = mouse_px
+
+    def clear_selection(self) -> None:
+
+        self.selection_rect = None
+        self.selection_start = None
+        self.is_selecting = False
+        self._rubber_moved = False
+
     def _point_in_selection(self, grid_pos: tuple[int, int]) -> bool:
         if not self.selection_rect:
             return False
@@ -1430,11 +1685,13 @@ class TileGrid:
             return False
         try:
             from utils.project_paths import to_project_path
+
             base = getattr(self.editor, "base_path", None)
             tileset_ref = to_project_path(ts_path, Path(base)) if base else ts_path.name
         except Exception:
             tileset_ref = ts_path.name
         from aliases import alias_key_for, load_alias_path, resolve_alias_path
+
         aliases_dir = Path(self.editor.data_root) / self.editor.config.get("aliases_path", "aliases")
         key = alias_key_for(tileset_ref)
         path = resolve_alias_path(aliases_dir, tileset_ref)
@@ -1455,8 +1712,7 @@ class TileGrid:
         while name in taken:
             n += 1
             name = f"Alias {n}"
-        alias_file.aliases.append(AliasPattern(
-            name=name, w=x2 - x1 + 1, h=y2 - y1 + 1, cells=sorted(cells)))
+        alias_file.aliases.append(AliasPattern(name=name, w=x2 - x1 + 1, h=y2 - y1 + 1, cells=sorted(cells)))
         try:
             alias_file.save(path)
         except OSError as e:
@@ -1468,8 +1724,7 @@ class TileGrid:
         palette = getattr(self.editor, "alias_palette", None)
         if palette is not None and hasattr(palette, "refresh_items"):
             palette.refresh_items(force=True)
-        self.editor.notifications.success(
-            f"Alias '{name}' saved — rename anytime in Composer (F2)")
+        self.editor.notifications.success(f"Alias '{name}' saved — rename anytime in Composer (F2)")
         return True
 
     def copy_selection(self):
@@ -1599,11 +1854,11 @@ class TileGrid:
                     count += 1
             self.editor.notifications.success(f"Deleted {count} objects")
 
-        self.selection_rect = None
+        self.clear_selection()
         self.invalidate_bounds_cache()
 
     def _begin_move(self, mouse_pos: tuple[int, int]):
-        """Enter move mode: user clicked inside the selection rectangle."""
+
         self.is_moving = True
         self.move_start_mouse = mouse_pos
         self.move_origin_rect = self.selection_rect
@@ -1636,7 +1891,7 @@ class TileGrid:
                     }
 
     def _update_move_delta(self, mouse_pos: tuple[int, int]):
-        """Update the move delta based on mouse drag distance."""
+
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
         if not active_layer or not self.move_origin_rect:
             return
@@ -1668,7 +1923,7 @@ class TileGrid:
                     obj["area"]["y"] = orig["y"] + world_dy
 
     def commit_move(self):
-        """Apply the move delta to the actual layer data."""
+
         if not self.is_moving or not self.move_origin_rect:
             return
 
@@ -1735,7 +1990,7 @@ class TileGrid:
         self.invalidate_bounds_cache()
 
     def cancel_move(self):
-        """Cancel the current move, restoring original positions."""
+
         active_layer = self.editor.tilemap.layer_manager.get_active_layer()
         if active_layer and active_layer.layer_type == "object" and self._object_move_origins:
             for obj_id, orig in self._object_move_origins.items():
@@ -1756,7 +2011,7 @@ class TileGrid:
             self.selection_rect = origin
 
     def _draw_background(self, screen):
-        """Draw infinite plane (solid dark) and map area (panel + accent border)."""
+
         try:
             if self.rect.width <= 0 or self.rect.height <= 0:
                 return
@@ -1769,18 +2024,9 @@ class TileGrid:
             pygame.draw.rect(screen, COLORS.panel_alt, self.rect)
 
             ox, oy = self.editor.tilemap.offset
-            map_screen_x = (ox * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-            map_screen_y = (oy * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-            map_display_w = map_w * eff_w * self.zoom_level
-            map_display_h = map_h * eff_h * self.zoom_level
-            if map_display_w <= 0 or map_display_h <= 0:
+            map_rect = self.world_rect_to_screen(ox * eff_w, oy * eff_h, map_w * eff_w, map_h * eff_h)
+            if map_rect.w <= 0 or map_rect.h <= 0:
                 return
-            map_rect = Rect(
-                int(map_screen_x),
-                int(map_screen_y),
-                int(map_display_w),
-                int(map_display_h),
-            )
 
             visible = map_rect.clip(self.rect)
             if visible.width > 0 and visible.height > 0:
@@ -1845,19 +2091,13 @@ class TileGrid:
                 tile_w, tile_h = self.tile_size
                 erase_w = tile_w * self.eraser_size
                 erase_h = tile_h * self.eraser_size
-                sx = int((wx - erase_w / 2 - self.scroll_x) * self.zoom_level + self.rect.x)
-                sy = int((wy - erase_h / 2 - self.scroll_y) * self.zoom_level + self.rect.y)
-                sw = int(erase_w * self.zoom_level)
-                sh = int(erase_h * self.zoom_level)
-                pygame.draw.rect(screen, COLORS.danger, Rect(sx, sy, sw, sh), 2)
+                dest_rect = self.world_rect_to_screen(wx - erase_w / 2, wy - erase_h / 2, erase_w, erase_h)
+                pygame.draw.rect(screen, COLORS.danger, dest_rect, 2)
                 return
             if self.hover_cell:
-                eff_w, eff_h = self.effective_tile_size
-                screen_x = (self.hover_cell[0] * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-                screen_y = (self.hover_cell[1] * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-                size_w = int(eff_w * self.eraser_size * self.zoom_level)
-                size_h = int(eff_h * self.eraser_size * self.zoom_level)
-                dest_rect = Rect(screen_x, screen_y, size_w, size_h)
+                c, r = self.hover_cell
+                n = self.eraser_size
+                dest_rect = self.cell_range_rect(c, r, c + n - 1, r + n - 1)
                 pygame.draw.rect(screen, COLORS.danger, dest_rect, 2)
                 return
 
@@ -1876,48 +2116,34 @@ class TileGrid:
             return
         if tool_manager.is_active(ToolKind.FILL):
             if self.hover_cell:
-                eff_w, eff_h = self.effective_tile_size
-                screen_x = (self.hover_cell[0] * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-                screen_y = (self.hover_cell[1] * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-                dest_rect = Rect(screen_x, screen_y, int(eff_w * self.zoom_level), int(eff_h * self.zoom_level))
+                dest_rect = self.cell_screen_rect(*self.hover_cell)
                 pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
             return
         if tool_manager.is_active(ToolKind.RECT_FILL):
-            eff_w, eff_h = self.effective_tile_size
             rect = self.rect_fill_rect
             if rect is None and self.hover_cell:
                 x, y = self.hover_cell
                 rect = (x, y, x, y)
             if rect is not None:
                 x1, y1, x2, y2 = rect
-                screen_x = (x1 * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-                screen_y = (y1 * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-                w = int((x2 - x1 + 1) * eff_w * self.zoom_level)
-                h = int((y2 - y1 + 1) * eff_h * self.zoom_level)
-                pygame.draw.rect(screen, (255, 255, 255), Rect(screen_x, screen_y, w, h), 1)
+                pygame.draw.rect(screen, (255, 255, 255), self.cell_range_rect(x1, y1, x2, y2), 1)
             return
         if tool_manager.is_active(ToolKind.LINE):
-            eff_w, eff_h = self.effective_tile_size
             start = getattr(self, "line_start", None)
             end = getattr(self, "line_end", None) or self.hover_cell
             if start is not None and end is not None:
                 for col, row in self.bresenham_line(start[0], start[1], end[0], end[1]):
-                    screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-                    screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
                     pygame.draw.rect(
                         screen,
                         (255, 255, 255),
-                        Rect(screen_x, screen_y, int(eff_w * self.zoom_level), int(eff_h * self.zoom_level)),
+                        self.cell_screen_rect(col, row),
                         1,
                     )
             elif self.hover_cell:
-                col, row = self.hover_cell
-                screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-                screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
                 pygame.draw.rect(
                     screen,
                     (255, 255, 255),
-                    Rect(screen_x, screen_y, int(eff_w * self.zoom_level), int(eff_h * self.zoom_level)),
+                    self.cell_screen_rect(*self.hover_cell),
                     1,
                 )
             return
@@ -1939,13 +2165,7 @@ class TileGrid:
             world_x, world_y = self.screen_to_world(mouse_pos)
             rs = self.editor.tilemap.render_scale
 
-            sel_width = int(src_rect[2] * rs * self.zoom_level)
-            sel_height = int(src_rect[3] * rs * self.zoom_level)
-
-            screen_x = (world_x - self.scroll_x) * self.zoom_level + self.rect.x
-            screen_y = (world_y - self.scroll_y) * self.zoom_level + self.rect.y
-
-            dest_rect = Rect(screen_x, screen_y, sel_width, sel_height)
+            dest_rect = self.world_rect_to_screen(world_x, world_y, src_rect[2] * rs, src_rect[3] * rs)
             pygame.draw.rect(screen, COLORS.warning, dest_rect, 2)
 
             try:
@@ -1971,11 +2191,14 @@ class TileGrid:
 
                 sub_r = Rect(sub_x, sub_y, sub_w, sub_h)
                 if tileset_data.surface.get_rect().contains(sub_r):
-                    tile_surf = tileset_data.surface.subsurface(sub_r)
                     if self.zoom_level != 1.0 or rs != 1.0:
-                        tile_surf = pygame.transform.scale(tile_surf, (sel_width, sel_height))
-                    tile_surf.set_alpha(128)
-                    screen.blit(tile_surf, (screen_x, screen_y))
+                        if dest_rect.w <= 0 or dest_rect.h <= 0:
+                            return
+                        tile_surf = self._scaled_tile(tileset_data.surface, sub_r, dest_rect.size, alpha=128)
+                    else:
+                        tile_surf = tileset_data.surface.subsurface(sub_r).copy()
+                        tile_surf.set_alpha(128)
+                    screen.blit(tile_surf, dest_rect.topleft)
             except (ValueError, pygame.error):
                 pass
         else:
@@ -1998,12 +2221,7 @@ class TileGrid:
                     col = self.hover_cell[0] + x_off
                     row = self.hover_cell[1] + y_off
 
-                    screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-                    screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-
-                    dest_w = int(eff_w * self.zoom_level)
-                    dest_h = int(eff_h * self.zoom_level)
-                    dest_rect = Rect(screen_x, screen_y, dest_w, dest_h)
+                    dest_rect = self.cell_screen_rect(col, row)
 
                     pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
 
@@ -2013,16 +2231,23 @@ class TileGrid:
 
                         sub_r = Rect(tex_x, tex_y, tile_w, tile_h)
 
-                        tile_surf = tileset_data.surface.subsurface(sub_r)
                         if self.zoom_level != 1.0:
-                            tile_surf = pygame.transform.scale(tile_surf, (dest_w, dest_h))
-                        tile_surf.set_alpha(128)
+                            if dest_rect.w <= 0 or dest_rect.h <= 0:
+                                continue
+                            tile_surf = self._scaled_tile(tileset_data.surface, sub_r, dest_rect.size, alpha=128)
+                            if self.brush_flip_h or self.brush_flip_v:
+                                tile_surf = pygame.transform.flip(tile_surf, self.brush_flip_h, self.brush_flip_v)
+                        else:
+                            tile_surf = tileset_data.surface.subsurface(sub_r).copy()
+                            if self.brush_flip_h or self.brush_flip_v:
+                                tile_surf = pygame.transform.flip(tile_surf, self.brush_flip_h, self.brush_flip_v)
+                            tile_surf.set_alpha(128)
                         screen.blit(tile_surf, dest_rect)
                     except ValueError:
                         pass
 
     def _draw_alias_preview(self, screen, active_layer, tileset_index, tileset_data, pattern) -> None:
-        """Ghost the armed alias at the hover cell + mode indicator."""
+
         if active_layer is None:
             return
         tile_w, tile_h = self.tile_size
@@ -2031,21 +2256,23 @@ class TileGrid:
         ax, ay = self.hover_cell
         for dx, dy, variant_id in pattern.cells:
             col, row = ax + dx, ay + dy
-            screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-            screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-            dest_rect = Rect(screen_x, screen_y,
-                             int(eff_w * self.zoom_level), int(eff_h * self.zoom_level))
+            dest_rect = self.cell_screen_rect(col, row)
             pygame.draw.rect(screen, COLORS.accent, dest_rect, 1)
             try:
-                sub_r = Rect((variant_id % sheet_cols) * tile_w,
-                             (variant_id // sheet_cols) * tile_h, tile_w, tile_h)
+                sub_r = Rect((variant_id % sheet_cols) * tile_w, (variant_id // sheet_cols) * tile_h, tile_w, tile_h)
                 if not tileset_data.surface.get_rect().contains(sub_r):
                     continue
-                tile_surf = tileset_data.surface.subsurface(sub_r)
                 if self.zoom_level != 1.0:
-                    tile_surf = pygame.transform.scale(
-                        tile_surf, (dest_rect.w, dest_rect.h))
-                tile_surf.set_alpha(128)
+                    if dest_rect.w <= 0 or dest_rect.h <= 0:
+                        continue
+                    tile_surf = self._scaled_tile(tileset_data.surface, sub_r, dest_rect.size, alpha=128)
+                    if self.brush_flip_h or self.brush_flip_v:
+                        tile_surf = pygame.transform.flip(tile_surf, self.brush_flip_h, self.brush_flip_v)
+                else:
+                    tile_surf = tileset_data.surface.subsurface(sub_r).copy()
+                    if self.brush_flip_h or self.brush_flip_v:
+                        tile_surf = pygame.transform.flip(tile_surf, self.brush_flip_h, self.brush_flip_v)
+                    tile_surf.set_alpha(128)
                 screen.blit(tile_surf, dest_rect)
             except (ValueError, pygame.error):
                 pass
@@ -2063,13 +2290,9 @@ class TileGrid:
         dice_pool: list[int],
         sheet_cols: int,
     ):
-        """Single-cell dice ghost: outline on hover, cycling tile while pressed."""
+
         col, row = self.hover_cell
-        screen_x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
-        screen_y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
-        dest_w = int(eff_w * self.zoom_level)
-        dest_h = int(eff_h * self.zoom_level)
-        dest_rect = Rect(screen_x, screen_y, dest_w, dest_h)
+        dest_rect = self.cell_screen_rect(col, row)
         pygame.draw.rect(screen, (255, 255, 255), dest_rect, 1)
 
         try:
@@ -2089,13 +2312,24 @@ class TileGrid:
             tex_x = (current % sheet_cols) * tile_w
             tex_y = (current // sheet_cols) * tile_h
             sub_r = Rect(tex_x, tex_y, tile_w, tile_h)
-            tile_surf = tileset_data.surface.subsurface(sub_r)
             if self.zoom_level != 1.0:
-                tile_surf = pygame.transform.scale(tile_surf, (dest_w, dest_h))
-            tile_surf.set_alpha(128)
+                if dest_rect.w <= 0 or dest_rect.h <= 0:
+                    return
+                tile_surf = self._scaled_tile(tileset_data.surface, sub_r, dest_rect.size, alpha=128)
+            else:
+                tile_surf = tileset_data.surface.subsurface(sub_r).copy()
+                tile_surf.set_alpha(128)
             screen.blit(tile_surf, dest_rect)
         except ValueError:
             pass
+
+    def grid_step(self) -> int:
+        
+        eff_w, eff_h = self.effective_tile_size
+        cell_px = min(eff_w, eff_h) * self.zoom_level
+        if cell_px <= 0:
+            return 1
+        return max(1, math.ceil(4 / cell_px))
 
     def _draw_grid(self, screen):
         eff_w, eff_h = self.effective_tile_size
@@ -2113,14 +2347,16 @@ class TileGrid:
         visible_world_w = self.rect.width / self.zoom_level
         visible_world_h = self.rect.height / self.zoom_level
 
-        start_col = int(self.scroll_x // eff_w)
-        end_col = int((self.scroll_x + visible_world_w) // eff_w) + 1
+        start_col = math.floor(self.scroll_x / eff_w)
+        end_col = math.floor((self.scroll_x + visible_world_w) / eff_w) + 1
 
-        start_row = int(self.scroll_y // eff_h)
-        end_row = int((self.scroll_y + visible_world_h) // eff_h) + 1
+        start_row = math.floor(self.scroll_y / eff_h)
+        end_row = math.floor((self.scroll_y + visible_world_h) / eff_h) + 1
 
-        for col in range(start_col, end_col + 1):
-            x = (col * eff_w - self.scroll_x) * self.zoom_level + self.rect.x
+        step = self.grid_step()
+
+        for col in range(start_col - (start_col % step), end_col + 1, step):
+            x = self.grid_line_x(col)
 
             pygame.draw.line(
                 screen,
@@ -2129,8 +2365,8 @@ class TileGrid:
                 (x, self.rect.bottom),
             )
 
-        for row in range(start_row, end_row + 1):
-            y = (row * eff_h - self.scroll_y) * self.zoom_level + self.rect.y
+        for row in range(start_row - (start_row % step), end_row + 1, step):
+            y = self.grid_line_y(row)
             pygame.draw.line(
                 screen,
                 self.grid_color,
@@ -2143,12 +2379,7 @@ class TileGrid:
         ox, oy = self.editor.tilemap.offset
         map_w, map_h = self.editor.tilemap.map_size
 
-        boundary = Rect(
-            self.rect.x + (ox * eff_w - self.scroll_x) * self.zoom_level,
-            self.rect.y + (oy * eff_h - self.scroll_y) * self.zoom_level,
-            map_w * eff_w * self.zoom_level,
-            map_h * eff_h * self.zoom_level,
-        )
+        boundary = self.world_rect_to_screen(ox * eff_w, oy * eff_h, map_w * eff_w, map_h * eff_h)
 
         border_color = (100, 150, 255)
         border_width = max(2, int(3 * self.zoom_level))
@@ -2249,6 +2480,14 @@ class TileGrid:
                 parts.append("Tool: Moving")
             else:
                 parts.append("Tool: Select")
+            if (
+                active_layer is not None
+                and active_layer.layer_type == "image"
+                and isinstance(active_layer.image_rect, dict)
+            ):
+                parts.append(self._image_selection_hint(active_layer))
+                if self._image_drag_state and self._image_snap_hint:
+                    parts.append(self._image_snap_hint)
         elif self.editor.tool_manager.is_active(ToolKind.ERASER):
             parts.append("Tool: Eraser")
         elif self.editor.tool_manager.is_active(ToolKind.FILL):
@@ -2285,6 +2524,108 @@ class TileGrid:
         txt = self.font_status.render(status_text, True, COLORS.text_dim)
         screen.blit(txt, (10, bar_rect.y + 5))
 
+    def _tanim_paths(self, tileset_map: dict) -> list[str]:
+        paths: list[str] = []
+        for i in sorted(tileset_map.keys()):
+            ts = tileset_map[i]
+            p = getattr(ts, "path", "")
+            paths.append(str(p) if p is not None else "")
+        return paths
+
+    def _ensure_tanim(self, tileset_data) -> dict:
+        try:
+            ts_widget = getattr(self.editor, "tileset_widget", None)
+            cache = getattr(ts_widget, "_tanim_cache", None)
+            if cache is None:
+                return getattr(tileset_data, "tanim_clips", {}) or {}
+            data_root = getattr(self.editor, "data_root", None)
+            tanim, clips = cache.get_clips(getattr(tileset_data, "path", ""), data_root)
+            tileset_data.tanim_path = tanim
+            try:
+                tileset_data.tanim_mtime = tanim.stat().st_mtime if tanim is not None and tanim.is_file() else -1.0
+            except OSError:
+                tileset_data.tanim_mtime = -1.0
+            tileset_data.tanim_clips = clips
+            return clips
+        except Exception:
+            return getattr(tileset_data, "tanim_clips", {}) or {}
+
+    def _resolve_clip_cell(
+        self,
+        tileset_map: dict,
+        paths: list[str],
+        ttype: int,
+        variant: int,
+        tile: dict,
+        x: int,
+        y: int,
+        time_ms: int,
+    ) -> tuple[int, int, bool, str | None]:
+        tileset_data = tileset_map.get(ttype)
+        if tileset_data is None:
+            return (ttype, variant, False, None)
+        template_props = getattr(tileset_data, "tile_properties", {}) or {}
+        base_props = template_props.get(int(variant), {}) or {}
+        cell_props = tile.get("properties", {}) if isinstance(tile, dict) else {}
+        clip_name = None
+        if (
+            isinstance(cell_props, dict)
+            and isinstance(cell_props.get("anim_clip"), str)
+            and cell_props["anim_clip"]
+        ):
+            clip_name = cell_props["anim_clip"]
+        if (
+            clip_name is None
+            and isinstance(base_props, dict)
+            and isinstance(base_props.get("anim_clip"), str)
+            and base_props["anim_clip"]
+        ):
+            clip_name = base_props["anim_clip"]
+        if not clip_name:
+            return (ttype, variant, False, None)
+
+        clips = self._ensure_tanim(tileset_data)
+        clip = clips.get(clip_name) if isinstance(clips, dict) else None
+        if clip is None and isinstance(tileset_map, dict):
+            for other_ttype in sorted(tileset_map.keys()):
+                if other_ttype == ttype:
+                    continue
+                other = tileset_map[other_ttype]
+                other_clips = self._ensure_tanim(other)
+                if isinstance(other_clips, dict) and clip_name in other_clips:
+                    clip = other_clips[clip_name]
+                    break
+        if clip is None:
+            return (ttype, variant, True, clip_name)
+
+        try:
+            n = len(clip.frames)
+            if n == 0:
+                return (ttype, variant, True, None)
+            phase = clip_phase_for_cell(x, y, ttype, n) if clip.mode == MODE_RANDOM_START else 0
+            frame = clip_frame_at(clip, float(time_ms), phase)
+            if frame is None:
+                return (ttype, variant, True, None)
+            eff_ttype = resolve_clip_sheet(paths, frame.sheet)
+            if eff_ttype is None or eff_ttype not in tileset_map:
+                return (ttype, variant, True, None)
+            return (eff_ttype, int(frame.variant), True, None)
+        except Exception:
+            return (ttype, variant, True, None)
+
+    def _warn_unknown_clip(self, clip_name: str, ttype: int) -> None:
+        if clip_name in self._warned_unknown_clips:
+            return
+        self._warned_unknown_clips.add(clip_name)
+        try:
+            self.editor.notifications.notify(
+                f"Unknown anim_clip '{clip_name}' (tileset {ttype}) — showing static",
+                color=(255, 165, 0),
+                duration=4.0,
+            )
+        except Exception:
+            pass
+
     def render_map(self, surface: Surface):
         tilemap = self.editor.tilemap
         if not tilemap.initialized:
@@ -2300,13 +2641,18 @@ class TileGrid:
         visible_world_w = self.rect.width / self.zoom_level
         visible_world_h = self.rect.height / self.zoom_level
 
-        start_col = int(self.scroll_x // eff_w)
-        end_col = int((self.scroll_x + visible_world_w) // eff_w) + 1
+        start_col = math.floor(self.scroll_x / eff_w)
+        end_col = math.floor((self.scroll_x + visible_world_w) / eff_w) + 1
 
-        start_row = int(self.scroll_y // eff_h)
-        end_row = int((self.scroll_y + visible_world_h) // eff_h) + 1
+        start_row = math.floor(self.scroll_y / eff_h)
+        end_row = math.floor((self.scroll_y + visible_world_h) / eff_h) + 1
 
         tileset_map = self._tileset_map()
+        tanim_paths = self._tanim_paths(tileset_map)
+        try:
+            now_ms = int(pygame.time.get_ticks())
+        except pygame.error:
+            now_ms = 0
 
         rendered_layers = tilemap.layer_manager.get_rendered_layers()
 
@@ -2342,13 +2688,23 @@ class TileGrid:
                         base_surf = tileset_data.surface
 
                         variant_id = tile["variant"]
-                        if tileset_data.animation:
+                        eff_ttype, eff_variant, clip_assigned, unknown_clip = self._resolve_clip_cell(
+                            tileset_map, tanim_paths, ttype, int(variant_id), tile, x, y, now_ms
+                        )
+                        if unknown_clip:
+                            self._warn_unknown_clip(unknown_clip, ttype)
+                        if clip_assigned:
+                            if eff_ttype != ttype and eff_ttype in tileset_map:
+                                ttype = eff_ttype
+                                tileset_data = tileset_map[ttype]
+                                base_surf = tileset_data.surface
+                            variant_id = eff_variant
+                        elif tileset_data.animation:
                             anim = tileset_data.animation
                             duration = anim.get("frame_duration_ms", 0)
                             frame_count = anim.get("frame_count", 1)
                             if duration > 0 and frame_count > 0:
-                                frame_ms = pygame.time.get_ticks()
-                                frame_idx = int(frame_ms / duration) % frame_count
+                                frame_idx = int(now_ms / duration) % frame_count
                                 if anim.get("animation_mode") == "random_start_times":
                                     phase = hash((x, y, ttype)) % frame_count
                                     frame_idx = (frame_idx + phase) % frame_count
@@ -2356,20 +2712,29 @@ class TileGrid:
 
                         sheet_w = base_surf.get_width()
 
-                        sheet_cols = sheet_w // tile_w
+                        sheet_cols = max(1, sheet_w // tile_w)
                         src_x = (variant_id % sheet_cols) * tile_w
                         src_y = (variant_id // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
-                        dest_x = (x * eff_w - self.scroll_x) * self.zoom_level + self.rect.x + draw_offset_x
-                        dest_y = (y * eff_h - self.scroll_y) * self.zoom_level + self.rect.y + draw_offset_y
+                        flip_h, flip_v = self._tile_flip_flags(tile)
+                        if flip_h or flip_v:
+                            flipped = self._flipped_tile(base_surf, src_rect, flip_h, flip_v)
+                            if flipped is None:
+                                continue
+                            base_surf = flipped
+                            src_rect = Rect(0, 0, tile_w, tile_h)
+
+                        dest_rect = self.cell_screen_rect(x, y)
+                        dest_rect.move_ip(draw_offset_x, draw_offset_y)
+                        dest_x, dest_y = dest_rect.topleft
 
                         if self.zoom_level != 1.0 or rs != 1.0:
-                            scaled_w = int(eff_w * self.zoom_level)
-                            scaled_h = int(eff_h * self.zoom_level)
+                            scaled_w, scaled_h = dest_rect.size
+                            if scaled_w <= 0 or scaled_h <= 0:
+                                continue
                             if base_surf.get_rect().contains(src_rect):
-                                sub = base_surf.subsurface(src_rect)
-                                scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
+                                scaled_sub = self._scaled_tile(base_surf, src_rect, (scaled_w, scaled_h))
                                 layer_surf.blit(scaled_sub, (dest_x, dest_y))
                         else:
                             if base_surf.get_rect().contains(src_rect):
@@ -2427,15 +2792,15 @@ class TileGrid:
                         src_y = (eff_var // sheet_cols) * tile_h
                         src_rect = Rect(src_x, src_y, obj_w, obj_h)
 
-                    dest_x = (obj_x * rs - self.scroll_x) * self.zoom_level + self.rect.x + draw_offset_x
-                    dest_y = (obj_y * rs - self.scroll_y) * self.zoom_level + self.rect.y + draw_offset_y
+                    dest_rect = self.world_rect_to_screen(obj_x * rs, obj_y * rs, obj_w * rs, obj_h * rs)
+                    dest_rect.move_ip(draw_offset_x, draw_offset_y)
+                    dest_x, dest_y = dest_rect.topleft
 
                     if self.zoom_level != 1.0 or rs != 1.0:
-                        scaled_w = int(obj_w * rs * self.zoom_level)
-                        scaled_h = int(obj_h * rs * self.zoom_level)
+                        if dest_rect.w <= 0 or dest_rect.h <= 0:
+                            continue
                         if base_surf.get_rect().contains(src_rect):
-                            sub = base_surf.subsurface(src_rect)
-                            scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
+                            scaled_sub = self._scaled_tile(base_surf, src_rect, dest_rect.size)
                             layer_surf.blit(scaled_sub, (dest_x, dest_y))
                     else:
                         if base_surf.get_rect().contains(src_rect):
@@ -2457,19 +2822,27 @@ class TileGrid:
 
     def _image_screen_rect(self, image_rect: dict[str, int]) -> Rect:
         rs = self.editor.tilemap.render_scale
-        sx = (image_rect["x"] * rs - self.scroll_x) * self.zoom_level + self.rect.x
-        sy = (image_rect["y"] * rs - self.scroll_y) * self.zoom_level + self.rect.y
-        sw = image_rect["w"] * rs * self.zoom_level
-        sh = image_rect["h"] * rs * self.zoom_level
-        return Rect(int(sx), int(sy), max(1, int(sw)), max(1, int(sh)))
+        return self.world_rect_to_screen(
+            image_rect["x"] * rs,
+            image_rect["y"] * rs,
+            image_rect["w"] * rs,
+            image_rect["h"] * rs,
+        )
 
-    def _render_image_layer(self, layer_surf: Surface, layer, draw_offset_x: int, draw_offset_y: int) -> None:
-        image_rect = layer.image_rect
-        if not image_rect:
-            return
+    def _blit_image_rect(
+        self,
+        layer_surf: Surface,
+        layer,
+        image_rect: dict[str, int],
+        cache_tag: int | str,
+        draw_offset_x: int,
+        draw_offset_y: int,
+    ) -> None:
         try:
             rect = self._image_screen_rect(image_rect)
         except (KeyError, TypeError):
+            return
+        if rect.w <= 0 or rect.h <= 0:
             return
         rect.move_ip(draw_offset_x, draw_offset_y)
         image = self._get_image_surface(layer.image_path)
@@ -2484,16 +2857,30 @@ class TileGrid:
         if image.get_size() == rect.size:
             layer_surf.blit(image, rect)
         else:
-            cache_key = (id(layer), rect.size, layer.image_path)
+            cache_key = (id(layer), cache_tag, rect.size, layer.image_path)
             scaled = self._scaled_image_cache.get(cache_key)
             if scaled is None or scaled.get_size() != rect.size:
                 scaled = pygame.transform.scale(image, rect.size)
-                # avoid unbounded growth
                 for k in list(self._scaled_image_cache.keys()):
                     if k[0] == id(layer):
                         self._scaled_image_cache.pop(k, None)
                 self._scaled_image_cache[cache_key] = scaled
             layer_surf.blit(scaled, rect)
+
+    def _render_image_layer(self, layer_surf: Surface, layer, draw_offset_x: int, draw_offset_y: int) -> None:
+        image_rect = layer.image_rect
+        if not image_rect:
+            return
+        self._blit_image_rect(layer_surf, layer, image_rect, "base", draw_offset_x, draw_offset_y)
+        for placement in layer.image_placements:
+            self._blit_image_rect(
+                layer_surf,
+                layer,
+                {"x": placement.x, "y": placement.y, "w": placement.w, "h": placement.h},
+                placement.pid,
+                draw_offset_x,
+                draw_offset_y,
+            )
 
     def _active_image_layer(self):
         layer = self.editor.tilemap.layer_manager.get_active_layer()
@@ -2506,18 +2893,134 @@ class TileGrid:
             return layer
         return None
 
+    def _image_hit_stack(self, layer, screen_pos) -> list[tuple[int | None, dict]]:
+        
+        stack: list[tuple[int | None, dict]] = []
+        for placement in reversed(layer.image_placements):
+            try:
+                rect = self._image_screen_rect({"x": placement.x, "y": placement.y, "w": placement.w, "h": placement.h})
+            except (KeyError, TypeError):
+                continue
+            if rect.collidepoint(screen_pos):
+                stack.append((placement.pid, {"x": placement.x, "y": placement.y, "w": placement.w, "h": placement.h}))
+        if isinstance(layer.image_rect, dict):
+            try:
+                base_rect = self._image_screen_rect(layer.image_rect)
+            except (KeyError, TypeError):
+                base_rect = None
+            if base_rect is not None and base_rect.collidepoint(screen_pos):
+                stack.append((None, dict(layer.image_rect)))
+        return stack
+
+    def _selected_image_target(self, layer) -> tuple[bool, int | None, dict | None]:
+        
+        pid = self._image_selection_for(layer)
+        if pid is not None:
+            placement = layer.get_placement(pid)
+            if placement is not None:
+                return (
+                    True,
+                    placement.pid,
+                    {
+                        "x": placement.x,
+                        "y": placement.y,
+                        "w": placement.w,
+                        "h": placement.h,
+                    },
+                )
+        if isinstance(layer.image_rect, dict):
+            return False, None, dict(layer.image_rect)
+        return False, None, None
+
+    def _assign_target_rect(self, layer, is_copy: bool, pid: int | None, rect: dict) -> bool:
+        if is_copy:
+            placement = layer.get_placement(pid) if pid is not None else None
+            if placement is None:
+                return False
+            placement.x, placement.y, placement.w, placement.h = (
+                rect["x"],
+                rect["y"],
+                rect["w"],
+                rect["h"],
+            )
+            return True
+        layer.image_rect = dict(rect)
+        return True
+
+    def _image_selection_hint(self, layer) -> str:
+        total = 1 + len(layer.image_placements)
+        pid = self._image_selection_for(layer)
+        if pid is None:
+            return f"Image base 1/{total} [d]duplicate click=cycle"
+        index = layer.placement_index(pid)
+        shown = index + 2 if index >= 0 else total
+        return f"Image copy {shown}/{total} [d]duplicate [Del]remove click=cycle"
+
+    @staticmethod
+    def _snap_image_point(x: float, y: float, tile_size: tuple) -> tuple[int, int]:
+
+        tw, th = tile_size
+        if tw and tw > 0:
+            x = round(x / tw) * tw
+        if th and th > 0:
+            y = round(y / th) * th
+        return int(x), int(y)
+
+
+    _IMAGE_TOUCH_TOL = 4
+
+    def _placement_touch_hint(self, layer, is_copy: bool, pid: int | None, rect: dict) -> str | None:
+        
+        tol = self._IMAGE_TOUCH_TOL
+        x, y, w, h = rect["x"], rect["y"], rect["w"], rect["h"]
+        left, right, top, bottom = x, x + w, y, y + h
+        labels: list[tuple[int | None, dict]] = [(None, layer.image_rect)]
+        labels += [(p.pid, {"x": p.x, "y": p.y, "w": p.w, "h": p.h}) for p in layer.image_placements]
+        total = len(labels)
+        for i, (other_pid, other) in enumerate(labels):
+            if not isinstance(other, dict):
+                continue
+            if is_copy and other_pid == pid:
+                continue
+            if not is_copy and other_pid is None:
+                continue
+            try:
+                ox, oy, ow, oh = other["x"], other["y"], other["w"], other["h"]
+            except (KeyError, TypeError):
+                continue
+            o_left, o_right, o_top, o_bottom = ox, ox + ow, oy, oy + oh
+            shares_vertical_edge = max(top, o_top) < min(bottom, o_bottom) and (
+                abs(left - o_right) <= tol or abs(right - o_left) <= tol
+            )
+            shares_horizontal_edge = max(left, o_left) < min(right, o_right) and (
+                abs(top - o_bottom) <= tol or abs(bottom - o_top) <= tol
+            )
+            if not (shares_vertical_edge or shares_horizontal_edge):
+                continue
+            return f"touches {'base' if i == 0 else f'copy {i + 1}/{total}'}"
+        return None
+
     def _draw_active_image_layer_selection(self, screen: Surface) -> None:
         layer = self._active_image_layer()
         if not layer or not self.editor.tool_manager.is_active(ToolKind.SELECT):
             return
-        try:
-            rect = self._image_screen_rect(layer.image_rect)
-        except (KeyError, TypeError):
-            return
-        color = COLORS.accent if not layer.locked else COLORS.text_muted
-        pygame.draw.rect(screen, color, rect, max(1, int(2 * self.zoom_level)))
-        if not layer.locked:
-            self._draw_image_handles(screen, rect, color)
+        is_copy, pid, _ = self._selected_image_target(layer)
+        selected_pid = pid if is_copy else None
+        order: list[tuple[int | None, dict]] = [(None, layer.image_rect)]
+        order += [(p.pid, {"x": p.x, "y": p.y, "w": p.w, "h": p.h}) for p in layer.image_placements]
+        width = max(1, int(2 * self.zoom_level))
+        for entry_pid, rect_dict in order:
+            try:
+                rect = self._image_screen_rect(rect_dict)
+            except (KeyError, TypeError):
+                continue
+            if entry_pid == selected_pid or (entry_pid is None and selected_pid is None):
+                color = COLORS.accent if not layer.locked else COLORS.text_muted
+                pygame.draw.rect(screen, color, rect, width)
+                if not layer.locked:
+                    self._draw_image_handles(screen, rect, color)
+            else:
+                pygame.draw.rect(screen, COLORS.border_soft, rect, 1)
 
     def _draw_image_handles(self, screen: Surface, rect: Rect, color) -> None:
         hsize = max(4, int(6 * self.zoom_level))
@@ -2566,21 +3069,21 @@ class TileGrid:
     def _clear_image_drag(self, restore: bool = False) -> None:
         layer = self._active_image_layer()
         if restore and layer and self._image_original_rect:
-            layer.image_rect = dict(self._image_original_rect)
+            is_copy, pid = self._image_drag_target
+            self._assign_target_rect(layer, is_copy, pid, self._image_original_rect)
         self._image_drag_state = None
         self._image_drag_handle = None
         self._image_original_rect = None
         self._image_drag_start = None
+        self._image_drag_target = (False, None)
+        self._image_snap_hint = None
         self._image_history_pending = False
 
     def _finish_image_drag(self) -> None:
         self._clear_image_drag()
 
-    def _update_image_resize(self, layer, point: tuple[float, float]) -> None:
-        original = self._image_original_rect
-        handle = self._image_drag_handle
-        if not original or not handle:
-            return
+    @staticmethod
+    def _resize_rect_dict(original: dict[str, int], handle: str, point: tuple[float, float]) -> dict[str, int]:
         min_size = 8
         left, top = original["x"], original["y"]
         right = left + original["w"]
@@ -2594,7 +3097,65 @@ class TileGrid:
             top = min(py, bottom - min_size)
         if "b" in handle:
             bottom = max(py, top + min_size)
-        layer.image_rect = {"x": left, "y": top, "w": right - left, "h": bottom - top}
+        return {"x": left, "y": top, "w": right - left, "h": bottom - top}
+
+    def _update_image_resize(self, layer, point: tuple[float, float]) -> None:
+        original = self._image_original_rect
+        handle = self._image_drag_handle
+        if not original or not handle:
+            return
+        is_copy, pid = self._image_drag_target
+        self._assign_target_rect(layer, is_copy, pid, self._resize_rect_dict(original, handle, point))
+
+    def _duplicate_selected_placement(self, layer) -> None:
+        """Duplicate selection offset by 16px."""
+        is_copy, pid, rect = self._selected_image_target(layer)
+        if rect is None:
+            return
+        self.editor.tilemap.capture_history("Duplicate Image Copy")
+        new_pid = layer.add_placement({"x": rect["x"] + 16, "y": rect["y"] + 16, "w": rect["w"], "h": rect["h"]})
+        if new_pid >= 0:
+            self._image_placement_pid = new_pid
+            self._image_placement_layer = layer
+        else:
+            self.editor.notifications.notify("Could not duplicate image copy", duration=2.0)
+
+    def _cycle_image_selection(self, layer, mouse_pos) -> None:
+        """Select rect under cursor. Repeat clicks cycle."""
+        stack = self._image_hit_stack(layer, mouse_pos)
+        if not stack:
+            self._image_placement_pid = None
+            self._image_placement_layer = None
+            return
+        current = self._image_placement_pid
+        pids = [pid for pid, _ in stack]
+        if current in pids:
+            nxt = pids[(pids.index(current) + 1) % len(pids)]
+        else:
+            nxt = pids[0]
+        self._image_placement_pid = nxt
+        self._image_placement_layer = layer
+
+    def _image_selection_for(self, layer):
+        
+        if self._image_placement_pid is None:
+            return None
+        if self._image_placement_layer is not layer:
+            self._image_placement_pid = None
+            self._image_placement_layer = None
+            return None
+        if layer.get_placement(self._image_placement_pid) is None:
+            self._image_placement_pid = None
+            self._image_placement_layer = None
+            return None
+        return self._image_placement_pid
+
+    def has_image_selection(self) -> bool:
+        
+        layer = self._active_image_layer()
+        if layer is None:
+            return False
+        return self._image_selection_for(layer) is not None
 
     def _handle_image_layer_event(self, event: pygame.event.Event) -> bool:
         layer = self._active_image_layer()
@@ -2607,7 +3168,22 @@ class TileGrid:
             if event.key == pygame.K_ESCAPE and self._image_drag_state:
                 self._clear_image_drag(restore=True)
                 return True
-            if event.key in (pygame.K_f, pygame.K_q, pygame.K_DELETE, pygame.K_BACKSPACE):
+            if event.key in (pygame.K_f, pygame.K_q):
+                return True
+            if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                pid = self._image_selection_for(layer)
+                if pid is not None and not layer.locked:
+                    self.editor.tilemap.capture_history("Remove Image Copy")
+                    layer.remove_placement(pid)
+                    self._image_placement_pid = None
+                    self._image_placement_layer = None
+                return True
+            if event.key == pygame.K_d and not (
+                pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL | pygame.KMOD_LMETA | pygame.KMOD_RMETA)
+            ):
+                if layer.locked:
+                    return True
+                self._duplicate_selected_placement(layer)
                 return True
             mods = pygame.key.get_mods()
             if event.key in (pygame.K_a, pygame.K_c, pygame.K_x, pygame.K_v) and (
@@ -2621,16 +3197,34 @@ class TileGrid:
             if self.editor.tool_manager.is_active(ToolKind.SELECT):
                 if layer.locked:
                     return True
+                is_copy, pid, rect = self._selected_image_target(layer)
+                if rect is None:
+                    return True
                 try:
-                    handle = self._get_image_handle_at(layer.image_rect, mouse_pos)
-                    rect = self._image_screen_rect(layer.image_rect)
+                    handle = self._get_image_handle_at(rect, mouse_pos)
                 except (KeyError, TypeError):
                     return True
-                if handle or rect.collidepoint(mouse_pos):
-                    self._image_drag_state = "resizing" if handle else "moving"
+                if handle:
+                    self._image_drag_state = "resizing"
                     self._image_drag_handle = handle
-                    self._image_original_rect = dict(layer.image_rect)
+                    self._image_drag_target = (is_copy, pid)
+                    self._image_original_rect = dict(rect)
                     self._image_drag_start = self._screen_to_image_world(mouse_pos)
+                    return True
+                stack = self._image_hit_stack(layer, mouse_pos)
+                if stack:
+                    self._cycle_image_selection(layer, mouse_pos)
+                    is_copy, pid, rect = self._selected_image_target(layer)
+                    if rect is None:
+                        return True
+                    self._image_drag_state = "moving"
+                    self._image_drag_handle = None
+                    self._image_drag_target = (is_copy, pid)
+                    self._image_original_rect = dict(rect)
+                    self._image_drag_start = self._screen_to_image_world(mouse_pos)
+                else:
+                    self._image_placement_pid = None
+                    self._image_placement_layer = None
                 return True
             if not self.editor.tool_manager.is_active(ToolKind.SELECT):
                 self.editor.notifications.notify(
@@ -2641,18 +3235,33 @@ class TileGrid:
 
         if event.type == pygame.MOUSEMOTION and self._image_drag_state:
             if not self._image_history_pending:
-                self.editor.tilemap.capture_history("Edit Image Layer")
+                target = self._image_drag_target
+                self.editor.tilemap.capture_history("Edit Image Copy" if target[0] else "Edit Image Layer")
                 self._image_history_pending = True
+            grid_snap = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
             if self._image_drag_state == "moving" and self._image_original_rect and self._image_drag_start:
                 px, py = self._screen_to_image_world(mouse_pos)
                 sx, sy = self._image_drag_start
-                layer.image_rect = {
+                is_copy, pid = self._image_drag_target
+                moved = {
                     **self._image_original_rect,
                     "x": int(self._image_original_rect["x"] + px - sx),
                     "y": int(self._image_original_rect["y"] + py - sy),
                 }
+                if grid_snap:
+                    moved["x"], moved["y"] = self._snap_image_point(moved["x"], moved["y"], self.tile_size)
+                self._assign_target_rect(layer, is_copy, pid, moved)
+                self._image_snap_hint = self._placement_touch_hint(layer, is_copy, pid, moved)
             elif self._image_drag_state == "resizing":
-                self._update_image_resize(layer, self._screen_to_image_world(mouse_pos))
+                point = self._screen_to_image_world(mouse_pos)
+                if grid_snap:
+                    point = self._snap_image_point(point[0], point[1], self.tile_size)
+                self._update_image_resize(layer, point)
+                is_copy, pid = self._image_drag_target
+                _, _, current = self._selected_image_target(layer)
+                self._image_snap_hint = (
+                    self._placement_touch_hint(layer, is_copy, pid, current) if current is not None else None
+                )
             return True
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self._image_drag_state:
@@ -2685,11 +3294,10 @@ class TileGrid:
         screen.blit(surf, rect)
 
     def _draw_selection_rect(self, screen):
-        """Draw the selection rectangle overlay on the map."""
+
         if not self.selection_rect:
             return
 
-        eff_w, eff_h = self.effective_tile_size
         rs = self.editor.tilemap.render_scale
         x1, y1, x2, y2 = self.selection_rect
         px_off, py_off = 0, 0
@@ -2714,17 +3322,14 @@ class TileGrid:
                 px_off = int(dx - grid_dx * tile_w) * rs
                 py_off = int(dy - grid_dy * tile_h) * rs
 
-        sx = (x1 * eff_w - self.scroll_x) * self.zoom_level + self.rect.x + px_off * self.zoom_level
-        sy = (y1 * eff_h - self.scroll_y) * self.zoom_level + self.rect.y + py_off * self.zoom_level
-        sw = (x2 - x1 + 1) * eff_w * self.zoom_level
-        sh = (y2 - y1 + 1) * eff_h * self.zoom_level
+        sel_rect = self.cell_range_rect(x1, y1, x2, y2)
+        sel_rect.x += round(px_off * self.zoom_level)
+        sel_rect.y += round(py_off * self.zoom_level)
 
-        sel_rect = Rect(int(sx), int(sy), int(sw), int(sh))
-
-        if not self.is_selecting:
-            fill_surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)
+        if not self.is_selecting and sel_rect.w > 0 and sel_rect.h > 0:
+            fill_surf = pygame.Surface((sel_rect.w, sel_rect.h), pygame.SRCALPHA)
             fill_surf.fill((100, 180, 255, 40))
-            screen.blit(fill_surf, (int(sx), int(sy)))
+            screen.blit(fill_surf, sel_rect.topleft)
 
         border_color = (100, 180, 255) if not self.is_moving else (255, 200, 50)
         dash_len = 6
@@ -2816,42 +3421,43 @@ class TileGrid:
 
         self._draw_particle_previews(screen)
 
+    def _particle_node_visible(self, node) -> bool:
+
+        return node.node_type == "particle_emitter" and not node.properties.get("_hidden")
+
     def _update_particle_previews(self):
         now = pygame.time.get_ticks()
         dt = min((now - self._last_preview_time) / 1000.0, MAX_DT) if self._last_preview_time > 0 else 0.016
         self._last_preview_time = now
 
         nm = getattr(self.editor, "node_manager", None)
-        if not nm or not self.editor.node_editing_mode:
+        if not nm or not self.editor.node_editing_mode or not getattr(self.editor, "show_particles", True):
             self._particle_previews.clear()
-            self._last_active_node_id = None
             return
 
-        active = nm.get_active_node()
-        active_id = active.node_id if active else None
-
-        if active_id and active.node_type == "particle_emitter":
-            if active_id not in self._particle_previews:
-                self._particle_previews[active_id] = ParticlePreview(dict(active.properties))
-            preview = self._particle_previews[active_id]
-            rs = self.editor.tilemap.render_scale
-            preview.update(dt, active.area.x, active.area.y, active.area.w * rs, active.area.h * rs)
-            self._last_active_node_id = active_id
-        else:
-            self._particle_previews.clear()
-            self._last_active_node_id = None
+        rs = self.editor.tilemap.render_scale
+        wanted = {node.node_id: node for node in nm.nodes.values() if self._particle_node_visible(node)}
+        for node_id in list(self._particle_previews):
+            if node_id not in wanted:
+                del self._particle_previews[node_id]
+        for node_id, node in wanted.items():
+            preview = self._particle_previews.get(node_id)
+            if preview is None:
+                preview = self._particle_previews[node_id] = ParticlePreview(dict(node.properties))
+            preview.update(dt, node.area.x, node.area.y, node.area.w * rs, node.area.h * rs)
 
     def _draw_particle_previews(self, screen):
         if not self.editor.node_editing_mode:
             return
+        if not getattr(self.editor, "show_particles", True):
+            return
         nm = getattr(self.editor, "node_manager", None)
         if not nm:
             return
-        active = nm.get_active_node()
-        if not active or active.node_type != "particle_emitter":
-            return
-        preview = self._particle_previews.get(active.node_id)
-        if preview:
+        for node_id, preview in self._particle_previews.items():
+            node = nm.nodes.get(node_id)
+            if node is None or not self._particle_node_visible(node):
+                continue
             preview.draw(screen, self.scroll_x, self.scroll_y, self.zoom_level, self.rect)
 
     def reset_particle_preview(self, node_id: str, config: dict) -> None:
@@ -3163,8 +3769,6 @@ class TileGrid:
         tilemap = self.editor.tilemap
         tile_w, tile_h = self.tile_size
         rs = tilemap.render_scale
-        eff_w = tile_w * rs
-        eff_h = tile_h * rs
 
         ox1, oy1, ox2, oy2 = self.move_origin_rect
 
@@ -3187,29 +3791,35 @@ class TileGrid:
                     base_surf = tileset_data.surface
                     variant_id = tile["variant"]
                     sheet_w = base_surf.get_width()
-                    sheet_cols = sheet_w // tile_w
+                    sheet_cols = max(1, sheet_w // tile_w)
                     src_x = (variant_id % sheet_cols) * tile_w
                     src_y = (variant_id // sheet_cols) * tile_h
                     src_rect = Rect(src_x, src_y, tile_w, tile_h)
 
+                    flip_h, flip_v = self._tile_flip_flags(tile)
+                    if flip_h or flip_v:
+                        flipped = self._flipped_tile(base_surf, src_rect, flip_h, flip_v)
+                        if flipped is None:
+                            continue
+                        base_surf = flipped
+                        src_rect = Rect(0, 0, tile_w, tile_h)
+
                     new_gx = gx + dx
                     new_gy = gy + dy
-                    dest_x = (new_gx * eff_w - self.scroll_x) * self.zoom_level
-                    dest_y = (new_gy * eff_h - self.scroll_y) * self.zoom_level
+                    dest_rect = self.cell_screen_rect(new_gx, new_gy)
+                    dest_rect.move_ip(-self.rect.x, -self.rect.y)
 
                     if self.zoom_level != 1.0 or rs != 1.0:
-                        scaled_w = int(eff_w * self.zoom_level)
-                        scaled_h = int(eff_h * self.zoom_level)
+                        if dest_rect.w <= 0 or dest_rect.h <= 0:
+                            continue
                         if base_surf.get_rect().contains(src_rect):
-                            sub = base_surf.subsurface(src_rect)
-                            scaled_sub = pygame.transform.scale(sub, (scaled_w, scaled_h))
-                            scaled_sub.set_alpha(160)
-                            preview_surf.blit(scaled_sub, (dest_x, dest_y))
+                            scaled_sub = self._scaled_tile(base_surf, src_rect, dest_rect.size, alpha=160)
+                            preview_surf.blit(scaled_sub, dest_rect.topleft)
                     else:
                         if base_surf.get_rect().contains(src_rect):
                             tile_copy = base_surf.subsurface(src_rect).copy()
                             tile_copy.set_alpha(160)
-                            preview_surf.blit(tile_copy, (dest_x, dest_y))
+                            preview_surf.blit(tile_copy, dest_rect.topleft)
 
         elif active_layer.layer_type == "object":
             return

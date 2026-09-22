@@ -7,7 +7,6 @@ from unittest import mock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from tilemap_editor.settings import init_settings, update_settings
 from utils.project_paths import resolve_project_path, to_project_path

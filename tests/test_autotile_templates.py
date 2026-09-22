@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import widgets.autotile_template as _template_mod
 from widgets.autotile_template import (

@@ -48,6 +48,13 @@ def format_file_size(size: int | None) -> str:
     return f"{value:.1f} GB"
 
 
+def matches_allowed_ext(filename: str, allowed_exts: list[str] | None) -> bool:
+    if not allowed_exts:
+        return True
+    lowered = filename.lower()
+    return any(lowered.endswith(ext.lower()) for ext in allowed_exts)
+
+
 class DimensionPersistence:
     """Handles saving and loading FileManager dimension preferences."""
 
@@ -542,7 +549,7 @@ class FileManager:
 
             folders = sorted([p for p in all_entries if p.is_dir()], key=lambda p: natural_key(p.name))
 
-            files = [p for p in all_entries if p.is_file() and p.suffix.lower() in self.allowed_exts]
+            files = [p for p in all_entries if p.is_file() and matches_allowed_ext(p.name, self.allowed_exts)]
             files = sorted(files, key=lambda p: natural_key(p.name))
 
             for p in folders:
@@ -560,7 +567,7 @@ class FileManager:
                 if p.name.startswith("."):
                     continue
                 if p.is_file() and query.lower() in p.name.lower():
-                    if p.suffix.lower() in self.allowed_exts:
+                    if matches_allowed_ext(p.name, self.allowed_exts):
                         self.items.append(FileItem(p))
                 elif p.is_dir() and query.lower() in p.name.lower():
                     if p.name not in IGNORE_DIRS:
@@ -594,7 +601,16 @@ class FileManager:
         try:
             with open(self.recents_path) as f:
                 data = json.load(f)
-                return [Path(p) for p in data if Path(p).exists()]
+                if not isinstance(data, list):
+                    return []
+                valid = [
+                    Path(p) for p in data
+                    if isinstance(p, (str, os.PathLike)) and Path(p).exists()
+                ]
+                self.recents = valid[:20]
+                if len(valid) != len(data):
+                    self._save_recents()
+                return list(self.recents)
         except Exception as e:
             error_handler.capture(e, context="filemanager_load_recents")
         return []
@@ -1177,7 +1193,7 @@ class FileManager:
             name = f"{name}{self.allowed_exts[0]}"
             candidate = Path(name)
 
-        if candidate.suffix and self.allowed_exts and candidate.suffix.lower() not in self.allowed_exts:
+        if candidate.suffix and not matches_allowed_ext(candidate.name, self.allowed_exts):
             self._set_error(f"Invalid extension: {candidate.suffix}")
             return None
 

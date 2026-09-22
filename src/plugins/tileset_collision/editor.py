@@ -27,6 +27,7 @@ from utils.font_manager import FontWeight, font_manager
 from widgets.ui.button import Button
 from widgets.ui.checkbox import Checkbox
 from widgets.ui.draw_utils import draw_panel
+from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
 from widgets.ui.splitter import Splitter
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 
@@ -45,7 +46,7 @@ WP_TITLE_Y = 10
 
 
 class TilesetCollisionEditor:
-    """Main editor for tileset collision shapes."""
+    """Tileset collision editor."""
 
     def __init__(
         self,
@@ -122,6 +123,15 @@ class TilesetCollisionEditor:
         self.painter.on_polygon_removed = self._on_polygon_removed
         self.painter.on_polygon_modified = self._on_polygon_modified
 
+        self.layer_sidebar = CollisionLayerSidebar(
+            self.rect,
+            max_layers=16,
+            initial_layer=1,
+            initial_mask=0xFFFF,
+            on_changed=self._on_layer_mask_changed,
+            toggle_top=46,
+        )
+
         self._font = font_manager.get_font(
             FONTS.name, FONTS.size_md, FontWeight.REGULAR
         )
@@ -181,6 +191,18 @@ class TilesetCollisionEditor:
             "Snap to Grid",
             on_changed=lambda v: setattr(self.painter, "snap_to_grid", v),
         )
+        self._chk_trace = Checkbox(
+            Rect(0, 0, 0, 0),
+            "Neighbor Trace",
+            checked=True,
+            on_changed=lambda v: setattr(self.painter, "show_neighbors", v),
+        )
+        self._chk_nsnap = Checkbox(
+            Rect(0, 0, 0, 0),
+            "Snap to Neighbors",
+            checked=True,
+            on_changed=lambda v: setattr(self.painter, "snap_to_neighbors", v),
+        )
 
         self._widget_items: list[tuple] = [
             ("section", "POLYGON"),
@@ -188,6 +210,9 @@ class TilesetCollisionEditor:
             ("checkbox", self._chk_angle),
             ("section", "DISPLAY"),
             ("checkbox", self._chk_grid),
+            ("section", "NEIGHBORS"),
+            ("checkbox", self._chk_trace),
+            ("checkbox", self._chk_nsnap),
             ("section", "GRID SNAP"),
             ("grid_dec", None),
             ("grid_val", None),
@@ -267,6 +292,8 @@ class TilesetCollisionEditor:
         p = self.painter
         self._chk_grid.checked = p.show_grid
         self._chk_snap.checked = p.snap_to_grid
+        self._chk_trace.checked = p.show_neighbors
+        self._chk_nsnap.checked = p.snap_to_neighbors
         self._chk_angle.checked = p.show_angle_hints
         sel = p.selected_polygon_idx
         if sel is not None and 0 <= sel < len(p.polygon_one_way):
@@ -277,7 +304,7 @@ class TilesetCollisionEditor:
             self._chk_one_way.disabled = True
 
     def _mirror_selection(self, axis: str) -> None:
-        """Mirror all shapes of the selected tiles in place (baked)."""
+
         if not self._selected_tiles:
             self._show_toast("Select a tile first")
             return
@@ -293,9 +320,6 @@ class TilesetCollisionEditor:
                     TileCollisionData.apply_flip(v, size, flip_x, flip_y)
                     for v in shape.vertices
                 ]
-            # persist this tile's own (already-mutated) entry: a
-            # selection-wide save would copy the first tile's painter
-            # geometry across every selected tile
             if self.consumer:
                 self.consumer.on_collision_saved(tile_id, entry.to_dict())
             self._user_cleared_tiles.discard(tile_id)
@@ -322,6 +346,10 @@ class TilesetCollisionEditor:
                 if self._chk_grid.handle_event(event):
                     continue
                 if self._chk_snap.handle_event(event):
+                    continue
+                if self._chk_trace.handle_event(event):
+                    continue
+                if self._chk_nsnap.handle_event(event):
                     continue
                 if self._grid_dec_rect.collidepoint(pos):
                     painter.grid_size = max(1, painter.grid_size - 1)
@@ -493,10 +521,47 @@ class TilesetCollisionEditor:
             polygons = [shape.vertices for shape in tile_data.shapes]
             one_way_flags = [shape.one_way for shape in tile_data.shapes]
             self.painter.set_polygons(polygons, one_way_flags)
+            sidebar = getattr(self, "layer_sidebar", None)
+            if sidebar is not None:
+                sidebar.set_layer(tile_data.properties.get("collision_layer", 1))
+                sidebar.set_mask(tile_data.properties.get("collision_mask", 0xFFFF))
         else:
             self.painter.set_polygons([], [])
 
+        self.painter.set_neighbor_polygons(*self._neighbor_data(first_tile))
         self.painter.tile_surface = self._get_tile_surface(first_tile)
+
+    def _neighbor_data(
+        self, tile_id: int
+    ) -> tuple[
+        dict[tuple[int, int], list[list[tuple[float, float]]]],
+        dict[tuple[int, int], list[list[tuple[float, float]]]],
+    ]:
+
+        tw, th = self._tile_size
+        edge: dict = {}
+        corners: dict = {}
+        if self.tile_cols <= 0 or self.tile_rows <= 0:
+            return edge, corners
+        col, row = tile_id % self.tile_cols, tile_id // self.tile_cols
+        shifts = {
+            (-1, 0): (-tw, 0), (1, 0): (tw, 0), (0, -1): (0, -th), (0, 1): (0, th),
+            (-1, -1): (-tw, -th), (1, -1): (tw, -th),
+            (-1, 1): (-tw, th), (1, 1): (tw, th),
+        }
+        for (dc, dr), (dx, dy) in shifts.items():
+            c, r = col + dc, row + dr
+            if not (0 <= c < self.tile_cols and 0 <= r < self.tile_rows):
+                continue
+            entry = self.library.tiles.get(r * self.tile_cols + c)
+            if entry is None or not entry.shapes:
+                continue
+            moved = [[(x + dx, y + dy) for x, y in s.vertices] for s in entry.shapes]
+            if abs(dc) + abs(dr) == 1:
+                edge[(dc, dr)] = moved
+            else:
+                corners[(dc, dr)] = moved
+        return edge, corners
 
     def _save_tile_collision_for_selection(self) -> None:
         polygons = self.painter.get_polygons()
@@ -518,11 +583,32 @@ class TilesetCollisionEditor:
                     for poly, one_way in zip(polygons, one_way_flags, strict=False)
                 ]
 
-                tile_data = TileCollisionData(tile_id=tile_id, shapes=shapes)
+                previous = self.library.tiles.get(tile_id)
+                props = dict(previous.properties) if previous is not None else {}
+                tile_data = TileCollisionData(tile_id=tile_id, shapes=shapes, properties=props)
                 self.library.tiles[tile_id] = tile_data
 
                 if self.consumer:
                     self.consumer.on_collision_saved(tile_id, tile_data.to_dict())
+
+    def _on_layer_mask_changed(self, layer: int, mask: int) -> None:
+
+        applied = 0
+        skipped = 0
+        for tile_id in sorted(self._selected_tiles):
+            tile_data = self.library.tiles.get(tile_id)
+            if tile_data is None:
+                skipped += 1
+                continue
+            tile_data.properties["collision_layer"] = layer
+            tile_data.properties["collision_mask"] = mask
+            applied += 1
+            if self.consumer:
+                self.consumer.on_collision_saved(tile_id, tile_data.to_dict())
+        if applied:
+            self._show_toast(f"Layer/mask set on {applied} tile(s)")
+        elif skipped:
+            self._show_toast("Selected tiles have no collision shapes yet")
 
     def _on_polygon_added(self, vertices: list[tuple[float, float]]) -> None:
         self._save_tile_collision_for_selection()
@@ -576,6 +662,7 @@ class TilesetCollisionEditor:
         self._update_layout()
         self._position_toolbar_buttons()
         self.painter.resize(self.painter_rect)
+        self.layer_sidebar.resize(rect)
 
     def load_tileset(
         self, surface: Surface, tile_size: tuple[int, int], name: str = "Tileset"
@@ -600,7 +687,7 @@ class TilesetCollisionEditor:
             error_handler.capture(e, context="load_collision_data")
 
     def save_to_file(self, path: Path) -> None:
-        """Save collision data to file, auto-propagating within auto-tile groups."""
+
         try:
             self._save_tile_collision_for_selection()
 
@@ -671,7 +758,16 @@ class TilesetCollisionEditor:
                 self.painter.resize(self.painter_rect)
             return True
 
+        if self.layer_sidebar.handle_toggle_event(event):
+            return True
+        if self.layer_sidebar.visible and self.layer_sidebar.handle_event(event):
+            return True
+
         if self.painter.handle_event(event):
+            return True
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+            self.layer_sidebar.toggle()
             return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
@@ -847,6 +943,9 @@ class TilesetCollisionEditor:
         self._draw_widget_panel(screen)
 
         self._draw_toast(screen)
+
+        self.layer_sidebar.draw_toggle_button(screen)
+        self.layer_sidebar.draw(screen)
 
         if self._toast_message is not None:
             elapsed = pygame.time.get_ticks() - self._toast_start

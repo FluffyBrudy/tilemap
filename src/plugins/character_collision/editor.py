@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -17,6 +16,7 @@ from widgets.ui.collision_layer_sidebar import CollisionLayerSidebar
 from widgets.ui.draw_utils import draw_panel
 from widgets.ui.theme import COLORS, FONTS, SHAPE
 from widgets.ui.toast import ToastManager
+from widgets.ui.tree_widget import TreeNode, TreeWidget
 
 from .models import CharacterCollisionData
 from .shape_editor import ShapeEditor, ShapeType
@@ -40,15 +40,26 @@ class CharacterCollisionEditor:
 
         self.toolbar_height = 50
         self.properties_height = 100
+        self.file_tree_width = 180
 
         shape_editor_rect = Rect(
-            rect.x,
+            rect.x + self.file_tree_width,
             rect.y + self.toolbar_height,
-            rect.w,
+            rect.w - self.file_tree_width,
             rect.h - self.toolbar_height - self.properties_height,
         )
 
         self.shape_editor = ShapeEditor(shape_editor_rect, sprite_surface)
+
+        self._file_tree = TreeWidget(
+            Rect(
+                rect.x,
+                rect.y + self.toolbar_height,
+                self.file_tree_width,
+                rect.h - self.toolbar_height - self.properties_height,
+            )
+        )
+        self._file_tree.on_selection_changed = self._on_tree_selection
 
         self.layer_sidebar = CollisionLayerSidebar(
             rect,
@@ -57,12 +68,8 @@ class CharacterCollisionEditor:
             initial_mask=0xFFFF,
         )
 
-        self._font = font_manager.get_font(
-            FONTS.name, FONTS.size_md, FontWeight.REGULAR
-        )
-        self._font_sm = font_manager.get_font(
-            FONTS.name, FONTS.size_sm, FontWeight.REGULAR
-        )
+        self._font = font_manager.get_font(FONTS.name, FONTS.size_md, FontWeight.REGULAR)
+        self._font_sm = font_manager.get_font(FONTS.name, FONTS.size_sm, FontWeight.REGULAR)
 
         self._name_input = InputBox(self._name_input_rect(), font=self._font_sm)
         self._name_input.text = self.character_name
@@ -74,6 +81,7 @@ class CharacterCollisionEditor:
         self._shape_btns: list[Button] = []
         self._load_btn: Button | None = None
         self._open_image_btn: Button | None = None
+        self._probe_btn: Button | None = None
         self._init_buttons()
 
     def _init_buttons(self) -> None:
@@ -101,8 +109,17 @@ class CharacterCollisionEditor:
             )
             self._shape_btns.append(btn)
             self._buttons.append(btn)
+        self._probe_btn = Button(
+            Rect(0, 0, 90, 28),
+            "Coords",
+            on_click=self._toggle_probe,
+        )
+        self._buttons.append(self._probe_btn)
 
         self._layout_buttons()
+
+    def _toggle_probe(self) -> None:
+        self.shape_editor.show_probe = not self.shape_editor.show_probe
 
     def _layout_buttons(self) -> None:
         y = self.rect.y + 10
@@ -119,28 +136,19 @@ class CharacterCollisionEditor:
             btn.resize(x, y, 100, 28)
             x += 100 + 8
 
+        if self._probe_btn is not None:
+            self._probe_btn.resize(x, y, 90, 28)
+
     def _rel_path(self, path: Path) -> str:
         resolved = path.resolve()
+        base = self._data_root.resolve() if self._data_root else Path.cwd().resolve()
         try:
-            if self._data_root:
-                rel = os.path.relpath(resolved, self._data_root.resolve())
-                # relpath happily emits '../' escapes for paths outside the
-                # root — only trust the relative form when it stays inside
-                if not rel.split(os.sep)[0].startswith(".."):
-                    return rel
-            return str(resolved)
+            return Path(os.path.relpath(resolved, base)).as_posix()
         except ValueError:
             return str(resolved)
 
-    def _resolve_image_path(
-        self, image_path: str, base: Path | None = None
-    ) -> Path | None:
-        """Resolve an image reference, mirroring animation runtime_load.
-
-        Tries, in order: relative to *base* and each of its ancestors (the
-        collision file's directory, so ``../../`` refs resolve), relative to
-        the data root, then CWD-relative / absolute as-is.
-        """
+    def _resolve_image_path(self, image_path: str, base: Path | None = None) -> Path | None:
+        """Find image file. Checks base dir, data root, then path as is."""
         p = Path(image_path)
         if p.is_absolute():
             return p if p.exists() else None
@@ -176,6 +184,34 @@ class CharacterCollisionEditor:
             self._toast_manager.error(f"Failed to load: {e}")
         finally:
             self._load_dialog = None
+
+    def _refresh_file_tree(self) -> None:
+        try:
+            collision_dir = self._get_collision_dir()
+        except RuntimeError:
+            self._file_tree.set_data([])
+            return
+        nodes = []
+        for path in sorted(collision_dir.glob("*.collision.json")):
+            label = path.name
+            if label.endswith(".collision.json"):
+                label = label[: -len(".collision.json")]
+            nodes.append(TreeNode(id=path.name, label=label, data=path))
+        self._file_tree.set_data(nodes)
+
+    def _on_tree_selection(self, ids: list[str]) -> None:
+        if not ids:
+            return
+        node = self._file_tree.find_node(ids[0])
+        if node is None or not isinstance(node.data, Path):
+            return
+        try:
+            self.load_from_file(node.data)
+            self._toast_manager.success(f"Loaded collision: {node.data.name}")
+        except ValueError as e:
+            self._toast_manager.error(str(e))
+        except Exception as e:
+            self._toast_manager.error(f"Failed to load: {e}")
 
     def _open_load_dialog(self) -> None:
         try:
@@ -255,13 +291,20 @@ class CharacterCollisionEditor:
     def resize(self, rect: Rect) -> None:
         self.rect = rect
 
-        shape_editor_rect = Rect(
+        tree_rect = Rect(
             rect.x,
             rect.y + self.toolbar_height,
-            rect.w,
+            self.file_tree_width,
+            rect.h - self.toolbar_height - self.properties_height,
+        )
+        shape_editor_rect = Rect(
+            rect.x + self.file_tree_width,
+            rect.y + self.toolbar_height,
+            rect.w - self.file_tree_width,
             rect.h - self.toolbar_height - self.properties_height,
         )
 
+        self._file_tree.rect = tree_rect
         self.shape_editor.resize(shape_editor_rect)
         self.layer_sidebar.resize(rect)
 
@@ -321,9 +364,7 @@ class CharacterCollisionEditor:
             },
         )
 
-    def load_collision_data(
-        self, data: CharacterCollisionData, resolve_base: Path | None = None
-    ) -> None:
+    def load_collision_data(self, data: CharacterCollisionData, resolve_base: Path | None = None) -> None:
         """Load collision data + auto-resolve sprite from image_path.
 
         resolve_base: directory the image_path is relative to (the loaded
@@ -380,9 +421,7 @@ class CharacterCollisionEditor:
 
     def _get_collision_dir(self) -> Path:
         if self._data_root is None:
-            raise RuntimeError(
-                "data_root is required. Initialize via from_path() with data_root parameter."
-            )
+            raise RuntimeError("data_root is required. Initialize via from_path() with data_root parameter.")
         return self._data_root / "character_collision"
 
     def save_to_file(self, path: Path) -> None:
@@ -392,6 +431,7 @@ class CharacterCollisionEditor:
             data = self.get_collision_data()
             with open(path, "w") as f:
                 json.dump(data.to_dict(), f, indent=2)
+            self._refresh_file_tree()
         except Exception as e:
             error_handler.capture(e, context="save_character_collision")
 
@@ -407,8 +447,7 @@ class CharacterCollisionEditor:
         valid_types = ("rectangle", "circle", "capsule", "polygon")
         if shape_type not in valid_types:
             raise ValueError(
-                f"Invalid collision file: unknown shape type '{shape_type}'"
-                f" — expected one of {', '.join(valid_types)}"
+                f"Invalid collision file: unknown shape type '{shape_type}' — expected one of {', '.join(valid_types)}"
             )
 
     def load_from_file(self, path: Path) -> None:
@@ -454,11 +493,7 @@ class CharacterCollisionEditor:
         if self.layer_sidebar.handle_toggle_event(event):
             return True
 
-        if (
-            event.type == pygame.KEYDOWN
-            and event.key == pygame.K_l
-            and not self._name_input.is_focused
-        ):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_l and not self._name_input.is_focused:
             mods = pygame.key.get_mods()
             if not (mods & (pygame.KMOD_CTRL | pygame.KMOD_LMETA)):
                 self.layer_sidebar.toggle()
@@ -482,6 +517,9 @@ class CharacterCollisionEditor:
         if self.shape_editor.handle_event(event):
             return True
 
+        if self._file_tree.handle_event(event):
+            return True
+
         return any(btn.handle_event(event) for btn in self._buttons)
 
     def draw(self, screen: Surface) -> None:
@@ -498,6 +536,7 @@ class CharacterCollisionEditor:
 
         self._draw_toolbar(screen)
 
+        self._file_tree.draw(screen)
         self.shape_editor.draw(screen)
 
         self.layer_sidebar.draw_toggle_button(screen)
@@ -517,7 +556,7 @@ class CharacterCollisionEditor:
 
         for btn in self._buttons:
             if hasattr(btn, "_active") and btn.text in ("Rectangle", "Circle", "Capsule"):
-                btn.active = (self.shape_editor.shape_type == btn.text.lower())
+                btn.active = self.shape_editor.shape_type == btn.text.lower()
             btn.draw(screen)
 
     def _draw_properties(self, screen: Surface) -> None:
@@ -560,9 +599,7 @@ class CharacterCollisionEditor:
             screen.blit(text, (x, y))
         elif shape_data["type"] == "polygon":
             vertex_count = len(shape_data["vertices"])
-            text = self._font_sm.render(
-                f"Vertices: {vertex_count}", True, COLORS.text_dim
-            )
+            text = self._font_sm.render(f"Vertices: {vertex_count}", True, COLORS.text_dim)
             screen.blit(text, (x, y))
 
     @classmethod
@@ -578,14 +615,13 @@ class CharacterCollisionEditor:
         if sprite_path is not None:
             raw = pygame.image.load(str(sprite_path))
             surface = raw.convert_alpha() if raw.get_flags() & pygame.SRCALPHA else raw.convert()
-            try:
-                image_path = str(sprite_path.relative_to(data_root)) if data_root else str(sprite_path)
-            except ValueError:
-                image_path = str(sprite_path)
         rect = Rect(0, 0, window_size[0], window_size[1])
         editor = cls(rect, surface, character_name)
         editor._data_root = data_root
-        editor._image_path = image_path
+        if sprite_path is not None:
+            editor._image_path = editor._rel_path(Path(sprite_path))
+            editor.shape_editor.fit_view()
+        editor._refresh_file_tree()
         editor._auto_load_collision()
         return editor
 
@@ -607,9 +643,7 @@ class CharacterCollisionEditor:
                     if event.key == pygame.K_ESCAPE:
                         if self._load_dialog is None and getattr(self, "_image_dialog", None) is None:
                             running = False
-                    elif event.key == pygame.K_s and (
-                        pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
-                    ):
+                    elif event.key == pygame.K_s and (pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)):
                         collision_dir = self._get_collision_dir()
                         collision_dir.mkdir(parents=True, exist_ok=True)
                         save_path = self._get_save_path()
@@ -620,9 +654,7 @@ class CharacterCollisionEditor:
                         except Exception as e:
                             self._toast_manager.error(f"Save failed: {e}")
                         continue
-                    elif event.key == pygame.K_l and (
-                        pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)
-                    ):
+                    elif event.key == pygame.K_l and (pygame.key.get_mods() & (pygame.KMOD_LCTRL | pygame.KMOD_LMETA)):
                         load_path = self._get_load_path()
                         if load_path.exists():
                             try:

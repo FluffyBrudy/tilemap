@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect
@@ -117,14 +116,23 @@ class TestCmdVPaste:
         assert g.handle_event(key_event(pygame.K_v)) is True
         assert ed.tool_manager.is_active(ToolKind.SELECT)
 
-    def test_shift_v_still_toggles_select(self, monkeypatch):
+    def test_shift_v_toggles_brush_flip_not_select(self, monkeypatch):
         g, ed, _ = make_grid(monkeypatch)
         from widgets.ui.tool_manager import ToolKind
 
         monkeypatch.setattr(pygame.key, "get_mods",
                             lambda: pygame.KMOD_SHIFT)
         assert g.handle_event(key_event(pygame.K_v)) is True
-        assert ed.tool_manager.is_active(ToolKind.SELECT)
+        assert not ed.tool_manager.is_active(ToolKind.SELECT)
+        assert g.brush_flip_v is True
+
+    def test_shift_h_toggles_brush_flip(self, monkeypatch):
+        g, ed, _ = make_grid(monkeypatch)
+
+        monkeypatch.setattr(pygame.key, "get_mods",
+                            lambda: pygame.KMOD_SHIFT)
+        assert g.handle_event(key_event(pygame.K_h)) is True
+        assert g.brush_flip_h is True
 
 
 class TestOtherCombosPassThrough:

@@ -1,6 +1,22 @@
 # Changelog
 
 <!-- towncrier release notes start -->
+# tilemap_editor 5.3.0 (2026-09-22)
+
+## Features
+
+- Tile flip end to end: flip the brush with Shift+H/V, mirror placed selections in place, and keep flips through render, move preview, save, and load.
+- Recent maps and reload: reopen recent maps on startup, reload with F5, and track unsaved changes.
+- Sprite tools: crop, flip, and probe tiles; collision image paths stay relative so maps stay portable.
+- Image copies: duplicate, remove, and cycle copies, with grid snap and seam-exact placement ghosts.
+- Particle editor: standalone editor with viewer integration.
+- Toolbar and paint upgrades: toolbar layout engine, free pixel mode, and batch tileset import.
+
+## Bug Fixes
+
+- Fixed grid calculation and zoom step behavior.
+- Fixed transient keys leaking into particle exports and preset sidecars.
+
 # tilemap_editor 5.2.1 (2026-09-11)
 
 ## Bug Fixes

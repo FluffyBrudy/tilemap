@@ -4,14 +4,10 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect
 
-pygame.display.set_mode((1, 1))
 
 from layers import Layer
 from widgets.autotiler import AutotileGroup, AutotileRule
