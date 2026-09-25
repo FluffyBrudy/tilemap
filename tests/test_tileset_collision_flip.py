@@ -4,14 +4,10 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 import pytest
 from pygame import Rect
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)
@@ -184,6 +180,8 @@ class TestMirrorAction:
         ed._selected_tiles = {5}
         ed._user_cleared_tiles = set()
         ed._tile_size = (32, 32)
+        ed.tile_cols = 3
+        ed.tile_rows = 3
         ed.library = TilesetCollisionLibrary(tileset_name="t", tile_size=(32, 32))
         ed.toasts = []
         ed._show_toast = lambda msg, duration=2.5: ed.toasts.append(msg)
@@ -194,6 +192,8 @@ class TestMirrorAction:
                 self, "polys", [list(p) for p in polys]),
             "get_polygons": lambda self: [list(p) for p in getattr(self, "polys", [])],
             "get_one_way_flags": lambda self: [False] * len(getattr(self, "polys", [])),
+            "set_neighbor_polygons": lambda self, edge=None, corners=None: None,
+            "tile_surface": None,
         })()
         return ed
 

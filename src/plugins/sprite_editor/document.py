@@ -265,8 +265,7 @@ class Document:
         # onto a fresh tile-aligned destination instead
         dest = Surface((right - left, bottom - top), pygame.SRCALPHA)
         dest.fill((0, 0, 0, 0))
-        src_rect = Rect(left, top, right - left, bottom - top).clip(
-            self.surface.get_rect())
+        src_rect = Rect(left, top, right - left, bottom - top).clip(self.surface.get_rect())
         if src_rect.w > 0 and src_rect.h > 0:
             dest.blit(self.surface, (src_rect.x - left, src_rect.y - top), src_rect)
         self.surface = dest
@@ -286,13 +285,26 @@ class Document:
         return True
 
     def flip_tiles(self, cells: list[tuple[int, int]], flip_x: bool, flip_y: bool) -> None:
+        """Mirror the selected bounding box, replacing it in place.
+
+        Cell (c, r) moves to its mirrored position within the selection
+        box and its pixels flip too — a true block mirror, never a
+        stacked copy and never canvas growth. Single-cell selections
+        behave like a plain tile flip.
+        """
         if not self.surface or not cells:
             return
-        for col, row in cells:
-            tile = self.extract_tile(col, row)
+        cols = sorted({c for c, _ in cells})
+        rows = sorted({r for _, r in cells})
+        c0, c1 = cols[0], cols[-1]
+        r0, r1 = rows[0], rows[-1]
+        tiles = {(c, r): self.extract_tile(c, r) for c, r in cells}
+        for (c, r), tile in tiles.items():
+            nc = c0 + c1 - c if flip_x else c
+            nr = r0 + r1 - r if flip_y else r
             self.surface.blit(
                 pygame.transform.flip(tile, flip_x, flip_y),
-                self.tile_rect(col, row).topleft,
+                self.tile_rect(nc, nr).topleft,
             )
         self._bump()
 
@@ -318,8 +330,7 @@ class Document:
         self.origin_row = new_origin_row
         return self.expand_canvas_to(need_cols, need_rows, shift=(shift_x, shift_y))
 
-    def expand_canvas_to(self, need_cols: int, need_rows: int,
-                         shift: tuple[int, int] = (0, 0)) -> bool:
+    def expand_canvas_to(self, need_cols: int, need_rows: int, shift: tuple[int, int] = (0, 0)) -> bool:
         if not self.surface:
             return False
         cur_w, cur_h = self.surface.get_size()
@@ -439,16 +450,16 @@ class Document:
         self._bump()
         return True
 
-    def blit_surface(self, surf: Surface, pos: tuple[int, int]) -> None:
+    def blit_surface(self, surf: Surface, pos: tuple[int, int]) -> tuple[int, int]:
         """Blit an arbitrary surface at world px; expands canvas if needed.
 
         Negative-origin growth shifts the canvas by whole tile multiples and
         bumps ``origin_col``/``origin_row`` by the same tile count, so the
         grid<->pixel mapping (and anything recorded in grid space) stays
-        glued to the shifted content.
+        glued to the shifted content. Returns the applied content shift.
         """
         if not self.surface or surf is None:
-            return
+            return (0, 0)
         x, y = int(pos[0]), int(pos[1])
         sw, sh = surf.get_size()
         old_w, old_h = self.surface.get_size()
@@ -485,6 +496,86 @@ class Document:
             self.surface = new_surface
         self.surface.blit(surf, (x, y))
         self._bump()
+        return (shift_x, shift_y)
+
+    def clear_rect(self, rect: Rect) -> bool:
+        """Fill a world-px rect with transparency. Returns True if changed."""
+        if not self.surface:
+            return False
+        clipped = Rect(rect).clip(self.surface.get_rect())
+        if clipped.w <= 0 or clipped.h <= 0:
+            return False
+        self.surface.fill((0, 0, 0, 0), clipped)
+        self._bump()
+        return True
+
+    def move_pixels(self, src: Rect, dx: int, dy: int) -> Rect | None:
+        """Translate a pixel block; source auto-fills transparent.
+
+        Returns the destination rect, or None when there is nothing to
+        move. Canvas growth (incl. negative-origin shifts) is inherited
+        from ``blit_surface``; the source clear always applies to the
+        pre-growth surface so no pixels are duplicated.
+        """
+        if not self.surface:
+            return None
+        clipped = src.clip(self.surface.get_rect())
+        if clipped.w <= 0 or clipped.h <= 0:
+            return None
+        block = self.surface.subsurface(clipped).copy()
+        self.surface.fill((0, 0, 0, 0), clipped)
+        self._bump()
+        dest = Rect(clipped.x + int(dx), clipped.y + int(dy), clipped.w, clipped.h)
+        shift_x, shift_y = self.blit_surface(block, dest.topleft)
+        return Rect(dest.x + shift_x, dest.y + shift_y, dest.w, dest.h)
+
+    def mirror_pixels(self, src: Rect, axis: str, side: int = 1) -> Rect | None:
+        """Stamp a flipped copy of a pixel block abutting its own edge.
+
+        The mirror axis *is* the shared block edge (zero gap), so slopes
+        continue straight across by construction — no distance to judge.
+        ``axis`` is ``"h"`` (copy left/right) or ``"v"`` (above/below);
+        ``side`` +1 mirrors right/down, -1 mirrors left/up. The source
+        is kept. Returns the final destination rect, or None when the
+        source covers nothing.
+        """
+        if not self.surface:
+            return None
+        clipped = src.clip(self.surface.get_rect())
+        if clipped.w <= 0 or clipped.h <= 0:
+            return None
+        block = self.surface.subsurface(clipped).copy()
+        if axis == "v":
+            block = pygame.transform.flip(block, False, True)
+            dx, dy = (0, clipped.h if side >= 0 else -clipped.h)
+        else:
+            block = pygame.transform.flip(block, True, False)
+            dx, dy = (clipped.w if side >= 0 else -clipped.w, 0)
+        dest = Rect(clipped.x + dx, clipped.y + dy, clipped.w, clipped.h)
+        shift_x, shift_y = self.blit_surface(block, dest.topleft)
+        # negative-origin growth shifts all content: report the final rect
+        return Rect(dest.x + shift_x, dest.y + shift_y, dest.w, dest.h)
+
+    def scale_pixels(self, src: Rect, dest: Rect) -> Rect | None:
+        """Resample a pixel block into a new rect (nearest-neighbor).
+
+        Source auto-fills transparent; growth/shift rules inherit from
+        ``blit_surface``. Returns the final destination rect, or None
+        when there is nothing to scale.
+        """
+        if not self.surface:
+            return None
+        clipped = src.clip(self.surface.get_rect())
+        if clipped.w <= 0 or clipped.h <= 0:
+            return None
+        dw, dh = max(1, int(dest.w)), max(1, int(dest.h))
+        block = self.surface.subsurface(clipped).copy()
+        scaled = pygame.transform.scale(block, (dw, dh))
+        self.surface.fill((0, 0, 0, 0), clipped)
+        self._bump()
+        final = Rect(int(dest.x), int(dest.y), dw, dh)
+        shift_x, shift_y = self.blit_surface(scaled, final.topleft)
+        return Rect(final.x + shift_x, final.y + shift_y, dw, dh)
 
     def snapshot(self) -> tuple[Surface | None, list[Region], tuple[int, int], tuple[int, int]]:
         return (

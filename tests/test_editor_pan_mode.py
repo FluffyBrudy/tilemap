@@ -13,15 +13,11 @@ Also tests:
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 # ---------------------------------------------------------------------------

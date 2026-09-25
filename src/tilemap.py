@@ -1,4 +1,5 @@
 from json import dump as JSONDump
+from json import dumps as JSONDumps
 from json import load as JSONLoad
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,7 @@ class Tilemap:
 
         self.active_project_path: Path | None = None
         self.history = HistoryManager()
+        self._saved_snapshot: str | None = None
 
     @property
     def ongrid_tiles(self) -> "TTile":
@@ -73,6 +75,53 @@ class Tilemap:
         self.layer_manager.layers.clear()
         self.layer_manager.create_layer("Layer 1", "tile")
         self.layer_manager.set_active_layer(0)
+        self.snapshot_saved_state()
+
+    def _canonical_content_state(self) -> dict:
+        """Content-only state for dirty comparison (no view state).
+
+        Scroll/zoom and selection indices are excluded: panning or
+        switching layers must not count as unsaved changes.
+        """
+        designer = getattr(self.editor, "autotiler", None)
+        groups_data = []
+        if designer:
+            groups_data = [g.to_dict() for g in designer.groups]
+        return {
+            "tile_size": list(self.tile_size),
+            "map_size": list(self.map_size),
+            "offset": list(self.offset),
+            "render_scale": self.render_scale,
+            "layers": [L.to_dict() for L in self.layer_manager.layers],
+            "groups": groups_data,
+            "node_state": self._capture_node_state(),
+        }
+
+    def snapshot_saved_state(self) -> None:
+        """Record current content as clean (call after save/load)."""
+        try:
+            self._saved_snapshot = JSONDumps(
+                self._canonical_content_state(), sort_keys=True, default=str
+            )
+        except Exception as e:
+            error_handler.capture(e, context="snapshot_saved_state", severity="warning")
+            self._saved_snapshot = None
+
+    def has_unsaved_changes(self) -> bool:
+        """True when content differs from the last save/load snapshot.
+
+        Loud-safe: a failed comparison assumes dirty (warns via reload
+        confirm) rather than silently discarding edits.
+        """
+        if self._saved_snapshot is None:
+            return False
+        try:
+            current = JSONDumps(
+                self._canonical_content_state(), sort_keys=True, default=str
+            )
+        except Exception:
+            return True
+        return current != self._saved_snapshot
 
     def capture_history(self, description: str = "State Change"):
 
@@ -400,6 +449,11 @@ class Tilemap:
                         layer.image_path, map_dir
                     )
                 layer_data["image_rect"] = dict(layer.image_rect or {})
+                if layer.image_placements:
+                    layer_data["image_placements"] = [
+                        p.to_dict() for p in layer.image_placements
+                    ]
+                    layer_data["next_placement_id"] = layer.next_placement_id
                 layer_data["properties"] = getattr(layer, "properties", {})
                 layer_data["metadata"] = getattr(layer, "metadata", {})
                 save_data["data"]["layers"].append(layer_data)
@@ -413,6 +467,8 @@ class Tilemap:
                     "pos": serialize_point(tile["pos"]),
                     "ttype": ttype,
                     "variant": variant,
+                    "flip_h": bool(tile.get("flip_h")),
+                    "flip_v": bool(tile.get("flip_v")),
                 }
                 if "autotile_group" in tile:
                     tile_data["autotile_group"] = tile["autotile_group"]
@@ -452,6 +508,8 @@ class Tilemap:
                     "pos": serialize_point(tile["pos"]),
                     "ttype": ttype,
                     "variant": variant,
+                    "flip_h": bool(tile.get("flip_h")),
+                    "flip_v": bool(tile.get("flip_v")),
                 }
                 if "autotile_group" in tile:
                     tile_data["autotile_group"] = tile["autotile_group"]
@@ -475,6 +533,7 @@ class Tilemap:
             self.editor.node_manager.save(target_path)
 
         print(f"Saved to {target_path}")
+        self.snapshot_saved_state()
         return True
 
     def _project_base_path(self) -> Path:
@@ -714,6 +773,8 @@ class Tilemap:
                 for loc_str, tile_data in raw_ongrid.items():
                     pos = deserialize_point(loc_str)
                     tile_data["pos"] = pos
+                    tile_data["flip_h"] = tile_data.get("flip_h") or False
+                    tile_data["flip_v"] = tile_data.get("flip_v") or False
                     self._normalize_ttype(tile_data)
                     if active_layer:
                         active_layer.tiles[pos] = tile_data
@@ -742,6 +803,7 @@ class Tilemap:
                 self.editor.tile_grid_widget.invalidate_bounds_cache()
             if hasattr(self.editor.tile_grid_widget, "invalidate_image_cache"):
                 self.editor.tile_grid_widget.invalidate_image_cache()
+        self.snapshot_saved_state()
 
     def _object_tileset_indices_from_payload(self, payload: dict) -> set[int]:
         """Infer legacy object tileset resources from object-layer references."""
@@ -797,6 +859,8 @@ class Tilemap:
             y_sort_origin=layer_data.get("y_sort_origin", 0),
             image_path=image_path,
             image_rect=layer_data.get("image_rect"),
+            image_placements=layer_data.get("image_placements"),
+            next_placement_id=layer_data.get("next_placement_id", 1),
         )
         layer.properties = layer_data.get("properties", {})
         if "metadata" in layer_data:
@@ -809,6 +873,8 @@ class Tilemap:
             pos = deserialize_point(loc_str)
             tile_copy = tile_data.copy()
             tile_copy["pos"] = pos
+            tile_copy["flip_h"] = tile_data.get("flip_h") or False
+            tile_copy["flip_v"] = tile_data.get("flip_v") or False
             if "properties" in tile_data:
                 tile_copy["properties"] = tile_data["properties"]
             if "autotile_group" in tile_data:

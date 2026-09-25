@@ -261,8 +261,14 @@ class LayerSelector:
                 return True
 
             if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
-                grid_selection = getattr(getattr(self.editor, "tile_grid_widget", None), "selection_rect", None)
+                grid = getattr(self.editor, "tile_grid_widget", None)
+                grid_selection = getattr(grid, "selection_rect", None)
                 if grid_selection:
+                    return False
+                # An image-copy pick belongs to the grid's single-copy
+                # remover; deleting the layer here would wipe every copy.
+                has_image = getattr(grid, "has_image_selection", None)
+                if callable(has_image) and has_image():
                     return False
                 self._remove_layer()
                 return True

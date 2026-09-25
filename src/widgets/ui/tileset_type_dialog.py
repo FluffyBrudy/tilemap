@@ -49,16 +49,26 @@ class TilesetTypeDialog(DialogBase):
         self.anim_loop_check_rect = Rect(0, 0, 16, 16)
         self.anim_mode_rect = Rect(0, 0, 0, 0)
 
+        # persists across a batch's show() calls; reset per file-manager run.
+        self.apply_to_all = False
+        self._batch_remaining = 0
+        self.apply_all_rect = Rect(0, 0, 16, 16)
+        self._centered_size: tuple[int, int] | None = None
+
         self._layout()
 
     def _layout(self):
-        self.rect.center = self.editor_rect.center
-        self._update_content_rect()
-
         h = 260
         if self.animated or self._editing_field is not None:
             h = 420
+        if self._batch_remaining > 0:
+            h += 28
         self.rect.h = h
+        editor_size = (self.editor_rect.w, self.editor_rect.h)
+        if editor_size != self._centered_size:
+            self.rect.center = self.editor_rect.center
+            self._centered_size = editor_size
+        self._update_content_rect()
 
         radio_x = self.rect.x + 42
         row_w = self.rect.w - 84
@@ -67,20 +77,21 @@ class TilesetTypeDialog(DialogBase):
         gap = 12
 
         self.radio_tile_row_rect = Rect(radio_x - 10, first_y - 9, row_w, row_h)
-        self.radio_object_row_rect = Rect(
-            radio_x - 10, first_y + row_h + gap - 9, row_w, row_h
-        )
+        self.radio_object_row_rect = Rect(radio_x - 10, first_y + row_h + gap - 9, row_w, row_h)
 
         self.radio_tile_rect = Rect(radio_x, first_y, 20, 20)
         self.radio_object_rect = Rect(radio_x, first_y + row_h + gap, 20, 20)
 
         label_x = radio_x + 34
         self.radio_tile_label_rect = Rect(label_x, first_y - 4, row_w - 44, 28)
-        self.radio_object_label_rect = Rect(
-            label_x, first_y + row_h + gap - 4, row_w - 44, 28
-        )
+        self.radio_object_label_rect = Rect(label_x, first_y + row_h + gap - 4, row_w - 44, 28)
 
-        anim_y = first_y + (row_h + gap) * 2 + 16
+        if self._batch_remaining > 0:
+            apply_y = first_y + (row_h + gap) * 2
+            self.apply_all_rect = Rect(radio_x, apply_y, 16, 16)
+            anim_y = apply_y + 28
+        else:
+            anim_y = first_y + (row_h + gap) * 2 + 16
         self.anim_check_rect = Rect(radio_x, anim_y, 16, 16)
 
         field_y = anim_y + 30
@@ -97,9 +108,7 @@ class TilesetTypeDialog(DialogBase):
         ]
         for key, label, _ in anim_fields:
             label_rect = Rect(field_x, field_y, field_label_w, field_h)
-            value_rect = Rect(
-                field_x + field_label_w + 8, field_y, field_value_w, field_h
-            )
+            value_rect = Rect(field_x + field_label_w + 8, field_y, field_value_w, field_h)
             self.anim_fields_rects[key] = {
                 "label": label_rect,
                 "value": value_rect,
@@ -111,18 +120,14 @@ class TilesetTypeDialog(DialogBase):
         field_y += 26
 
         mode_label_rect = Rect(field_x, field_y, field_label_w, field_h)
-        mode_value_rect = Rect(
-            field_x + field_label_w + 8, field_y, field_value_w, field_h
-        )
+        mode_value_rect = Rect(field_x + field_label_w + 8, field_y, field_value_w, field_h)
         self.anim_fields_rects["mode"] = {
             "label": mode_label_rect,
             "value": mode_value_rect,
             "label_text": "Animation Mode",
         }
 
-        self._stride_hint_rect = Rect(
-            field_x, field_y + 36, field_label_w + field_value_w + 8, field_h
-        )
+        self._stride_hint_rect = Rect(field_x, field_y + 36, field_label_w + field_value_w + 8, field_h)
 
         btn_y = self.rect.y + h - 44
         self.btn_ok = Rect(self.rect.centerx - 94, btn_y, 80, 30)
@@ -175,19 +180,24 @@ class TilesetTypeDialog(DialogBase):
         if hasattr(self, "_sheet_cols") and self._sheet_cols % fc == 0:
             self._computed_stride = self._sheet_cols // fc
         elif hasattr(self, "_sheet_rows") and self._sheet_rows % fc == 0:
-            self._computed_stride = (self._sheet_rows // fc) * getattr(
-                self, "_sheet_cols", 1
-            )
+            self._computed_stride = (self._sheet_rows // fc) * getattr(self, "_sheet_cols", 1)
         else:
             self._computed_stride = 1
 
-    def show(self, on_confirm: Callable[[str], None], on_cancel: Callable[[], None]):
+    def show(
+        self,
+        on_confirm: Callable[[str], None],
+        on_cancel: Callable[[], None],
+        remaining: int = 0,
+    ):
         if self.active:
             self.hide()
         self.active = True
         self.selected_type = "tile"
         self.on_confirm = on_confirm
         self.on_cancel = on_cancel
+        self._batch_remaining = max(0, int(remaining))
+        self._centered_size = None
         self.btn_ok_hover = False
         self.btn_cancel_hover = False
         self.animated = False
@@ -246,6 +256,10 @@ class TilesetTypeDialog(DialogBase):
                 self.selected_type = "object"
                 return True
 
+            if self._batch_remaining > 0 and self.apply_all_rect.collidepoint(mouse_pos):
+                self.apply_to_all = not self.apply_to_all
+                return True
+
             if self.anim_check_rect.collidepoint(mouse_pos):
                 self.animated = not self.animated
                 self._editing_field = None
@@ -260,9 +274,7 @@ class TilesetTypeDialog(DialogBase):
                 for key, rects in self.anim_fields_rects.items():
                     if key == "mode":
                         if rects["value"].collidepoint(mouse_pos):
-                            self.anim_mode_index = (self.anim_mode_index + 1) % len(
-                                self.anim_modes
-                            )
+                            self.anim_mode_index = (self.anim_mode_index + 1) % len(self.anim_modes)
                             return True
                     else:
                         if rects["value"].collidepoint(mouse_pos):
@@ -317,6 +329,15 @@ class TilesetTypeDialog(DialogBase):
             self.radio_object_label_rect,
         )
 
+        if self._batch_remaining > 0:
+            self._draw_checkbox(
+                surface,
+                self.apply_all_rect,
+                self.apply_to_all,
+                f"Apply to all ({self._batch_remaining} more)",
+                self.rect.x + 62,
+            )
+
         self._draw_checkbox(
             surface,
             self.anim_check_rect,
@@ -337,9 +358,7 @@ class TilesetTypeDialog(DialogBase):
             rects = self.anim_fields_rects.get(key)
             if rects is None:
                 continue
-            label_surf = FONTS.get_medium_font().render(
-                rects["label_text"], True, COLORS.text
-            )
+            label_surf = FONTS.get_medium_font().render(rects["label_text"], True, COLORS.text)
             surface.blit(label_surf, rects["label"])
 
             value_str = self._get_display_value(key)
@@ -348,9 +367,7 @@ class TilesetTypeDialog(DialogBase):
             pygame.draw.rect(surface, COLORS.panel_alt, rects["value"])
             pygame.draw.rect(surface, border, rects["value"], 1)
             val_surf = FONTS.get_medium_font().render(value_str, True, value_color)
-            val_rect = val_surf.get_rect(
-                midleft=(rects["value"].x + 4, rects["value"].centery)
-            )
+            val_rect = val_surf.get_rect(midleft=(rects["value"].x + 4, rects["value"].centery))
             surface.blit(val_surf, val_rect)
 
         loop_label_x = self.anim_loop_check_rect.right + 6
@@ -364,29 +381,21 @@ class TilesetTypeDialog(DialogBase):
 
         mode_rects = self.anim_fields_rects.get("mode")
         if mode_rects:
-            label_surf = FONTS.get_medium_font().render(
-                mode_rects["label_text"], True, COLORS.text
-            )
+            label_surf = FONTS.get_medium_font().render(mode_rects["label_text"], True, COLORS.text)
             surface.blit(label_surf, mode_rects["label"])
             mode_border = COLORS.border
             pygame.draw.rect(surface, COLORS.panel_alt, mode_rects["value"])
             pygame.draw.rect(surface, mode_border, mode_rects["value"], 1)
             mode_text = self.anim_mode_labels[self.anim_mode_index]
             val_surf = FONTS.get_medium_font().render(mode_text, True, COLORS.text)
-            val_rect = val_surf.get_rect(
-                midleft=(mode_rects["value"].x + 4, mode_rects["value"].centery)
-            )
+            val_rect = val_surf.get_rect(midleft=(mode_rects["value"].x + 4, mode_rects["value"].centery))
             surface.blit(val_surf, val_rect)
 
         hint_color = COLORS.text_dim
-        hint_surf = FONTS.get_medium_font().render(
-            f"Stride: {self._computed_stride}  (auto)", True, hint_color
-        )
+        hint_surf = FONTS.get_medium_font().render(f"Stride: {self._computed_stride}  (auto)", True, hint_color)
         surface.blit(hint_surf, self._stride_hint_rect)
 
-    def _draw_checkbox(
-        self, surface: Surface, rect: Rect, checked: bool, label: str, label_x: int
-    ):
+    def _draw_checkbox(self, surface: Surface, rect: Rect, checked: bool, label: str, label_x: int):
         pygame.draw.rect(surface, COLORS.panel_alt, rect)
         pygame.draw.rect(surface, COLORS.border, rect, 1)
         if checked:

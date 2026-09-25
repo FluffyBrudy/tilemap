@@ -8,16 +8,9 @@ from pathlib import Path
 import pygame
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import widgets.ui.menubar as _menubar_mod
 from utils.font_manager import font_manager
-
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-pygame.init()
-pygame.display.set_mode((1, 1))
 
 
 @pytest.fixture(autouse=True)
@@ -133,6 +126,7 @@ class TestEditMenu:
         ed = ed or make_editor()
         ed.open_map_setup = lambda: None
         ed.perform_load = lambda: None
+        ed.reload_map = lambda: None
         ed.perform_quick_save = lambda: None
         ed.open_save_as_dialog = lambda: None
         ed.open_map_properties = lambda: None
@@ -149,6 +143,7 @@ class TestEditMenu:
         ed.toggle_regex_automap = lambda: None
         ed.launch_animation_editor = lambda: None
         ed.launch_sprite_editor = lambda: None
+        ed.launch_particle_editor = lambda *a: None
         ed.launch_character_collision_editor = lambda: None
         ed.autotile_active = lambda: None
         ed.flood_fill_active = lambda: None
@@ -160,6 +155,8 @@ class TestEditMenu:
         ed.show_nodes = False
         ed.node_editing_mode = False
         ed.autotile_mode = False
+        ed.show_particles = True
+        ed.toggle_show_particles = lambda: None
         from widgets.ui.tool_manager import ToolManager
 
         ed.tool_manager = ToolManager()

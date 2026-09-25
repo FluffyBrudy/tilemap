@@ -5,14 +5,11 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
 import pytest
 from pygame import Rect
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from layers import Layer
 from widgets.ui import theme as theme_module

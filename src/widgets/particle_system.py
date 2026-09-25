@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 import random
 
@@ -40,23 +41,38 @@ DEFAULT_PARTICLE_CONFIG: dict[str, object] = {
     "end_scale": 0.3,
     "rotation_speed": 0,
     "alpha_fade": "fade_out",
+    "wrap": False,
+    "fade_peak_alpha": None,
+    "mode": "continuous",
+    "burst_count": 30,
+    "coverage": 1.0,
+    "field_quality": "medium",
+    "ground_bias": False,
+    "timing": {
+        "emitter_duration": 0.0,
+        "start_delay": 0.0,
+        "loop": True,
+        "burst_interval": 0.0,
+    },
 }
 
 EMISSION_SHAPES = ["point", "rect", "circle", "line"]
-PARTICLE_SHAPES = ["circle", "square", "diamond", "star", "sparkle", "smoke", "heart", "line"]
+PARTICLE_SHAPES = ["circle", "square", "diamond", "star", "sparkle", "smoke", "fog", "heart", "line"]
 ALPHA_FADE_MODES = ["none", "fade_out", "fade_in", "fade_both"]
 
 FLOAT_FIELDS = {
-    "particle_size_min": (1, 32, "Min Size"),
-    "particle_size_max": (1, 32, "Max Size"),
+    "particle_size_min": (1, 64, "Min Size"),
+    "particle_size_max": (1, 64, "Max Size"),
     "spawn_rate": (1, 300, "Rate/s"),
     "max_particles": (1, 500, "Max #"),
+    "burst_count": (0, 500, "Burst #"),
+    "coverage": (0.05, 3.0, "Coverage"),
     "lifetime_min": (0.1, 5.0, "Min Life"),
     "lifetime_max": (0.1, 5.0, "Max Life"),
     "speed_min": (0, 300, "Min Speed"),
     "speed_max": (0, 300, "Max Speed"),
     "direction": (-1, 360, "Direction"),
-    "spread": (0, 180, "Spread"),
+    "spread": (0, 360, "Spread"),
     "gravity_x": (-200, 200, "Gravity X"),
     "gravity_y": (-200, 200, "Gravity Y"),
     "start_scale": (0.1, 3.0, "Start Scale"),
@@ -146,9 +162,36 @@ def _make_smoke_texture() -> Surface:
     r_max = PARTICLE_TEXTURE_SIZE // 2 - 1
     for r in range(r_max, 0, -1):
         t = r / r_max
-        alpha = int(100 * (1 - t ** 1.5))
+        alpha = int(100 * (1 - t**1.5))
         if alpha > 0:
             pygame.draw.circle(s, (255, 255, 255, alpha), (cx, cy), r)
+    return s
+
+
+def _make_fog_texture() -> Surface:
+    """Flat soft-edged square with a uniform core.
+
+    Unlike the ``smoke`` disc (bright center, dark rim), this shape holds
+    roughly constant alpha across most of its canvas and only fades at the
+    rim, so densely overlapping fog particles tile like stacked
+    translucent sheets -- one continuous haze instead of dotted circles.
+    """
+    s = Surface((PARTICLE_TEXTURE_SIZE, PARTICLE_TEXTURE_SIZE), pygame.SRCALPHA)
+    half = PARTICLE_TEXTURE_SIZE / 2
+    core = 0.55
+    rim = 0.45
+    for y in range(PARTICLE_TEXTURE_SIZE):
+        dy = abs(y + 0.5 - half) / half
+        for x in range(PARTICLE_TEXTURE_SIZE):
+            dx = abs(x + 0.5 - half) / half
+            d = max(dx, dy)
+            if d <= core:
+                a = 110
+            else:
+                t = min(1.0, (d - core) / rim)
+                a = int(110 * (1.0 - t * t * (3.0 - 2.0 * t)))
+            if a > 0:
+                s.set_at((x, y), (255, 255, 255, a))
     return s
 
 
@@ -184,6 +227,7 @@ def get_particle_texture(shape: str) -> Surface:
             "star": _make_star_texture,
             "sparkle": _make_sparkle_texture,
             "smoke": _make_smoke_texture,
+            "fog": _make_fog_texture,
             "heart": _make_heart_texture,
             "line": _make_line_texture,
         }
@@ -193,29 +237,44 @@ def get_particle_texture(shape: str) -> Surface:
 
 
 def get_default_config() -> dict[str, object]:
-    return dict(DEFAULT_PARTICLE_CONFIG)
+    # Deep copy: nested blocks (timing) must never alias across nodes.
+    return copy.deepcopy(DEFAULT_PARTICLE_CONFIG)
 
 
 class Particle:
     __slots__ = (
-        "alpha_fade", "end_color", "end_size",
-        "life", "max_life",
-        "rotation", "rotation_speed",
-        "size", "start_color", "start_size",
-        "vx", "vy", "x", "y",
+        "alpha_fade",
+        "end_color",
+        "end_size",
+        "life",
+        "max_life",
+        "peak_alpha",
+        "rotation",
+        "rotation_speed",
+        "size",
+        "start_color",
+        "start_size",
+        "vx",
+        "vy",
+        "x",
+        "y",
     )
 
     def __init__(
         self,
-        x: float, y: float,
-        vx: float, vy: float,
+        x: float,
+        y: float,
+        vx: float,
+        vy: float,
         lifetime: float,
         size: float,
         start_color: tuple[int, int, int, int],
         end_color: tuple[int, int, int, int],
-        start_scale: float, end_scale: float,
+        start_scale: float,
+        end_scale: float,
         rotation_speed: float,
         alpha_fade: str,
+        peak_alpha: int | None = None,
     ):
         self.x = x
         self.y = y
@@ -231,6 +290,7 @@ class Particle:
         self.rotation = random.uniform(0, 360)
         self.rotation_speed = rotation_speed
         self.alpha_fade = alpha_fade
+        self.peak_alpha = peak_alpha
 
     def update(self, dt: float, grav_x: float, grav_y: float) -> bool:
         self.life -= dt
@@ -247,7 +307,7 @@ class Particle:
     def progress(self) -> float:
         if self.max_life <= 0:
             return 1.0
-        return max(0.0, 1.0 - self.life / self.max_life)
+        return min(1.0, max(0.0, 1.0 - self.life / self.max_life))
 
     @property
     def current_size(self) -> float:
@@ -270,10 +330,11 @@ class Particle:
             a = int(a_end + (a_start - a_end) * t)
         else:
             mid = 0.5
+            peak = self.peak_alpha if self.peak_alpha is not None else 255
             if t < mid:
-                a = int(a_start + (255 - a_start) * (t / mid))
+                a = int(a_start + (peak - a_start) * (t / mid))
             else:
-                a = int(255 + (a_end - 255) * ((t - mid) / mid))
+                a = int(peak + (a_end - peak) * ((t - mid) / mid))
         return (max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)), max(0, min(255, a)))
 
 
@@ -289,7 +350,18 @@ class ParticlePreview:
         val = self.config.get(key, default)
         return float(val) if val is not None else float(default)
 
-    def update(self, dt: float, area_x: int, area_y: int, area_w: int, area_h: int):
+    def update(
+        self,
+        dt: float,
+        area_x: int,
+        area_y: int,
+        area_w: int,
+        area_h: int,
+        spawn_enabled: bool = True,
+    ):
+        """Advance the preview. With ``spawn_enabled=False`` existing
+        particles still move/die/wrap, but no new ones spawn -- used by
+        the standalone's emitter clock outside the active window."""
         cfg = self.config
         max_particles = int(self._get("max_particles", 100))
         spawn_rate = self._get("spawn_rate", 20)
@@ -303,19 +375,46 @@ class ParticlePreview:
                 self.texture = get_particle_texture(shape)
                 self._current_shape = shape
 
-        capped_max = min(max_particles, MAX_PREVIEW_PARTICLES)
-        self.spawn_timer += dt * spawn_rate
+        if spawn_enabled:
+            capped_max = min(max_particles, MAX_PREVIEW_PARTICLES)
+            self.spawn_timer += dt * spawn_rate
 
-        while self.spawn_timer >= 1.0 and len(self.particles) < capped_max:
-            self.spawn_timer -= 1.0
-            self._spawn_particle(area_x, area_y, area_w, area_h)
+            while self.spawn_timer >= 1.0 and len(self.particles) < capped_max:
+                self.spawn_timer -= 1.0
+                self._spawn_particle(area_x, area_y, area_w, area_h)
 
         grav_x = self._get("gravity_x", 0)
         grav_y = self._get("gravity_y", 30)
 
+        if cfg.get("wrap"):
+            for p in self.particles:
+                p.update(dt, grav_x, grav_y)
+                self._wrap_particle(p, area_x, area_y, area_w, area_h)
+            return
+
         for p in self.particles[:]:
             if not p.update(dt, grav_x, grav_y):
                 self.particles.remove(p)
+
+    @staticmethod
+    def _wrap_particle(p: Particle, area_x: float, area_y: float, area_w: float, area_h: float) -> None:
+        """Fold ``p`` toroidally back into the emission area.
+
+        The particle disappears beyond the edge by half its current size,
+        then re-enters on the opposite side at the same offset (modulo),
+        preserving velocity, alpha, and size. Deterministic and stateless.
+        """
+        half = p.current_size / 2
+        min_x = area_x - half
+        max_x = area_x + area_w + half
+        min_y = area_y - half
+        max_y = area_y + area_h + half
+        span_x = max_x - min_x
+        span_y = max_y - min_y
+        if span_x <= 0 or span_y <= 0:
+            return
+        p.x = min_x + (p.x - min_x) % span_x
+        p.y = min_y + (p.y - min_y) % span_y
 
     def _spawn_particle(self, area_x: int, area_y: int, area_w: int, area_h: int):
         cfg = self.config
@@ -326,7 +425,11 @@ class ParticlePreview:
             y = area_y + area_h / 2
         elif emission == "rect":
             x = area_x + random.uniform(0, area_w)
-            y = area_y + random.uniform(0, area_h)
+            if cfg.get("ground_bias"):
+                top = area_y + area_h * 0.35
+                y = top + random.uniform(0, area_h * 0.65)
+            else:
+                y = area_y + random.uniform(0, area_h)
         elif emission == "circle":
             cx, cy = area_x + area_w / 2, area_y + area_h / 2
             radius = min(area_w, area_h) / 2
@@ -374,10 +477,19 @@ class ParticlePreview:
             int(self._get("end_color_b", 50)),
             int(self._get("end_color_a", 0)),
         )
+        raw_peak = cfg.get("fade_peak_alpha")
+        peak = None
+        if raw_peak is not None:
+            try:
+                peak = max(0, min(255, int(raw_peak)))
+            except (TypeError, ValueError):
+                peak = None
 
         particle = Particle(
-            x=x, y=y,
-            vx=vx, vy=vy,
+            x=x,
+            y=y,
+            vx=vx,
+            vy=vy,
             lifetime=lifetime,
             size=size,
             start_color=sc,
@@ -386,13 +498,15 @@ class ParticlePreview:
             end_scale=self._get("end_scale", 0.3),
             rotation_speed=self._get("rotation_speed", 0),
             alpha_fade=str(cfg.get("alpha_fade", "fade_out")),
+            peak_alpha=peak,
         )
         self.particles.append(particle)
 
     def draw(
         self,
         screen: Surface,
-        scroll_x: float, scroll_y: float,
+        scroll_x: float,
+        scroll_y: float,
         zoom: float,
         grid_rect: Rect,
     ):
@@ -425,6 +539,19 @@ class ParticlePreview:
     def clear(self):
         self.particles.clear()
         self.spawn_timer = 0.0
+
+    def burst(self, count: int, area_x: int, area_y: int, area_w: int, area_h: int) -> int:
+        """Spawn up to ``count`` particles immediately, honoring the cap.
+
+        Returns the number actually spawned. Used by the standalone
+        editor's Trigger Burst; the tile-grid preview never calls this.
+        """
+        cap = min(int(self._get("max_particles", 100)), MAX_PREVIEW_PARTICLES)
+        room = max(0, cap - len(self.particles))
+        n = max(0, min(int(count), room))
+        for _ in range(n):
+            self._spawn_particle(area_x, area_y, area_w, area_h)
+        return n
 
     def reset(self, config: dict[str, object]):
         self.config = dict(config)

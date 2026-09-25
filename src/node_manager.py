@@ -16,6 +16,23 @@ def create_node_id() -> str:
 
 SIDECAR_VERSION = 2
 
+# View-only flags that must never reach saved files. ``_hidden`` is the
+# particle-editor preview toggle: in-memory only, never game data. The
+# parser passes properties through verbatim, so anything left here leaks
+# across the editor -> parser boundary.
+TRANSIENT_PROPERTY_KEYS = frozenset({"_hidden"})
+
+
+def _save_dict(node: Node) -> dict[str, Any]:
+    """Serialize ``node`` for the sidecar file, minus transient flags."""
+    d = node.to_dict()
+    props = d.get("properties")
+    if isinstance(props, dict) and any(k in TRANSIENT_PROPERTY_KEYS for k in props):
+        d["properties"] = {
+            k: v for k, v in props.items() if k not in TRANSIENT_PROPERTY_KEYS
+        }
+    return d
+
 
 class NodeManager:
     def __init__(self, editor: "Editor") -> None:
@@ -98,7 +115,7 @@ class NodeManager:
             data: dict[str, Any] = {
                 "version": SIDECAR_VERSION,
                 "groups": self.groups,
-                "nodes": [node.to_dict() for node in self.nodes.values()],
+                "nodes": [_save_dict(node) for node in self.nodes.values()],
             }
             tmp_sidecar.write_text(json.dumps(data, indent=2), encoding="utf-8")
             tmp_sidecar.replace(sidecar)
