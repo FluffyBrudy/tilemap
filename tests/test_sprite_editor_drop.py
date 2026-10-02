@@ -7,8 +7,6 @@ DROPBEGIN -> one DROPFILE per file -> DROPCOMPLETE.
 
 import os
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import sys
 from pathlib import Path
@@ -17,7 +15,6 @@ import pygame
 import pytest
 from pygame import Rect
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from plugins.sprite_editor.editor import SpriteEditor  # noqa: E402
 
@@ -83,7 +80,7 @@ class TestDropLoadsSheets:
         assert editor.doc.surface.get_size() == (64, 96)
 
     def test_multiple_files_stack_horizontally(self, editor, tmp_path):
-        editor._stack_horizontal = True
+        editor._append_below = True
         a = make_png(tmp_path / "a.png", (64, 32), (255, 0, 0, 255))
         b = make_png(tmp_path / "b.png", (32, 64), (0, 255, 0, 255))
         drop(editor, a, b)
@@ -298,7 +295,7 @@ class TestPasteStacksOntoCanvas:
 
     def test_second_paste_starts_new_row(self, editor, tmp_path):
         """Horizontal mode: each pass is a row placed BELOW content."""
-        editor._stack_horizontal = True
+        editor._append_below = True
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         b = make_png(tmp_path / "b.png", (16, 32), (0, 255, 0, 255))
         self.paste(editor, a)
@@ -365,7 +362,7 @@ class TestStackPlacement:
         c = make_png(tmp_path / "c.png", (16, 16), (0, 0, 255, 255))
         self.paste(editor, a)
         self.paste(editor, b)
-        editor._stack_horizontal = True
+        editor._append_below = True
         self.paste(editor, c)
         # columns a|b fill row 0; the horizontal block lands on row 1
         assert self.bounds_of(editor.doc, (0, 0, 255)) == (0, 32, 15, 47)
@@ -374,7 +371,7 @@ class TestStackPlacement:
         a = make_png(tmp_path / "a.png", (32, 20), (255, 0, 0, 255))
         c = make_png(tmp_path / "c.png", (16, 20), (0, 0, 255, 255))
         self.paste(editor, a)
-        editor._stack_horizontal = True
+        editor._append_below = True
         self.paste(editor, c)
         # canvas height 20 -> next tile boundary is 32
         assert editor.doc.surface.get_size() == (32, 52)
@@ -393,7 +390,7 @@ class TestStackPlacement:
         a = make_png(tmp_path / "a.png", (32, 32), (255, 0, 0, 255))
         c = make_png(tmp_path / "c.png", (16, 64), (0, 0, 255, 255))
         self.paste(editor, a)
-        editor._stack_horizontal = True
+        editor._append_below = True
         self.paste(editor, c)
         assert editor.doc.surface.get_size() == (32, 96)
         assert self.bounds_of(editor.doc, (0, 0, 255)) == (0, 32, 15, 95)
@@ -404,7 +401,7 @@ class TestStackPlacement:
         c = make_png(tmp_path / "c.png", (16, 16), (0, 0, 255, 255))
         self.paste(editor, a)
         self.paste(editor, b)
-        editor._stack_horizontal = True
+        editor._append_below = True
         self.paste(editor, c)
         px = editor.doc.surface
         assert px.get_at((5, 5)) == (255, 0, 0, 255)
@@ -417,7 +414,7 @@ class TestStackPlacement:
         c = make_png(tmp_path / "c.png", (16, 16), (0, 0, 255, 255))
         self.paste(editor, a)
         self.paste(editor, b)
-        editor._stack_horizontal = True
+        editor._append_below = True
         self.paste(editor, c)
         assert editor.doc.surface.get_size() == (64, 48)
         editor.commands.undo(editor.doc, editor.selection)

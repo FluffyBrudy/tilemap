@@ -112,11 +112,16 @@ def main(argv: list[str] | None = None) -> None:
                     from .models import AnimationLibrary
                 except ImportError:
                     from plugins.sprite_animation.models import AnimationLibrary
+                from utils.tile_anim import detect_anim_schema_file
 
-                lib = AnimationLibrary.load(args.load)
-                editor.load_animation_data(lib.to_dict())
-                editor._resolve_library_paths(args.load)
-                print(f"Loaded animations from {args.load}")
+                if detect_anim_schema_file(args.load) == "tile":
+                    editor.load_tanim_file(args.load)
+                else:
+                    lib = AnimationLibrary.load(args.load)
+                    editor.load_animation_data(lib.to_dict())
+                    editor._tanim_source = None
+                    editor._resolve_library_paths(args.load)
+                    print(f"Loaded animations from {args.load}")
 
             editor.run()
     except KeyboardInterrupt:

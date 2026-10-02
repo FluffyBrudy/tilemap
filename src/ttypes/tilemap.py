@@ -5,14 +5,14 @@ class TypeTile(TypedDict, total=True):
     pos: tuple[int, int]
     ttype: int
     variant: int
+    flip_h: bool | None
+    flip_v: bool | None
     autotile_group: NotRequired[str]
     gid: NotRequired[int]
     properties: NotRequired[dict[str, Any]]
 
 
 class TypeArea(TypedDict, total=True):
-    """Area/bounds of an object: x, y, width, height in pixels"""
-
     x: int
     y: int
     w: int
@@ -20,12 +20,6 @@ class TypeArea(TypedDict, total=True):
 
 
 class TypeObject(TypedDict, total=True):
-    """Object sprite on a layer (free pixel placement, draggable)
-
-    For single objects: area defines the bounds
-    For tiled regions: area defines the total region, variant defines top-left tile
-    """
-
     area: TypeArea
     ttype: int
     tileset_type: str
@@ -34,10 +28,21 @@ class TypeObject(TypedDict, total=True):
     animation: NotRequired[dict[str, Any]]
 
 
+class TypeImagePlacement(TypedDict, total=True):
+    pid: int
+    x: int
+    y: int
+    w: int
+    h: int
+    mode: NotRequired[str]
+
+
 class TypeTileSerealized(TypedDict, total=True):
     pos: str
     ttype: str
     variant: int
+    flip_h: bool | None
+    flip_v: bool | None
     autotile_group: NotRequired[str]
     gid: NotRequired[int]
     properties: NotRequired[dict[str, Any]]
@@ -65,6 +70,8 @@ class TypeLayerSerialized(TypedDict, total=True):
     properties: NotRequired[dict[str, Any]]
     image_path: NotRequired[str | None]
     image_rect: NotRequired[TypeArea | None]
+    image_placements: NotRequired[list[TypeImagePlacement]]
+    next_placement_id: NotRequired[int]
 
 
 class TypeTilesetSerialized(TypedDict, total=True):

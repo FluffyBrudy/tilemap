@@ -11,14 +11,6 @@ from pygame import Rect
 from node_manager import NodeManager
 from widgets.ui.node_selector import NodeSelector
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-pygame.init()
-pygame.display.set_mode((1, 1))
-
 
 @pytest.fixture(autouse=True)
 def _reinit_pygame():

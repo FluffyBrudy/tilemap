@@ -56,6 +56,7 @@ class MenuBar:
                 [
                     MenuAction("New Project", self.editor.open_map_setup, "Ctrl+N"),
                     MenuAction("Open Map", self.editor.perform_load, "Ctrl+O"),
+                    MenuAction("Reload Map", self.editor.reload_map, "F5"),
                     MenuAction("Save Map", self.editor.perform_quick_save, "Ctrl+S"),
                     MenuAction(
                         "Save As...", self.editor.open_save_as_dialog, "Ctrl+Shift+S"
@@ -96,6 +97,7 @@ class MenuBar:
                     ),
                     MenuAction("Animation Editor", self.editor.launch_animation_editor),
                     MenuAction("Sprite Editor", self.editor.launch_sprite_editor),
+                    MenuAction("Particle Editor", self.editor.launch_particle_editor),
                     MenuAction(
                         "Character Collision Editor",
                         self.editor.launch_character_collision_editor,
@@ -170,6 +172,13 @@ class MenuBar:
                         self.editor.toggle_node_editing,
                         "Ctrl+Shift+N",
                         is_checked=lambda: bool(self.editor.node_editing_mode),
+                    ),
+                    MenuAction(
+                        "Particle Previews",
+                        self.editor.toggle_show_particles,
+                        is_checked=lambda: bool(
+                            getattr(self.editor, "show_particles", True)
+                        ),
                     ),
                     MenuAction(
                         "Auto-Autotile",

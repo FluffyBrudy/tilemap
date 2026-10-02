@@ -42,6 +42,10 @@ class TilesetData:
         self.object_collision_path: Path | None = None
         self.object_collision_data: dict[str, Any] | None = None
         self.animation: dict | None = None
+        self.tanim_clips: dict = {}
+        self.tanim_path: Path | None = None
+        self.tanim_mtime: float = -1.0
+        self.tanim_warnings: set[str] = set()
 
 
 class TileSelector(WidgetBase):
@@ -98,9 +102,13 @@ class TileSelector(WidgetBase):
 
         self._pending_tileset_queue: list[tuple[Path, pygame.Surface]] = []
         self._queue_timer_active = False
+        self._batch_type: str | None = None
 
         self.zoom: float = 1.0
         self.font = FONTS.get_medium_font()
+        from utils.tile_anim import TileAnimCache
+
+        self._tanim_cache = TileAnimCache()
 
         self._register_context_handlers()
 
@@ -190,9 +198,16 @@ class TileSelector(WidgetBase):
         if not variant_ids:
             return
         variant_id = variant_ids[0]
+        if len(variant_ids) == 1:
+            title = f"Tile Properties: {ts.name} (ID: {variant_id})"
+        else:
+            title = (
+                f"Tile Properties: {ts.name} ({len(variant_ids)} tiles, "
+                f"first ID: {variant_id}) — save applies to all"
+            )
         self.editor.property_editor = PropertyEditor(
             self.editor,
-            f"Tile Properties: {ts.name} (ID: {variant_id})",
+            title,
             ts.tile_properties.get(variant_id, {}),
             context=ctx,
         )
@@ -459,7 +474,6 @@ class TileSelector(WidgetBase):
     def handle_event(self, event: pygame.event.Event) -> bool:
 
         if event.type == pygame.USEREVENT + 1 and self._queue_timer_active:
-            print("DEBUG: Timer triggered, continuing queue")
             self._queue_timer_active = False
             self._start_tileset_queue()
             return True
@@ -644,7 +658,8 @@ class TileSelector(WidgetBase):
         )
 
     def on_files_selected(self, paths):
-        print(f"DEBUG: on_files_selected called with {len(paths) if isinstance(paths, (list, tuple)) else 1} file(s)")
+        self._batch_type = None
+        self.editor.tileset_type_dialog.apply_to_all = False
         if isinstance(paths, Path):
             self.on_file_selected(paths)
             return
@@ -654,7 +669,6 @@ class TileSelector(WidgetBase):
                     self.on_file_selected(p, enqueue_only=True)
                 elif isinstance(p, str):
                     self.on_file_selected(Path(p), enqueue_only=True)
-            print(f"DEBUG: Queue size after adding: {len(self._pending_tileset_queue)}")
             if self._pending_tileset_queue:
                 self._start_tileset_queue()
         else:
@@ -682,11 +696,12 @@ class TileSelector(WidgetBase):
 
     def _start_tileset_queue(self):
         if not self._pending_tileset_queue:
-            print("DEBUG: Queue is empty, nothing to process")
+            self._batch_type = None
             return
-        print(f"DEBUG: Starting queue processing, {len(self._pending_tileset_queue)} items remaining")
         self._pending_tileset_path, self._pending_tileset_surf = self._pending_tileset_queue.pop(0)
-        print(f"DEBUG: Processing tileset: {self._pending_tileset_path}")
+        if self._batch_type is not None:
+            self._on_tileset_type_selected(self._batch_type)
+            return
         tw, th = self.editor.tilemap.tile_size
         sheet_cols = self._pending_tileset_surf.get_width() // tw
         sheet_rows = self._pending_tileset_surf.get_height() // th
@@ -694,6 +709,7 @@ class TileSelector(WidgetBase):
         self.editor.tileset_type_dialog.show(
             on_confirm=self._on_tileset_type_selected,
             on_cancel=self._on_tileset_type_cancel,
+            remaining=len(self._pending_tileset_queue),
         )
 
     def load_tileset_from_path(
@@ -713,9 +729,12 @@ class TileSelector(WidgetBase):
                 surf = pygame.image.load(path).convert_alpha()
                 tileset_data = TilesetData(path.name, path, surf, tileset_type=tileset_type)
                 tileset_data.properties = properties
-                tileset_data.tile_properties = {int(k): v for k, v in tile_properties.items()}
+                tileset_data.tile_properties = {
+                    int(k): dict(v) for k, v in tile_properties.items() if dict(v)
+                }
                 tileset_data.animation = animation
                 self._load_collision_data_for_tileset(tileset_data)
+                self._load_tanim_for_tileset(tileset_data)
 
                 self.tilesets.append(tileset_data)
                 self.tileset_map[len(self.tilesets) - 1] = tileset_data
@@ -730,6 +749,14 @@ class TileSelector(WidgetBase):
     def _on_tileset_type_selected(self, tileset_type: str):
         if not hasattr(self, "_pending_tileset_path"):
             return
+
+        if self.editor.tileset_type_dialog.apply_to_all and self._batch_type is None:
+            self._batch_type = tileset_type
+            remaining = len(self._pending_tileset_queue)
+            self.editor.notifications.notify(
+                f"Applying '{tileset_type}' to {remaining} remaining file{'s' if remaining != 1 else ''}",
+                duration=2.5,
+            )
 
         surf = self._pending_tileset_surf
 
@@ -789,6 +816,7 @@ class TileSelector(WidgetBase):
                         animation["frame_stride"] = math.ceil(total / frame_count)
         tileset_data.animation = animation
         self._load_collision_data_for_tileset(tileset_data)
+        self._load_tanim_for_tileset(tileset_data)
         self.tilesets.append(tileset_data)
         self.active_idx = len(self.tilesets) - 1
         self.tileset_map[self.active_idx] = tileset_data
@@ -824,7 +852,6 @@ class TileSelector(WidgetBase):
 
             library = ObjectTilesetCollisionLibrary.load(collision_path)
             tileset_data.object_collision_data = library.to_dict()
-            print(f"Loaded object collision data: {collision_path}")
         except Exception as e:
             tileset_data.object_collision_data = None
             error_handler.capture(e, context="load_object_tileset_collision")
@@ -840,6 +867,67 @@ class TileSelector(WidgetBase):
             "collision",
         )
         return Path(data_root) / collision_dir_name / f"{tileset_path.stem}.object_collision.json"
+
+    def _load_tanim_for_tileset(self, tileset_data: TilesetData) -> None:
+        try:
+            data_root = getattr(self.editor, "data_root", None)
+            tanim, clips = self._tanim_cache.get_clips(tileset_data.path, data_root)
+            tileset_data.tanim_path = tanim
+            try:
+                tileset_data.tanim_mtime = tanim.stat().st_mtime if tanim is not None and tanim.is_file() else -1.0
+            except OSError:
+                tileset_data.tanim_mtime = -1.0
+            tileset_data.tanim_clips = clips
+        except Exception as e:
+            tileset_data.tanim_clips = {}
+            tileset_data.tanim_path = None
+            tileset_data.tanim_mtime = -1.0
+            error_handler.capture(e, context="load_tile_anim_sidecar")
+
+    def refresh_tanim_for_all(self) -> None:
+        for ts in self.tilesets:
+            self._load_tanim_for_tileset(ts)
+
+    def prune_empty_tile_properties(self, ts: TilesetData) -> int:
+        empty = [vid for vid, props in ts.tile_properties.items() if not props]
+        for vid in empty:
+            del ts.tile_properties[vid]
+        if empty:
+            self.editor.suggestion_registry.refresh(self.editor)
+        return len(empty)
+
+    def remove_tile_property_everywhere(self, tileset_index: int, key: str) -> tuple[int, int]:
+        if not (0 <= tileset_index < len(self.tilesets)):
+            return (0, 0)
+        ts = self.tilesets[tileset_index]
+        templates = 0
+        for vid in list(ts.tile_properties.keys()):
+            props = ts.tile_properties[vid]
+            if key in props:
+                del props[key]
+                templates += 1
+            if not props:
+                del ts.tile_properties[vid]
+        cells = 0
+        lm = getattr(getattr(self.editor, "tilemap", None), "layer_manager", None)
+        layers = getattr(lm, "layers", []) if lm is not None else []
+        for layer in layers:
+            for tile in getattr(layer, "tiles", {}).values():
+                try:
+                    ttype = int(tile.get("ttype", -1))
+                except (TypeError, ValueError):
+                    continue
+                if ttype != tileset_index:
+                    continue
+                props = tile.get("properties")
+                if isinstance(props, dict) and key in props:
+                    del props[key]
+                    cells += 1
+                    if not props:
+                        del tile["properties"]
+        if templates or cells:
+            self.editor.suggestion_registry.refresh(self.editor)
+        return (templates, cells)
 
     def load_object_tileset_companions(self) -> None:
         previous_active_idx = self.active_idx
@@ -944,14 +1032,21 @@ class TileSelector(WidgetBase):
         print(f"Saved properties for tileset: {ts.name}")
 
     def _save_tile_properties(self, ts: TilesetData, variant_id: int, props: dict):
-        ts.tile_properties[variant_id] = props
+        if props:
+            ts.tile_properties[variant_id] = dict(props)
+        else:
+            ts.tile_properties.pop(variant_id, None)
+        self.editor.suggestion_registry.refresh(self.editor)
         print(f"Saved properties for tile {variant_id} in tileset: {ts.name}")
 
     def _save_tile_properties_multi(self, ctx: PropertyContext, props: dict):
         ts = ctx.target
         variant_ids = ctx.extra.get("variant_ids", [])
         for vid in variant_ids:
-            ts.tile_properties[vid] = props.copy()
+            if props:
+                ts.tile_properties[vid] = props.copy()
+            else:
+                ts.tile_properties.pop(vid, None)
         self.editor.suggestion_registry.refresh(self.editor)
         if len(variant_ids) == 1:
             print(f"Saved properties for tile {variant_ids[0]} in tileset: {ts.name}")

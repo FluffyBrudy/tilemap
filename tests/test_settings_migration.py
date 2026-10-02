@@ -4,8 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 
 def test_missing_themes_list_gets_builtin(monkeypatch, tmp_path):
     from editor import _load_project_config

@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pygame
 from pygame import Rect
@@ -186,7 +185,7 @@ class TestLineCommit:
                       "variant_to_group": {}})()
         calls = []
         monkeypatch.setattr(LayerCls, "autotile_at_pos",
-                            lambda self, pos, rules: calls.append((pos, rules)))
+                            lambda self, pos, rules, variant_props=None: calls.append((pos, rules)))
         stroke(g, 0, 0, 1, 0)
         assert sorted(p for p, _ in calls) == [(0, 0), (1, 0)]
         assert all(r == [sentinel] for _, r in calls)
